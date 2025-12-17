@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Search, Plus, Check, Car, User, FileText, CreditCard, Loader2, X, AlertCircle } from "lucide-react";
@@ -962,8 +963,19 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                      onClick={() => {
                        setSelectedClient(null);
                        setCreateNewClient(true);
+                       // Clear cars from previous client selection
+                       setClientCars([]);
+                       setSelectedCar(null);
+                       setCreateNewCar(false);
+                       setExistingCar(null);
+                       setCarConflict(null);
                        setErrors({});
-                       writeDraftNow({ selectedClient: null, createNewClient: true });
+                       writeDraftNow({ 
+                         selectedClient: null, 
+                         createNewClient: true,
+                         selectedCar: null,
+                         createNewCar: false,
+                       });
                      }}
                    >
                      <Plus className="h-4 w-4 ml-2" />
@@ -1348,22 +1360,22 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <Label>تاريخ البداية *</Label>
-                      <Input
-                        type="date"
+                      <ArabicDatePicker
                         value={policy.start_date}
-                        onChange={(e) => setPolicy({ ...policy, start_date: e.target.value })}
+                        onChange={(date) => setPolicy({ ...policy, start_date: date })}
+                        placeholder="اختر تاريخ البداية"
                         className={errors.start_date ? "border-destructive" : ""}
                       />
                       <FieldError error={errors.start_date} />
                     </div>
                     <div>
                       <Label>تاريخ النهاية *</Label>
-                      <Input
-                        type="date"
+                      <ArabicDatePicker
                         value={policy.end_date}
-                        onChange={(e) => setPolicy({ ...policy, end_date: e.target.value })}
+                        onChange={(date) => setPolicy({ ...policy, end_date: date })}
                         min={getEndDateRange().min}
                         max={getEndDateRange().max}
+                        placeholder="اختر تاريخ النهاية"
                         className={errors.end_date ? "border-destructive" : ""}
                       />
                       <p className="text-xs text-muted-foreground mt-1">
