@@ -11,7 +11,7 @@ export function MainLayout({ children }: MainLayoutProps) {
       <Sidebar />
       
       {/* Main content - RTL: margin on right side */}
-      <main className="mr-64 min-h-screen transition-all duration-300">
+      <main className="mr-64 min-h-screen transition-all duration-300 p-6">
         {children}
       </main>
     </div>

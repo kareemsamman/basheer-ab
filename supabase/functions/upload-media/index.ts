@@ -144,8 +144,13 @@ serve(async (req) => {
       });
     }
 
-    // Construct CDN URL
-    const cdnUrl = `${BUNNY_CDN_URL}/${storagePath}`;
+    // Construct CDN URL - ensure proper format
+    let cdnBaseUrl = BUNNY_CDN_URL.trim().replace(/[\t\r\n]/g, '');
+    if (!cdnBaseUrl.startsWith('http')) {
+      cdnBaseUrl = `https://${cdnBaseUrl}`;
+    }
+    cdnBaseUrl = cdnBaseUrl.replace(/\/+$/, ''); // Remove trailing slashes
+    const cdnUrl = `${cdnBaseUrl}/${storagePath}`;
 
     // Save to database
     const { data: mediaFile, error: dbError } = await supabase
