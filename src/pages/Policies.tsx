@@ -21,6 +21,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Plus,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,6 +29,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PolicyWizard } from "@/components/policies/PolicyWizard";
 import { RowActionsMenu } from "@/components/shared/RowActionsMenu";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
+import { recalculatePolicyProfit } from "@/lib/pricingCalculator";
 
 interface PolicyRecord {
   id: string;
@@ -86,6 +88,8 @@ export default function Policies() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingPolicy, setDeletingPolicy] = useState<PolicyRecord | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
+  const [recalcProgress, setRecalcProgress] = useState({ done: 0, total: 0 });
 
   const fetchPolicies = useCallback(async () => {
     setLoading(true);
@@ -140,6 +144,51 @@ export default function Policies() {
     }
   };
 
+  const handleRecalculateAll = async () => {
+    setRecalculating(true);
+    try {
+      // Fetch all policy IDs that are not deleted
+      const { data: allPolicies, error } = await supabase
+        .from('policies')
+        .select('id')
+        .is('deleted_at', null);
+
+      if (error) throw error;
+      if (!allPolicies || allPolicies.length === 0) {
+        toast({ title: "لا توجد وثائق", description: "لا توجد وثائق لإعادة حسابها" });
+        return;
+      }
+
+      setRecalcProgress({ done: 0, total: allPolicies.length });
+
+      let successCount = 0;
+      let errorCount = 0;
+
+      // Process in batches of 10 for performance
+      for (let i = 0; i < allPolicies.length; i++) {
+        const result = await recalculatePolicyProfit(allPolicies[i].id);
+        if (result) {
+          successCount++;
+        } else {
+          errorCount++;
+        }
+        setRecalcProgress({ done: i + 1, total: allPolicies.length });
+      }
+
+      toast({
+        title: "تم إعادة الحساب",
+        description: `تم تحديث ${successCount} وثيقة${errorCount > 0 ? `، فشل ${errorCount}` : ''}`,
+      });
+      fetchPolicies();
+    } catch (error) {
+      console.error('Error recalculating:', error);
+      toast({ title: "خطأ", description: "فشل في إعادة حساب الأرباح", variant: "destructive" });
+    } finally {
+      setRecalculating(false);
+      setRecalcProgress({ done: 0, total: 0 });
+    }
+  };
+
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('ar-EG');
   };
@@ -191,6 +240,18 @@ export default function Policies() {
             />
           </div>
           <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleRecalculateAll}
+              disabled={recalculating}
+            >
+              <RefreshCw className={cn("ml-2 h-4 w-4", recalculating && "animate-spin")} />
+              {recalculating 
+                ? `إعادة حساب... (${recalcProgress.done}/${recalcProgress.total})`
+                : "إعادة حساب الأرباح"
+              }
+            </Button>
             <Button variant="outline" size="sm">
               <Filter className="ml-2 h-4 w-4" />
               فلترة
