@@ -876,7 +876,8 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                     </div>
                   )}
                   
-                  <div className="grid gap-4">
+                  <Card className="p-4 border">
+                    <div className="grid gap-4">
                     <div>
                       <Label>الاسم الكامل *</Label>
                       <Input
@@ -955,7 +956,8 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                         placeholder="ملاحظات إضافية"
                       />
                     </div>
-                  </div>
+                    </div>
+                  </Card>
                 </div>
               )}
             </div>
