@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Header } from "@/components/layout/Header";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -19,128 +20,162 @@ import {
   Download,
   ChevronLeft,
   ChevronRight,
-  Eye,
-  MoreHorizontal,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { PolicyWizard } from "@/components/policies/PolicyWizard";
+import { RowActionsMenu } from "@/components/shared/RowActionsMenu";
+import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 
-const mockPolicies = [
-  {
-    id: "1",
-    clientName: "أحمد محمد",
-    carNumber: "12-345-67",
-    policyType: "شامل",
-    subType: "كامل",
-    company: "مينورا",
-    startDate: "2024-01-15",
-    endDate: "2025-01-15",
-    price: 2500,
-    profit: 450,
-    status: "active",
-    paymentStatus: "paid",
-  },
-  {
-    id: "2",
-    clientName: "سارة أبو حسين",
-    carNumber: "89-012-34",
-    policyType: "إلزامي",
-    subType: null,
-    company: "هرئيل",
-    startDate: "2024-02-20",
-    endDate: "2025-02-20",
-    price: 1200,
-    profit: 0,
-    status: "active",
-    paymentStatus: "partial",
-  },
-  {
-    id: "3",
-    clientName: "محمد خالد",
-    carNumber: "56-789-01",
-    policyType: "خدمة طريق",
-    subType: null,
-    company: "فينيكس",
-    startDate: "2024-03-10",
-    endDate: "2025-03-10",
-    price: 350,
-    profit: 120,
-    status: "active",
-    paymentStatus: "unpaid",
-  },
-  {
-    id: "4",
-    clientName: "ليلى عمر",
-    carNumber: "23-456-78",
-    policyType: "شامل",
-    subType: "طرف ثالث",
-    company: "كلال",
-    startDate: "2023-06-15",
-    endDate: "2024-06-15",
-    price: 1800,
-    profit: 320,
-    status: "expired",
-    paymentStatus: "paid",
-  },
-  {
-    id: "5",
-    clientName: "خالد يوسف",
-    carNumber: "90-123-45",
-    policyType: "إعفاء حوادث",
-    subType: null,
-    company: "مينورا",
-    startDate: "2024-01-01",
-    endDate: "2025-01-01",
-    price: 600,
-    profit: 200,
-    status: "active",
-    paymentStatus: "paid",
-  },
-];
+interface PolicyRecord {
+  id: string;
+  client_id: string;
+  car_id: string;
+  company_id: string;
+  policy_type_parent: string;
+  policy_type_child: string | null;
+  start_date: string;
+  end_date: string;
+  insurance_price: number;
+  profit: number | null;
+  cancelled: boolean | null;
+  transferred: boolean | null;
+  clients?: {
+    full_name: string;
+  };
+  cars?: {
+    car_number: string;
+  };
+  insurance_companies?: {
+    name: string;
+    name_ar: string | null;
+  };
+}
+
+const policyTypeLabels: Record<string, string> = {
+  "ELZAMI": "إلزامي",
+  "THIRD_FULL": "ثالث/شامل",
+  "ROAD_SERVICE": "خدمات الطريق",
+  "ACCIDENT_FEE_EXEMPTION": "إعفاء رسوم حادث",
+};
+
+const policyChildLabels: Record<string, string> = {
+  "THIRD": "طرف ثالث",
+  "FULL": "شامل",
+};
 
 const policyTypeColors: Record<string, string> = {
-  "إلزامي": "bg-blue-500/10 text-blue-600 border-blue-500/20",
-  "شامل": "bg-purple-500/10 text-purple-600 border-purple-500/20",
-  "خدمة طريق": "bg-orange-500/10 text-orange-600 border-orange-500/20",
-  "إعفاء حوادث": "bg-green-500/10 text-green-600 border-green-500/20",
-};
-
-const statusConfig = {
-  active: { label: "نشطة", variant: "success" as const },
-  expired: { label: "منتهية", variant: "destructive" as const },
-  cancelled: { label: "ملغاة", variant: "secondary" as const },
-};
-
-const paymentConfig = {
-  paid: { label: "مدفوع", variant: "success" as const },
-  partial: { label: "جزئي", variant: "warning" as const },
-  unpaid: { label: "غير مدفوع", variant: "destructive" as const },
+  "ELZAMI": "bg-blue-500/10 text-blue-600 border-blue-500/20",
+  "THIRD_FULL": "bg-purple-500/10 text-purple-600 border-purple-500/20",
+  "ROAD_SERVICE": "bg-orange-500/10 text-orange-600 border-orange-500/20",
+  "ACCIDENT_FEE_EXEMPTION": "bg-green-500/10 text-green-600 border-green-500/20",
 };
 
 export default function Policies() {
+  const { toast } = useToast();
+  const [policies, setPolicies] = useState<PolicyRecord[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = 25;
 
-  const filteredPolicies = mockPolicies.filter(
-    (policy) =>
-      policy.clientName.includes(searchQuery) ||
-      policy.carNumber.includes(searchQuery) ||
-      policy.company.includes(searchQuery)
-  );
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingPolicy, setDeletingPolicy] = useState<PolicyRecord | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const fetchPolicies = useCallback(async () => {
+    setLoading(true);
+    try {
+      let query = supabase
+        .from('policies')
+        .select('*, clients(full_name), cars(car_number), insurance_companies(name, name_ar)', { count: 'exact' })
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .range((currentPage - 1) * pageSize, currentPage * pageSize - 1);
+
+      if (searchQuery) {
+        // Note: searching across joins requires different approach
+        // For now, search in policy data
+      }
+
+      const { data, error, count } = await query;
+
+      if (error) throw error;
+      setPolicies(data || []);
+      setTotalCount(count || 0);
+    } catch (error) {
+      console.error('Error fetching policies:', error);
+      toast({ title: "خطأ", description: "فشل في تحميل الوثائق", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }, [currentPage, searchQuery, toast]);
+
+  useEffect(() => {
+    fetchPolicies();
+  }, [fetchPolicies]);
+
+  const handleDelete = async () => {
+    if (!deletingPolicy) return;
+    setDeleteLoading(true);
+    try {
+      const { error } = await supabase
+        .from('policies')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', deletingPolicy.id);
+
+      if (error) throw error;
+      toast({ title: "تم الحذف", description: "تم حذف الوثيقة بنجاح" });
+      fetchPolicies();
+    } catch (error) {
+      toast({ title: "خطأ", description: "فشل في حذف الوثيقة", variant: "destructive" });
+    } finally {
+      setDeleteLoading(false);
+      setDeleteDialogOpen(false);
+      setDeletingPolicy(null);
+    }
+  };
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('ar-EG');
+    return new Date(dateStr).toLocaleDateString('ar-EG');
   };
+
+  const getStatus = (policy: PolicyRecord) => {
+    if (policy.cancelled) return { label: "ملغاة", variant: "secondary" as const };
+    if (policy.transferred) return { label: "محوّلة", variant: "warning" as const };
+    const today = new Date();
+    const endDate = new Date(policy.end_date);
+    if (endDate < today) return { label: "منتهية", variant: "destructive" as const };
+    return { label: "نشطة", variant: "success" as const };
+  };
+
+  const totalPages = Math.ceil(totalCount / pageSize);
 
   return (
     <MainLayout>
       <Header
         title="الوثائق"
         subtitle="إدارة وثائق التأمين"
-        action={{ label: "وثيقة جديدة", onClick: () => {} }}
+        action={{
+          label: "وثيقة جديدة",
+          onClick: () => setWizardOpen(true),
+        }}
       />
 
       <div className="p-6 space-y-4">
+        {/* Quick Create */}
+        <Button 
+          size="lg"
+          onClick={() => setWizardOpen(true)}
+        >
+          <Plus className="h-5 w-5 ml-2" />
+          إضافة وثيقة جديدة
+        </Button>
+
         {/* Toolbar */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative flex-1 max-w-md">
@@ -148,7 +183,10 @@ export default function Policies() {
             <Input
               placeholder="بحث في الوثائق..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
               className="pr-9"
             />
           </div>
@@ -178,65 +216,88 @@ export default function Policies() {
                   <TableHead className="text-muted-foreground font-medium">السعر</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الربح</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الحالة</TableHead>
-                  <TableHead className="text-muted-foreground font-medium">الدفع</TableHead>
-                  <TableHead className="text-muted-foreground font-medium w-[100px]">إجراءات</TableHead>
+                  <TableHead className="text-muted-foreground font-medium w-[80px]">إجراءات</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredPolicies.map((policy, index) => (
-                  <TableRow
-                    key={policy.id}
-                    className={cn(
-                      "border-border/30 transition-colors cursor-pointer",
-                      "hover:bg-secondary/50 animate-fade-in"
-                    )}
-                    style={{ animationDelay: `${index * 50}ms` }}
-                  >
-                    <TableCell className="font-medium">{policy.clientName}</TableCell>
-                    <TableCell className="font-mono text-sm text-muted-foreground" dir="ltr">
-                      {policy.carNumber}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={cn("border", policyTypeColors[policy.policyType] || "bg-secondary")}>
-                        {policy.policyType}
-                        {policy.subType && ` (${policy.subType})`}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{policy.company}</TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <p className="text-foreground">{formatDate(policy.startDate)}</p>
-                        <p className="text-muted-foreground">{formatDate(policy.endDate)}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      ₪{policy.price.toLocaleString('ar-EG')}
-                    </TableCell>
-                    <TableCell className="font-medium text-success">
-                      ₪{policy.profit.toLocaleString('ar-EG')}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusConfig[policy.status as keyof typeof statusConfig].variant}>
-                        {statusConfig[policy.status as keyof typeof statusConfig].label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={paymentConfig[policy.paymentStatus as keyof typeof paymentConfig].variant}>
-                        {paymentConfig[policy.paymentStatus as keyof typeof paymentConfig].label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </div>
+                {loading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-8 w-28" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                      <TableCell><Skeleton className="h-8 w-8" /></TableCell>
+                    </TableRow>
+                  ))
+                ) : policies.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                      لا توجد بيانات
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  policies.map((policy, index) => {
+                    const status = getStatus(policy);
+                    return (
+                      <TableRow
+                        key={policy.id}
+                        className={cn(
+                          "border-border/30 transition-colors cursor-pointer",
+                          "hover:bg-secondary/50 animate-fade-in"
+                        )}
+                        style={{ animationDelay: `${index * 30}ms` }}
+                      >
+                        <TableCell className="font-medium">
+                          {policy.clients?.full_name || "-"}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm text-muted-foreground" dir="ltr">
+                          {policy.cars?.car_number || "-"}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={cn("border", policyTypeColors[policy.policy_type_parent] || "bg-secondary")}>
+                            {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
+                            {policy.policy_type_child && ` (${policyChildLabels[policy.policy_type_child] || policy.policy_type_child})`}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {policy.insurance_companies?.name_ar || policy.insurance_companies?.name || "-"}
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            <p className="text-foreground">{formatDate(policy.start_date)}</p>
+                            <p className="text-muted-foreground">{formatDate(policy.end_date)}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          ₪{policy.insurance_price.toLocaleString('ar-EG')}
+                        </TableCell>
+                        <TableCell className="font-medium text-success">
+                          ₪{(policy.profit || 0).toLocaleString('ar-EG')}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={status.variant}>
+                            {status.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <RowActionsMenu
+                            onView={() => {}}
+                            onEdit={() => {}}
+                            onDelete={() => {
+                              setDeletingPolicy(policy);
+                              setDeleteDialogOpen(true);
+                            }}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
               </TableBody>
             </Table>
           </div>
@@ -244,20 +305,47 @@ export default function Policies() {
           {/* Pagination */}
           <div className="flex items-center justify-between border-t border-border/30 px-4 py-3">
             <p className="text-sm text-muted-foreground">
-              عرض {filteredPolicies.length} وثيقة
+              عرض {policies.length} من {totalCount} وثيقة
             </p>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage((p) => p + 1)}
+              >
                 <ChevronRight className="h-4 w-4" />
               </Button>
-              <span className="text-sm text-muted-foreground">صفحة 1 من 1</span>
-              <Button variant="outline" size="sm" disabled>
+              <span className="text-sm text-muted-foreground">
+                صفحة {currentPage} من {totalPages || 1}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage((p) => p - 1)}
+              >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
             </div>
           </div>
         </Card>
       </div>
+
+      <PolicyWizard
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
+        onComplete={() => fetchPolicies()}
+      />
+
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onConfirm={handleDelete}
+        title="حذف الوثيقة"
+        description="هل أنت متأكد من حذف هذه الوثيقة؟"
+        loading={deleteLoading}
+      />
     </MainLayout>
   );
 }
