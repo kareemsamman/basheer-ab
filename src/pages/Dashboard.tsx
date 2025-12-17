@@ -1,12 +1,82 @@
+import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Header } from "@/components/layout/Header";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { ExpiringPolicies } from "@/components/dashboard/ExpiringPolicies";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, FileText, Car, TrendingUp, Wallet, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Users, FileText, Car, TrendingUp, Wallet, AlertCircle, Plus } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { PolicyWizard } from "@/components/policies/PolicyWizard";
 
 export default function Dashboard() {
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [stats, setStats] = useState({
+    totalClients: 0,
+    activePolicies: 0,
+    totalCars: 0,
+    monthlyProfit: 0,
+    outstandingBalance: 0,
+    expiringThisWeek: 0,
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const fetchStats = async () => {
+    setLoading(true);
+    try {
+      // Fetch clients count
+      const { count: clientsCount } = await supabase
+        .from('clients')
+        .select('*', { count: 'exact', head: true })
+        .is('deleted_at', null);
+
+      // Fetch active policies count
+      const today = new Date().toISOString().split('T')[0];
+      const { count: policiesCount } = await supabase
+        .from('policies')
+        .select('*', { count: 'exact', head: true })
+        .is('deleted_at', null)
+        .eq('cancelled', false)
+        .gte('end_date', today);
+
+      // Fetch cars count
+      const { count: carsCount } = await supabase
+        .from('cars')
+        .select('*', { count: 'exact', head: true })
+        .is('deleted_at', null);
+
+      // Fetch expiring this week
+      const nextWeek = new Date();
+      nextWeek.setDate(nextWeek.getDate() + 7);
+      const { count: expiringCount } = await supabase
+        .from('policies')
+        .select('*', { count: 'exact', head: true })
+        .is('deleted_at', null)
+        .eq('cancelled', false)
+        .gte('end_date', today)
+        .lte('end_date', nextWeek.toISOString().split('T')[0]);
+
+      setStats({
+        totalClients: clientsCount || 0,
+        activePolicies: policiesCount || 0,
+        totalCars: carsCount || 0,
+        monthlyProfit: 0,
+        outstandingBalance: 0,
+        expiringThisWeek: expiringCount || 0,
+      });
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <MainLayout>
       <Header
@@ -16,36 +86,53 @@ export default function Dashboard() {
       />
 
       <div className="p-6 space-y-6">
+        {/* Quick Create Button */}
+        <Button 
+          size="lg" 
+          className="w-full sm:w-auto"
+          onClick={() => setWizardOpen(true)}
+        >
+          <Plus className="h-5 w-5 ml-2" />
+          إضافة وثيقة جديدة
+        </Button>
+
         {/* Stats Grid */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            title="إجمالي العملاء"
-            value="1,248"
-            change={{ value: 12, trend: "up" }}
-            icon={Users}
-            variant="primary"
-          />
-          <StatCard
-            title="الوثائق النشطة"
-            value="2,847"
-            change={{ value: 8, trend: "up" }}
-            icon={FileText}
-            variant="default"
-          />
-          <StatCard
-            title="السيارات المؤمنة"
-            value="3,124"
-            change={{ value: 5, trend: "up" }}
-            icon={Car}
-            variant="default"
-          />
-          <StatCard
-            title="أرباح الشهر"
-            value="₪45,230"
-            change={{ value: 15, trend: "up" }}
-            icon={TrendingUp}
-            variant="success"
-          />
+          {loading ? (
+            <>
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+            </>
+          ) : (
+            <>
+              <StatCard
+                title="إجمالي العملاء"
+                value={stats.totalClients.toLocaleString('ar-EG')}
+                icon={Users}
+                variant="primary"
+              />
+              <StatCard
+                title="الوثائق النشطة"
+                value={stats.activePolicies.toLocaleString('ar-EG')}
+                icon={FileText}
+                variant="default"
+              />
+              <StatCard
+                title="السيارات المؤمنة"
+                value={stats.totalCars.toLocaleString('ar-EG')}
+                icon={Car}
+                variant="default"
+              />
+              <StatCard
+                title="أرباح الشهر"
+                value={`₪${stats.monthlyProfit.toLocaleString('ar-EG')}`}
+                icon={TrendingUp}
+                variant="success"
+              />
+            </>
+          )}
         </div>
 
         {/* Second Row Stats */}
@@ -54,8 +141,8 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">الرصيد المستحق</p>
-                <p className="text-2xl font-bold text-warning">₪127,450</p>
-                <p className="text-sm text-muted-foreground mt-1">32 عميل برصيد</p>
+                <p className="text-2xl font-bold text-warning">₪{stats.outstandingBalance.toLocaleString('ar-EG')}</p>
+                <p className="text-sm text-muted-foreground mt-1">عميل برصيد</p>
               </div>
               <div className="rounded-xl bg-warning/10 p-3">
                 <Wallet className="h-6 w-6 text-warning" />
@@ -66,7 +153,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">تنتهي هذا الأسبوع</p>
-                <p className="text-2xl font-bold text-destructive">24</p>
+                <p className="text-2xl font-bold text-destructive">{stats.expiringThisWeek}</p>
                 <p className="text-sm text-muted-foreground mt-1">وثيقة تحتاج تجديد</p>
               </div>
               <div className="rounded-xl bg-destructive/10 p-3">
@@ -78,8 +165,8 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">أرباح السنة</p>
-                <p className="text-2xl font-bold text-success">₪542,780</p>
-                <p className="text-sm text-muted-foreground mt-1">+18% مقارنة بالعام الماضي</p>
+                <p className="text-2xl font-bold text-success">₪0</p>
+                <p className="text-sm text-muted-foreground mt-1">مقارنة بالعام الماضي</p>
               </div>
               <div className="rounded-xl bg-success/10 p-3">
                 <TrendingUp className="h-6 w-6 text-success" />
@@ -93,32 +180,13 @@ export default function Dashboard() {
           <ExpiringPolicies />
           <RecentActivity />
         </div>
-
-        {/* Quick Stats by Company */}
-        <Card className="border shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base">الوثائق حسب الشركة</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {[
-                { name: "مينورا", count: 423, color: "bg-blue-500" },
-                { name: "هرئيل", count: 387, color: "bg-green-500" },
-                { name: "فينيكس", count: 312, color: "bg-orange-500" },
-                { name: "كلال", count: 245, color: "bg-purple-500" },
-              ].map((company) => (
-                <div key={company.name} className="flex items-center gap-3 rounded-lg bg-secondary/50 p-4">
-                  <div className={`h-3 w-3 rounded-full ${company.color}`} />
-                  <div className="flex-1">
-                    <p className="font-medium text-foreground">{company.name}</p>
-                    <p className="text-sm text-muted-foreground">{company.count} وثيقة</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
       </div>
+
+      <PolicyWizard 
+        open={wizardOpen} 
+        onOpenChange={setWizardOpen}
+        onComplete={() => fetchStats()}
+      />
     </MainLayout>
   );
 }

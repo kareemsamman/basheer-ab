@@ -46,6 +46,7 @@ export type Database = {
           client_id: string
           color: string | null
           created_at: string
+          deleted_at: string | null
           id: string
           last_license: string | null
           license_expiry: string | null
@@ -63,6 +64,7 @@ export type Database = {
           client_id: string
           color?: string | null
           created_at?: string
+          deleted_at?: string | null
           id?: string
           last_license?: string | null
           license_expiry?: string | null
@@ -80,6 +82,7 @@ export type Database = {
           client_id?: string
           color?: string | null
           created_at?: string
+          deleted_at?: string | null
           id?: string
           last_license?: string | null
           license_expiry?: string | null
@@ -104,6 +107,7 @@ export type Database = {
         Row: {
           created_at: string
           date_joined: string | null
+          deleted_at: string | null
           file_number: string | null
           full_name: string
           id: string
@@ -117,6 +121,7 @@ export type Database = {
         Insert: {
           created_at?: string
           date_joined?: string | null
+          deleted_at?: string | null
           file_number?: string | null
           full_name: string
           id?: string
@@ -130,6 +135,7 @@ export type Database = {
         Update: {
           created_at?: string
           date_joined?: string | null
+          deleted_at?: string | null
           file_number?: string | null
           full_name?: string
           id?: string
@@ -287,6 +293,7 @@ export type Database = {
           client_id: string
           company_id: string
           created_at: string
+          deleted_at: string | null
           end_date: string
           id: string
           insurance_price: number
@@ -310,6 +317,7 @@ export type Database = {
           client_id: string
           company_id: string
           created_at?: string
+          deleted_at?: string | null
           end_date: string
           id?: string
           insurance_price: number
@@ -333,6 +341,7 @@ export type Database = {
           client_id?: string
           company_id?: string
           created_at?: string
+          deleted_at?: string | null
           end_date?: string
           id?: string
           insurance_price?: number
