@@ -36,6 +36,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Calendar,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -79,6 +80,31 @@ const getEntityLabel = (type: string | null) => {
   return type ? labels[type] || type : '-';
 };
 
+// Generate years from 2020 to current year + 1
+const generateYears = () => {
+  const currentYear = new Date().getFullYear();
+  const years: number[] = [];
+  for (let y = currentYear + 1; y >= 2020; y--) {
+    years.push(y);
+  }
+  return years;
+};
+
+const MONTHS = [
+  { value: '01', label: 'يناير' },
+  { value: '02', label: 'فبراير' },
+  { value: '03', label: 'مارس' },
+  { value: '04', label: 'أبريل' },
+  { value: '05', label: 'مايو' },
+  { value: '06', label: 'يونيو' },
+  { value: '07', label: 'يوليو' },
+  { value: '08', label: 'أغسطس' },
+  { value: '09', label: 'سبتمبر' },
+  { value: '10', label: 'أكتوبر' },
+  { value: '11', label: 'نوفمبر' },
+  { value: '12', label: 'ديسمبر' },
+];
+
 export default function Media() {
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [files, setFiles] = useState<MediaFile[]>([]);
@@ -87,6 +113,8 @@ export default function Media() {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [entityFilter, setEntityFilter] = useState<string>('all');
+  const [yearFilter, setYearFilter] = useState<string>('all');
+  const [monthFilter, setMonthFilter] = useState<string>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
@@ -120,6 +148,23 @@ export default function Media() {
         query = query.eq('entity_type', entityFilter);
       }
 
+      // Year/Month filter
+      if (yearFilter !== 'all') {
+        const year = parseInt(yearFilter);
+        if (monthFilter !== 'all') {
+          // Filter by specific month and year
+          const month = parseInt(monthFilter);
+          const startDate = new Date(year, month - 1, 1).toISOString();
+          const endDate = new Date(year, month, 0, 23, 59, 59, 999).toISOString();
+          query = query.gte('created_at', startDate).lte('created_at', endDate);
+        } else {
+          // Filter by year only
+          const startDate = new Date(year, 0, 1).toISOString();
+          const endDate = new Date(year, 11, 31, 23, 59, 59, 999).toISOString();
+          query = query.gte('created_at', startDate).lte('created_at', endDate);
+        }
+      }
+
       const { data, error, count } = await query;
 
       if (error) throw error;
@@ -136,7 +181,7 @@ export default function Media() {
 
   useEffect(() => {
     fetchFiles();
-  }, [page, searchQuery, typeFilter, entityFilter]);
+  }, [page, searchQuery, typeFilter, entityFilter, yearFilter, monthFilter]);
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -183,6 +228,14 @@ export default function Media() {
     }
   };
 
+  const handleUploadComplete = (uploadedFiles: MediaFile[]) => {
+    // Add new files to the beginning of the list
+    setFiles(prev => [...uploadedFiles, ...prev]);
+    setTotalCount(prev => prev + uploadedFiles.length);
+    setUploaderOpen(false);
+    toast.success(`تم رفع ${uploadedFiles.length} ملفات بنجاح`);
+  };
+
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -198,6 +251,7 @@ export default function Media() {
   };
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
+  const years = generateYears();
 
   return (
     <MainLayout>
@@ -225,12 +279,7 @@ export default function Media() {
               <DialogHeader>
                 <DialogTitle>رفع ملفات جديدة</DialogTitle>
               </DialogHeader>
-              <FileUploader
-                onUploadComplete={() => {
-                  setUploaderOpen(false);
-                  fetchFiles();
-                }}
-              />
+              <FileUploader onUploadComplete={handleUploadComplete} />
             </DialogContent>
           </Dialog>
         </div>
@@ -254,7 +303,7 @@ export default function Media() {
             <SelectTrigger className="w-[130px]">
               <SelectValue placeholder="النوع" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent align="end">
               <SelectItem value="all">كل الأنواع</SelectItem>
               <SelectItem value="image">صور</SelectItem>
               <SelectItem value="pdf">PDF</SelectItem>
@@ -266,12 +315,41 @@ export default function Media() {
             <SelectTrigger className="w-[130px]">
               <SelectValue placeholder="مرتبط بـ" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent align="end">
               <SelectItem value="all">الكل</SelectItem>
               <SelectItem value="client">عميل</SelectItem>
               <SelectItem value="car">سيارة</SelectItem>
               <SelectItem value="policy">وثيقة</SelectItem>
               <SelectItem value="cheque">شيك</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={yearFilter} onValueChange={(v) => { setYearFilter(v); setPage(0); }}>
+            <SelectTrigger className="w-[110px]">
+              <Calendar className="h-4 w-4 ml-2 text-muted-foreground" />
+              <SelectValue placeholder="السنة" />
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectItem value="all">كل السنوات</SelectItem>
+              {years.map(year => (
+                <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select 
+            value={monthFilter} 
+            onValueChange={(v) => { setMonthFilter(v); setPage(0); }}
+            disabled={yearFilter === 'all'}
+          >
+            <SelectTrigger className="w-[110px]">
+              <SelectValue placeholder="الشهر" />
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectItem value="all">كل الشهور</SelectItem>
+              {MONTHS.map(month => (
+                <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
