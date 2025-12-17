@@ -8,10 +8,11 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { user, loading, profileLoading, isActive } = useAuth();
+  const { user, loading, profileLoading, profile, isActive } = useAuth();
 
-  // Wait for both auth and profile to load
-  if (loading || (user && profileLoading)) {
+  // Block ONLY during the initial profile resolution.
+  // Avoid unmounting the whole app on token refresh / refocus.
+  if (loading || (user && profileLoading && !profile)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">

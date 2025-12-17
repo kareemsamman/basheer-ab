@@ -85,6 +85,48 @@ const PAYMENT_TYPES = [
   { value: "transfer", label: "تحويل" },
 ];
 
+const POLICY_WIZARD_DRAFT_KEY = "abcrm:policyWizardDraft:v1";
+
+type PolicyWizardDraft = {
+  currentStep: number;
+  clientSearch: string;
+  selectedClient: Client | null;
+  createNewClient: boolean;
+  newClient: {
+    full_name: string;
+    id_number: string;
+    file_number: string;
+    phone_number: string;
+    less_than_24: boolean;
+    notes: string;
+  };
+  selectedCar: Car | null;
+  createNewCar: boolean;
+  newCar: {
+    car_number: string;
+    manufacturer_name: string;
+    model: string;
+    year: string;
+    color: string;
+    car_type: string;
+    car_value: string;
+    license_expiry: string;
+  };
+  carDataFetched: boolean;
+  policy: {
+    policy_type_parent: string;
+    policy_type_child: string;
+    company_id: string;
+    start_date: string;
+    end_date: string;
+    insurance_price: string;
+    cancelled: boolean;
+    transferred: boolean;
+    notes: string;
+  };
+  payments: PaymentLine[];
+};
+
 export function PolicyWizard({ open, onOpenChange, onComplete }: PolicyWizardProps) {
   const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
@@ -141,9 +183,76 @@ export function PolicyWizard({ open, onOpenChange, onComplete }: PolicyWizardPro
   // Step 4: Payments
   const [payments, setPayments] = useState<PaymentLine[]>([]);
 
-  // Reset on open
+  const clearDraft = () => {
+    try {
+      sessionStorage.removeItem(POLICY_WIZARD_DRAFT_KEY);
+    } catch {
+      // ignore
+    }
+  };
+
+  const loadDraft = (): PolicyWizardDraft | null => {
+    try {
+      const raw = sessionStorage.getItem(POLICY_WIZARD_DRAFT_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw) as PolicyWizardDraft;
+    } catch {
+      return null;
+    }
+  };
+
+  // Reset / restore on open
+
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+
+    const draft = loadDraft();
+
+    if (draft) {
+      setCurrentStep(draft.currentStep ?? 1);
+      setClientSearch(draft.clientSearch ?? "");
+      setSelectedClient(draft.selectedClient ?? null);
+      setCreateNewClient(!!draft.createNewClient);
+      setNewClient(
+        draft.newClient ?? {
+          full_name: "",
+          id_number: "",
+          file_number: "",
+          phone_number: "",
+          less_than_24: false,
+          notes: "",
+        },
+      );
+      setSelectedCar(draft.selectedCar ?? null);
+      setCreateNewCar(!!draft.createNewCar);
+      setNewCar(
+        draft.newCar ?? {
+          car_number: "",
+          manufacturer_name: "",
+          model: "",
+          year: "",
+          color: "",
+          car_type: "car",
+          car_value: "",
+          license_expiry: "",
+        },
+      );
+      setCarDataFetched(!!draft.carDataFetched);
+      setPolicy(
+        draft.policy ?? {
+          policy_type_parent: "",
+          policy_type_child: "",
+          company_id: "",
+          start_date: new Date().toISOString().split("T")[0],
+          end_date: "",
+          insurance_price: "",
+          cancelled: false,
+          transferred: false,
+          notes: "",
+        },
+      );
+      setPayments(draft.payments ?? []);
+    } else {
       setCurrentStep(1);
       setSelectedClient(null);
       setSelectedCar(null);
@@ -154,8 +263,9 @@ export function PolicyWizard({ open, onOpenChange, onComplete }: PolicyWizardPro
       setPolicy({ policy_type_parent: "", policy_type_child: "", company_id: "", start_date: new Date().toISOString().split('T')[0], end_date: "", insurance_price: "", cancelled: false, transferred: false, notes: "" });
       setPayments([]);
       setCarDataFetched(false);
-      fetchCompanies();
     }
+
+    fetchCompanies();
   }, [open]);
 
   // Search clients
@@ -183,6 +293,48 @@ export function PolicyWizard({ open, onOpenChange, onComplete }: PolicyWizardPro
       setPolicy(p => ({ ...p, end_date: endDate.toISOString().split('T')[0] }));
     }
   }, [policy.start_date]);
+
+  // Persist draft while the wizard is open (so tab switching never loses progress)
+  useEffect(() => {
+    if (!open) return;
+
+    const draft: PolicyWizardDraft = {
+      currentStep,
+      clientSearch,
+      selectedClient,
+      createNewClient,
+      newClient,
+      selectedCar,
+      createNewCar,
+      newCar,
+      carDataFetched,
+      policy,
+      payments,
+    };
+
+    const t = window.setTimeout(() => {
+      try {
+        sessionStorage.setItem(POLICY_WIZARD_DRAFT_KEY, JSON.stringify(draft));
+      } catch {
+        // ignore
+      }
+    }, 250);
+
+    return () => window.clearTimeout(t);
+  }, [
+    open,
+    currentStep,
+    clientSearch,
+    selectedClient,
+    createNewClient,
+    newClient,
+    selectedCar,
+    createNewCar,
+    newCar,
+    carDataFetched,
+    policy,
+    payments,
+  ]);
 
   const searchClients = async (query: string) => {
     setLoadingClients(true);
@@ -467,6 +619,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete }: PolicyWizardPro
       }
 
       toast({ title: "تم الحفظ بنجاح", description: "تم إنشاء الوثيقة بنجاح" });
+      clearDraft();
       onOpenChange(false);
       onComplete?.(policyData.id);
     } catch (error: any) {
@@ -479,15 +632,27 @@ export function PolicyWizard({ open, onOpenChange, onComplete }: PolicyWizardPro
 
   const handleSheetOpenChange = (nextOpen: boolean) => {
     // Prevent losing the wizard when switching browser tabs (focus/visibility loss)
-    if (!nextOpen && (document.visibilityState === 'hidden' || !document.hasFocus())) {
+    if (!nextOpen && (document.visibilityState === "hidden" || !document.hasFocus())) {
       return;
     }
+
+    // Explicit user close → clear draft
+    if (!nextOpen) {
+      clearDraft();
+    }
+
     onOpenChange(nextOpen);
   };
 
   return (
     <Sheet open={open} onOpenChange={handleSheetOpenChange}>
-      <SheetContent side="left" className="w-full sm:max-w-2xl overflow-y-auto">
+      <SheetContent
+        side="left"
+        className="w-full sm:max-w-2xl overflow-y-auto"
+        onFocusOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+        onPointerDownOutside={(e) => e.preventDefault()}
+      >
         <SheetHeader>
           <SheetTitle>إضافة وثيقة جديدة</SheetTitle>
         </SheetHeader>
@@ -1028,7 +1193,14 @@ export function PolicyWizard({ open, onOpenChange, onComplete }: PolicyWizardPro
         <div className="flex justify-between mt-8 pt-4 border-t">
           <Button
             variant="outline"
-            onClick={() => currentStep > 1 ? setCurrentStep(currentStep - 1) : onOpenChange(false)}
+            onClick={() => {
+              if (currentStep > 1) {
+                setCurrentStep(currentStep - 1);
+                return;
+              }
+              clearDraft();
+              onOpenChange(false);
+            }}
           >
             {currentStep === 1 ? "إلغاء" : "السابق"}
           </Button>

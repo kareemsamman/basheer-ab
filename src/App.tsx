@@ -17,7 +17,14 @@ import Media from "./pages/Media";
 import AdminUsers from "./pages/AdminUsers";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Prevent “reload-like” behavior when returning to the tab
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
