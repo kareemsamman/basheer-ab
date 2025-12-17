@@ -98,6 +98,28 @@ serve(async (req) => {
       });
     }
 
+    // Delete from Bunny Storage first
+    const BUNNY_API_KEY = Deno.env.get('BUNNY_API_KEY');
+    const BUNNY_STORAGE_ZONE = Deno.env.get('BUNNY_STORAGE_ZONE');
+
+    if (BUNNY_API_KEY && BUNNY_STORAGE_ZONE) {
+      for (const file of files) {
+        try {
+          const deleteUrl = `https://storage.bunnycdn.com/${BUNNY_STORAGE_ZONE}/${file.storage_path}`;
+          console.log(`Deleting from Bunny: ${deleteUrl}`);
+          const bunnyResponse = await fetch(deleteUrl, {
+            method: 'DELETE',
+            headers: { 'AccessKey': BUNNY_API_KEY },
+          });
+          if (!bunnyResponse.ok) {
+            console.warn(`Failed to delete from Bunny: ${file.storage_path}`, await bunnyResponse.text());
+          }
+        } catch (e) {
+          console.warn(`Error deleting from Bunny: ${file.storage_path}`, e);
+        }
+      }
+    }
+
     // Soft delete files in database
     const { error: updateError } = await supabase
       .from('media_files')
@@ -112,18 +134,7 @@ serve(async (req) => {
       });
     }
 
-    // Optionally delete from Bunny Storage (uncomment if you want hard delete)
-    // const BUNNY_API_KEY = Deno.env.get('BUNNY_API_KEY');
-    // const BUNNY_STORAGE_ZONE = Deno.env.get('BUNNY_STORAGE_ZONE');
-    // for (const file of files) {
-    //   const deleteUrl = `https://storage.bunnycdn.com/${BUNNY_STORAGE_ZONE}/${file.storage_path}`;
-    //   await fetch(deleteUrl, {
-    //     method: 'DELETE',
-    //     headers: { 'AccessKey': BUNNY_API_KEY },
-    //   });
-    // }
-
-    console.log(`Soft deleted ${files.length} files`);
+    console.log(`Deleted ${files.length} files from Bunny and marked as deleted in DB`);
 
     return new Response(JSON.stringify({ 
       success: true, 
