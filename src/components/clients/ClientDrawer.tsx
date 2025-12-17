@@ -237,8 +237,8 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
                 <FormItem>
                   <FormLabel>الوسيط</FormLabel>
                   <Select
-                    value={field.value || ''}
-                    onValueChange={field.onChange}
+                    value={(field.value && field.value.length > 0) ? field.value : "__none__"}
+                    onValueChange={(v) => field.onChange(v === "__none__" ? "" : v)}
                     disabled={!!defaultBrokerId}
                   >
                     <FormControl>
@@ -247,7 +247,7 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="">بدون وسيط</SelectItem>
+                      <SelectItem value="__none__">بدون وسيط</SelectItem>
                       {brokers.map((broker) => (
                         <SelectItem key={broker.id} value={broker.id}>
                           {broker.name}

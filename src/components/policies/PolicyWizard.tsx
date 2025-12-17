@@ -922,15 +922,15 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                       <div>
                         <Label>الوسيط</Label>
                         <Select 
-                          value={newClient.broker_id} 
-                          onValueChange={(v) => setNewClient({ ...newClient, broker_id: v })}
+                          value={newClient.broker_id || "__none__"} 
+                          onValueChange={(v) => setNewClient({ ...newClient, broker_id: v === "__none__" ? "" : v })}
                           disabled={!!defaultBrokerId}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="اختر الوسيط (اختياري)" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">بدون وسيط</SelectItem>
+                            <SelectItem value="__none__">بدون وسيط</SelectItem>
                             {brokers.map(b => (
                               <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
                             ))}
