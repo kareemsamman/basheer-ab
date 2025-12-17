@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -192,21 +192,18 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
   const selectedType = POLICY_TYPES.find(t => t.value === formData.policy_type_parent);
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent 
-        side="right" 
-        className="w-full sm:max-w-xl p-0 overflow-hidden"
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent 
+        className="max-w-xl max-h-[90vh] p-0 overflow-hidden"
         onInteractOutside={(e) => e.preventDefault()}
       >
-        <div className="flex flex-col h-full">
-          <SheetHeader className="p-6 border-b bg-muted/30">
-            <div className="flex items-center justify-between">
-              <SheetTitle className="text-xl font-bold">تعديل الوثيقة</SheetTitle>
-            </div>
+        <div className="flex flex-col h-full max-h-[90vh]">
+          <DialogHeader className="p-6 border-b bg-muted/30">
+            <DialogTitle className="text-xl font-bold">تعديل الوثيقة</DialogTitle>
             <p className="text-sm text-muted-foreground">
               {policy.clients.full_name} - {policy.cars.car_number}
             </p>
-          </SheetHeader>
+          </DialogHeader>
 
           <ScrollArea className="flex-1 p-6">
             <div className="space-y-6">
@@ -387,7 +384,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
             </Button>
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
