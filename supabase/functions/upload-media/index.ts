@@ -107,12 +107,18 @@ serve(async (req) => {
       });
     }
 
-    // Generate unique filename
+    // Generate organized path: uploads/YYYY/MM/filename.ext
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
     const timestamp = Date.now();
     const randomId = crypto.randomUUID().slice(0, 8);
     const ext = file.name.split('.').pop() || 'bin';
-    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_').slice(0, 50);
-    const storagePath = `uploads/${timestamp}_${randomId}_${sanitizedName}`;
+    const sanitizedName = file.name
+      .replace(/\.[^/.]+$/, '') // Remove extension
+      .replace(/[^a-zA-Z0-9_\-\u0600-\u06FF]/g, '_') // Keep Arabic chars too
+      .slice(0, 40);
+    const storagePath = `uploads/${year}/${month}/${timestamp}_${randomId}_${sanitizedName}.${ext}`;
 
     // Upload to Bunny Storage
     const fileBuffer = await file.arrayBuffer();
