@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Upload, X, CheckCircle, AlertCircle, Loader2, RefreshCw, FileImage, FileVideo, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -41,6 +41,7 @@ export function FileUploader({
 }: FileUploaderProps) {
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   const validateFile = (file: File): string | null => {
     const ext = file.name.split('.').pop()?.toLowerCase();
@@ -74,7 +75,7 @@ export function FileUploader({
     setFiles(prev => prev.filter(f => f.id !== id));
   };
 
-  const uploadFile = async (uploadFile: UploadFile): Promise<void> => {
+  const uploadFile = async (uploadFile: UploadFile): Promise<any | null> => {
     setFiles(prev => prev.map(f => 
       f.id === uploadFile.id ? { ...f, status: 'uploading', progress: 10 } : f
     ));
@@ -109,11 +110,15 @@ export function FileUploader({
         throw new Error(response.error.message || 'فشل الرفع');
       }
 
+      const result = response.data.file;
+      
       setFiles(prev => prev.map(f => 
         f.id === uploadFile.id 
-          ? { ...f, status: 'success', progress: 100, result: response.data.file } 
+          ? { ...f, status: 'success', progress: 100, result } 
           : f
       ));
+
+      return result;
 
     } catch (error: any) {
       console.error('Upload error:', error);
@@ -122,19 +127,29 @@ export function FileUploader({
           ? { ...f, status: 'error', error: error.message || 'فشل الرفع', progress: 0 } 
           : f
       ));
+      return null;
     }
   };
 
   const uploadAll = async () => {
     const pendingFiles = files.filter(f => f.status === 'pending');
+    if (pendingFiles.length === 0) return;
+
+    setIsUploading(true);
+    const uploadedResults: any[] = [];
     
     for (const file of pendingFiles) {
-      await uploadFile(file);
+      const result = await uploadFile(file);
+      if (result) {
+        uploadedResults.push(result);
+      }
     }
 
-    const successFiles = files.filter(f => f.status === 'success').map(f => f.result);
-    if (successFiles.length > 0 && onUploadComplete) {
-      onUploadComplete(successFiles);
+    setIsUploading(false);
+
+    // If all uploads completed (success or fail), call onUploadComplete with successful files
+    if (uploadedResults.length > 0 && onUploadComplete) {
+      onUploadComplete(uploadedResults);
     }
   };
 
@@ -173,7 +188,7 @@ export function FileUploader({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         className={cn(
-          'relative border-2 border-dashed rounded-xl p-10 text-center transition-all duration-300 cursor-pointer overflow-hidden',
+          'relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-300 cursor-pointer overflow-hidden',
           isDragging 
             ? 'border-primary bg-primary/10 scale-[1.02]' 
             : 'border-border/60 hover:border-primary/60 hover:bg-accent/30'
@@ -187,18 +202,18 @@ export function FileUploader({
         
         <div className="relative">
           <div className={cn(
-            'mx-auto w-16 h-16 rounded-2xl flex items-center justify-center mb-4 transition-all',
+            'mx-auto w-14 h-14 rounded-2xl flex items-center justify-center mb-3 transition-all',
             isDragging 
               ? 'bg-primary text-primary-foreground scale-110' 
               : 'bg-muted text-muted-foreground'
           )}>
-            <Upload className="h-7 w-7" />
+            <Upload className="h-6 w-6" />
           </div>
           
-          <p className="text-base font-medium mb-1">
+          <p className="text-sm font-medium mb-1">
             اسحب الملفات هنا أو انقر للاختيار
           </p>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             صور، PDF، Word، فيديو • حد أقصى 50MB لكل ملف
           </p>
         </div>
@@ -215,36 +230,42 @@ export function FileUploader({
 
       {/* File List */}
       {files.length > 0 && (
-        <div className="space-y-2 max-h-[300px] overflow-y-auto">
+        <div className="space-y-2 max-h-[250px] overflow-y-auto">
           {files.map(file => {
             const FileIcon = getFileTypeIcon(file.file);
             return (
               <div
                 key={file.id}
                 className={cn(
-                  'flex items-center gap-3 p-3 rounded-xl border transition-all',
+                  'flex items-center gap-3 p-2.5 rounded-lg border transition-all',
                   file.status === 'success' && 'bg-green-500/5 border-green-500/30',
                   file.status === 'error' && 'bg-destructive/5 border-destructive/30',
                   file.status === 'uploading' && 'bg-primary/5 border-primary/30',
                   file.status === 'pending' && 'bg-card border-border'
                 )}
               >
-                {/* File Icon */}
+                {/* File Icon/Preview */}
                 <div className={cn(
-                  'flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center',
-                  file.status === 'success' && 'bg-green-500/10 text-green-600',
-                  file.status === 'error' && 'bg-destructive/10 text-destructive',
-                  file.status === 'uploading' && 'bg-primary/10 text-primary',
-                  file.status === 'pending' && 'bg-muted text-muted-foreground'
+                  'flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden',
+                  file.status === 'success' && 'bg-green-500/10',
+                  file.status === 'error' && 'bg-destructive/10',
+                  file.status === 'uploading' && 'bg-primary/10',
+                  file.status === 'pending' && 'bg-muted'
                 )}>
                   {file.status === 'success' ? (
-                    <CheckCircle className="h-5 w-5" />
+                    <CheckCircle className="h-5 w-5 text-green-600" />
                   ) : file.status === 'uploading' ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <Loader2 className="h-5 w-5 text-primary animate-spin" />
                   ) : file.status === 'error' ? (
-                    <AlertCircle className="h-5 w-5" />
+                    <AlertCircle className="h-5 w-5 text-destructive" />
+                  ) : file.file.type.startsWith('image/') ? (
+                    <img 
+                      src={URL.createObjectURL(file.file)} 
+                      alt="" 
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
-                    <FileIcon className="h-5 w-5" />
+                    <FileIcon className="h-5 w-5 text-muted-foreground" />
                   )}
                 </div>
 
@@ -260,10 +281,10 @@ export function FileUploader({
                     )}
                   </div>
                   {file.status === 'uploading' && (
-                    <Progress value={file.progress} className="h-1.5 mt-2" />
+                    <Progress value={file.progress} className="h-1 mt-1.5" />
                   )}
                   {file.error && (
-                    <p className="text-xs text-destructive mt-1">{file.error}</p>
+                    <p className="text-xs text-destructive mt-0.5">{file.error}</p>
                   )}
                 </div>
 
@@ -273,20 +294,20 @@ export function FileUploader({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 hover:bg-destructive/10"
+                      className="h-7 w-7 hover:bg-destructive/10"
                       onClick={() => retryFile(file.id)}
                     >
-                      <RefreshCw className="h-4 w-4" />
+                      <RefreshCw className="h-3.5 w-3.5" />
                     </Button>
                   )}
                   {file.status !== 'uploading' && (
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive"
+                      className="h-7 w-7 hover:bg-destructive/10 hover:text-destructive"
                       onClick={() => removeFile(file.id)}
                     >
-                      <X className="h-4 w-4" />
+                      <X className="h-3.5 w-3.5" />
                     </Button>
                   )}
                 </div>
@@ -300,11 +321,11 @@ export function FileUploader({
       {pendingCount > 0 && (
         <Button
           onClick={uploadAll}
-          disabled={uploadingCount > 0}
+          disabled={isUploading}
           size="lg"
           className="w-full"
         >
-          {uploadingCount > 0 ? (
+          {isUploading ? (
             <>
               <Loader2 className="h-4 w-4 ml-2 animate-spin" />
               جاري الرفع...
