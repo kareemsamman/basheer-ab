@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { FileUploader } from '@/components/media/FileUploader';
@@ -37,6 +37,7 @@ import {
   ChevronRight,
   Loader2,
   Calendar,
+  ZoomIn,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -80,16 +81,6 @@ const getEntityLabel = (type: string | null) => {
   return type ? labels[type] || type : '-';
 };
 
-// Generate years from 2020 to current year + 1
-const generateYears = () => {
-  const currentYear = new Date().getFullYear();
-  const years: number[] = [];
-  for (let y = currentYear + 1; y >= 2020; y--) {
-    years.push(y);
-  }
-  return years;
-};
-
 const MONTHS = [
   { value: '01', label: 'يناير' },
   { value: '02', label: 'فبراير' },
@@ -119,6 +110,83 @@ export default function Media() {
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [uploaderOpen, setUploaderOpen] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<MediaFile | null>(null);
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
+  const [availableMonths, setAvailableMonths] = useState<string[]>([]);
+  const lastSelectedIndex = useRef<number | null>(null);
+
+  // Fetch available years and months from database
+  const fetchAvailableDates = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('media_files')
+        .select('created_at')
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const years = new Set<number>();
+      const monthsByYear = new Map<number, Set<string>>();
+
+      data?.forEach(file => {
+        const date = new Date(file.created_at);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        years.add(year);
+        
+        if (!monthsByYear.has(year)) {
+          monthsByYear.set(year, new Set());
+        }
+        monthsByYear.get(year)?.add(month);
+      });
+
+      setAvailableYears(Array.from(years).sort((a, b) => b - a));
+      
+      // Update available months when year changes
+      if (yearFilter !== 'all') {
+        const yearNum = parseInt(yearFilter);
+        const months = monthsByYear.get(yearNum);
+        setAvailableMonths(months ? Array.from(months).sort() : []);
+      }
+    } catch (error) {
+      console.error('Error fetching dates:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchAvailableDates();
+  }, []);
+
+  // Update available months when year filter changes
+  useEffect(() => {
+    if (yearFilter === 'all') {
+      setAvailableMonths([]);
+      setMonthFilter('all');
+    } else {
+      // Re-fetch to get months for selected year
+      const fetchMonthsForYear = async () => {
+        const year = parseInt(yearFilter);
+        const startDate = new Date(year, 0, 1).toISOString();
+        const endDate = new Date(year, 11, 31, 23, 59, 59, 999).toISOString();
+
+        const { data } = await supabase
+          .from('media_files')
+          .select('created_at')
+          .is('deleted_at', null)
+          .gte('created_at', startDate)
+          .lte('created_at', endDate);
+
+        const months = new Set<string>();
+        data?.forEach(file => {
+          const date = new Date(file.created_at);
+          months.add(String(date.getMonth() + 1).padStart(2, '0'));
+        });
+        setAvailableMonths(Array.from(months).sort());
+      };
+      fetchMonthsForYear();
+    }
+  }, [yearFilter]);
 
   const fetchFiles = async () => {
     setLoading(true);
@@ -152,13 +220,11 @@ export default function Media() {
       if (yearFilter !== 'all') {
         const year = parseInt(yearFilter);
         if (monthFilter !== 'all') {
-          // Filter by specific month and year
           const month = parseInt(monthFilter);
           const startDate = new Date(year, month - 1, 1).toISOString();
           const endDate = new Date(year, month, 0, 23, 59, 59, 999).toISOString();
           query = query.gte('created_at', startDate).lte('created_at', endDate);
         } else {
-          // Filter by year only
           const startDate = new Date(year, 0, 1).toISOString();
           const endDate = new Date(year, 11, 31, 23, 59, 59, 999).toISOString();
           query = query.gte('created_at', startDate).lte('created_at', endDate);
@@ -189,15 +255,30 @@ export default function Media() {
     } else {
       setSelectedIds(new Set());
     }
+    lastSelectedIndex.current = null;
   };
 
-  const handleSelectOne = (id: string, checked: boolean) => {
+  const handleSelectOne = (id: string, checked: boolean, index: number, shiftKey: boolean) => {
     const newSelected = new Set(selectedIds);
-    if (checked) {
-      newSelected.add(id);
+    
+    if (shiftKey && lastSelectedIndex.current !== null) {
+      // Shift+click: select range
+      const start = Math.min(lastSelectedIndex.current, index);
+      const end = Math.max(lastSelectedIndex.current, index);
+      
+      for (let i = start; i <= end; i++) {
+        newSelected.add(files[i].id);
+      }
     } else {
-      newSelected.delete(id);
+      // Normal click
+      if (checked) {
+        newSelected.add(id);
+      } else {
+        newSelected.delete(id);
+      }
     }
+    
+    lastSelectedIndex.current = index;
     setSelectedIds(newSelected);
   };
 
@@ -220,6 +301,7 @@ export default function Media() {
       toast.success(`تم حذف ${response.data.deletedCount} ملفات`);
       setSelectedIds(new Set());
       fetchFiles();
+      fetchAvailableDates(); // Refresh available dates
     } catch (error: any) {
       console.error('Delete error:', error);
       toast.error('فشل حذف الملفات');
@@ -229,10 +311,10 @@ export default function Media() {
   };
 
   const handleUploadComplete = (uploadedFiles: MediaFile[]) => {
-    // Add new files to the beginning of the list
     setFiles(prev => [...uploadedFiles, ...prev]);
     setTotalCount(prev => prev + uploadedFiles.length);
     setUploaderOpen(false);
+    fetchAvailableDates(); // Refresh available dates
     toast.success(`تم رفع ${uploadedFiles.length} ملفات بنجاح`);
   };
 
@@ -251,7 +333,6 @@ export default function Media() {
   };
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
-  const years = generateYears();
 
   return (
     <MainLayout>
@@ -275,7 +356,7 @@ export default function Media() {
                 رفع ملفات
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-lg">
+            <DialogContent className="w-fit max-w-2xl">
               <DialogHeader>
                 <DialogTitle>رفع ملفات جديدة</DialogTitle>
               </DialogHeader>
@@ -331,7 +412,7 @@ export default function Media() {
             </SelectTrigger>
             <SelectContent align="end">
               <SelectItem value="all">كل السنوات</SelectItem>
-              {years.map(year => (
+              {availableYears.map(year => (
                 <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
               ))}
             </SelectContent>
@@ -347,9 +428,14 @@ export default function Media() {
             </SelectTrigger>
             <SelectContent align="end">
               <SelectItem value="all">كل الشهور</SelectItem>
-              {MONTHS.map(month => (
-                <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
-              ))}
+              {availableMonths.map(monthValue => {
+                const month = MONTHS.find(m => m.value === monthValue);
+                return (
+                  <SelectItem key={monthValue} value={monthValue}>
+                    {month?.label || monthValue}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
 
@@ -420,27 +506,35 @@ export default function Media() {
                   <TableHead>الحجم</TableHead>
                   <TableHead>مرتبط بـ</TableHead>
                   <TableHead>التاريخ</TableHead>
-                  <TableHead className="w-20">إجراءات</TableHead>
+                  <TableHead className="w-24">إجراءات</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {files.map((file) => {
+                {files.map((file, index) => {
                   const FileIcon = getFileIcon(file.mime_type);
+                  const isImage = file.mime_type.startsWith('image/');
                   return (
                     <TableRow key={file.id}>
                       <TableCell>
                         <Checkbox
                           checked={selectedIds.has(file.id)}
-                          onCheckedChange={(checked) => handleSelectOne(file.id, checked as boolean)}
+                          onCheckedChange={(checked) => handleSelectOne(file.id, checked as boolean, index, false)}
+                          onClick={(e) => {
+                            if (e.shiftKey) {
+                              e.preventDefault();
+                              handleSelectOne(file.id, true, index, true);
+                            }
+                          }}
                         />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          {file.mime_type.startsWith('image/') ? (
+                          {isImage ? (
                             <img
                               src={file.cdn_url}
                               alt={file.original_name}
-                              className="h-10 w-10 object-cover rounded"
+                              className="h-10 w-10 object-cover rounded cursor-pointer hover:ring-2 hover:ring-primary transition-all"
+                              onClick={() => setLightboxImage(file)}
                             />
                           ) : (
                             <div className="h-10 w-10 flex items-center justify-center bg-muted rounded">
@@ -470,14 +564,26 @@ export default function Media() {
                         {formatDate(file.created_at)}
                       </TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => handleCopyUrl(file.cdn_url)}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
+                        <div className="flex gap-1">
+                          {isImage && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => setLightboxImage(file)}
+                            >
+                              <ZoomIn className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleCopyUrl(file.cdn_url)}
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -487,8 +593,9 @@ export default function Media() {
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {files.map((file) => {
+            {files.map((file, index) => {
               const FileIcon = getFileIcon(file.mime_type);
+              const isImage = file.mime_type.startsWith('image/');
               return (
                 <div
                   key={file.id}
@@ -500,18 +607,22 @@ export default function Media() {
                   <div className="absolute top-2 right-2 z-10">
                     <Checkbox
                       checked={selectedIds.has(file.id)}
-                      onCheckedChange={(checked) => handleSelectOne(file.id, checked as boolean)}
+                      onCheckedChange={(checked) => handleSelectOne(file.id, checked as boolean, index, false)}
+                      onClick={(e) => {
+                        if (e.shiftKey) {
+                          e.preventDefault();
+                          handleSelectOne(file.id, true, index, true);
+                        }
+                      }}
                       className="bg-background/80 backdrop-blur"
                     />
                   </div>
                   
-                  <a
-                    href={file.cdn_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block aspect-square"
+                  <div
+                    className="block aspect-square cursor-pointer"
+                    onClick={() => isImage ? setLightboxImage(file) : window.open(file.cdn_url, '_blank')}
                   >
-                    {file.mime_type.startsWith('image/') ? (
+                    {isImage ? (
                       <img
                         src={file.cdn_url}
                         alt={file.original_name}
@@ -522,7 +633,7 @@ export default function Media() {
                         <FileIcon className="h-12 w-12 text-muted-foreground" />
                       </div>
                     )}
-                  </a>
+                  </div>
 
                   <div className="p-2 border-t border-border">
                     <p className="text-xs truncate" title={file.original_name}>
@@ -570,6 +681,37 @@ export default function Media() {
           </div>
         )}
       </div>
+
+      {/* Lightbox */}
+      <Dialog open={!!lightboxImage} onOpenChange={(open) => !open && setLightboxImage(null)}>
+        <DialogContent className="max-w-4xl p-2 bg-black/95 border-none">
+          {lightboxImage && (
+            <div className="relative">
+              <img
+                src={lightboxImage.cdn_url}
+                alt={lightboxImage.original_name}
+                className="w-full h-auto max-h-[80vh] object-contain rounded"
+              />
+              <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
+                <p className="text-white text-sm font-medium truncate">{lightboxImage.original_name}</p>
+                <div className="flex items-center gap-4 mt-1">
+                  <span className="text-white/70 text-xs">{formatFileSize(lightboxImage.size)}</span>
+                  <span className="text-white/70 text-xs">{formatDate(lightboxImage.created_at)}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-white hover:bg-white/20 h-7"
+                    onClick={() => handleCopyUrl(lightboxImage.cdn_url)}
+                  >
+                    <Copy className="h-3.5 w-3.5 ml-1" />
+                    نسخ الرابط
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 }
