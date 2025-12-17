@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -16,8 +16,10 @@ import {
   LogOut,
   Wallet,
   CreditCard,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
 
 const navigation = [
   { name: "لوحة التحكم", href: "/", icon: LayoutDashboard },
@@ -38,7 +40,20 @@ const adminNav = [
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { profile, signOut, isAdmin } = useAuth();
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    await signOut();
+    navigate('/login', { replace: true });
+  };
+
+  const userName = profile?.full_name || profile?.email?.split('@')[0] || 'مستخدم';
+  const userInitial = userName.charAt(0);
+  const userRole = isAdmin ? 'مدير' : 'موظف';
 
   return (
     <aside
@@ -151,19 +166,29 @@ export function Sidebar() {
       <div className="absolute bottom-0 left-0 right-0 border-t border-sidebar-border p-3">
         <div className={cn("flex items-center gap-3", collapsed && "justify-center")}>
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10">
-            <span className="text-sm font-medium text-primary">م</span>
+            <span className="text-sm font-medium text-primary">{userInitial}</span>
           </div>
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <p className="truncate text-sm font-medium text-sidebar-foreground">
-                مرشد
+                {userName}
               </p>
-              <p className="truncate text-xs text-muted-foreground">مدير</p>
+              <p className="truncate text-xs text-muted-foreground">{userRole}</p>
             </div>
           )}
           {!collapsed && (
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-              <LogOut className="h-4 w-4" />
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              onClick={handleSignOut}
+              disabled={signingOut}
+            >
+              {signingOut ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <LogOut className="h-4 w-4" />
+              )}
             </Button>
           )}
         </div>

@@ -1,12 +1,26 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Shield, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Login() {
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const { user, isActive, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      if (isActive) {
+        navigate('/', { replace: true });
+      } else {
+        navigate('/no-access', { replace: true });
+      }
+    }
+  }, [user, isActive, authLoading, navigate]);
 
   const handleGoogleLogin = async () => {
     try {
@@ -19,7 +33,11 @@ export default function Login() {
       });
       
       if (error) {
-        toast.error("حدث خطأ في تسجيل الدخول");
+        if (error.message.includes('provider is not enabled')) {
+          toast.error("مزود Google غير مفعل. يرجى تفعيله من إعدادات Lovable Cloud.");
+        } else {
+          toast.error("حدث خطأ في تسجيل الدخول");
+        }
         console.error("Login error:", error);
       }
     } catch (error) {
@@ -29,6 +47,14 @@ export default function Login() {
       setLoading(false);
     }
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
