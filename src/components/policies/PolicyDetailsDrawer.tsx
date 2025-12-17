@@ -4,14 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { 
-  User, Car, Building2, Calendar, Receipt, CreditCard, 
-  Pencil, ImageIcon, FileText, Clock, AlertTriangle,
-  Phone, Hash, Banknote, TrendingUp, ExternalLink
+  User, Car, Building2, Pencil, CreditCard, 
+  Phone, Banknote, ImageIcon, FileText
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PolicyEditDrawer } from "./PolicyEditDrawer";
@@ -111,26 +110,19 @@ const carTypeLabels: Record<string, string> = {
   "tjeraup4": "تجاري (أكثر من 4 طن)",
 };
 
-const paymentTypeLabels: Record<string, string> = {
-  "cash": "نقدي",
-  "cheque": "شيك",
-  "visa": "فيزا",
-  "transfer": "تحويل",
-};
-
 export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }: PolicyDetailsDrawerProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [policy, setPolicy] = useState<PolicyDetails | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [editOpen, setEditOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("details");
 
   const fetchPolicyDetails = async () => {
     if (!policyId) return;
     
     setLoading(true);
     try {
-      // Fetch policy with relations
       const { data: policyData, error: policyError } = await supabase
         .from('policies')
         .select(`
@@ -146,7 +138,6 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
       if (policyError) throw policyError;
       setPolicy(policyData as PolicyDetails);
 
-      // Fetch payments
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('policy_payments')
         .select('*')
@@ -167,6 +158,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
   useEffect(() => {
     if (open && policyId) {
       fetchPolicyDetails();
+      setActiveTab("details");
     }
   }, [open, policyId]);
 
@@ -197,10 +189,8 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
     return diff;
   };
 
-  // Payment calculations (excluding refused)
-  const totalPaid = payments
-    .filter(p => !p.refused)
-    .reduce((sum, p) => sum + p.amount, 0);
+  // Payment calculations
+  const totalPaid = payments.filter(p => !p.refused).reduce((sum, p) => sum + p.amount, 0);
   const remaining = policy ? policy.insurance_price - totalPaid : 0;
   const percentagePaid = policy ? Math.round((totalPaid / policy.insurance_price) * 100) : 0;
   const paymentStatus = remaining <= 0 ? "paid" : totalPaid > 0 ? "partial" : "unpaid";
@@ -227,244 +217,238 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
         >
           <div className="flex flex-col h-full">
             {/* Header */}
-            <SheetHeader className="p-6 border-b bg-muted/30">
+            <SheetHeader className="p-4 border-b bg-muted/30">
               <div className="flex items-center justify-between">
-                <SheetTitle className="text-xl font-bold">تفاصيل الوثيقة</SheetTitle>
+                <SheetTitle className="text-lg font-bold">تفاصيل الوثيقة</SheetTitle>
                 {policy && (
                   <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-                    <Pencil className="h-4 w-4 ml-2" />
+                    <Pencil className="h-4 w-4 ml-1" />
                     تعديل
                   </Button>
                 )}
               </div>
-            </SheetHeader>
-
-            {/* Content */}
-            <ScrollArea className="flex-1">
-              {loading ? (
-                <div className="p-6 space-y-6">
-                  <Skeleton className="h-32 w-full" />
-                  <Skeleton className="h-24 w-full" />
-                  <Skeleton className="h-48 w-full" />
-                </div>
-              ) : policy ? (
-                <div className="p-6 space-y-6">
-                  {/* Status Badges */}
-                  <div className="flex flex-wrap gap-2">
-                    <Badge className={cn("border", policyTypeColors[policy.policy_type_parent])}>
-                      {policyTypeLabels[policy.policy_type_parent]}
-                      {policy.policy_type_child && ` - ${policyChildLabels[policy.policy_type_child]}`}
-                    </Badge>
-                    <Badge variant={status.variant}>{status.label}</Badge>
-                    {policy.is_under_24 && (
-                      <Badge variant="warning" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
-                        أقل من 24
-                      </Badge>
-                    )}
-                    {policy.transferred && policy.transferred_car_number && (
-                      <Badge variant="secondary">
-                        محوّل من: {policy.transferred_car_number}
-                      </Badge>
-                    )}
-                  </div>
-
-                  {/* Client Info */}
-                  <Card className="p-4 space-y-3">
-                    <div className="flex items-center gap-2 text-primary font-semibold">
-                      <User className="h-4 w-4" />
-                      <span>معلومات العميل</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">الاسم:</span>
-                        <p className="font-medium">{policy.clients.full_name}</p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">رقم الهوية:</span>
-                        <p className="font-mono" dir="ltr">{policy.clients.id_number}</p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">رقم الملف:</span>
-                        <p className="font-mono">{policy.clients.file_number || "-"}</p>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Phone className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-muted-foreground">الهاتف:</span>
-                        <p className="font-mono" dir="ltr">{policy.clients.phone_number || "-"}</p>
-                      </div>
-                    </div>
-                  </Card>
-
-                  {/* Car Info */}
-                  <Card className="p-4 space-y-3">
-                    <div className="flex items-center gap-2 text-primary font-semibold">
-                      <Car className="h-4 w-4" />
-                      <span>معلومات السيارة</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">رقم السيارة:</span>
-                        <p className="font-mono font-medium" dir="ltr">{policy.cars.car_number}</p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">الشركة المصنعة:</span>
-                        <p>{policy.cars.manufacturer_name || "-"}</p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">سنة الصنع:</span>
-                        <p>{policy.cars.year || "-"}</p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">النوع:</span>
-                        <p>{policy.cars.car_type ? carTypeLabels[policy.cars.car_type] || policy.cars.car_type : "-"}</p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">قيمة السيارة:</span>
-                        <p>{policy.cars.car_value ? formatCurrency(policy.cars.car_value) : "-"}</p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">اللون:</span>
-                        <p>{policy.cars.color || "-"}</p>
-                      </div>
-                    </div>
-                  </Card>
-
-                  {/* Company & Period */}
-                  <Card className="p-4 space-y-3">
-                    <div className="flex items-center gap-2 text-primary font-semibold">
-                      <Building2 className="h-4 w-4" />
-                      <span>الشركة والفترة</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">شركة التأمين:</span>
-                        <p className="font-medium">{policy.insurance_companies.name_ar || policy.insurance_companies.name}</p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">الوسيط:</span>
-                        <p>{policy.brokers?.name || "-"}</p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">تاريخ البدء:</span>
-                        <p>{formatDate(policy.start_date)}</p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">تاريخ الانتهاء:</span>
-                        <p>{formatDate(policy.end_date)}</p>
-                      </div>
-                      <div className="col-span-2">
-                        <span className="text-muted-foreground">المتبقي:</span>
-                        <p className={cn(
-                          "font-medium",
-                          remainingDays < 0 ? "text-destructive" : remainingDays <= 30 ? "text-warning" : "text-success"
-                        )}>
-                          {remainingDays < 0 ? `منتهية منذ ${Math.abs(remainingDays)} يوم` : `${remainingDays} يوم`}
-                        </p>
-                      </div>
-                    </div>
-                  </Card>
-
-                  {/* Pricing & Profit */}
-                  <Card className="p-4 space-y-3">
-                    <div className="flex items-center gap-2 text-primary font-semibold">
-                      <Banknote className="h-4 w-4" />
-                      <span>السعر والربح</span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="text-center p-3 bg-muted/50 rounded-lg">
-                        <p className="text-xs text-muted-foreground mb-1">سعر التأمين</p>
-                        <p className="text-lg font-bold">{formatCurrency(policy.insurance_price)}</p>
-                      </div>
-                      <div className="text-center p-3 bg-muted/50 rounded-lg">
-                        <p className="text-xs text-muted-foreground mb-1">مدفوع للشركة</p>
-                        <p className="text-lg font-bold text-orange-600">{formatCurrency(policy.payed_for_company)}</p>
-                      </div>
-                      <div className="text-center p-3 bg-success/10 rounded-lg">
-                        <p className="text-xs text-muted-foreground mb-1">الربح</p>
-                        <p className="text-lg font-bold text-success">{formatCurrency(policy.profit)}</p>
-                      </div>
-                    </div>
-                  </Card>
-
-                  {/* Payment Summary */}
-                  <Card className="p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-primary font-semibold">
-                        <CreditCard className="h-4 w-4" />
-                        <span>حالة الدفع</span>
-                      </div>
-                      <Badge variant={paymentStatus === "paid" ? "success" : paymentStatus === "partial" ? "warning" : "destructive"}>
-                        {paymentStatus === "paid" ? "مدفوع" : paymentStatus === "partial" ? "جزئي" : "غير مدفوع"}
-                      </Badge>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="text-center">
-                        <p className="text-xs text-muted-foreground mb-1">المدفوع</p>
-                        <p className="font-bold text-success">{formatCurrency(totalPaid)}</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-xs text-muted-foreground mb-1">المتبقي</p>
-                        <p className={cn("font-bold", remaining > 0 ? "text-destructive" : "text-success")}>
-                          {formatCurrency(remaining)}
-                        </p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-xs text-muted-foreground mb-1">النسبة</p>
-                        <p className="font-bold">{percentagePaid}%</p>
-                      </div>
-                    </div>
-                    {/* Progress bar */}
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div 
-                        className={cn(
-                          "h-full transition-all",
-                          paymentStatus === "paid" ? "bg-success" : paymentStatus === "partial" ? "bg-warning" : "bg-destructive"
-                        )}
-                        style={{ width: `${Math.min(percentagePaid, 100)}%` }}
-                      />
-                    </div>
-                  </Card>
-
-                  {/* Payments Section */}
-                  <PolicyPaymentsSection
-                    policyId={policy.id}
-                    payments={payments}
-                    onPaymentsChange={handlePaymentsChange}
-                  />
-
-                  {/* Images Section */}
-                  <PolicyImagesSection policyId={policy.id} />
-
-                  {/* Notes & Metadata */}
-                  {(policy.notes || policy.legacy_wp_id) && (
-                    <Card className="p-4 space-y-3">
-                      <div className="flex items-center gap-2 text-primary font-semibold">
-                        <FileText className="h-4 w-4" />
-                        <span>ملاحظات</span>
-                      </div>
-                      {policy.notes && (
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{policy.notes}</p>
-                      )}
-                      {policy.legacy_wp_id && (
-                        <p className="text-xs text-muted-foreground">
-                          Legacy WP ID: {policy.legacy_wp_id}
-                        </p>
-                      )}
-                    </Card>
+              {policy && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <Badge className={cn("border", policyTypeColors[policy.policy_type_parent])}>
+                    {policyTypeLabels[policy.policy_type_parent]}
+                    {policy.policy_type_child && ` - ${policyChildLabels[policy.policy_type_child]}`}
+                  </Badge>
+                  <Badge variant={status.variant}>{status.label}</Badge>
+                  {policy.is_under_24 && (
+                    <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">أقل من 24</Badge>
                   )}
-
-                  {/* Timestamps */}
-                  <div className="flex items-center justify-between text-xs text-muted-foreground pt-4 border-t">
-                    <span>تاريخ الإنشاء: {formatDate(policy.created_at)}</span>
-                    <span>آخر تحديث: {formatDate(policy.updated_at)}</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-6 text-center text-muted-foreground">
-                  لم يتم العثور على الوثيقة
                 </div>
               )}
-            </ScrollArea>
+            </SheetHeader>
+
+            {/* Content with Tabs */}
+            {loading ? (
+              <div className="p-6 space-y-4">
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-32 w-full" />
+              </div>
+            ) : policy ? (
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+                <TabsList className="mx-4 mt-4 grid grid-cols-4">
+                  <TabsTrigger value="details" className="text-xs">المعلومات</TabsTrigger>
+                  <TabsTrigger value="pricing" className="text-xs">الأسعار</TabsTrigger>
+                  <TabsTrigger value="payments" className="text-xs">الدفعات</TabsTrigger>
+                  <TabsTrigger value="files" className="text-xs">الملفات</TabsTrigger>
+                </TabsList>
+
+                <ScrollArea className="flex-1">
+                  {/* Details Tab */}
+                  <TabsContent value="details" className="p-4 space-y-4 m-0">
+                    {/* Client */}
+                    <Card className="p-4">
+                      <div className="flex items-center gap-2 text-primary font-semibold mb-3">
+                        <User className="h-4 w-4" />
+                        <span>العميل</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
+                        <div>
+                          <span className="text-muted-foreground text-xs">الاسم</span>
+                          <p className="font-medium">{policy.clients.full_name}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground text-xs">رقم الهوية</span>
+                          <p className="font-mono" dir="ltr">{policy.clients.id_number}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground text-xs">رقم الملف</span>
+                          <p>{policy.clients.file_number || "-"}</p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Phone className="h-3 w-3 text-muted-foreground" />
+                          <span className="font-mono" dir="ltr">{policy.clients.phone_number || "-"}</span>
+                        </div>
+                      </div>
+                    </Card>
+
+                    {/* Car */}
+                    <Card className="p-4">
+                      <div className="flex items-center gap-2 text-primary font-semibold mb-3">
+                        <Car className="h-4 w-4" />
+                        <span>السيارة</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
+                        <div>
+                          <span className="text-muted-foreground text-xs">رقم السيارة</span>
+                          <p className="font-mono font-medium" dir="ltr">{policy.cars.car_number}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground text-xs">الشركة المصنعة</span>
+                          <p>{policy.cars.manufacturer_name || "-"}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground text-xs">سنة الصنع</span>
+                          <p>{policy.cars.year || "-"}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground text-xs">النوع</span>
+                          <p>{policy.cars.car_type ? carTypeLabels[policy.cars.car_type] || policy.cars.car_type : "-"}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground text-xs">قيمة السيارة</span>
+                          <p>{policy.cars.car_value ? formatCurrency(policy.cars.car_value) : "-"}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground text-xs">اللون</span>
+                          <p>{policy.cars.color || "-"}</p>
+                        </div>
+                      </div>
+                    </Card>
+
+                    {/* Company & Period */}
+                    <Card className="p-4">
+                      <div className="flex items-center gap-2 text-primary font-semibold mb-3">
+                        <Building2 className="h-4 w-4" />
+                        <span>الشركة والفترة</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
+                        <div>
+                          <span className="text-muted-foreground text-xs">شركة التأمين</span>
+                          <p className="font-medium">{policy.insurance_companies.name_ar || policy.insurance_companies.name}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground text-xs">الوسيط</span>
+                          <p>{policy.brokers?.name || "-"}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground text-xs">تاريخ البدء</span>
+                          <p>{formatDate(policy.start_date)}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground text-xs">تاريخ الانتهاء</span>
+                          <p>{formatDate(policy.end_date)}</p>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-muted-foreground text-xs">المتبقي</span>
+                          <p className={cn(
+                            "font-medium",
+                            remainingDays < 0 ? "text-destructive" : remainingDays <= 30 ? "text-amber-600" : "text-success"
+                          )}>
+                            {remainingDays < 0 ? `منتهية منذ ${Math.abs(remainingDays)} يوم` : `${remainingDays} يوم`}
+                          </p>
+                        </div>
+                      </div>
+                    </Card>
+
+                    {/* Notes */}
+                    {policy.notes && (
+                      <Card className="p-4">
+                        <div className="flex items-center gap-2 text-primary font-semibold mb-2">
+                          <FileText className="h-4 w-4" />
+                          <span>ملاحظات</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{policy.notes}</p>
+                      </Card>
+                    )}
+                  </TabsContent>
+
+                  {/* Pricing Tab */}
+                  <TabsContent value="pricing" className="p-4 space-y-4 m-0">
+                    <Card className="p-4">
+                      <div className="flex items-center gap-2 text-primary font-semibold mb-4">
+                        <Banknote className="h-4 w-4" />
+                        <span>السعر والربح</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="text-center p-4 bg-muted/50 rounded-lg">
+                          <p className="text-xs text-muted-foreground mb-1">سعر التأمين</p>
+                          <p className="text-xl font-bold">{formatCurrency(policy.insurance_price)}</p>
+                        </div>
+                        <div className="text-center p-4 bg-orange-50 dark:bg-orange-950/20 rounded-lg">
+                          <p className="text-xs text-muted-foreground mb-1">مدفوع للشركة</p>
+                          <p className="text-xl font-bold text-orange-600">{formatCurrency(policy.payed_for_company)}</p>
+                        </div>
+                        <div className="text-center p-4 bg-green-50 dark:bg-green-950/20 rounded-lg">
+                          <p className="text-xs text-muted-foreground mb-1">الربح</p>
+                          <p className="text-xl font-bold text-success">{formatCurrency(policy.profit)}</p>
+                        </div>
+                      </div>
+                    </Card>
+
+                    {/* Payment Status */}
+                    <Card className="p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2 text-primary font-semibold">
+                          <CreditCard className="h-4 w-4" />
+                          <span>حالة الدفع</span>
+                        </div>
+                        <Badge variant={paymentStatus === "paid" ? "success" : paymentStatus === "partial" ? "warning" : "destructive"}>
+                          {paymentStatus === "paid" ? "مدفوع بالكامل" : paymentStatus === "partial" ? "مدفوع جزئياً" : "غير مدفوع"}
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4 text-center mb-4">
+                        <div>
+                          <p className="text-xs text-muted-foreground">المدفوع</p>
+                          <p className="font-bold text-success">{formatCurrency(totalPaid)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">المتبقي</p>
+                          <p className={cn("font-bold", remaining > 0 ? "text-destructive" : "text-success")}>
+                            {formatCurrency(remaining)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">النسبة</p>
+                          <p className="font-bold">{Math.min(percentagePaid, 100)}%</p>
+                        </div>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className={cn(
+                            "h-full transition-all",
+                            paymentStatus === "paid" ? "bg-success" : paymentStatus === "partial" ? "bg-amber-500" : "bg-destructive"
+                          )}
+                          style={{ width: `${Math.min(percentagePaid, 100)}%` }}
+                        />
+                      </div>
+                    </Card>
+                  </TabsContent>
+
+                  {/* Payments Tab */}
+                  <TabsContent value="payments" className="p-4 m-0">
+                    <PolicyPaymentsSection
+                      policyId={policy.id}
+                      payments={payments}
+                      onPaymentsChange={handlePaymentsChange}
+                    />
+                  </TabsContent>
+
+                  {/* Files Tab */}
+                  <TabsContent value="files" className="p-4 m-0">
+                    <PolicyImagesSection policyId={policy.id} />
+                  </TabsContent>
+                </ScrollArea>
+              </Tabs>
+            ) : (
+              <div className="p-6 text-center text-muted-foreground">
+                لم يتم العثور على الوثيقة
+              </div>
+            )}
           </div>
         </SheetContent>
       </Sheet>

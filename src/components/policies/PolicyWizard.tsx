@@ -166,6 +166,10 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
   const [payments, setPayments] = useState<PaymentLine[]>([]);
   const [fetchingCarPrice, setFetchingCarPrice] = useState(false);
 
+  // Files to upload
+  const [policyFiles, setPolicyFiles] = useState<File[]>([]);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+
   const clearDraft = () => {
     try {
       sessionStorage.removeItem(POLICY_WIZARD_DRAFT_KEY);
@@ -207,6 +211,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
     setNewCar({ car_number: "", manufacturer_name: "", model: "", year: "", color: "", car_type: "car", car_value: "", license_expiry: "" });
     setPolicy({ policy_type_parent: "", policy_type_child: "", company_id: "", start_date: new Date().toISOString().split('T')[0], end_date: "", insurance_price: "", cancelled: false, transferred: false, notes: "" });
     setPayments([]);
+    setPolicyFiles([]);
     setCarDataFetched(false);
     setExistingCar(null);
     setCarConflict(null);
@@ -761,6 +766,35 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
         if (paymentsError) throw paymentsError;
       }
 
+      // Upload files if any
+      if (policyFiles.length > 0) {
+        setUploadingFiles(true);
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        for (const file of policyFiles) {
+          try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('entity_type', 'policy');
+            formData.append('entity_id', policyData.id);
+
+            await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-media`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session?.access_token}`,
+                },
+                body: formData,
+              }
+            );
+          } catch (e) {
+            console.error('Error uploading file:', e);
+          }
+        }
+        setUploadingFiles(false);
+      }
+
       toast({ title: "تم الحفظ بنجاح", description: "تم إنشاء الوثيقة بنجاح" });
       clearDraft();
       onOpenChange(false);
@@ -773,6 +807,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
       toast({ title: "خطأ", description: error.message || "حدث خطأ أثناء الحفظ", variant: "destructive" });
     } finally {
       setSaving(false);
+      setUploadingFiles(false);
     }
   };
 
@@ -1423,6 +1458,84 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                       onChange={(e) => setPolicy({ ...policy, notes: e.target.value })}
                       placeholder="ملاحظات إضافية"
                     />
+                  </div>
+
+                  {/* File Upload Section */}
+                  <div className="space-y-3">
+                    <Label>المرفقات (صور / PDF / فيديو)</Label>
+                    <div 
+                      className={cn(
+                        "border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer",
+                        "hover:border-primary hover:bg-primary/5"
+                      )}
+                      onClick={() => document.getElementById('policy-file-input')?.click()}
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const files = Array.from(e.dataTransfer.files);
+                        setPolicyFiles(prev => [...prev, ...files]);
+                      }}
+                    >
+                      <input
+                        id="policy-file-input"
+                        type="file"
+                        multiple
+                        accept="image/*,video/*,.pdf"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files) {
+                            const files = Array.from(e.target.files);
+                            setPolicyFiles(prev => [...prev, ...files]);
+                          }
+                          e.target.value = '';
+                        }}
+                      />
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Plus className="h-6 w-6 text-primary" />
+                        </div>
+                        <p className="text-sm font-medium">اضغط أو اسحب الملفات هنا</p>
+                        <p className="text-xs text-muted-foreground">صور، فيديو، PDF</p>
+                      </div>
+                    </div>
+
+                    {/* Selected Files Preview */}
+                    {policyFiles.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">{policyFiles.length} ملف محدد</p>
+                        <div className="flex flex-wrap gap-2">
+                          {policyFiles.map((file, index) => (
+                            <div 
+                              key={index}
+                              className="flex items-center gap-2 bg-muted rounded-lg px-3 py-2 text-sm"
+                            >
+                              {file.type.startsWith('image/') ? (
+                                <img 
+                                  src={URL.createObjectURL(file)} 
+                                  alt={file.name}
+                                  className="w-8 h-8 object-cover rounded"
+                                />
+                              ) : (
+                                <FileText className="h-5 w-5 text-muted-foreground" />
+                              )}
+                              <span className="max-w-[120px] truncate">{file.name}</span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPolicyFiles(prev => prev.filter((_, i) => i !== index));
+                                }}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
