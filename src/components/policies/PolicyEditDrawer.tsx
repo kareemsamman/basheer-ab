@@ -63,6 +63,8 @@ interface Broker {
   name: string;
 }
 
+const NO_BROKER = "__NO_BROKER__";
+
 const POLICY_TYPES = [
   { value: "ELZAMI", label: "إلزامي" },
   { value: "THIRD_FULL", label: "ثالث/شامل", hasChild: true },
@@ -88,7 +90,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
     transferred_car_number: policy.transferred_car_number || "",
     is_under_24: policy.is_under_24 || false,
     notes: policy.notes || "",
-    broker_id: policy.broker_id || "",
+    broker_id: policy.broker_id ?? NO_BROKER,
   });
 
   useEffect(() => {
@@ -108,7 +110,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
         transferred_car_number: policy.transferred_car_number || "",
         is_under_24: policy.is_under_24 || false,
         notes: policy.notes || "",
-        broker_id: policy.broker_id || "",
+        broker_id: policy.broker_id ?? NO_BROKER,
       });
     }
   }, [open, policy]);
@@ -171,7 +173,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
           transferred_car_number: formData.transferred ? formData.transferred_car_number : null,
           is_under_24: formData.is_under_24,
           notes: formData.notes || null,
-          broker_id: formData.broker_id || null,
+          broker_id: formData.broker_id === NO_BROKER ? null : formData.broker_id,
           updated_at: new Date().toISOString(),
         })
         .eq('id', policy.id);
@@ -278,7 +280,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
                     <SelectValue placeholder="اختر الوسيط" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">بدون وسيط</SelectItem>
+                    <SelectItem value={NO_BROKER}>بدون وسيط</SelectItem>
                     {brokers.map(broker => (
                       <SelectItem key={broker.id} value={broker.id}>
                         {broker.name}
