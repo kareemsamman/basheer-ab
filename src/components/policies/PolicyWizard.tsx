@@ -246,14 +246,17 @@ export function PolicyWizard({ open, onOpenChange, onComplete }: PolicyWizardPro
         return;
       }
 
+      // Access nested data from response { success: true, data: vehicleData }
+      const vehicleData = data.data || data;
+
       setNewCar({
         ...newCar,
-        manufacturer_name: data.manufacturer_name || "",
-        model: data.model || "",
-        year: data.year?.toString() || "",
-        color: data.color || "",
-        license_expiry: data.license_expiry || "",
-        car_type: data.car_type || "car",
+        manufacturer_name: vehicleData.manufacturer_name || "",
+        model: vehicleData.model || "",
+        year: vehicleData.year?.toString() || "",
+        color: vehicleData.color || "",
+        license_expiry: vehicleData.license_expiry || "",
+        car_type: vehicleData.car_type || "car",
       });
       setCarDataFetched(true);
       toast({ title: "تم جلب البيانات تلقائياً", variant: "default" });
@@ -261,6 +264,45 @@ export function PolicyWizard({ open, onOpenChange, onComplete }: PolicyWizardPro
       toast({ title: "خطأ", description: "لم يتم العثور على مركبة بهذا الرقم", variant: "destructive" });
     } finally {
       setFetchingCarData(false);
+    }
+  };
+
+  const [fetchingCarPrice, setFetchingCarPrice] = useState(false);
+
+  const fetchCarPrice = async () => {
+    if (!newCar.manufacturer_name || !newCar.model || !newCar.year) {
+      toast({ title: "خطأ", description: "الرجاء إدخال بيانات السيارة أولاً (الشركة، الموديل، السنة)", variant: "destructive" });
+      return;
+    }
+
+    setFetchingCarPrice(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-car-price', {
+        body: { 
+          manufacturer: newCar.manufacturer_name,
+          model: newCar.model,
+          year: parseInt(newCar.year)
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.error) {
+        toast({ title: "خطأ", description: data.error, variant: "destructive" });
+        return;
+      }
+
+      const priceData = data.data || data;
+      if (priceData.price) {
+        setNewCar(prev => ({ ...prev, car_value: priceData.price.toString() }));
+        toast({ title: "تم جلب سعر السيارة", description: `₪ ${priceData.price.toLocaleString()}` });
+      } else {
+        toast({ title: "تنبيه", description: "لم يتم العثور على سعر لهذه السيارة", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "خطأ", description: "فشل في جلب سعر السيارة", variant: "destructive" });
+    } finally {
+      setFetchingCarPrice(false);
     }
   };
 
@@ -697,12 +739,25 @@ export function PolicyWizard({ open, onOpenChange, onComplete }: PolicyWizardPro
                       </div>
                       <div>
                         <Label>قيمة السيارة</Label>
-                        <Input
-                          type="number"
-                          value={newCar.car_value}
-                          onChange={(e) => setNewCar({ ...newCar, car_value: e.target.value })}
-                          placeholder="₪"
-                        />
+                        <div className="flex gap-2">
+                          <Input
+                            type="number"
+                            value={newCar.car_value}
+                            onChange={(e) => setNewCar({ ...newCar, car_value: e.target.value })}
+                            placeholder="₪"
+                            className="flex-1"
+                          />
+                          <Button 
+                            type="button"
+                            variant="outline" 
+                            size="icon"
+                            onClick={fetchCarPrice} 
+                            disabled={fetchingCarPrice || !newCar.manufacturer_name || !newCar.year}
+                            title="جلب السعر"
+                          >
+                            {fetchingCarPrice ? <Loader2 className="h-4 w-4 animate-spin" /> : "₪"}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
