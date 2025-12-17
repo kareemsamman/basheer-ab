@@ -6,9 +6,9 @@ export default function Clients() {
   return (
     <MainLayout>
       <Header
-        title="Clients"
-        subtitle="Manage your client database"
-        action={{ label: "Add Client", onClick: () => {} }}
+        title="العملاء"
+        subtitle="إدارة قاعدة بيانات العملاء"
+        action={{ label: "إضافة عميل", onClick: () => {} }}
       />
 
       <div className="p-6">

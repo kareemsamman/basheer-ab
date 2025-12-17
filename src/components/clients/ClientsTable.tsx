@@ -101,10 +101,10 @@ const mockClients = [
 ];
 
 const statusConfig = {
-  paid: { label: "Paid", variant: "success" as const },
-  partial: { label: "Partial", variant: "warning" as const },
-  unpaid: { label: "Unpaid", variant: "destructive" as const },
-  active: { label: "Active", variant: "default" as const },
+  paid: { label: "مدفوع", variant: "success" as const },
+  partial: { label: "جزئي", variant: "warning" as const },
+  unpaid: { label: "غير مدفوع", variant: "destructive" as const },
+  active: { label: "نشط", variant: "default" as const },
 };
 
 export function ClientsTable() {
@@ -122,46 +122,51 @@ export function ClientsTable() {
 
   const totalPages = Math.ceil(filteredClients.length / pageSize);
 
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('ar-EG');
+  };
+
   return (
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search by name, ID, file number, phone..."
+            placeholder="بحث بالاسم، رقم الهوية، رقم الملف، الهاتف..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
+            className="pr-9"
           />
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm">
-            <Filter className="mr-2 h-4 w-4" />
-            Filters
+            <Filter className="ml-2 h-4 w-4" />
+            فلترة
           </Button>
           <Button variant="outline" size="sm">
-            <Download className="mr-2 h-4 w-4" />
-            Export
+            <Download className="ml-2 h-4 w-4" />
+            تصدير
           </Button>
         </div>
       </div>
 
       {/* Table */}
-      <Card className="glass overflow-hidden">
+      <Card className="border shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="border-border/50 hover:bg-transparent">
-                <TableHead className="text-muted-foreground font-medium">Client</TableHead>
-                <TableHead className="text-muted-foreground font-medium">ID Number</TableHead>
-                <TableHead className="text-muted-foreground font-medium">File #</TableHead>
-                <TableHead className="text-muted-foreground font-medium">Phone</TableHead>
-                <TableHead className="text-muted-foreground font-medium text-center">Policies</TableHead>
-                <TableHead className="text-muted-foreground font-medium text-right">Due</TableHead>
-                <TableHead className="text-muted-foreground font-medium text-right">Paid</TableHead>
-                <TableHead className="text-muted-foreground font-medium">Status</TableHead>
-                <TableHead className="text-muted-foreground font-medium w-[100px]">Actions</TableHead>
+                <TableHead className="text-muted-foreground font-medium">العميل</TableHead>
+                <TableHead className="text-muted-foreground font-medium">رقم الهوية</TableHead>
+                <TableHead className="text-muted-foreground font-medium">رقم الملف</TableHead>
+                <TableHead className="text-muted-foreground font-medium">الهاتف</TableHead>
+                <TableHead className="text-muted-foreground font-medium text-center">الوثائق</TableHead>
+                <TableHead className="text-muted-foreground font-medium">المستحق</TableHead>
+                <TableHead className="text-muted-foreground font-medium">المدفوع</TableHead>
+                <TableHead className="text-muted-foreground font-medium">الحالة</TableHead>
+                <TableHead className="text-muted-foreground font-medium w-[100px]">إجراءات</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -170,7 +175,7 @@ export function ClientsTable() {
                   key={client.id}
                   className={cn(
                     "border-border/30 transition-colors cursor-pointer",
-                    "hover:bg-secondary/30 animate-fade-in"
+                    "hover:bg-secondary/50 animate-fade-in"
                   )}
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
@@ -184,12 +189,12 @@ export function ClientsTable() {
                       <div>
                         <p className="font-medium text-foreground">{client.fullName}</p>
                         <p className="text-xs text-muted-foreground">
-                          Joined {new Date(client.dateJoined).toLocaleDateString()}
+                          انضم {formatDate(client.dateJoined)}
                         </p>
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="font-mono text-sm text-muted-foreground">
+                  <TableCell className="font-mono text-sm text-muted-foreground" dir="ltr">
                     {client.idNumber}
                   </TableCell>
                   <TableCell>
@@ -198,7 +203,7 @@ export function ClientsTable() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-1 text-sm text-muted-foreground" dir="ltr">
                       <Phone className="h-3 w-3" />
                       {client.phone}
                     </div>
@@ -209,11 +214,11 @@ export function ClientsTable() {
                       <span className="font-medium">{client.totalPolicies}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-right font-medium">
-                    ₪{client.totalDue.toLocaleString()}
+                  <TableCell className="font-medium">
+                    ₪{client.totalDue.toLocaleString('ar-EG')}
                   </TableCell>
-                  <TableCell className="text-right font-medium text-success">
-                    ₪{client.totalPaid.toLocaleString()}
+                  <TableCell className="font-medium text-success">
+                    ₪{client.totalPaid.toLocaleString('ar-EG')}
                   </TableCell>
                   <TableCell>
                     <Badge variant={statusConfig[client.status as keyof typeof statusConfig].variant}>
@@ -239,20 +244,9 @@ export function ClientsTable() {
         {/* Pagination */}
         <div className="flex items-center justify-between border-t border-border/30 px-4 py-3">
           <p className="text-sm text-muted-foreground">
-            Showing {filteredClients.length} of {mockClients.length} clients
+            عرض {filteredClients.length} من {mockClients.length} عميل
           </p>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((p) => p - 1)}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              Page {currentPage} of {totalPages || 1}
-            </span>
             <Button
               variant="outline"
               size="sm"
@@ -260,6 +254,17 @@ export function ClientsTable() {
               onClick={() => setCurrentPage((p) => p + 1)}
             >
               <ChevronRight className="h-4 w-4" />
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              صفحة {currentPage} من {totalPages || 1}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => p - 1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
             </Button>
           </div>
         </div>
