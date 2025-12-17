@@ -28,6 +28,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { PolicyWizard } from "@/components/policies/PolicyWizard";
 import { PolicyDetailsDrawer } from "@/components/policies/PolicyDetailsDrawer";
+import { PolicyEditDrawer } from "@/components/policies/PolicyEditDrawer";
 import { RowActionsMenu } from "@/components/shared/RowActionsMenu";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { recalculatePolicyProfit } from "@/lib/pricingCalculator";
@@ -43,15 +44,27 @@ interface PolicyRecord {
   end_date: string;
   insurance_price: number;
   profit: number | null;
+  payed_for_company: number | null;
   cancelled: boolean | null;
   transferred: boolean | null;
+  transferred_car_number: string | null;
+  is_under_24: boolean | null;
+  notes: string | null;
+  broker_id: string | null;
   clients?: {
+    id: string;
     full_name: string;
+    less_than_24: boolean | null;
   };
   cars?: {
+    id: string;
     car_number: string;
+    car_type: string | null;
+    car_value: number | null;
+    year: number | null;
   };
   insurance_companies?: {
+    id: string;
     name: string;
     name_ar: string | null;
   };
@@ -87,7 +100,9 @@ export default function Policies() {
 
   const [wizardOpen, setWizardOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [selectedPolicyId, setSelectedPolicyId] = useState<string | null>(null);
+  const [selectedPolicyForEdit, setSelectedPolicyForEdit] = useState<PolicyRecord | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingPolicy, setDeletingPolicy] = useState<PolicyRecord | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -99,7 +114,12 @@ export default function Policies() {
     try {
       let query = supabase
         .from('policies')
-        .select('*, clients(full_name), cars(car_number), insurance_companies(name, name_ar)', { count: 'exact' })
+        .select(`
+          *,
+          clients(id, full_name, less_than_24),
+          cars(id, car_number, car_type, car_value, year),
+          insurance_companies(id, name, name_ar)
+        `, { count: 'exact' })
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .range((currentPage - 1) * pageSize, currentPage * pageSize - 1);
@@ -197,9 +217,9 @@ export default function Policies() {
     setDetailsOpen(true);
   };
 
-  const handleEditPolicy = (policyId: string) => {
-    setSelectedPolicyId(policyId);
-    setDetailsOpen(true);
+  const handleEditPolicy = (policy: PolicyRecord) => {
+    setSelectedPolicyForEdit(policy);
+    setEditOpen(true);
   };
 
   const formatDate = (dateStr: string) => {
@@ -216,6 +236,41 @@ export default function Policies() {
   };
 
   const totalPages = Math.ceil(totalCount / pageSize);
+
+  // Prepare policy for edit drawer
+  const prepareForEdit = (policy: PolicyRecord) => {
+    return {
+      id: policy.id,
+      policy_type_parent: policy.policy_type_parent,
+      policy_type_child: policy.policy_type_child,
+      start_date: policy.start_date,
+      end_date: policy.end_date,
+      insurance_price: policy.insurance_price,
+      cancelled: policy.cancelled,
+      transferred: policy.transferred,
+      transferred_car_number: policy.transferred_car_number,
+      is_under_24: policy.is_under_24,
+      notes: policy.notes,
+      broker_id: policy.broker_id,
+      clients: {
+        id: policy.clients?.id || '',
+        full_name: policy.clients?.full_name || '',
+        less_than_24: policy.clients?.less_than_24 || false,
+      },
+      cars: {
+        id: policy.cars?.id || '',
+        car_number: policy.cars?.car_number || '',
+        car_type: policy.cars?.car_type || null,
+        car_value: policy.cars?.car_value || null,
+        year: policy.cars?.year || null,
+      },
+      insurance_companies: {
+        id: policy.insurance_companies?.id || '',
+        name: policy.insurance_companies?.name || '',
+        name_ar: policy.insurance_companies?.name_ar || null,
+      },
+    };
+  };
 
   return (
     <MainLayout>
@@ -367,7 +422,7 @@ export default function Policies() {
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <RowActionsMenu
                             onView={() => handleViewDetails(policy.id)}
-                            onEdit={() => handleEditPolicy(policy.id)}
+                            onEdit={() => handleEditPolicy(policy)}
                             onDelete={() => {
                               setDeletingPolicy(policy);
                               setDeleteDialogOpen(true);
@@ -424,6 +479,21 @@ export default function Policies() {
         policyId={selectedPolicyId}
         onUpdated={() => fetchPolicies()}
       />
+
+      {selectedPolicyForEdit && (
+        <PolicyEditDrawer
+          open={editOpen}
+          onOpenChange={(open) => {
+            setEditOpen(open);
+            if (!open) setSelectedPolicyForEdit(null);
+          }}
+          policy={prepareForEdit(selectedPolicyForEdit)}
+          onSaved={() => {
+            fetchPolicies();
+            setSelectedPolicyForEdit(null);
+          }}
+        />
+      )}
 
       <DeleteConfirmDialog
         open={deleteDialogOpen}

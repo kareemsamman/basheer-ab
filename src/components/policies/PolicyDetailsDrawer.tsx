@@ -231,24 +231,8 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
           ) : policy ? (
             <div className="flex flex-col h-full max-h-[90vh]">
               {/* Header - Insurance Focus */}
-              <div className="p-6 bg-gradient-to-r from-primary/5 to-transparent border-b">
+              <div className="p-6 bg-gradient-to-l from-primary/5 to-transparent border-b">
                 <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <DialogTitle className="text-xl font-bold mb-2 text-right">تفاصيل الوثيقة</DialogTitle>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge className={cn("border text-sm", policyTypeColors[policy.policy_type_parent])}>
-                        {policyTypeLabels[policy.policy_type_parent]}
-                        {policy.policy_type_child && ` - ${policyChildLabels[policy.policy_type_child]}`}
-                      </Badge>
-                      <Badge variant={status.variant} className="gap-1">
-                        <StatusIcon className="h-3 w-3" />
-                        {status.label}
-                      </Badge>
-                      {policy.is_under_24 && (
-                        <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">أقل من 24</Badge>
-                      )}
-                    </div>
-                  </div>
                   <div className="flex gap-2">
                     {remaining > 0 && (
                       <Button 
@@ -266,6 +250,22 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
                       <Pencil className="h-4 w-4 ml-1" />
                       تعديل
                     </Button>
+                  </div>
+                  <div className="text-right">
+                    <DialogTitle className="text-xl font-bold mb-2">تفاصيل الوثيقة</DialogTitle>
+                    <div className="flex flex-wrap gap-2 justify-end">
+                      <Badge className={cn("border text-sm", policyTypeColors[policy.policy_type_parent])}>
+                        {policyTypeLabels[policy.policy_type_parent]}
+                        {policy.policy_type_child && ` - ${policyChildLabels[policy.policy_type_child]}`}
+                      </Badge>
+                      <Badge variant={status.variant} className="gap-1">
+                        <StatusIcon className="h-3 w-3" />
+                        {status.label}
+                      </Badge>
+                      {policy.is_under_24 && (
+                        <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">أقل من 24</Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
 

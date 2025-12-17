@@ -79,10 +79,10 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
   const [formData, setFormData] = useState({
     policy_type_parent: policy.policy_type_parent,
     policy_type_child: policy.policy_type_child || "",
-    company_id: policy.insurance_companies.id,
+    company_id: policy.insurance_companies?.id || "",
     start_date: policy.start_date,
     end_date: policy.end_date,
-    insurance_price: policy.insurance_price.toString(),
+    insurance_price: policy.insurance_price?.toString() || "0",
     cancelled: policy.cancelled || false,
     transferred: policy.transferred || false,
     transferred_car_number: policy.transferred_car_number || "",
@@ -99,10 +99,10 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
       setFormData({
         policy_type_parent: policy.policy_type_parent,
         policy_type_child: policy.policy_type_child || "",
-        company_id: policy.insurance_companies.id,
+        company_id: policy.insurance_companies?.id || "",
         start_date: policy.start_date,
         end_date: policy.end_date,
-        insurance_price: policy.insurance_price.toString(),
+        insurance_price: policy.insurance_price?.toString() || "0",
         cancelled: policy.cancelled || false,
         transferred: policy.transferred || false,
         transferred_car_number: policy.transferred_car_number || "",
@@ -140,15 +140,15 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
       let profit = 0;
 
       if (formData.policy_type_parent !== 'ELZAMI') {
-        const ageBand: Enums<'age_band'> = (formData.is_under_24 || policy.clients.less_than_24) ? 'UNDER_24' : 'UP_24';
+        const ageBand: Enums<'age_band'> = (formData.is_under_24 || policy.clients?.less_than_24) ? 'UNDER_24' : 'UP_24';
         const result = await calculatePolicyProfit({
           policyTypeParent: formData.policy_type_parent as Enums<'policy_type_parent'>,
           policyTypeChild: (formData.policy_type_child || null) as Enums<'policy_type_child'> | null,
           companyId: formData.company_id,
-          carType: (policy.cars.car_type || 'car') as Enums<'car_type'>,
+          carType: (policy.cars?.car_type || 'car') as Enums<'car_type'>,
           ageBand,
-          carValue: policy.cars.car_value,
-          carYear: policy.cars.year,
+          carValue: policy.cars?.car_value || null,
+          carYear: policy.cars?.year || null,
           insurancePrice,
         });
         companyPayment = result.companyPayment;
@@ -202,7 +202,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
           <DialogHeader className="p-6 border-b bg-muted/30">
             <DialogTitle className="text-xl font-bold">تعديل الوثيقة</DialogTitle>
             <p className="text-sm text-muted-foreground">
-              {policy.clients.full_name} - {policy.cars.car_number}
+              {policy.clients?.full_name || ''} - {policy.cars?.car_number || ''}
             </p>
           </DialogHeader>
 
