@@ -13,6 +13,8 @@ import Clients from "./pages/Clients";
 import Cars from "./pages/Cars";
 import Policies from "./pages/Policies";
 import Companies from "./pages/Companies";
+import Brokers from "./pages/Brokers";
+import Cheques from "./pages/Cheques";
 import Media from "./pages/Media";
 import AdminUsers from "./pages/AdminUsers";
 import NotFound from "./pages/NotFound";
@@ -20,7 +22,7 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Prevent “reload-like” behavior when returning to the tab
+      // Prevent "reload-like" behavior when returning to the tab
       refetchOnWindowFocus: false,
     },
   },
@@ -60,6 +62,16 @@ const App = () => (
               <Route path="/companies" element={
                 <ProtectedRoute>
                   <Companies />
+                </ProtectedRoute>
+              } />
+              <Route path="/brokers" element={
+                <ProtectedRoute>
+                  <Brokers />
+                </ProtectedRoute>
+              } />
+              <Route path="/cheques" element={
+                <ProtectedRoute>
+                  <Cheques />
                 </ProtectedRoute>
               } />
               <Route path="/media" element={

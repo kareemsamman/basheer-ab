@@ -18,6 +18,7 @@ interface PolicyWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onComplete?: (policyId: string) => void;
+  defaultBrokerId?: string;
 }
 
 interface Client {
@@ -127,7 +128,7 @@ type PolicyWizardDraft = {
   payments: PaymentLine[];
 };
 
-export function PolicyWizard({ open, onOpenChange, onComplete }: PolicyWizardProps) {
+export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }: PolicyWizardProps) {
   const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
   const [saving, setSaving] = useState(false);
@@ -524,6 +525,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete }: PolicyWizardPro
             phone_number: newClient.phone_number || null,
             less_than_24: newClient.less_than_24,
             notes: newClient.notes || null,
+            broker_id: defaultBrokerId || null,
           })
           .select()
           .single();
@@ -594,6 +596,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete }: PolicyWizardPro
           notes: policy.notes || null,
           profit: 0,
           payed_for_company: policy.policy_type_parent === 'ELZAMI' ? parseFloat(policy.insurance_price) : 0,
+          broker_id: defaultBrokerId || null,
         })
         .select()
         .single();

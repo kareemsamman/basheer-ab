@@ -18,21 +18,27 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          image_url: string | null
           name: string
+          notes: string | null
           phone: string | null
           updated_at: string
         }
         Insert: {
           created_at?: string
           id?: string
+          image_url?: string | null
           name: string
+          notes?: string | null
           phone?: string | null
           updated_at?: string
         }
         Update: {
           created_at?: string
           id?: string
+          image_url?: string | null
           name?: string
+          notes?: string | null
           phone?: string | null
           updated_at?: string
         }
@@ -105,6 +111,7 @@ export type Database = {
       }
       clients: {
         Row: {
+          broker_id: string | null
           created_at: string
           date_joined: string | null
           deleted_at: string | null
@@ -119,6 +126,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          broker_id?: string | null
           created_at?: string
           date_joined?: string | null
           deleted_at?: string | null
@@ -133,6 +141,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          broker_id?: string | null
           created_at?: string
           date_joined?: string | null
           deleted_at?: string | null
@@ -146,7 +155,15 @@ export type Database = {
           phone_number?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "clients_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       insurance_companies: {
         Row: {
@@ -288,6 +305,7 @@ export type Database = {
       }
       policies: {
         Row: {
+          broker_id: string | null
           cancelled: boolean | null
           car_id: string
           client_id: string
@@ -312,6 +330,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          broker_id?: string | null
           cancelled?: boolean | null
           car_id: string
           client_id: string
@@ -336,6 +355,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          broker_id?: string | null
           cancelled?: boolean | null
           car_id?: string
           client_id?: string
@@ -360,6 +380,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "policies_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "policies_car_id_fkey"
             columns: ["car_id"]
@@ -388,6 +415,7 @@ export type Database = {
           amount: number
           cheque_image_url: string | null
           cheque_number: string | null
+          cheque_status: string | null
           created_at: string
           id: string
           notes: string | null
@@ -400,6 +428,7 @@ export type Database = {
           amount: number
           cheque_image_url?: string | null
           cheque_number?: string | null
+          cheque_status?: string | null
           created_at?: string
           id?: string
           notes?: string | null
@@ -412,6 +441,7 @@ export type Database = {
           amount?: number
           cheque_image_url?: string | null
           cheque_number?: string | null
+          cheque_status?: string | null
           created_at?: string
           id?: string
           notes?: string | null

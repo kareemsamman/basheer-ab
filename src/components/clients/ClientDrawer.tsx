@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -16,6 +16,13 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -32,6 +39,7 @@ const clientSchema = z.object({
   notes: z.string().optional(),
   less_than_24: z.boolean().default(false),
   image_url: z.string().optional(),
+  broker_id: z.string().optional(),
 });
 
 type ClientFormData = z.infer<typeof clientSchema>;
@@ -47,6 +55,12 @@ interface Client {
   notes: string | null;
   image_url: string | null;
   created_at: string;
+  broker_id?: string | null;
+}
+
+interface Broker {
+  id: string;
+  name: string;
 }
 
 interface ClientDrawerProps {
@@ -54,27 +68,42 @@ interface ClientDrawerProps {
   onOpenChange: (open: boolean) => void;
   client: Client | null;
   onSaved: () => void;
+  defaultBrokerId?: string;
 }
 
-export function ClientDrawer({ open, onOpenChange, client, onSaved }: ClientDrawerProps) {
+export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBrokerId }: ClientDrawerProps) {
   const [saving, setSaving] = useState(false);
+  const [brokers, setBrokers] = useState<Broker[]>([]);
   const isEditing = !!client;
 
   const form = useForm<ClientFormData>({
     resolver: zodResolver(clientSchema),
     defaultValues: {
-      full_name: client?.full_name || '',
-      id_number: client?.id_number || '',
-      file_number: client?.file_number || '',
-      phone_number: client?.phone_number || '',
-      notes: client?.notes || '',
-      less_than_24: client?.less_than_24 || false,
-      image_url: client?.image_url || '',
+      full_name: '',
+      id_number: '',
+      file_number: '',
+      phone_number: '',
+      notes: '',
+      less_than_24: false,
+      image_url: '',
+      broker_id: '',
     },
   });
 
-  // Reset form when client changes
-  useState(() => {
+  // Fetch brokers
+  useEffect(() => {
+    const fetchBrokers = async () => {
+      const { data } = await supabase
+        .from('brokers')
+        .select('id, name')
+        .order('name');
+      setBrokers(data || []);
+    };
+    fetchBrokers();
+  }, []);
+
+  // Reset form when client changes or drawer opens
+  useEffect(() => {
     if (open) {
       form.reset({
         full_name: client?.full_name || '',
@@ -84,25 +113,29 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved }: ClientDraw
         notes: client?.notes || '',
         less_than_24: client?.less_than_24 || false,
         image_url: client?.image_url || '',
+        broker_id: client?.broker_id || defaultBrokerId || '',
       });
     }
-  });
+  }, [open, client, defaultBrokerId, form]);
 
   const onSubmit = async (data: ClientFormData) => {
     setSaving(true);
     try {
+      const clientData = {
+        full_name: data.full_name,
+        id_number: data.id_number,
+        file_number: data.file_number || null,
+        phone_number: data.phone_number || null,
+        notes: data.notes || null,
+        less_than_24: data.less_than_24,
+        image_url: data.image_url || null,
+        broker_id: data.broker_id || null,
+      };
+
       if (isEditing) {
         const { error } = await supabase
           .from('clients')
-          .update({
-            full_name: data.full_name,
-            id_number: data.id_number,
-            file_number: data.file_number || null,
-            phone_number: data.phone_number || null,
-            notes: data.notes || null,
-            less_than_24: data.less_than_24,
-            image_url: data.image_url || null,
-          })
+          .update(clientData)
           .eq('id', client.id);
 
         if (error) throw error;
@@ -110,15 +143,7 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved }: ClientDraw
       } else {
         const { error } = await supabase
           .from('clients')
-          .insert({
-            full_name: data.full_name,
-            id_number: data.id_number,
-            file_number: data.file_number || null,
-            phone_number: data.phone_number || null,
-            notes: data.notes || null,
-            less_than_24: data.less_than_24,
-            image_url: data.image_url || null,
-          });
+          .insert(clientData);
 
         if (error) {
           if (error.code === '23505') {
@@ -200,6 +225,36 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved }: ClientDraw
                   <FormControl>
                     <Input placeholder="أدخل رقم الهاتف" {...field} />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="broker_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>الوسيط</FormLabel>
+                  <Select
+                    value={field.value || ''}
+                    onValueChange={field.onChange}
+                    disabled={!!defaultBrokerId}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="اختر الوسيط (اختياري)" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="">بدون وسيط</SelectItem>
+                      {brokers.map((broker) => (
+                        <SelectItem key={broker.id} value={broker.id}>
+                          {broker.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
