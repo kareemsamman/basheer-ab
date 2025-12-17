@@ -8,11 +8,13 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { user, loading, profileLoading, profile, isActive } = useAuth();
+  const { user, loading, profileLoading, profile, isActive, isSuperAdmin } = useAuth();
 
-  // Block ONLY during the initial profile resolution.
-  // Avoid unmounting the whole app on token refresh / refocus.
-  if (loading || (user && profileLoading && !profile)) {
+  // CRITICAL: Block during initial auth resolution
+  // Super admin bypasses profile loading requirement
+  const needsProfileLoading = user && !isSuperAdmin && profileLoading && !profile;
+  
+  if (loading || needsProfileLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
@@ -23,10 +25,13 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     );
   }
 
+  // No user = go to login
   if (!user) {
     return <Navigate to="/login" replace />;
   }
 
+  // Super admin and admins always have access (isActive includes this check)
+  // Only show No Access for non-admin users with inactive status
   if (!isActive) {
     return <Navigate to="/no-access" replace />;
   }

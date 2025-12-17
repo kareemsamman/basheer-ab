@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
+const SUPER_ADMIN_EMAIL = 'morshed500@gmail.com';
+
 interface UserProfile {
   id: string;
   email: string;
@@ -18,6 +20,7 @@ interface AuthContextType {
   profileLoading: boolean;
   isActive: boolean;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   signOut: () => Promise<void>;
 }
 
@@ -31,7 +34,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profileLoading, setProfileLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  const fetchUserProfile = async (userId: string) => {
+  // Super admin check based on email - this is the authoritative check
+  const isSuperAdmin = user?.email === SUPER_ADMIN_EMAIL;
+
+  const fetchUserProfile = async (userId: string, userEmail: string | undefined) => {
     setProfileLoading(true);
     try {
       const { data: profileData, error: profileError } = await supabase
@@ -46,15 +52,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null;
       }
 
-      // Check if user has admin role
-      const { data: roleData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId)
-        .eq('role', 'admin')
-        .single();
+      // Check if user has admin role OR is super admin
+      const isSuperAdminUser = userEmail === SUPER_ADMIN_EMAIL;
+      
+      if (isSuperAdminUser) {
+        // Super admin is always admin
+        setIsAdmin(true);
+      } else {
+        // Check role in database for other users
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', userId)
+          .eq('role', 'admin')
+          .single();
 
-      setIsAdmin(!!roleData);
+        setIsAdmin(!!roleData);
+      }
+
       setProfileLoading(false);
       return profileData as UserProfile;
     } catch (error) {
@@ -87,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           setTimeout(() => {
             if (isMounted) {
-              fetchUserProfile(session.user.id).then(p => {
+              fetchUserProfile(session.user.id, session.user.email).then(p => {
                 if (isMounted) setProfile(p);
               });
             }
@@ -110,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        fetchUserProfile(session.user.id).then(p => {
+        fetchUserProfile(session.user.id, session.user.email).then(p => {
           if (isMounted) setProfile(p);
         });
       } else {
@@ -126,7 +141,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const isActive = profile?.status === 'active';
+  // CRITICAL: Super admin and admins bypass status checks entirely
+  // Order: super admin → admin → active status
+  const isActive = isSuperAdmin || isAdmin || profile?.status === 'active';
 
   return (
     <AuthContext.Provider value={{
@@ -136,7 +153,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       profileLoading,
       isActive,
-      isAdmin,
+      isAdmin: isAdmin || isSuperAdmin,
+      isSuperAdmin,
       signOut,
     }}>
       {children}
