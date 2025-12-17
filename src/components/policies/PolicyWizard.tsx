@@ -477,8 +477,16 @@ export function PolicyWizard({ open, onOpenChange, onComplete }: PolicyWizardPro
     }
   };
 
+  const handleSheetOpenChange = (nextOpen: boolean) => {
+    // Prevent losing the wizard when switching browser tabs (focus/visibility loss)
+    if (!nextOpen && (document.visibilityState === 'hidden' || !document.hasFocus())) {
+      return;
+    }
+    onOpenChange(nextOpen);
+  };
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={handleSheetOpenChange}>
       <SheetContent side="left" className="w-full sm:max-w-2xl overflow-y-auto">
         <SheetHeader>
           <SheetTitle>إضافة وثيقة جديدة</SheetTitle>
