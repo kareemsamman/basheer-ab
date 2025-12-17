@@ -8,9 +8,10 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { user, loading, isActive } = useAuth();
+  const { user, loading, profileLoading, isActive } = useAuth();
 
-  if (loading) {
+  // Wait for both auth and profile to load
+  if (loading || (user && profileLoading)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">

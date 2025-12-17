@@ -35,6 +35,7 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -82,6 +83,7 @@ export default function Media() {
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [files, setFiles] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [entityFilter, setEntityFilter] = useState<string>('all');
@@ -162,6 +164,7 @@ export default function Media() {
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
 
+    setDeleting(true);
     try {
       const response = await supabase.functions.invoke('delete-media', {
         body: { fileIds: Array.from(selectedIds) },
@@ -175,6 +178,8 @@ export default function Media() {
     } catch (error: any) {
       console.error('Delete error:', error);
       toast.error('فشل حذف الملفات');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -294,11 +299,15 @@ export default function Media() {
               <span className="text-sm font-medium text-destructive">
                 {selectedIds.size} محدد
               </span>
-              <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
-                <Trash2 className="h-4 w-4 ml-1" />
-                حذف
+              <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={deleting}>
+                {deleting ? (
+                  <Loader2 className="h-4 w-4 ml-1 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4 ml-1" />
+                )}
+                {deleting ? 'جاري الحذف...' : 'حذف'}
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())} disabled={deleting}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
