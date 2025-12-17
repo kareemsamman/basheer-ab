@@ -270,37 +270,50 @@ export function PolicyWizard({ open, onOpenChange, onComplete }: PolicyWizardPro
   const [fetchingCarPrice, setFetchingCarPrice] = useState(false);
 
   const fetchCarPrice = async () => {
-    if (!newCar.manufacturer_name || !newCar.model || !newCar.year) {
-      toast({ title: "خطأ", description: "الرجاء إدخال بيانات السيارة أولاً (الشركة، الموديل، السنة)", variant: "destructive" });
+    if (!newCar.manufacturer_name || !newCar.year) {
+      toast({ title: "خطأ", description: "الرجاء إدخال بيانات السيارة أولاً (الشركة، السنة)", variant: "destructive" });
       return;
     }
 
     setFetchingCarPrice(true);
     try {
+      console.log('Fetching car price for:', newCar.manufacturer_name, newCar.model, newCar.year);
+      
       const { data, error } = await supabase.functions.invoke('fetch-car-price', {
         body: { 
           manufacturer: newCar.manufacturer_name,
-          model: newCar.model,
+          model: newCar.model || '',
           year: parseInt(newCar.year)
         }
       });
 
-      if (error) throw error;
+      console.log('Car price response:', data, error);
 
-      if (data.error) {
+      if (error) {
+        console.error('Edge function error:', error);
+        throw error;
+      }
+
+      if (data?.error) {
         toast({ title: "خطأ", description: data.error, variant: "destructive" });
         return;
       }
 
-      const priceData = data.data || data;
-      if (priceData.price) {
+      // Handle both response formats
+      const priceData = data?.data || data;
+      console.log('Price data extracted:', priceData);
+      
+      if (priceData?.price && priceData.price > 0) {
         setNewCar(prev => ({ ...prev, car_value: priceData.price.toString() }));
         toast({ title: "تم جلب سعر السيارة", description: `₪ ${priceData.price.toLocaleString()}` });
+      } else if (data?.found === false) {
+        toast({ title: "تنبيه", description: "لم يتم العثور على سعر لهذه السيارة في قاعدة البيانات", variant: "default" });
       } else {
-        toast({ title: "تنبيه", description: "لم يتم العثور على سعر لهذه السيارة", variant: "destructive" });
+        toast({ title: "تنبيه", description: "لم يتم العثور على سعر لهذه السيارة", variant: "default" });
       }
-    } catch (error) {
-      toast({ title: "خطأ", description: "فشل في جلب سعر السيارة", variant: "destructive" });
+    } catch (error: any) {
+      console.error('Fetch car price error:', error);
+      toast({ title: "خطأ", description: error?.message || "فشل في جلب سعر السيارة", variant: "destructive" });
     } finally {
       setFetchingCarPrice(false);
     }
