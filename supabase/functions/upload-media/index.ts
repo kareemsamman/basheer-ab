@@ -6,20 +6,84 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Allowed MIME types
-const ALLOWED_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/gif',
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'video/mp4',
-  'video/webm',
-];
+// Allowed MIME types with their magic bytes and valid extensions
+const ALLOWED_FILE_TYPES: Record<string, { magicBytes: number[][], extensions: string[] }> = {
+  'image/jpeg': { 
+    magicBytes: [[0xFF, 0xD8, 0xFF]], 
+    extensions: ['jpg', 'jpeg'] 
+  },
+  'image/png': { 
+    magicBytes: [[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]], 
+    extensions: ['png'] 
+  },
+  'image/webp': { 
+    magicBytes: [[0x52, 0x49, 0x46, 0x46]], // RIFF header (WebP starts with RIFF)
+    extensions: ['webp'] 
+  },
+  'image/gif': { 
+    magicBytes: [[0x47, 0x49, 0x46, 0x38, 0x37, 0x61], [0x47, 0x49, 0x46, 0x38, 0x39, 0x61]], // GIF87a, GIF89a
+    extensions: ['gif'] 
+  },
+  'application/pdf': { 
+    magicBytes: [[0x25, 0x50, 0x44, 0x46]], // %PDF
+    extensions: ['pdf'] 
+  },
+  'application/msword': { 
+    magicBytes: [[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]], // OLE compound file
+    extensions: ['doc'] 
+  },
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': { 
+    magicBytes: [[0x50, 0x4B, 0x03, 0x04]], // PK (ZIP-based)
+    extensions: ['docx'] 
+  },
+  'video/mp4': { 
+    magicBytes: [[0x00, 0x00, 0x00], [0x66, 0x74, 0x79, 0x70]], // ftyp signature (offset varies)
+    extensions: ['mp4'] 
+  },
+  'video/webm': { 
+    magicBytes: [[0x1A, 0x45, 0xDF, 0xA3]], // EBML header
+    extensions: ['webm'] 
+  },
+};
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+const RATE_LIMIT_UPLOADS_PER_HOUR = 100;
+
+// Verify file content matches declared MIME type using magic bytes
+function verifyMagicBytes(buffer: Uint8Array, mimeType: string): boolean {
+  const typeConfig = ALLOWED_FILE_TYPES[mimeType];
+  if (!typeConfig) return false;
+  
+  for (const magicSequence of typeConfig.magicBytes) {
+    let matches = true;
+    // Special case for MP4 - check for 'ftyp' at offset 4
+    if (mimeType === 'video/mp4') {
+      const ftypCheck = buffer.length > 8 && 
+        buffer[4] === 0x66 && buffer[5] === 0x74 && 
+        buffer[6] === 0x79 && buffer[7] === 0x70;
+      if (ftypCheck) return true;
+      continue;
+    }
+    
+    for (let i = 0; i < magicSequence.length; i++) {
+      if (buffer[i] !== magicSequence[i]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return true;
+  }
+  return false;
+}
+
+// Verify file extension matches declared MIME type
+function verifyExtension(filename: string, mimeType: string): boolean {
+  const typeConfig = ALLOWED_FILE_TYPES[mimeType];
+  if (!typeConfig) return false;
+  
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  return typeConfig.extensions.includes(ext);
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -65,12 +129,27 @@ serve(async (req) => {
       });
     }
 
+    // Rate limiting - check uploads in last hour
+    const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
+    const { count: uploadCount } = await supabase
+      .from('media_files')
+      .select('id', { count: 'exact', head: true })
+      .eq('uploaded_by', user.id)
+      .gte('created_at', oneHourAgo);
+
+    if (uploadCount !== null && uploadCount >= RATE_LIMIT_UPLOADS_PER_HOUR) {
+      console.warn(`Rate limit exceeded for user ${user.id}: ${uploadCount} uploads in last hour`);
+      return new Response(JSON.stringify({ error: 'Upload limit exceeded. Please try again later.' }), {
+        status: 429,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Get Bunny credentials
     const BUNNY_API_KEY = Deno.env.get('BUNNY_API_KEY');
     const BUNNY_STORAGE_ZONE = Deno.env.get('BUNNY_STORAGE_ZONE');
-    const BUNNY_CDN_URL = Deno.env.get('BUNNY_CDN_URL');
 
-    if (!BUNNY_API_KEY || !BUNNY_STORAGE_ZONE || !BUNNY_CDN_URL) {
+    if (!BUNNY_API_KEY || !BUNNY_STORAGE_ZONE) {
       console.error('Missing Bunny configuration');
       return new Response(JSON.stringify({ error: 'Storage not configured' }), {
         status: 500,
@@ -91,9 +170,19 @@ serve(async (req) => {
       });
     }
 
-    // Validate file type
-    if (!ALLOWED_TYPES.includes(file.type)) {
+    // Validate file type from header
+    if (!ALLOWED_FILE_TYPES[file.type]) {
+      console.warn(`Rejected file type: ${file.type}`);
       return new Response(JSON.stringify({ error: 'File type not allowed' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Validate file extension matches MIME type
+    if (!verifyExtension(file.name, file.type)) {
+      console.warn(`Extension mismatch: ${file.name} claimed as ${file.type}`);
+      return new Response(JSON.stringify({ error: 'File extension does not match file type' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -107,13 +196,26 @@ serve(async (req) => {
       });
     }
 
+    // Read file content for magic byte verification
+    const fileBuffer = await file.arrayBuffer();
+    const fileBytes = new Uint8Array(fileBuffer);
+
+    // Verify magic bytes match declared MIME type
+    if (!verifyMagicBytes(fileBytes, file.type)) {
+      console.warn(`Magic byte mismatch for ${file.name} (claimed ${file.type})`);
+      return new Response(JSON.stringify({ error: 'File content does not match declared type' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Generate organized path: uploads/YYYY/MM/filename.ext
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const timestamp = Date.now();
     const randomId = crypto.randomUUID().slice(0, 8);
-    const ext = file.name.split('.').pop() || 'bin';
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'bin';
     const sanitizedName = file.name
       .replace(/\.[^/.]+$/, '') // Remove extension
       .replace(/[^a-zA-Z0-9_\-\u0600-\u06FF]/g, '_') // Keep Arabic chars too
@@ -121,7 +223,6 @@ serve(async (req) => {
     const storagePath = `uploads/${year}/${month}/${timestamp}_${randomId}_${sanitizedName}.${ext}`;
 
     // Upload to Bunny Storage
-    const fileBuffer = await file.arrayBuffer();
     const bunnyUploadUrl = `https://storage.bunnycdn.com/${BUNNY_STORAGE_ZONE}/${storagePath}`;
 
     console.log(`Uploading to Bunny: ${bunnyUploadUrl}`);
@@ -144,9 +245,8 @@ serve(async (req) => {
       });
     }
 
-    // Construct CDN URL - use fixed CDN base URL
-    const cdnBaseUrl = 'https://basheer-ab.b-cdn.net';
-    const cdnUrl = `${cdnBaseUrl}/${storagePath}`;
+    // Construct CDN URL - hardcoded to prevent misconfiguration
+    const cdnUrl = `https://basheer-ab.b-cdn.net/${storagePath}`;
 
     // Save to database
     const { data: mediaFile, error: dbError } = await supabase
