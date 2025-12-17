@@ -136,7 +136,7 @@ export default function Dashboard() {
         </div>
 
         {/* Second Row Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card className="p-6 border shadow-sm">
             <div className="flex items-center justify-between">
               <div>

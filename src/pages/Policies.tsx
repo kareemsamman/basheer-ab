@@ -239,26 +239,31 @@ export default function Policies() {
               className="pr-9"
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button 
               variant="outline" 
               size="sm"
               onClick={handleRecalculateAll}
               disabled={recalculating}
             >
-              <RefreshCw className={cn("ml-2 h-4 w-4", recalculating && "animate-spin")} />
-              {recalculating 
-                ? `إعادة حساب... (${recalcProgress.done}/${recalcProgress.total})`
-                : "إعادة حساب الأرباح"
-              }
+              <RefreshCw className={cn("ml-1 md:ml-2 h-4 w-4", recalculating && "animate-spin")} />
+              <span className="hidden sm:inline">
+                {recalculating 
+                  ? `إعادة حساب... (${recalcProgress.done}/${recalcProgress.total})`
+                  : "إعادة حساب الأرباح"
+                }
+              </span>
+              <span className="sm:hidden">
+                {recalculating ? `${recalcProgress.done}/${recalcProgress.total}` : "حساب"}
+              </span>
             </Button>
             <Button variant="outline" size="sm">
-              <Filter className="ml-2 h-4 w-4" />
-              فلترة
+              <Filter className="ml-1 md:ml-2 h-4 w-4" />
+              <span className="hidden sm:inline">فلترة</span>
             </Button>
             <Button variant="outline" size="sm">
-              <Download className="ml-2 h-4 w-4" />
-              تصدير
+              <Download className="ml-1 md:ml-2 h-4 w-4" />
+              <span className="hidden sm:inline">تصدير</span>
             </Button>
           </div>
         </div>
