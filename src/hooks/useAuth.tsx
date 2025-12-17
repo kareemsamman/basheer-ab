@@ -15,6 +15,7 @@ interface AuthContextType {
   session: Session | null;
   profile: UserProfile | null;
   loading: boolean;
+  profileLoading: boolean;
   isActive: boolean;
   isAdmin: boolean;
   signOut: () => Promise<void>;
@@ -27,9 +28,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
   const fetchUserProfile = async (userId: string) => {
+    setProfileLoading(true);
     try {
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
@@ -39,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (profileError) {
         console.error('Error fetching profile:', profileError);
+        setProfileLoading(false);
         return null;
       }
 
@@ -51,9 +55,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .single();
 
       setIsAdmin(!!roleData);
+      setProfileLoading(false);
       return profileData as UserProfile;
     } catch (error) {
       console.error('Error in fetchUserProfile:', error);
+      setProfileLoading(false);
       return null;
     }
   };
@@ -67,20 +73,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    let isMounted = true;
+    
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        if (!isMounted) return;
+        
         setSession(session);
         setUser(session?.user ?? null);
         
         // Defer profile fetch with setTimeout to avoid deadlock
         if (session?.user) {
           setTimeout(() => {
-            fetchUserProfile(session.user.id).then(setProfile);
+            if (isMounted) {
+              fetchUserProfile(session.user.id).then(p => {
+                if (isMounted) setProfile(p);
+              });
+            }
           }, 0);
         } else {
           setProfile(null);
           setIsAdmin(false);
+          setProfileLoading(false);
         }
         
         setLoading(false);
@@ -89,17 +104,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!isMounted) return;
+      
       setSession(session);
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        fetchUserProfile(session.user.id).then(setProfile);
+        fetchUserProfile(session.user.id).then(p => {
+          if (isMounted) setProfile(p);
+        });
+      } else {
+        setProfileLoading(false);
       }
       
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const isActive = profile?.status === 'active';
@@ -110,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       profile,
       loading,
+      profileLoading,
       isActive,
       isAdmin,
       signOut,

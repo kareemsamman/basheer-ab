@@ -144,12 +144,8 @@ serve(async (req) => {
       });
     }
 
-    // Construct CDN URL - ensure proper format
-    let cdnBaseUrl = BUNNY_CDN_URL.trim().replace(/[\t\r\n]/g, '');
-    if (!cdnBaseUrl.startsWith('http')) {
-      cdnBaseUrl = `https://${cdnBaseUrl}`;
-    }
-    cdnBaseUrl = cdnBaseUrl.replace(/\/+$/, ''); // Remove trailing slashes
+    // Construct CDN URL - use fixed CDN base URL
+    const cdnBaseUrl = 'https://basheer-ab.b-cdn.net';
     const cdnUrl = `${cdnBaseUrl}/${storagePath}`;
 
     // Save to database
