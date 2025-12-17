@@ -14,6 +14,7 @@ import Cars from "./pages/Cars";
 import Policies from "./pages/Policies";
 import Companies from "./pages/Companies";
 import Media from "./pages/Media";
+import AdminUsers from "./pages/AdminUsers";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -57,6 +58,11 @@ const App = () => (
               <Route path="/media" element={
                 <ProtectedRoute>
                   <Media />
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/users" element={
+                <ProtectedRoute>
+                  <AdminUsers />
                 </ProtectedRoute>
               } />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

@@ -122,6 +122,9 @@ export function Sidebar() {
           )}
         </div>
         {adminNav.map((item) => {
+          // Only show admin links to admins
+          if (item.href === '/admin/users' && !isAdmin) return null;
+          
           const isActive = location.pathname === item.href;
           return (
             <NavLink
