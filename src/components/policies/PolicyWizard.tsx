@@ -259,15 +259,35 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
     }
   }, [selectedClient]);
 
-  // Auto-set end date based on start date
+  // Auto-set end date based on start date (1 year - 1 day)
   useEffect(() => {
     if (policy.start_date) {
       const startDate = new Date(policy.start_date);
       const endDate = new Date(startDate);
       endDate.setFullYear(endDate.getFullYear() + 1);
+      endDate.setDate(endDate.getDate() - 1); // 1 year minus 1 day
       setPolicy(p => ({ ...p, end_date: endDate.toISOString().split('T')[0] }));
     }
   }, [policy.start_date]);
+
+  // Calculate the allowed end date range (±3 days from auto-calculated)
+  const getEndDateRange = () => {
+    if (!policy.start_date) return { min: '', max: '' };
+    const startDate = new Date(policy.start_date);
+    const baseEndDate = new Date(startDate);
+    baseEndDate.setFullYear(baseEndDate.getFullYear() + 1);
+    baseEndDate.setDate(baseEndDate.getDate() - 1);
+    
+    const minDate = new Date(baseEndDate);
+    minDate.setDate(minDate.getDate() - 3);
+    const maxDate = new Date(baseEndDate);
+    maxDate.setDate(maxDate.getDate() + 3);
+    
+    return {
+      min: minDate.toISOString().split('T')[0],
+      max: maxDate.toISOString().split('T')[0],
+    };
+  };
 
   // Persist draft
   useEffect(() => {
@@ -315,8 +335,15 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
         // Found existing client - auto-select it
         setSelectedClient(data);
         setCreateNewClient(false);
+        // Clear the form fields since we found the client
+        setNewClient(prev => ({
+          ...prev,
+          full_name: "",
+          id_number: "",
+          phone_number: "",
+        }));
         setErrors({});
-        writeDraftNow({ selectedClient: data, createNewClient: false });
+        writeDraftNow({ selectedClient: data, createNewClient: false, newClient: { full_name: "", id_number: "", phone_number: "", less_than_24: false, notes: "", broker_id: defaultBrokerId || "" } });
         toast({
           title: "تم العثور على عميل موجود",
           description: `${data.full_name} - ${data.id_number}`,
@@ -789,42 +816,52 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
             </Button>
           </div>
           
-          {/* Steps indicator */}
+          {/* Steps indicator - Clickable tabs */}
           <div className="flex justify-center gap-2 mt-4">
-            {STEPS.map((step, index) => (
-              <div key={step.id} className="flex items-center">
-                <div className="flex flex-col items-center">
-                  <div
-                    className={cn(
-                      "flex items-center justify-center w-10 h-10 rounded-full border-2 transition-colors",
-                      currentStep === step.id
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : currentStep > step.id
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-muted-foreground/30 text-muted-foreground"
-                    )}
+            {STEPS.map((step, index) => {
+              // Allow clicking on completed steps or the current step
+              const canClick = step.id <= currentStep;
+              return (
+                <div key={step.id} className="flex items-center">
+                  <button
+                    type="button"
+                    className="flex flex-col items-center focus:outline-none"
+                    onClick={() => canClick && setCurrentStep(step.id)}
+                    disabled={!canClick}
                   >
-                    {currentStep > step.id ? (
-                      <Check className="h-5 w-5" />
-                    ) : (
-                      <step.icon className="h-5 w-5" />
-                    )}
-                  </div>
-                  <span className={cn(
-                    "text-xs mt-1",
-                    currentStep === step.id ? "text-primary font-medium" : "text-muted-foreground"
-                  )}>
-                    {step.title}
-                  </span>
+                    <div
+                      className={cn(
+                        "flex items-center justify-center w-10 h-10 rounded-full border-2 transition-colors",
+                        currentStep === step.id
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : currentStep > step.id
+                          ? "border-primary bg-primary/10 text-primary cursor-pointer hover:bg-primary/20"
+                          : "border-muted-foreground/30 text-muted-foreground cursor-not-allowed"
+                      )}
+                    >
+                      {currentStep > step.id ? (
+                        <Check className="h-5 w-5" />
+                      ) : (
+                        <step.icon className="h-5 w-5" />
+                      )}
+                    </div>
+                    <span className={cn(
+                      "text-xs mt-1",
+                      currentStep === step.id ? "text-primary font-medium" : "text-muted-foreground",
+                      canClick && currentStep > step.id && "cursor-pointer hover:text-primary"
+                    )}>
+                      {step.title}
+                    </span>
+                  </button>
+                  {index < STEPS.length - 1 && (
+                    <div className={cn(
+                      "h-0.5 w-8 mx-2 mt-[-12px]",
+                      currentStep > step.id ? "bg-primary" : "bg-muted-foreground/30"
+                    )} />
+                  )}
                 </div>
-                {index < STEPS.length - 1 && (
-                  <div className={cn(
-                    "h-0.5 w-8 mx-2 mt-[-12px]",
-                    currentStep > step.id ? "bg-primary" : "bg-muted-foreground/30"
-                  )} />
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </DialogHeader>
 
@@ -1325,8 +1362,13 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                         type="date"
                         value={policy.end_date}
                         onChange={(e) => setPolicy({ ...policy, end_date: e.target.value })}
+                        min={getEndDateRange().min}
+                        max={getEndDateRange().max}
                         className={errors.end_date ? "border-destructive" : ""}
                       />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        يمكن تعديل ±3 أيام من التاريخ التلقائي
+                      </p>
                       <FieldError error={errors.end_date} />
                     </div>
                   </div>
@@ -1378,6 +1420,29 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
           {/* Step 4: Payments */}
           {currentStep === 4 && (
             <div className="space-y-4">
+              {/* Policy Summary Card */}
+              <Card className="p-4 bg-primary/5 border-primary/20">
+                <h4 className="font-semibold text-sm mb-3">ملخص الوثيقة</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">العميل:</span>
+                    <p className="font-medium">{selectedClient?.full_name || newClient.full_name || '-'}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">السيارة:</span>
+                    <p className="font-medium font-mono" dir="ltr">{selectedCar?.car_number || existingCar?.car_number || newCar.car_number || '-'}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">الشركة:</span>
+                    <p className="font-medium">{companies.find(c => c.id === policy.company_id)?.name_ar || companies.find(c => c.id === policy.company_id)?.name || '-'}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">سعر التأمين:</span>
+                    <p className="font-bold text-primary text-lg">₪ {policy.insurance_price ? parseFloat(policy.insurance_price).toLocaleString() : '0'}</p>
+                  </div>
+                </div>
+              </Card>
+
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-lg">الدفعات (اختياري)</h3>
                 <Button variant="outline" size="sm" onClick={addPayment}>
