@@ -2,25 +2,36 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ShieldX, Mail, LogOut } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { ShieldX, Mail, LogOut, Loader2 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function NoAccess() {
+  const { user, profile, signOut, loading, isActive } = useAuth();
   const navigate = useNavigate();
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUserEmail(user?.email || null);
-    };
-    getUser();
-  }, []);
+    if (!loading && !user) {
+      navigate('/login', { replace: true });
+    }
+    if (!loading && user && isActive) {
+      navigate('/', { replace: true });
+    }
+  }, [user, loading, isActive, navigate]);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    navigate("/login");
+    setSigningOut(true);
+    await signOut();
+    navigate('/login', { replace: true });
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -46,7 +57,7 @@ export default function NoAccess() {
               <Mail className="h-4 w-4 text-muted-foreground" />
               <span className="text-muted-foreground">تم تسجيل الدخول بـ:</span>
             </div>
-            <p className="font-medium text-foreground" dir="ltr">{userEmail || "..."}</p>
+            <p className="font-medium text-foreground" dir="ltr">{user?.email || profile?.email || "..."}</p>
           </div>
 
           <div className="space-y-3">
@@ -61,12 +72,19 @@ export default function NoAccess() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Button variant="outline" className="w-full gap-2" onClick={handleSignOut}>
+          <Button 
+            variant="outline" 
+            className="w-full gap-2"
+            onClick={handleSignOut}
+            disabled={signingOut}
+          >
+            {signingOut ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
               <LogOut className="h-4 w-4" />
-              تسجيل الخروج
-            </Button>
-          </div>
+            )}
+            {signingOut ? "جاري تسجيل الخروج..." : "تسجيل الخروج"}
+          </Button>
         </CardContent>
       </Card>
     </div>
