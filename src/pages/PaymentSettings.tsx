@@ -200,9 +200,9 @@ export default function PaymentSettings() {
               <div className="flex items-center gap-3">
                 <TestTube className="h-5 w-5 text-amber-600" />
                 <div className="space-y-0.5">
-                  <Label className="text-base font-medium">وضع الاختبار</Label>
+                  <Label className="text-base font-medium">وضع المحاكاة (بدون iframe)</Label>
                   <p className="text-sm text-muted-foreground">
-                    محاكاة الدفع بدون عمليات حقيقية (للتجربة فقط)
+                    تخطي نافذة الدفع ومحاكاة النجاح مباشرة (للعرض فقط)
                   </p>
                 </div>
               </div>
@@ -216,8 +216,27 @@ export default function PaymentSettings() {
               <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-700">
                 <AlertCircle className="h-5 w-5 mt-0.5 shrink-0" />
                 <p className="text-sm">
-                  في وضع الاختبار، سيتم محاكاة الدفع بنجاح دون إجراء عمليات حقيقية. 
-                  يُستخدم للتجربة والعرض فقط.
+                  وضع المحاكاة يتخطى نافذة Tranzila تماماً ويعتبر الدفع ناجحاً فوراً.
+                  <br />
+                  للاختبار مع نافذة الدفع الحقيقية، أوقف هذا الوضع واستخدم بطاقة تجريبية.
+                </p>
+              </div>
+            )}
+
+            {/* Test Cards Info */}
+            {!formData.test_mode && (
+              <div className="p-4 border rounded-lg bg-blue-500/10 border-blue-500/20">
+                <h4 className="font-medium text-blue-700 mb-2 flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  بطاقات تجريبية للاختبار
+                </h4>
+                <div className="text-sm text-blue-600 space-y-1 font-mono" dir="ltr">
+                  <p>Card: <span className="bg-blue-100 px-2 py-0.5 rounded">4580 4580 4580 4580</span></p>
+                  <p>Expiry: Any future date (e.g., 12/29)</p>
+                  <p>CVV: <span className="bg-blue-100 px-2 py-0.5 rounded">123</span></p>
+                </div>
+                <p className="text-xs text-blue-500 mt-2">
+                  * تحقق من Tranzila إذا كان المسوف يدعم بطاقات الاختبار
                 </p>
               </div>
             )}

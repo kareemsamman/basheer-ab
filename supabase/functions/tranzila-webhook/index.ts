@@ -80,8 +80,8 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Check if payment was already processed
-    if (payment.cheque_status === 'paid') {
+    // Check if payment was already processed (refused=false means paid for visa)
+    if (payment.tranzila_response_code === '000' || payment.tranzila_response_code === '0') {
       console.log('Payment already processed:', payment.id)
       return new globalThis.Response('OK', { 
         status: 200,
@@ -94,11 +94,11 @@ Deno.serve(async (req) => {
     const isSuccess = responseCode === '000' || responseCode === '0'
 
     if (isSuccess) {
-      // Update payment to success
+      // Update payment to success - use refused=false to indicate paid
       const { error: updateError } = await supabase
         .from('policy_payments')
         .update({
-          cheque_status: 'paid',
+          refused: false,
           tranzila_transaction_id: tranzilaIndex,
           tranzila_approval_code: confirmationCode,
           tranzila_response_code: responseCode,
@@ -115,11 +115,10 @@ Deno.serve(async (req) => {
 
       console.log('Payment marked as paid:', payment.id)
     } else {
-      // Mark as failed
+      // Mark as failed - use refused=true
       const { error: updateError } = await supabase
         .from('policy_payments')
         .update({
-          cheque_status: 'failed',
           tranzila_response_code: responseCode,
           refused: true,
           notes: payment.notes 

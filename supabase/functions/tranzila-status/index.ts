@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
     // Fetch payment status
     const { data: payment, error: paymentError } = await supabase
       .from('policy_payments')
-      .select('id, cheque_status, tranzila_transaction_id, tranzila_approval_code, tranzila_response_code')
+      .select('id, tranzila_transaction_id, tranzila_approval_code, tranzila_response_code, refused')
       .eq('id', paymentId)
       .single()
 
@@ -60,9 +60,17 @@ Deno.serve(async (req) => {
       })
     }
 
+    // Determine status: paid if response_code is 000/0 and refused=false
+    let status = 'pending'
+    if ((payment.tranzila_response_code === '000' || payment.tranzila_response_code === '0') && payment.refused === false) {
+      status = 'paid'
+    } else if (payment.refused === true && payment.tranzila_response_code) {
+      status = 'failed'
+    }
+
     return new Response(JSON.stringify({
       payment_id: payment.id,
-      status: payment.cheque_status,
+      status,
       transaction_id: payment.tranzila_transaction_id,
       approval_code: payment.tranzila_approval_code,
       response_code: payment.tranzila_response_code,
