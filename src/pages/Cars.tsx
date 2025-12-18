@@ -234,6 +234,10 @@ export default function Cars() {
                   cars.map((car, index) => (
                     <TableRow
                       key={car.id}
+                      onClick={() => {
+                        setSelectedCar(car);
+                        setDrawerOpen(true);
+                      }}
                       className={cn(
                         "border-border/30 transition-colors cursor-pointer",
                         "hover:bg-secondary/50 animate-fade-in"
@@ -288,7 +292,10 @@ export default function Cars() {
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <RowActionsMenu
-                          onView={() => {}}
+                          onView={() => {
+                            setSelectedCar(car);
+                            setDrawerOpen(true);
+                          }}
                           onEdit={() => {
                             setSelectedCar(car);
                             setDrawerOpen(true);
