@@ -165,6 +165,9 @@ export function InvoiceVisualBuilder({
       canvas.on('object:modified', handleObjectModified);
       canvas.on('object:moving', handleObjectMoving);
 
+      // Handle text editing on canvas
+      canvas.on('text:changed', handleTextChanged);
+
       // Load existing elements
       loadElementsToCanvas(elements, canvas);
 
@@ -270,6 +273,30 @@ export function InvoiceVisualBuilder({
         left: Math.round(obj.left! / GRID_SIZE) * GRID_SIZE,
         top: Math.round(obj.top! / GRID_SIZE) * GRID_SIZE,
       });
+    }
+  };
+
+  // Handle text editing directly on canvas
+  const handleTextChanged = (e: any) => {
+    const obj = e.target;
+    if (!obj || !(obj as any).elementId) return;
+
+    const elementId = (obj as any).elementId;
+    const newText = obj.text || '';
+
+    setElements(prev => {
+      const updated = prev.map(el => {
+        if (el.id === elementId) {
+          return { ...el, content: newText };
+        }
+        return el;
+      });
+      return updated;
+    });
+
+    // Update selected element if it's the one being edited
+    if (selectedElement?.id === elementId) {
+      setSelectedElement(prev => prev ? { ...prev, content: newText } : null);
     }
   };
 
@@ -411,12 +438,16 @@ export function InvoiceVisualBuilder({
   };
 
   const addElement = (type: TemplateElement['type'], fieldKey?: string) => {
+    addElementAtPosition(type, 50, 50, fieldKey);
+  };
+
+  const addElementAtPosition = (type: TemplateElement['type'], x: number, y: number, fieldKey?: string) => {
     const id = `el_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const newElement: TemplateElement = {
       id,
       type,
-      x: 50,
-      y: 50,
+      x: Math.round(x / GRID_SIZE) * GRID_SIZE,
+      y: Math.round(y / GRID_SIZE) * GRID_SIZE,
       width: type === 'line' ? 200 : type === 'logo' || type === 'image' ? 100 : 150,
       height: type === 'line' ? 2 : type === 'logo' || type === 'image' ? 80 : 30,
       style: {
@@ -609,8 +640,30 @@ export function InvoiceVisualBuilder({
           )}
         </div>
 
-        {/* Canvas Container */}
-        <div className="flex-1 overflow-auto bg-muted/30 rounded-lg p-4 flex items-start justify-center">
+        {/* Canvas Container with drag-drop support */}
+        <div 
+          className="flex-1 overflow-auto bg-muted/30 rounded-lg p-4 flex items-start justify-center"
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            const elementType = e.dataTransfer.getData('elementType') as TemplateElement['type'];
+            const fieldKey = e.dataTransfer.getData('fieldKey');
+            if (elementType) {
+              // Calculate drop position relative to canvas
+              const canvasRect = canvasRef.current?.getBoundingClientRect();
+              if (canvasRect) {
+                const x = Math.max(0, Math.min(A4_WIDTH - 100, e.clientX - canvasRect.left));
+                const y = Math.max(0, Math.min(A4_HEIGHT - 30, e.clientY - canvasRect.top));
+                addElementAtPosition(elementType, x, y, fieldKey || undefined);
+              } else {
+                addElement(elementType, fieldKey || undefined);
+              }
+            }
+          }}
+        >
           <div className="shadow-lg border bg-white">
             <canvas ref={canvasRef} />
           </div>
@@ -621,6 +674,7 @@ export function InvoiceVisualBuilder({
       <InvoicePropertiesPanel
         element={selectedElement}
         onUpdate={(updates) => selectedElement && updateElement(selectedElement.id, updates)}
+        onDelete={() => selectedElement && deleteElement(selectedElement.id)}
         language={language}
         dynamicFields={DYNAMIC_FIELDS}
       />
