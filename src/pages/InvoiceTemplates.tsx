@@ -89,9 +89,11 @@ export default function InvoiceTemplates() {
       toast({ title: "خطأ", description: "فشل في تحميل القوالب", variant: "destructive" });
       return;
     }
-    setTemplates((data || []).map(t => ({
+    setTemplates((data || []).map((t: any) => ({
       ...t,
-      template_layout_json: (t.template_layout_json as unknown as TemplateElement[]) || []
+      template_layout_json: Array.isArray(t.template_layout_json)
+        ? (t.template_layout_json as unknown as TemplateElement[])
+        : [],
     })));
   };
 
