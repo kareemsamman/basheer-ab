@@ -43,6 +43,7 @@ const adminNav = [
   { name: "المستخدمون", href: "/admin/users", icon: UserCog },
   { name: "أنواع التأمين", href: "/admin/insurance-categories", icon: FileText },
   { name: "قوالب الفواتير", href: "/admin/invoice-templates", icon: FileText },
+  { name: "إعدادات الدفع", href: "/admin/payment-settings", icon: CreditCard },
   { name: "الإعدادات", href: "/settings", icon: Settings },
 ];
 

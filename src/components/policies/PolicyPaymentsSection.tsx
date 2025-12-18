@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Plus, Pencil, Trash2, CreditCard, Loader2, ImageIcon, X, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
+import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal";
 import type { Enums } from "@/integrations/supabase/types";
 
 interface Payment {
@@ -65,6 +66,13 @@ export function PolicyPaymentsSection({
   const [deleting, setDeleting] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [tranzilaEnabled, setTranzilaEnabled] = useState(false);
+  const [tranzilaModalOpen, setTranzilaModalOpen] = useState(false);
+  const [pendingTranzilaPayment, setPendingTranzilaPayment] = useState<{
+    amount: number;
+    date: string;
+    notes: string;
+  } | null>(null);
 
   const [formData, setFormData] = useState({
     amount: "",
@@ -78,6 +86,23 @@ export function PolicyPaymentsSection({
   // Calculate total paid (excluding refused)
   const totalPaid = payments.filter(p => !p.refused).reduce((sum, p) => sum + p.amount, 0);
   const remaining = insurancePrice - totalPaid;
+
+  // Check if Tranzila is enabled
+  useEffect(() => {
+    const checkTranzila = async () => {
+      try {
+        const { data } = await supabase
+          .from('payment_settings')
+          .select('is_enabled')
+          .eq('provider', 'tranzila')
+          .single();
+        setTranzilaEnabled(data?.is_enabled || false);
+      } catch {
+        setTranzilaEnabled(false);
+      }
+    };
+    checkTranzila();
+  }, []);
 
   // Auto-open add dialog when triggered from parent
   useEffect(() => {
@@ -146,6 +171,18 @@ export function PolicyPaymentsSection({
       return;
     }
 
+    // If Visa and Tranzila enabled, use Tranzila flow
+    if (formData.payment_type === 'visa' && tranzilaEnabled) {
+      setPendingTranzilaPayment({
+        amount,
+        date: formData.payment_date,
+        notes: formData.notes,
+      });
+      setAddDialogOpen(false);
+      setTranzilaModalOpen(true);
+      return;
+    }
+
     setSaving(true);
     try {
       const { error } = await supabase
@@ -172,6 +209,16 @@ export function PolicyPaymentsSection({
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleTranzilaSuccess = () => {
+    resetForm();
+    setPendingTranzilaPayment(null);
+    onPaymentsChange();
+  };
+
+  const handleTranzilaFailure = () => {
+    setPendingTranzilaPayment(null);
   };
 
   const handleEdit = async () => {
@@ -581,6 +628,20 @@ export function PolicyPaymentsSection({
             />
           </DialogContent>
         </Dialog>
+      )}
+
+      {/* Tranzila Payment Modal */}
+      {pendingTranzilaPayment && (
+        <TranzilaPaymentModal
+          open={tranzilaModalOpen}
+          onOpenChange={setTranzilaModalOpen}
+          policyId={policyId}
+          amount={pendingTranzilaPayment.amount}
+          paymentDate={pendingTranzilaPayment.date}
+          notes={pendingTranzilaPayment.notes}
+          onSuccess={handleTranzilaSuccess}
+          onFailure={handleTranzilaFailure}
+        />
       )}
     </>
   );
