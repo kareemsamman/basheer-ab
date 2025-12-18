@@ -42,6 +42,7 @@ interface Client {
   notes: string | null;
   image_url: string | null;
   created_at: string;
+  broker_id: string | null;
 }
 
 export default function Clients() {
