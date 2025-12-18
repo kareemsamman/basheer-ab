@@ -56,6 +56,7 @@ interface Company {
   id: string;
   name: string;
   name_ar: string | null;
+  category_parent: string | null;
 }
 
 interface Broker {
@@ -76,6 +77,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [loadingCompanies, setLoadingCompanies] = useState(false);
   const [brokers, setBrokers] = useState<Broker[]>([]);
 
   const [formData, setFormData] = useState({
@@ -95,7 +97,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
 
   useEffect(() => {
     if (open) {
-      fetchCompanies();
+      fetchCompanies(policy.policy_type_parent);
       fetchBrokers();
       // Reset form when opening
       setFormData({
@@ -115,12 +117,20 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
     }
   }, [open, policy]);
 
-  const fetchCompanies = async () => {
-    const { data } = await supabase
+  const fetchCompanies = async (policyType?: string) => {
+    setLoadingCompanies(true);
+    let query = supabase
       .from('insurance_companies')
-      .select('id, name, name_ar')
+      .select('id, name, name_ar, category_parent')
       .eq('active', true)
       .order('name');
+    
+    if (policyType) {
+      query = query.eq('category_parent', policyType as any);
+    }
+    
+    const { data } = await query;
+    setLoadingCompanies(false);
     if (data) setCompanies(data);
   };
 
@@ -215,11 +225,15 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
                 <Label>نوع الوثيقة</Label>
                 <Select
                   value={formData.policy_type_parent}
-                  onValueChange={(v) => setFormData(f => ({ 
-                    ...f, 
-                    policy_type_parent: v,
-                    policy_type_child: POLICY_TYPES.find(t => t.value === v)?.hasChild ? f.policy_type_child : ""
-                  }))}
+                  onValueChange={(v) => {
+                    setFormData(f => ({ 
+                      ...f, 
+                      policy_type_parent: v,
+                      policy_type_child: POLICY_TYPES.find(t => t.value === v)?.hasChild ? f.policy_type_child : "",
+                      company_id: "" // Reset company when type changes
+                    }));
+                    fetchCompanies(v);
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="اختر النوع" />
@@ -255,16 +269,23 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
                 <Select
                   value={formData.company_id}
                   onValueChange={(v) => setFormData(f => ({ ...f, company_id: v }))}
+                  disabled={!formData.policy_type_parent}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="اختر الشركة" />
+                  <SelectTrigger className={!formData.policy_type_parent ? "opacity-50" : ""}>
+                    <SelectValue placeholder={formData.policy_type_parent ? "اختر الشركة" : "اختر نوع الوثيقة أولاً"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {companies.map(company => (
-                      <SelectItem key={company.id} value={company.id}>
-                        {company.name_ar || company.name}
-                      </SelectItem>
-                    ))}
+                    {loadingCompanies ? (
+                      <div className="p-2 text-center text-sm text-muted-foreground">جاري التحميل...</div>
+                    ) : companies.length === 0 ? (
+                      <div className="p-2 text-center text-sm text-muted-foreground">لا توجد شركات لهذا النوع</div>
+                    ) : (
+                      companies.map(company => (
+                        <SelectItem key={company.id} value={company.id}>
+                          {company.name_ar || company.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>

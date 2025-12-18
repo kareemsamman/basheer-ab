@@ -51,6 +51,7 @@ interface Company {
   id: string;
   name: string;
   name_ar: string | null;
+  category_parent: string | null;
 }
 
 interface Broker {
@@ -245,7 +246,14 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
       resetForm();
     }
 
-    fetchCompanies();
+    // Fetch companies based on restored policy type if available
+    const draft = sessionStorage.getItem(POLICY_WIZARD_DRAFT_KEY);
+    if (draft) {
+      const parsed = JSON.parse(draft);
+      if (parsed.policy?.policy_type_parent) {
+        fetchCompanies(parsed.policy.policy_type_parent);
+      }
+    }
     fetchBrokers();
   }, [open, defaultBrokerId]);
 
@@ -428,17 +436,28 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
     }
   };
 
-  const fetchCompanies = async () => {
+  const fetchCompanies = async (policyType?: string) => {
     setLoadingCompanies(true);
-    const { data, error } = await supabase
+    let query = supabase
       .from('insurance_companies')
       .select('*')
       .eq('active', true)
       .order('name');
     
+    // Filter by category_parent if policy type is selected
+    if (policyType) {
+      query = query.eq('category_parent', policyType as any);
+    }
+    
+    const { data, error } = await query;
+    
     setLoadingCompanies(false);
     if (!error && data) {
       setCompanies(data);
+      // Auto-select if only one company matches
+      if (data.length === 1 && policyType) {
+        setPolicy(p => ({ ...p, company_id: data[0].id }));
+      }
     }
   };
 
@@ -1330,21 +1349,16 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
             <div className="space-y-4">
               <h3 className="font-semibold text-lg">تفاصيل الوثيقة</h3>
 
-              {companies.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-destructive mb-4">لا توجد شركات تأمين. الرجاء إضافة شركة أولاً</p>
-                  <Button variant="outline" onClick={() => window.location.href = '/companies'}>
-                    إضافة شركة تأمين
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid gap-4">
+              <div className="grid gap-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <Label>نوع الوثيقة *</Label>
                       <Select
                         value={policy.policy_type_parent}
-                        onValueChange={(v) => setPolicy({ ...policy, policy_type_parent: v, policy_type_child: "" })}
+                        onValueChange={(v) => {
+                          setPolicy({ ...policy, policy_type_parent: v, policy_type_child: "", company_id: "" });
+                          fetchCompanies(v);
+                        }}
                       >
                         <SelectTrigger className={errors.policy_type_parent ? "border-destructive" : ""}>
                           <SelectValue placeholder="اختر النوع" />
@@ -1379,14 +1393,27 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
 
                   <div>
                     <Label>شركة التأمين *</Label>
-                    <Select value={policy.company_id} onValueChange={(v) => setPolicy({ ...policy, company_id: v })}>
-                      <SelectTrigger className={errors.company_id ? "border-destructive" : ""}>
-                        <SelectValue placeholder="اختر الشركة" />
+                    <Select 
+                      value={policy.company_id} 
+                      onValueChange={(v) => setPolicy({ ...policy, company_id: v })}
+                      disabled={!policy.policy_type_parent}
+                    >
+                      <SelectTrigger className={cn(
+                        errors.company_id ? "border-destructive" : "",
+                        !policy.policy_type_parent && "opacity-50"
+                      )}>
+                        <SelectValue placeholder={policy.policy_type_parent ? "اختر الشركة" : "اختر نوع الوثيقة أولاً"} />
                       </SelectTrigger>
                       <SelectContent>
-                        {companies.map(c => (
-                          <SelectItem key={c.id} value={c.id}>{c.name_ar || c.name}</SelectItem>
-                        ))}
+                        {loadingCompanies ? (
+                          <div className="p-2 text-center text-sm text-muted-foreground">جاري التحميل...</div>
+                        ) : companies.length === 0 ? (
+                          <div className="p-2 text-center text-sm text-muted-foreground">لا توجد شركات لهذا النوع</div>
+                        ) : (
+                          companies.map(c => (
+                            <SelectItem key={c.id} value={c.id}>{c.name_ar || c.name}</SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
                     <FieldError error={errors.company_id} />
@@ -1538,7 +1565,6 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                     )}
                   </div>
                 </div>
-              )}
             </div>
           )}
 

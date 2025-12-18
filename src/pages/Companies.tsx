@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -23,12 +24,20 @@ import type { Tables } from '@/integrations/supabase/types';
 
 type Company = Tables<'insurance_companies'>;
 
+const POLICY_TYPES = [
+  { value: "ELZAMI", label: "إلزامي" },
+  { value: "THIRD_FULL", label: "ثالث/شامل" },
+  { value: "ROAD_SERVICE", label: "خدمات الطريق" },
+  { value: "ACCIDENT_FEE_EXEMPTION", label: "إعفاء رسوم حادث" },
+];
+
 export default function Companies() {
   const { toast } = useToast();
   const { isAdmin } = useAuth();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [pricingDrawerOpen, setPricingDrawerOpen] = useState(false);
@@ -44,6 +53,10 @@ export default function Companies() {
 
       if (searchQuery) {
         query = query.or(`name.ilike.%${searchQuery}%,name_ar.ilike.%${searchQuery}%`);
+      }
+
+      if (typeFilter && typeFilter !== 'all') {
+        query = query.eq('category_parent', typeFilter as any);
       }
 
       const { data, error } = await query;
@@ -64,7 +77,7 @@ export default function Companies() {
 
   useEffect(() => {
     fetchCompanies();
-  }, [searchQuery]);
+  }, [searchQuery, typeFilter]);
 
   const handleAddCompany = () => {
     setSelectedCompany(null);
@@ -120,14 +133,27 @@ export default function Companies() {
       <div className="p-6 space-y-6">
         {/* Actions Bar */}
         <div className="flex flex-col sm:flex-row gap-4 justify-between">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="بحث عن شركة..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pr-10"
-            />
+          <div className="flex flex-1 gap-4 max-w-2xl">
+            <div className="relative flex-1">
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="بحث عن شركة..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pr-10"
+              />
+            </div>
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="جميع الأنواع" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">جميع الأنواع</SelectItem>
+                {POLICY_TYPES.map(type => (
+                  <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <Button onClick={handleAddCompany}>
             <Plus className="h-4 w-4 ml-2" />
@@ -142,6 +168,7 @@ export default function Companies() {
               <TableRow>
                 <TableHead className="text-right">الاسم بالعربية</TableHead>
                 <TableHead className="text-right">الاسم بالإنجليزية</TableHead>
+                <TableHead className="text-right">نوع التأمين</TableHead>
                 <TableHead className="text-right">الحالة</TableHead>
                 <TableHead className="text-right">تاريخ الإنشاء</TableHead>
                 <TableHead className="text-right">الإجراءات</TableHead>
@@ -153,6 +180,7 @@ export default function Companies() {
                   <TableRow key={i}>
                     <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                    <TableCell><Skeleton className="h-6 w-20" /></TableCell>
                     <TableCell><Skeleton className="h-6 w-16" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-8 w-24" /></TableCell>
@@ -160,7 +188,7 @@ export default function Companies() {
                 ))
               ) : companies.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                     لا توجد شركات تأمين
                   </TableCell>
                 </TableRow>
@@ -175,6 +203,15 @@ export default function Companies() {
                       {company.name_ar || '-'}
                     </TableCell>
                     <TableCell>{company.name}</TableCell>
+                    <TableCell>
+                      {company.category_parent ? (
+                        <Badge variant="outline">
+                          {POLICY_TYPES.find(t => t.value === company.category_parent)?.label || company.category_parent}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">غير محدد</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Badge variant={company.active ? 'default' : 'secondary'}>
                         {company.active ? 'نشط' : 'غير نشط'}

@@ -10,11 +10,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import type { Tables } from '@/integrations/supabase/types';
+import type { Tables, Enums } from '@/integrations/supabase/types';
 
 type Company = Tables<'insurance_companies'>;
+
+const POLICY_TYPES = [
+  { value: "ELZAMI", label: "إلزامي" },
+  { value: "THIRD_FULL", label: "ثالث/شامل" },
+  { value: "ROAD_SERVICE", label: "خدمات الطريق" },
+  { value: "ACCIDENT_FEE_EXEMPTION", label: "إعفاء رسوم حادث" },
+];
 
 interface CompanyDrawerProps {
   open: boolean;
@@ -29,6 +37,7 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
   const [formData, setFormData] = useState({
     name: '',
     name_ar: '',
+    category_parent: '' as string,
     active: true,
   });
 
@@ -37,12 +46,14 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
       setFormData({
         name: company.name,
         name_ar: company.name_ar || '',
+        category_parent: company.category_parent || '',
         active: company.active ?? true,
       });
     } else {
       setFormData({
         name: '',
         name_ar: '',
+        category_parent: '',
         active: true,
       });
     }
@@ -60,6 +71,15 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
       return;
     }
 
+    if (!formData.category_parent) {
+      toast({
+        title: 'خطأ',
+        description: 'الرجاء اختيار نوع التأمين',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       if (company) {
@@ -69,6 +89,7 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
           .update({
             name: formData.name.trim(),
             name_ar: formData.name_ar.trim() || null,
+            category_parent: formData.category_parent as Enums<'policy_type_parent'>,
             active: formData.active,
           })
           .eq('id', company.id);
@@ -86,6 +107,7 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
           .insert({
             name: formData.name.trim(),
             name_ar: formData.name_ar.trim() || null,
+            category_parent: formData.category_parent as Enums<'policy_type_parent'>,
             active: formData.active,
           });
 
@@ -139,6 +161,23 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
               onChange={(e) => setFormData({ ...formData, name_ar: e.target.value })}
               placeholder="اسم الشركة"
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label>نوع التأمين *</Label>
+            <Select
+              value={formData.category_parent}
+              onValueChange={(v) => setFormData({ ...formData, category_parent: v })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="اختر نوع التأمين" />
+              </SelectTrigger>
+              <SelectContent>
+                {POLICY_TYPES.map(type => (
+                  <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex items-center justify-between">
