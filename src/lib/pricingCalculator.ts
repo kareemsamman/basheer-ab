@@ -97,11 +97,13 @@ export async function calculatePolicyProfit(params: CalculateProfitParams): Prom
 
       // FULL calculation
       if (policyTypeChild === 'FULL') {
-        // Get discount for third component
+        // Get discount - this is a FIXED ₪ amount that REPLACES third_price, NOT a percentage
         const discount = getRuleValue('DISCOUNT', true, false);
+        
+        // If discount exists, use it as third_component; otherwise use thirdPrice
         let thirdComponent = thirdPrice;
         if (discount > 0) {
-          thirdComponent = thirdPrice * (1 - discount / 100);
+          thirdComponent = discount;  // FIXED: discount replaces third_price, not reduces it
         }
 
         // Get min price and full percent
