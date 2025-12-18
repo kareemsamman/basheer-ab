@@ -1533,8 +1533,8 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
             </div>
           )}
 
-          {/* Step 2: Car */}
-          {currentStep === 2 && (
+          {/* Step 2: Car (only for FULL mode) */}
+          {currentStep === 2 && !isLightMode && (
             <div className="space-y-4">
               <h3 className="font-semibold text-lg">اختر أو أضف سيارة</h3>
 
@@ -1712,80 +1712,94 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
             </div>
           )}
 
-          {/* Step 3: Policy */}
-          {currentStep === 3 && (
+          {/* Step 3 (FULL) / Step 2 (LIGHT): Policy */}
+          {((currentStep === 3 && !isLightMode) || (currentStep === 2 && isLightMode)) && (
             <div className="space-y-4">
               <h3 className="font-semibold text-lg">تفاصيل الوثيقة</h3>
 
               <div className="grid gap-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <Label>نوع الوثيقة *</Label>
-                      <Select
-                        value={policy.policy_type_parent}
-                        onValueChange={(v) => {
-                          setPolicy({ ...policy, policy_type_parent: v, policy_type_child: "", company_id: "" });
-                          fetchCompanies(v);
-                        }}
-                      >
-                        <SelectTrigger className={errors.policy_type_parent ? "border-destructive" : ""}>
-                          <SelectValue placeholder="اختر النوع" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CAR_POLICY_TYPES.map(t => (
-                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FieldError error={errors.policy_type_parent} />
-                    </div>
-                    {CAR_POLICY_TYPES.find(t => t.value === policy.policy_type_parent)?.hasChild && (
+                  {/* Show policy type selector only for FULL mode */}
+                  {!isLightMode && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <Label>النوع الفرعي *</Label>
+                        <Label>نوع الوثيقة *</Label>
                         <Select
-                          value={policy.policy_type_child}
-                          onValueChange={(v) => setPolicy({ ...policy, policy_type_child: v })}
+                          value={policy.policy_type_parent}
+                          onValueChange={(v) => {
+                            setPolicy({ ...policy, policy_type_parent: v, policy_type_child: "", company_id: "" });
+                            fetchCompanies(v);
+                          }}
                         >
-                          <SelectTrigger className={errors.policy_type_child ? "border-destructive" : ""}>
-                            <SelectValue placeholder="اختر" />
+                          <SelectTrigger className={errors.policy_type_parent ? "border-destructive" : ""}>
+                            <SelectValue placeholder="اختر النوع" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="THIRD">طرف ثالث</SelectItem>
-                            <SelectItem value="FULL">شامل</SelectItem>
+                            {CAR_POLICY_TYPES.map(t => (
+                              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
-                        <FieldError error={errors.policy_type_child} />
+                        <FieldError error={errors.policy_type_parent} />
                       </div>
-                    )}
-                  </div>
+                      {CAR_POLICY_TYPES.find(t => t.value === policy.policy_type_parent)?.hasChild && (
+                        <div>
+                          <Label>النوع الفرعي *</Label>
+                          <Select
+                            value={policy.policy_type_child}
+                            onValueChange={(v) => setPolicy({ ...policy, policy_type_child: v })}
+                          >
+                            <SelectTrigger className={errors.policy_type_child ? "border-destructive" : ""}>
+                              <SelectValue placeholder="اختر" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="THIRD">طرف ثالث</SelectItem>
+                              <SelectItem value="FULL">شامل</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FieldError error={errors.policy_type_child} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Show selected category for LIGHT mode */}
+                  {isLightMode && selectedCategory && (
+                    <Card className="p-3 bg-muted/50">
+                      <p className="text-sm text-muted-foreground">نوع التأمين</p>
+                      <p className="font-medium">{selectedCategory.name_ar || selectedCategory.name}</p>
+                    </Card>
+                  )}
 
-                  <div>
-                    <Label>شركة التأمين *</Label>
-                    <Select 
-                      value={policy.company_id} 
-                      onValueChange={(v) => setPolicy({ ...policy, company_id: v })}
-                      disabled={!policy.policy_type_parent}
-                    >
-                      <SelectTrigger className={cn(
-                        errors.company_id ? "border-destructive" : "",
-                        !policy.policy_type_parent && "opacity-50"
-                      )}>
-                        <SelectValue placeholder={policy.policy_type_parent ? "اختر الشركة" : "اختر نوع الوثيقة أولاً"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {loadingCompanies ? (
-                          <div className="p-2 text-center text-sm text-muted-foreground">جاري التحميل...</div>
-                        ) : companies.length === 0 ? (
-                          <div className="p-2 text-center text-sm text-muted-foreground">لا توجد شركات لهذا النوع</div>
-                        ) : (
-                          companies.map(c => (
-                            <SelectItem key={c.id} value={c.id}>{c.name_ar || c.name}</SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                    <FieldError error={errors.company_id} />
-                  </div>
+                  {/* Company selector only for FULL mode */}
+                  {!isLightMode && (
+                    <div>
+                      <Label>شركة التأمين *</Label>
+                      <Select 
+                        value={policy.company_id} 
+                        onValueChange={(v) => setPolicy({ ...policy, company_id: v })}
+                        disabled={!policy.policy_type_parent}
+                      >
+                        <SelectTrigger className={cn(
+                          errors.company_id ? "border-destructive" : "",
+                          !policy.policy_type_parent && "opacity-50"
+                        )}>
+                          <SelectValue placeholder={policy.policy_type_parent ? "اختر الشركة" : "اختر نوع الوثيقة أولاً"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {loadingCompanies ? (
+                            <div className="p-2 text-center text-sm text-muted-foreground">جاري التحميل...</div>
+                          ) : companies.length === 0 ? (
+                            <div className="p-2 text-center text-sm text-muted-foreground">لا توجد شركات لهذا النوع</div>
+                          ) : (
+                            companies.map(c => (
+                              <SelectItem key={c.id} value={c.id}>{c.name_ar || c.name}</SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <FieldError error={errors.company_id} />
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -2014,8 +2028,8 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
             </div>
           )}
 
-          {/* Step 4: Payments */}
-          {currentStep === 4 && (
+          {/* Step 4 (FULL) / Step 3 (LIGHT): Payments */}
+          {((currentStep === 4 && !isLightMode) || (currentStep === 3 && isLightMode)) && (
             <div className="space-y-4">
               {/* Policy Summary Card */}
               <Card className="p-4 bg-primary/5 border-primary/20">
@@ -2025,14 +2039,18 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                     <span className="text-muted-foreground">العميل:</span>
                     <p className="font-medium">{selectedClient?.full_name || newClient.full_name || '-'}</p>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">السيارة:</span>
-                    <p className="font-medium font-mono" dir="ltr">{selectedCar?.car_number || existingCar?.car_number || newCar.car_number || '-'}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">الشركة:</span>
-                    <p className="font-medium">{companies.find(c => c.id === policy.company_id)?.name_ar || companies.find(c => c.id === policy.company_id)?.name || '-'}</p>
-                  </div>
+                  {!isLightMode && (
+                    <div>
+                      <span className="text-muted-foreground">السيارة:</span>
+                      <p className="font-medium font-mono" dir="ltr">{selectedCar?.car_number || existingCar?.car_number || newCar.car_number || '-'}</p>
+                    </div>
+                  )}
+                  {!isLightMode && (
+                    <div>
+                      <span className="text-muted-foreground">الشركة:</span>
+                      <p className="font-medium">{companies.find(c => c.id === policy.company_id)?.name_ar || companies.find(c => c.id === policy.company_id)?.name || '-'}</p>
+                    </div>
+                  )}
                   <div>
                     <span className="text-muted-foreground">سعر التأمين:</span>
                     <p className="font-bold text-primary text-lg">₪ {policy.insurance_price ? parseFloat(policy.insurance_price).toLocaleString() : '0'}</p>
@@ -2181,7 +2199,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
             {currentStep === 1 ? "إلغاء" : "السابق"}
           </Button>
           
-          {currentStep < 4 ? (
+          {currentStep < STEPS.length ? (
             <Button onClick={handleNext} disabled={!canProceed()}>
               التالي
             </Button>
