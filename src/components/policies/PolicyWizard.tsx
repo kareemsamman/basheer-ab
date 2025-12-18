@@ -220,6 +220,8 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
   const totalPaidPayments = payments.filter(p => !p.refused).reduce((sum, p) => sum + (p.amount || 0), 0);
   const remainingToPay = insurancePrice - totalPaidPayments;
   const paymentsExceedPrice = totalPaidPayments > insurancePrice && insurancePrice > 0;
+  // Check if there are any visa payments that haven't been paid via Tranzila
+  const hasUnpaidVisaPayment = payments.some(p => p.payment_type === 'visa' && !p.tranzila_paid && !p.refused);
 
   const clearDraft = () => {
     try {
@@ -925,8 +927,8 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
         case 2:
           return !!(policy.start_date && policy.end_date && policy.insurance_price);
         case 3:
-          // Block if payments exceed insurance price
-          return !paymentsExceedPrice;
+          // Block if payments exceed insurance price or has unpaid visa payments
+          return !paymentsExceedPrice && !hasUnpaidVisaPayment;
         default:
           return false;
       }
@@ -947,8 +949,8 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
         case 3:
           return !!(policy.policy_type_parent && policy.company_id && policy.start_date && policy.end_date && policy.insurance_price);
         case 4:
-          // Block if payments exceed insurance price
-          return !paymentsExceedPrice;
+          // Block if payments exceed insurance price or has unpaid visa payments
+          return !paymentsExceedPrice && !hasUnpaidVisaPayment;
         default:
           return false;
       }
@@ -2112,6 +2114,12 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                     <div className="flex items-center gap-2 mt-3 text-destructive text-sm justify-center">
                       <AlertCircle className="h-4 w-4" />
                       <span>مجموع الدفعات يتجاوز سعر التأمين! الحد الأقصى: ₪{insurancePrice.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {hasUnpaidVisaPayment && !paymentsExceedPrice && (
+                    <div className="flex items-center gap-2 mt-3 text-amber-600 text-sm justify-center">
+                      <AlertCircle className="h-4 w-4" />
+                      <span>يوجد دفعة فيزا لم يتم إتمامها. الرجاء إتمام الدفع أو حذف الدفعة للمتابعة.</span>
                     </div>
                   )}
                 </Card>
