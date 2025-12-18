@@ -38,6 +38,8 @@ import {
   AlertCircle,
   CheckCircle,
   CreditCard,
+  Download,
+  BarChart3,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -46,6 +48,7 @@ import { PolicyDetailsDrawer } from '@/components/policies/PolicyDetailsDrawer';
 import { PolicyWizard } from '@/components/policies/PolicyWizard';
 import { ClientDrawer } from '@/components/clients/ClientDrawer';
 import { cn } from '@/lib/utils';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface Client {
   id: string;
@@ -182,7 +185,10 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
   const [paymentTypeFilter, setPaymentTypeFilter] = useState<string>('all');
 
   const fetchBroker = async () => {
-    if (!client.broker_id) return;
+    if (!client.broker_id) {
+      setBroker(null);
+      return;
+    }
     try {
       const { data } = await supabase
         .from('brokers')
@@ -190,8 +196,10 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
         .eq('id', client.broker_id)
         .single();
       if (data) setBroker(data);
+      else setBroker(null);
     } catch (error) {
       console.error('Error fetching broker:', error);
+      setBroker(null);
     }
   };
 
@@ -324,6 +332,91 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
     fetchPayments();
     setNotesValue(client.notes || '');
   }, [client.id]);
+
+  // Watch for broker_id changes and refetch broker
+  useEffect(() => {
+    fetchBroker();
+  }, [client.broker_id]);
+
+  // Charts data
+  const policyTypeChartData = useMemo(() => {
+    const typeCounts: Record<string, number> = {};
+    policies.forEach(p => {
+      const type = policyTypeLabels[p.policy_type_parent] || p.policy_type_parent;
+      typeCounts[type] = (typeCounts[type] || 0) + 1;
+    });
+    return Object.entries(typeCounts).map(([name, value]) => ({ name, value }));
+  }, [policies]);
+
+  const monthlyPaymentsData = useMemo(() => {
+    const monthlyData: Record<string, number> = {};
+    const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+    
+    payments.filter(p => !p.refused).forEach(p => {
+      const date = new Date(p.payment_date);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const monthName = months[date.getMonth()];
+      monthlyData[monthKey] = (monthlyData[monthKey] || 0) + p.amount;
+    });
+
+    // Sort by date and take last 6 months
+    return Object.entries(monthlyData)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-6)
+      .map(([key, amount]) => {
+        const [year, month] = key.split('-');
+        return { name: months[parseInt(month) - 1], amount };
+      });
+  }, [payments]);
+
+  const CHART_COLORS = ['#3b82f6', '#8b5cf6', '#f97316', '#22c55e', '#ef4444', '#06b6d4', '#f59e0b', '#ec4899'];
+
+  // Export functionality
+  const exportToCSV = () => {
+    const csvRows: string[] = [];
+    
+    // Client info
+    csvRows.push('بيانات العميل');
+    csvRows.push(`الاسم,${client.full_name}`);
+    csvRows.push(`رقم الهوية,${client.id_number}`);
+    csvRows.push(`رقم الهاتف,${client.phone_number || ''}`);
+    csvRows.push(`رقم الملف,${client.file_number || ''}`);
+    csvRows.push(`الوسيط,${broker?.name || 'لا يوجد'}`);
+    csvRows.push('');
+    
+    // Policies
+    csvRows.push('الوثائق');
+    csvRows.push('نوع التأمين,الشركة,السيارة,تاريخ البداية,تاريخ الانتهاء,السعر,الحالة');
+    policies.forEach(p => {
+      const status = getPolicyStatus(p);
+      csvRows.push(`${policyTypeLabels[p.policy_type_parent] || p.policy_type_parent},${p.company?.name_ar || p.company?.name || ''},${p.car?.car_number || ''},${p.start_date},${p.end_date},${p.insurance_price},${status.label}`);
+    });
+    csvRows.push('');
+    
+    // Cars
+    csvRows.push('السيارات');
+    csvRows.push('رقم السيارة,الشركة المصنعة,الموديل,السنة,اللون,النوع');
+    cars.forEach(c => {
+      csvRows.push(`${c.car_number},${c.manufacturer_name || ''},${c.model || ''},${c.year || ''},${c.color || ''},${carTypeLabels[c.car_type || ''] || c.car_type || ''}`);
+    });
+    csvRows.push('');
+    
+    // Payments
+    csvRows.push('الدفعات');
+    csvRows.push('المبلغ,التاريخ,طريقة الدفع,الحالة');
+    payments.forEach(p => {
+      const paymentTypeLabel = p.payment_type === 'cash' ? 'نقدي' : p.payment_type === 'cheque' ? 'شيك' : p.payment_type === 'visa' ? 'بطاقة' : 'تحويل';
+      csvRows.push(`${p.amount},${p.payment_date},${paymentTypeLabel},${p.refused ? 'راجع' : 'مقبول'}`);
+    });
+
+    const csvContent = '\ufeff' + csvRows.join('\n'); // BOM for Arabic support
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `client_${client.id_number}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    toast.success('تم تصدير البيانات بنجاح');
+  };
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '-';
@@ -473,10 +566,16 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                 )}
               </div>
               
-              <Button onClick={() => setClientDrawerOpen(true)} className="shrink-0">
-                <Edit className="h-4 w-4 ml-2" />
-                تعديل
-              </Button>
+              <div className="flex gap-2 shrink-0">
+                <Button variant="outline" onClick={exportToCSV}>
+                  <Download className="h-4 w-4 ml-2" />
+                  تصدير
+                </Button>
+                <Button onClick={() => setClientDrawerOpen(true)}>
+                  <Edit className="h-4 w-4 ml-2" />
+                  تعديل
+                </Button>
+              </div>
             </div>
           </div>
           
@@ -631,6 +730,64 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                 )}
               </Card>
             </div>
+
+            {/* Charts Row */}
+            {(policyTypeChartData.length > 0 || monthlyPaymentsData.length > 0) && (
+              <div className="grid md:grid-cols-2 gap-6 mt-6">
+                {/* Policy Breakdown Chart */}
+                {policyTypeChartData.length > 0 && (
+                  <Card className="p-6">
+                    <h3 className="font-semibold text-lg mb-4 flex items-center gap-2">
+                      <BarChart3 className="h-5 w-5 text-primary" />
+                      توزيع الوثائق حسب النوع
+                    </h3>
+                    <div className="h-[200px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={policyTypeChartData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={40}
+                            outerRadius={80}
+                            paddingAngle={5}
+                            dataKey="value"
+                            label={({ name, value }) => `${name}: ${value}`}
+                          >
+                            {policyTypeChartData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </Card>
+                )}
+
+                {/* Monthly Payments Chart */}
+                {monthlyPaymentsData.length > 0 && (
+                  <Card className="p-6">
+                    <h3 className="font-semibold text-lg mb-4 flex items-center gap-2">
+                      <TrendingUp className="h-5 w-5 text-primary" />
+                      الدفعات الشهرية
+                    </h3>
+                    <div className="h-[200px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={monthlyPaymentsData}>
+                          <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                          <YAxis tick={{ fontSize: 12 }} />
+                          <Tooltip 
+                            formatter={(value: number) => [`₪${value.toLocaleString()}`, 'المبلغ']}
+                          />
+                          <Bar dataKey="amount" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </Card>
+                )}
+              </div>
+            )}
           </TabsContent>
 
           {/* Policies Tab */}
