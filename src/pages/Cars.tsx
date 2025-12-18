@@ -35,11 +35,14 @@ interface CarRecord {
   client_id: string;
   manufacturer_name: string | null;
   model: string | null;
+  model_number: string | null;
   year: number | null;
   color: string | null;
   car_type: string | null;
   car_value: number | null;
+  license_type: string | null;
   license_expiry: string | null;
+  last_license: string | null;
   clients?: {
     full_name: string;
   };
@@ -336,6 +339,7 @@ export default function Cars() {
       <CarDrawer
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
+        car={selectedCar}
         onSaved={() => {
           fetchCars();
           setDrawerOpen(false);

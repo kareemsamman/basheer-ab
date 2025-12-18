@@ -3,11 +3,11 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Form,
   FormControl,
@@ -27,7 +27,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, Save, Search, CheckCircle } from 'lucide-react';
+import { Loader2, Save, Search, CheckCircle, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -53,10 +53,30 @@ interface Client {
   full_name: string;
 }
 
+interface CarRecord {
+  id: string;
+  car_number: string;
+  client_id: string;
+  manufacturer_name: string | null;
+  model: string | null;
+  model_number: string | null;
+  year: number | null;
+  color: string | null;
+  license_type: string | null;
+  license_expiry: string | null;
+  last_license: string | null;
+  car_value: number | null;
+  car_type: string | null;
+  clients?: {
+    full_name: string;
+  };
+}
+
 interface CarDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   clientId?: string;
+  car?: CarRecord | null;
   onSaved: () => void;
 }
 
@@ -69,12 +89,14 @@ const CAR_TYPES = [
   { value: 'tjeraup4', label: 'تجارة أكثر من 4 طن' },
 ];
 
-export function CarDrawer({ open, onOpenChange, clientId, onSaved }: CarDrawerProps) {
+export function CarDrawer({ open, onOpenChange, clientId, car, onSaved }: CarDrawerProps) {
   const [saving, setSaving] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [fetchedFromGov, setFetchedFromGov] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [loadingClients, setLoadingClients] = useState(false);
+
+  const isEditMode = !!car;
 
   const form = useForm<CarFormData>({
     resolver: zodResolver(carSchema),
@@ -101,6 +123,7 @@ export function CarDrawer({ open, onOpenChange, clientId, onSaved }: CarDrawerPr
       supabase
         .from('clients')
         .select('id, full_name')
+        .is('deleted_at', null)
         .order('full_name')
         .limit(100)
         .then(({ data, error }) => {
@@ -112,26 +135,45 @@ export function CarDrawer({ open, onOpenChange, clientId, onSaved }: CarDrawerPr
     }
   }, [open, clientId]);
 
-  // Reset form when drawer opens
+  // Reset/populate form when drawer opens
   useEffect(() => {
     if (open) {
-      form.reset({
-        car_number: '',
-        client_id: clientId || '',
-        manufacturer_name: '',
-        model: '',
-        model_number: '',
-        year: undefined,
-        color: '',
-        license_type: '',
-        license_expiry: '',
-        last_license: '',
-        car_value: undefined,
-        car_type: 'car',
-      });
+      if (car) {
+        // Edit mode - populate with existing car data
+        form.reset({
+          car_number: car.car_number || '',
+          client_id: car.client_id || '',
+          manufacturer_name: car.manufacturer_name || '',
+          model: car.model || '',
+          model_number: car.model_number || '',
+          year: car.year || undefined,
+          color: car.color || '',
+          license_type: car.license_type || '',
+          license_expiry: car.license_expiry || '',
+          last_license: car.last_license || '',
+          car_value: car.car_value || undefined,
+          car_type: car.car_type || 'car',
+        });
+      } else {
+        // Add mode - reset to empty
+        form.reset({
+          car_number: '',
+          client_id: clientId || '',
+          manufacturer_name: '',
+          model: '',
+          model_number: '',
+          year: undefined,
+          color: '',
+          license_type: '',
+          license_expiry: '',
+          last_license: '',
+          car_value: undefined,
+          car_type: 'car',
+        });
+      }
       setFetchedFromGov(false);
     }
-  }, [open, clientId]);
+  }, [open, clientId, car]);
 
   const fetchVehicleData = async () => {
     const carNumber = form.getValues('car_number');
@@ -159,7 +201,6 @@ export function CarDrawer({ open, onOpenChange, clientId, onSaved }: CarDrawerPr
 
       const vehicleData = response.data.data;
       
-      // Auto-fill form with fetched data
       form.setValue('manufacturer_name', vehicleData.manufacturer_name || '');
       form.setValue('model', vehicleData.model || '');
       form.setValue('model_number', vehicleData.model_number || '');
@@ -184,32 +225,46 @@ export function CarDrawer({ open, onOpenChange, clientId, onSaved }: CarDrawerPr
   const onSubmit = async (data: CarFormData) => {
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('cars')
-        .insert({
-          car_number: data.car_number.replace(/[-\s]/g, '').trim(),
-          client_id: data.client_id,
-          manufacturer_name: data.manufacturer_name || null,
-          model: data.model || null,
-          model_number: data.model_number || null,
-          year: data.year || null,
-          color: data.color || null,
-          license_type: data.license_type || null,
-          license_expiry: data.license_expiry || null,
-          last_license: data.last_license || null,
-          car_value: data.car_value || null,
-          car_type: (data.car_type as any) || 'car',
-        });
+      const carData = {
+        car_number: data.car_number.replace(/[-\s]/g, '').trim(),
+        client_id: data.client_id,
+        manufacturer_name: data.manufacturer_name || null,
+        model: data.model || null,
+        model_number: data.model_number || null,
+        year: data.year || null,
+        color: data.color || null,
+        license_type: data.license_type || null,
+        license_expiry: data.license_expiry || null,
+        last_license: data.last_license || null,
+        car_value: data.car_value || null,
+        car_type: (data.car_type as any) || 'car',
+      };
 
-      if (error) {
-        if (error.code === '23505') {
-          toast.error('رقم السيارة موجود مسبقاً في النظام');
-          return;
+      if (isEditMode && car) {
+        // Update existing car
+        const { error } = await supabase
+          .from('cars')
+          .update(carData)
+          .eq('id', car.id);
+
+        if (error) throw error;
+        toast.success('تم تحديث السيارة بنجاح');
+      } else {
+        // Insert new car
+        const { error } = await supabase
+          .from('cars')
+          .insert(carData);
+
+        if (error) {
+          if (error.code === '23505') {
+            toast.error('رقم السيارة موجود مسبقاً في النظام');
+            return;
+          }
+          throw error;
         }
-        throw error;
+        toast.success('تمت إضافة السيارة بنجاح');
       }
 
-      toast.success('تمت إضافة السيارة بنجاح');
       form.reset();
       onSaved();
     } catch (error: any) {
@@ -221,14 +276,16 @@ export function CarDrawer({ open, onOpenChange, clientId, onSaved }: CarDrawerPr
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="left" className="w-full sm:max-w-lg overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>إضافة سيارة جديدة</SheetTitle>
-        </SheetHeader>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl">
+        <DialogHeader className="flex flex-row items-center justify-between">
+          <DialogTitle className="text-right">
+            {isEditMode ? 'تعديل السيارة' : 'إضافة سيارة جديدة'}
+          </DialogTitle>
+        </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 mt-6">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             {/* Car Number with Fetch Button */}
             <div className="space-y-2">
               <FormField
@@ -236,30 +293,34 @@ export function CarDrawer({ open, onOpenChange, clientId, onSaved }: CarDrawerPr
                 name="car_number"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>رقم السيارة *</FormLabel>
+                    <FormLabel className="text-right block">رقم السيارة *</FormLabel>
                     <div className="flex gap-2">
                       <FormControl>
                         <Input 
                           placeholder="أدخل رقم السيارة" 
                           {...field} 
-                          className="flex-1"
+                          className="flex-1 text-right"
+                          dir="ltr"
+                          disabled={isEditMode}
                         />
                       </FormControl>
-                      <Button 
-                        type="button" 
-                        variant="secondary"
-                        onClick={fetchVehicleData}
-                        disabled={fetching}
-                      >
-                        {fetching ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Search className="h-4 w-4" />
-                        )}
-                        <span className="mr-2">جلب البيانات</span>
-                      </Button>
+                      {!isEditMode && (
+                        <Button 
+                          type="button" 
+                          variant="secondary"
+                          onClick={fetchVehicleData}
+                          disabled={fetching}
+                        >
+                          {fetching ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Search className="h-4 w-4" />
+                          )}
+                          <span className="mr-2">جلب البيانات</span>
+                        </Button>
+                      )}
                     </div>
-                    <FormMessage />
+                    <FormMessage className="text-right" />
                   </FormItem>
                 )}
               />
@@ -272,48 +333,48 @@ export function CarDrawer({ open, onOpenChange, clientId, onSaved }: CarDrawerPr
               )}
             </div>
 
-            {/* Client Selection (if not from client page) */}
+            {/* Client Selection */}
             {!clientId && (
               <FormField
                 control={form.control}
                 name="client_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>العميل *</FormLabel>
+                    <FormLabel className="text-right block">العميل *</FormLabel>
                     {loadingClients ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value} disabled={isEditMode}>
                         <FormControl>
-                          <SelectTrigger>
+                          <SelectTrigger className="text-right">
                             <SelectValue placeholder="اختر العميل" />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent>
+                        <SelectContent align="end">
                           {clients.map((client) => (
-                            <SelectItem key={client.id} value={client.id}>
+                            <SelectItem key={client.id} value={client.id} className="text-right">
                               {client.full_name}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     )}
-                    <FormMessage />
+                    <FormMessage className="text-right" />
                   </FormItem>
                 )}
               />
             )}
 
-            {/* Auto-filled fields (editable) */}
+            {/* Auto-filled fields (editable) - 2 columns */}
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="manufacturer_name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>الشركة المصنعة</FormLabel>
+                    <FormLabel className="text-right block">الشركة المصنعة</FormLabel>
                     <FormControl>
-                      <Input placeholder="مثال: تويوتا" {...field} />
+                      <Input placeholder="مثال: تويوتا" {...field} className="text-right" />
                     </FormControl>
                   </FormItem>
                 )}
@@ -324,9 +385,9 @@ export function CarDrawer({ open, onOpenChange, clientId, onSaved }: CarDrawerPr
                 name="model"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>الموديل</FormLabel>
+                    <FormLabel className="text-right block">الموديل</FormLabel>
                     <FormControl>
-                      <Input placeholder="مثال: كامري" {...field} />
+                      <Input placeholder="مثال: كامري" {...field} className="text-right" />
                     </FormControl>
                   </FormItem>
                 )}
@@ -339,9 +400,9 @@ export function CarDrawer({ open, onOpenChange, clientId, onSaved }: CarDrawerPr
                 name="year"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>سنة الصنع</FormLabel>
+                    <FormLabel className="text-right block">سنة الصنع</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="2024" {...field} />
+                      <Input type="number" placeholder="2024" {...field} className="text-right" dir="ltr" />
                     </FormControl>
                   </FormItem>
                 )}
@@ -352,51 +413,53 @@ export function CarDrawer({ open, onOpenChange, clientId, onSaved }: CarDrawerPr
                 name="color"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>اللون</FormLabel>
+                    <FormLabel className="text-right block">اللون</FormLabel>
                     <FormControl>
-                      <Input placeholder="مثال: أبيض" {...field} />
+                      <Input placeholder="مثال: أبيض" {...field} className="text-right" />
                     </FormControl>
                   </FormItem>
                 )}
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="car_type"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>نوع المركبة</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="اختر النوع" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {CAR_TYPES.map((type) => (
-                        <SelectItem key={type.value} value={type.value}>
-                          {type.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="car_type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-right block">نوع المركبة</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="text-right">
+                          <SelectValue placeholder="اختر النوع" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent align="end">
+                        {CAR_TYPES.map((type) => (
+                          <SelectItem key={type.value} value={type.value} className="text-right">
+                            {type.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
+              />
 
-            <FormField
-              control={form.control}
-              name="car_value"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>قيمة السيارة (₪)</FormLabel>
-                  <FormControl>
-                    <Input type="number" placeholder="قيمة السيارة بالشيكل" {...field} />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
+              <FormField
+                control={form.control}
+                name="car_value"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-right block">قيمة السيارة (₪)</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="قيمة السيارة" {...field} className="text-right" dir="ltr" />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <div className="grid grid-cols-2 gap-4">
               <FormField
@@ -404,9 +467,9 @@ export function CarDrawer({ open, onOpenChange, clientId, onSaved }: CarDrawerPr
                 name="license_expiry"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>انتهاء الرخصة</FormLabel>
+                    <FormLabel className="text-right block">انتهاء الرخصة</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <Input type="date" {...field} className="text-right" dir="ltr" />
                     </FormControl>
                   </FormItem>
                 )}
@@ -417,24 +480,16 @@ export function CarDrawer({ open, onOpenChange, clientId, onSaved }: CarDrawerPr
                 name="last_license"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>آخر فحص</FormLabel>
+                    <FormLabel className="text-right block">آخر فحص</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <Input type="date" {...field} className="text-right" dir="ltr" />
                     </FormControl>
                   </FormItem>
                 )}
               />
             </div>
 
-            <div className="flex gap-3 pt-4">
-              <Button type="submit" disabled={saving} className="flex-1">
-                {saving ? (
-                  <Loader2 className="h-4 w-4 ml-2 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4 ml-2" />
-                )}
-                {saving ? 'جاري الحفظ...' : 'حفظ'}
-              </Button>
+            <div className="flex gap-3 pt-4 justify-end">
               <Button
                 type="button"
                 variant="outline"
@@ -443,10 +498,18 @@ export function CarDrawer({ open, onOpenChange, clientId, onSaved }: CarDrawerPr
               >
                 إلغاء
               </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? (
+                  <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 ml-2" />
+                )}
+                {saving ? 'جاري الحفظ...' : 'حفظ'}
+              </Button>
             </div>
           </form>
         </Form>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
