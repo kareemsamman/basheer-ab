@@ -13,10 +13,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Search, Plus, Check, Car, User, FileText, CreditCard, Loader2, X, AlertCircle } from "lucide-react";
+import { Search, Plus, Check, Car, User, FileText, CreditCard, Loader2, X, AlertCircle, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { digitsOnly, isValidIsraeliId, isValidPhoneNumber10 } from "@/lib/validation";
 import { calculatePolicyProfit } from "@/lib/pricingCalculator";
+import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal";
 
 interface PolicyWizardProps {
   open: boolean;
@@ -66,6 +67,8 @@ interface PaymentLine {
   payment_date: string;
   cheque_number?: string;
   refused: boolean;
+  tranzila_paid?: boolean; // Track if paid via Tranzila
+  tranzila_transaction_id?: string;
 }
 
 interface ValidationErrors {
@@ -174,6 +177,12 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
   // Step 4: Payments
   const [payments, setPayments] = useState<PaymentLine[]>([]);
   const [fetchingCarPrice, setFetchingCarPrice] = useState(false);
+  
+  // Tranzila state
+  const [tranzilaEnabled, setTranzilaEnabled] = useState(false);
+  const [tranzilaModalOpen, setTranzilaModalOpen] = useState(false);
+  const [activeTranzilaPaymentId, setActiveTranzilaPaymentId] = useState<string | null>(null);
+  const [tempPolicyId, setTempPolicyId] = useState<string | null>(null);
 
   // Files to upload - Two categories
   const [insuranceFiles, setInsuranceFiles] = useState<File[]>([]); // ملفات التأمين - للعميل
@@ -265,7 +274,22 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
       }
     }
     fetchBrokers();
+    checkTranzilaEnabled();
   }, [open, defaultBrokerId]);
+
+  // Check if Tranzila is enabled
+  const checkTranzilaEnabled = async () => {
+    try {
+      const { data } = await supabase
+        .from('payment_settings')
+        .select('is_enabled')
+        .eq('provider', 'tranzila')
+        .single();
+      setTranzilaEnabled(data?.is_enabled || false);
+    } catch {
+      setTranzilaEnabled(false);
+    }
+  };
 
   // Search clients
   useEffect(() => {
@@ -575,6 +599,155 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
     setPayments(payments.map(p => p.id === id ? { ...p, [field]: value } : p));
   };
 
+  // Handle Visa payment - creates policy first if needed, then opens Tranzila
+  const handleVisaPayment = async (payment: PaymentLine) => {
+    if (!payment.amount || payment.amount <= 0) {
+      toast({ title: "خطأ", description: "الرجاء إدخال مبلغ صحيح", variant: "destructive" });
+      return;
+    }
+
+    // We need to save everything first to get a policy ID
+    if (!tempPolicyId) {
+      // Validate before creating
+      if (!validateStep(currentStep)) return;
+      
+      setSaving(true);
+      try {
+        let clientId = selectedClient?.id;
+        let carId = selectedCar?.id || existingCar?.id;
+
+        // Create client if new
+        if (createNewClient && !clientId) {
+          const { data: fileNumData } = await supabase.rpc('generate_file_number');
+          const { data: newClientData, error: clientError } = await supabase
+            .from('clients')
+            .insert({
+              full_name: newClient.full_name.trim(),
+              id_number: newClient.id_number.trim(),
+              file_number: fileNumData || null,
+              phone_number: newClient.phone_number.trim() || null,
+              less_than_24: newClient.less_than_24,
+              notes: newClient.notes.trim() || null,
+              broker_id: newClient.broker_id || defaultBrokerId || null,
+            })
+            .select()
+            .single();
+
+          if (clientError) throw clientError;
+          clientId = newClientData.id;
+        }
+
+        // Create car if new
+        if (createNewCar && !carId && clientId) {
+          const { data: newCarData, error: carError } = await supabase
+            .from('cars')
+            .insert({
+              car_number: newCar.car_number.trim(),
+              client_id: clientId,
+              manufacturer_name: newCar.manufacturer_name.trim() || null,
+              model: newCar.model.trim() || null,
+              year: newCar.year ? parseInt(newCar.year) : null,
+              color: newCar.color.trim() || null,
+              car_type: newCar.car_type as any,
+              car_value: newCar.car_value ? parseFloat(newCar.car_value) : null,
+              license_expiry: newCar.license_expiry || null,
+            })
+            .select()
+            .single();
+
+          if (carError) throw carError;
+          carId = newCarData.id;
+        }
+
+        if (!clientId || !carId) {
+          toast({ title: "خطأ", description: "الرجاء اختيار العميل والسيارة", variant: "destructive" });
+          return;
+        }
+
+        // Calculate profit
+        const carForCalc = selectedCar || existingCar || {
+          car_type: newCar.car_type,
+          car_value: newCar.car_value ? parseFloat(newCar.car_value) : null,
+          year: newCar.year ? parseInt(newCar.year) : null,
+        };
+        const clientForCalc = selectedClient || { less_than_24: newClient.less_than_24 };
+        const ageBand: 'UNDER_24' | 'UP_24' = clientForCalc.less_than_24 ? 'UNDER_24' : 'UP_24';
+        
+        const profitResult = await calculatePolicyProfit({
+          policyTypeParent: policy.policy_type_parent as any,
+          policyTypeChild: policy.policy_type_child as any || null,
+          companyId: policy.company_id,
+          carType: (carForCalc.car_type || 'car') as any,
+          ageBand,
+          carValue: carForCalc.car_value,
+          carYear: carForCalc.year,
+          insurancePrice: parseFloat(policy.insurance_price),
+        });
+
+        // Create policy
+        const { data: policyData, error: policyError } = await supabase
+          .from('policies')
+          .insert({
+            client_id: clientId,
+            car_id: carId,
+            company_id: policy.company_id,
+            policy_type_parent: policy.policy_type_parent as any,
+            policy_type_child: policy.policy_type_child as any || null,
+            start_date: policy.start_date,
+            end_date: policy.end_date,
+            insurance_price: parseFloat(policy.insurance_price),
+            cancelled: policy.cancelled,
+            transferred: policy.transferred,
+            notes: policy.notes.trim() || null,
+            is_under_24: clientForCalc.less_than_24 || false,
+            payed_for_company: profitResult.companyPayment,
+            profit: profitResult.profit,
+          })
+          .select()
+          .single();
+
+        if (policyError) throw policyError;
+        
+        setTempPolicyId(policyData.id);
+        toast({ title: "تم الحفظ", description: "تم حفظ الوثيقة، جاري فتح الدفع..." });
+        
+        // Now open Tranzila modal
+        setActiveTranzilaPaymentId(payment.id);
+        setTranzilaModalOpen(true);
+        
+      } catch (error) {
+        console.error('Error creating policy for visa payment:', error);
+        toast({ title: "خطأ", description: "فشل في حفظ الوثيقة", variant: "destructive" });
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      // Policy already created, just open modal
+      setActiveTranzilaPaymentId(payment.id);
+      setTranzilaModalOpen(true);
+    }
+  };
+
+  const handleTranzilaSuccess = () => {
+    if (activeTranzilaPaymentId) {
+      setPayments(payments.map(p => 
+        p.id === activeTranzilaPaymentId 
+          ? { ...p, tranzila_paid: true } 
+          : p
+      ));
+    }
+    setActiveTranzilaPaymentId(null);
+    toast({ title: "تم الدفع", description: "تم الدفع بنجاح عبر البطاقة" });
+  };
+
+  const handleTranzilaFailure = () => {
+    setActiveTranzilaPaymentId(null);
+  };
+
+  const getActiveTranzilaPayment = () => {
+    return payments.find(p => p.id === activeTranzilaPaymentId);
+  };
+
   const validateStep = (step: number): boolean => {
     const newErrors: ValidationErrors = {};
     
@@ -660,130 +833,136 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
     
     setSaving(true);
     try {
+      let policyId = tempPolicyId; // Use existing policy if created via Visa payment
       let clientId = selectedClient?.id;
       let carId = selectedCar?.id || existingCar?.id;
 
-      // Create client if new
-      if (createNewClient && !clientId) {
-        // Generate file number using DB function
-        const { data: fileNumData } = await supabase.rpc('generate_file_number');
-        
-        const { data: newClientData, error: clientError } = await supabase
-          .from('clients')
-          .insert({
-            full_name: newClient.full_name.trim(),
-            id_number: newClient.id_number.trim(),
-            file_number: fileNumData || null,
-            phone_number: newClient.phone_number.trim() || null,
-            less_than_24: newClient.less_than_24,
-            notes: newClient.notes.trim() || null,
-            broker_id: newClient.broker_id || defaultBrokerId || null,
-          })
-          .select()
-          .single();
+      // If policy was already created via Visa payment, skip creation
+      if (!policyId) {
+        // Create client if new
+        if (createNewClient && !clientId) {
+          // Generate file number using DB function
+          const { data: fileNumData } = await supabase.rpc('generate_file_number');
+          
+          const { data: newClientData, error: clientError } = await supabase
+            .from('clients')
+            .insert({
+              full_name: newClient.full_name.trim(),
+              id_number: newClient.id_number.trim(),
+              file_number: fileNumData || null,
+              phone_number: newClient.phone_number.trim() || null,
+              less_than_24: newClient.less_than_24,
+              notes: newClient.notes.trim() || null,
+              broker_id: newClient.broker_id || defaultBrokerId || null,
+            })
+            .select()
+            .single();
 
-        if (clientError) {
-          if (clientError.code === '23505') {
-            toast({ title: "خطأ", description: "رقم الهوية موجود مسبقاً", variant: "destructive" });
-          } else {
-            throw clientError;
+          if (clientError) {
+            if (clientError.code === '23505') {
+              toast({ title: "خطأ", description: "رقم الهوية موجود مسبقاً", variant: "destructive" });
+            } else {
+              throw clientError;
+            }
+            return;
           }
+          clientId = newClientData.id;
+        }
+
+        // Create car if new
+        if (createNewCar && !carId && clientId) {
+          const { data: newCarData, error: carError } = await supabase
+            .from('cars')
+            .insert({
+              car_number: newCar.car_number.trim(),
+              client_id: clientId,
+              manufacturer_name: newCar.manufacturer_name.trim() || null,
+              model: newCar.model.trim() || null,
+              year: newCar.year ? parseInt(newCar.year) : null,
+              color: newCar.color.trim() || null,
+              car_type: newCar.car_type as any,
+              car_value: newCar.car_value ? parseFloat(newCar.car_value) : null,
+              license_expiry: newCar.license_expiry || null,
+            })
+            .select()
+            .single();
+
+          if (carError) {
+            if (carError.code === '23505') {
+              toast({ title: "خطأ", description: "رقم السيارة موجود مسبقاً", variant: "destructive" });
+            } else {
+              throw carError;
+            }
+            return;
+          }
+          carId = newCarData.id;
+        }
+
+        if (!clientId || !carId) {
+          toast({ title: "خطأ", description: "الرجاء اختيار العميل والسيارة", variant: "destructive" });
           return;
         }
-        clientId = newClientData.id;
-      }
 
-      // Create car if new
-      if (createNewCar && !carId && clientId) {
-        const { data: newCarData, error: carError } = await supabase
-          .from('cars')
+        // Determine is_under_24
+        const isUnder24 = createNewClient ? newClient.less_than_24 : selectedClient?.less_than_24;
+        const ageBand = isUnder24 ? 'UNDER_24' : 'UP_24';
+
+        // Get car data for pricing calculation
+        const carType = (createNewCar ? newCar.car_type : (selectedCar?.car_type || existingCar?.car_type)) || 'car';
+        const carValue = createNewCar 
+          ? (newCar.car_value ? parseFloat(newCar.car_value) : null)
+          : (selectedCar?.car_value || existingCar?.car_value);
+        const carYear = createNewCar 
+          ? (newCar.year ? parseInt(newCar.year) : null)
+          : (selectedCar?.year || existingCar?.year);
+
+        // Calculate profit and company payment
+        const profitCalc = await calculatePolicyProfit({
+          policyTypeParent: policy.policy_type_parent as any,
+          policyTypeChild: policy.policy_type_child as any,
+          companyId: policy.company_id,
+          carType: carType as any,
+          ageBand: ageBand as any,
+          carValue,
+          carYear,
+          insurancePrice: parseFloat(policy.insurance_price),
+        });
+
+        // Create policy
+        const { data: policyData, error: policyError } = await supabase
+          .from('policies')
           .insert({
-            car_number: newCar.car_number.trim(),
             client_id: clientId,
-            manufacturer_name: newCar.manufacturer_name.trim() || null,
-            model: newCar.model.trim() || null,
-            year: newCar.year ? parseInt(newCar.year) : null,
-            color: newCar.color.trim() || null,
-            car_type: newCar.car_type as any,
-            car_value: newCar.car_value ? parseFloat(newCar.car_value) : null,
-            license_expiry: newCar.license_expiry || null,
+            car_id: carId,
+            company_id: policy.company_id,
+            policy_type_parent: policy.policy_type_parent as any,
+            policy_type_child: policy.policy_type_child ? policy.policy_type_child as any : null,
+            start_date: policy.start_date,
+            end_date: policy.end_date,
+            insurance_price: parseFloat(policy.insurance_price),
+            is_under_24: isUnder24 || false,
+            cancelled: policy.cancelled,
+            transferred: policy.transferred,
+            notes: policy.notes.trim() || null,
+            profit: profitCalc.profit,
+            payed_for_company: profitCalc.companyPayment,
+            broker_id: createNewClient ? (newClient.broker_id || defaultBrokerId || null) : (selectedClient?.broker_id || defaultBrokerId || null),
           })
           .select()
           .single();
 
-        if (carError) {
-          if (carError.code === '23505') {
-            toast({ title: "خطأ", description: "رقم السيارة موجود مسبقاً", variant: "destructive" });
-          } else {
-            throw carError;
-          }
-          return;
-        }
-        carId = newCarData.id;
+        if (policyError) throw policyError;
+        policyId = policyData.id;
       }
 
-      if (!clientId || !carId) {
-        toast({ title: "خطأ", description: "الرجاء اختيار العميل والسيارة", variant: "destructive" });
-        return;
-      }
-
-      // Determine is_under_24
-      const isUnder24 = createNewClient ? newClient.less_than_24 : selectedClient?.less_than_24;
-      const ageBand = isUnder24 ? 'UNDER_24' : 'UP_24';
-
-      // Get car data for pricing calculation
-      const carType = (createNewCar ? newCar.car_type : (selectedCar?.car_type || existingCar?.car_type)) || 'car';
-      const carValue = createNewCar 
-        ? (newCar.car_value ? parseFloat(newCar.car_value) : null)
-        : (selectedCar?.car_value || existingCar?.car_value);
-      const carYear = createNewCar 
-        ? (newCar.year ? parseInt(newCar.year) : null)
-        : (selectedCar?.year || existingCar?.year);
-
-      // Calculate profit and company payment
-      const profitCalc = await calculatePolicyProfit({
-        policyTypeParent: policy.policy_type_parent as any,
-        policyTypeChild: policy.policy_type_child as any,
-        companyId: policy.company_id,
-        carType: carType as any,
-        ageBand: ageBand as any,
-        carValue,
-        carYear,
-        insurancePrice: parseFloat(policy.insurance_price),
-      });
-
-      // Create policy
-      const { data: policyData, error: policyError } = await supabase
-        .from('policies')
-        .insert({
-          client_id: clientId,
-          car_id: carId,
-          company_id: policy.company_id,
-          policy_type_parent: policy.policy_type_parent as any,
-          policy_type_child: policy.policy_type_child ? policy.policy_type_child as any : null,
-          start_date: policy.start_date,
-          end_date: policy.end_date,
-          insurance_price: parseFloat(policy.insurance_price),
-          is_under_24: isUnder24 || false,
-          cancelled: policy.cancelled,
-          transferred: policy.transferred,
-          notes: policy.notes.trim() || null,
-          profit: profitCalc.profit,
-          payed_for_company: profitCalc.companyPayment,
-          broker_id: createNewClient ? (newClient.broker_id || defaultBrokerId || null) : (selectedClient?.broker_id || defaultBrokerId || null),
-        })
-        .select()
-        .single();
-
-      if (policyError) throw policyError;
-
-      // Create payments
-      if (payments.length > 0) {
+      // Create payments that haven't been paid via Tranzila
+      const unpaidPayments = payments.filter(p => p.amount > 0 && !p.tranzila_paid);
+      if (unpaidPayments.length > 0) {
         const { error: paymentsError } = await supabase
           .from('policy_payments')
           .insert(
-            payments.filter(p => p.amount > 0).map(p => ({
-              policy_id: policyData.id,
+            unpaidPayments.map(p => ({
+              policy_id: policyId,
               payment_type: p.payment_type as any,
               amount: p.amount,
               payment_date: p.payment_date,
@@ -806,7 +985,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
       clearDraft();
       onOpenChange(false);
       setSaving(false);
-      onComplete?.(policyData.id);
+      onComplete?.(policyId!);
       
       // Navigate to policy details
       navigate(`/policies`);
@@ -815,7 +994,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
       (async () => {
         try {
           await supabase.functions.invoke('generate-invoices', {
-            body: { policy_id: policyData.id, languages: ['ar', 'he'] },
+            body: { policy_id: policyId, languages: ['ar', 'he'] },
           });
           console.log('[PolicyWizard] Invoices generated successfully');
         } catch (e) {
@@ -834,7 +1013,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                 const formData = new FormData();
                 formData.append('file', file);
                 formData.append('entity_type', type);
-                formData.append('entity_id', policyData.id);
+                formData.append('entity_id', policyId!);
 
                 return fetch(
                   `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-media`,
@@ -1717,10 +1896,23 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
               ) : (
                 <div className="space-y-4">
                   {payments.map((payment, index) => (
-                    <Card key={payment.id} className="p-4">
+                    <Card key={payment.id} className={cn("p-4", payment.tranzila_paid && "border-success/50 bg-success/5")}>
                       <div className="flex justify-between items-start mb-3">
-                        <span className="text-sm font-medium">دفعة {index + 1}</span>
-                        <Button variant="ghost" size="icon" onClick={() => removePayment(payment.id)}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">دفعة {index + 1}</span>
+                          {payment.tranzila_paid && (
+                            <Badge variant="outline" className="border-success text-success gap-1">
+                              <CheckCircle className="h-3 w-3" />
+                              تم الدفع
+                            </Badge>
+                          )}
+                        </div>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={() => removePayment(payment.id)}
+                          disabled={payment.tranzila_paid}
+                        >
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
@@ -1731,6 +1923,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                             <Select
                               value={payment.payment_type}
                               onValueChange={(v) => updatePayment(payment.id, 'payment_type', v)}
+                              disabled={payment.tranzila_paid}
                             >
                               <SelectTrigger>
                                 <SelectValue />
@@ -1749,6 +1942,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                               value={payment.amount || ""}
                               onChange={(e) => updatePayment(payment.id, 'amount', parseFloat(e.target.value) || 0)}
                               placeholder="₪"
+                              disabled={payment.tranzila_paid}
                             />
                           </div>
                         </div>
@@ -1759,6 +1953,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                               type="date"
                               value={payment.payment_date}
                               onChange={(e) => updatePayment(payment.id, 'payment_date', e.target.value)}
+                              disabled={payment.tranzila_paid}
                             />
                           </div>
                           {payment.payment_type === 'cheque' && (
@@ -1767,15 +1962,39 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                               <Input
                                 value={payment.cheque_number || ""}
                                 onChange={(e) => updatePayment(payment.id, 'cheque_number', e.target.value)}
+                                disabled={payment.tranzila_paid}
                               />
                             </div>
                           )}
                         </div>
+                        
+                        {/* Visa Pay Button */}
+                        {payment.payment_type === 'visa' && tranzilaEnabled && !payment.tranzila_paid && (
+                          <Button
+                            type="button"
+                            variant="default"
+                            className="w-full"
+                            disabled={!payment.amount || payment.amount <= 0}
+                            onClick={() => handleVisaPayment(payment)}
+                          >
+                            <CreditCard className="h-4 w-4 ml-2" />
+                            ادفع الآن ₪{payment.amount?.toLocaleString() || 0}
+                          </Button>
+                        )}
+                        
+                        {/* Visa disabled message */}
+                        {payment.payment_type === 'visa' && !tranzilaEnabled && !payment.tranzila_paid && (
+                          <p className="text-xs text-muted-foreground text-center py-2">
+                            الدفع بالبطاقة غير مفعل. تواصل مع المدير لتفعيله.
+                          </p>
+                        )}
+
                         <div className="flex items-center gap-2">
                           <Checkbox
                             id={`refused-${payment.id}`}
                             checked={payment.refused}
                             onCheckedChange={(c) => updatePayment(payment.id, 'refused', c)}
+                            disabled={payment.tranzila_paid}
                           />
                           <Label htmlFor={`refused-${payment.id}`}>راجع / مرفوض</Label>
                         </div>
@@ -1815,6 +2034,20 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
           )}
         </div>
       </DialogContent>
+
+      {/* Tranzila Payment Modal */}
+      {tempPolicyId && activeTranzilaPaymentId && (
+        <TranzilaPaymentModal
+          open={tranzilaModalOpen}
+          onOpenChange={setTranzilaModalOpen}
+          policyId={tempPolicyId}
+          amount={getActiveTranzilaPayment()?.amount || 0}
+          paymentDate={getActiveTranzilaPayment()?.payment_date || new Date().toISOString().split('T')[0]}
+          notes=""
+          onSuccess={handleTranzilaSuccess}
+          onFailure={handleTranzilaFailure}
+        />
+      )}
     </Dialog>
   );
 }
