@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
@@ -22,10 +23,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Building2, Download, TrendingUp, Wallet, FileText } from 'lucide-react';
+import { Building2, Download, TrendingUp, Wallet, FileText, ChevronLeft } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { cn } from '@/lib/utils';
 import type { Tables, Enums } from '@/integrations/supabase/types';
 
 type Company = Tables<'insurance_companies'>;
@@ -55,6 +57,7 @@ const POLICY_TYPE_LABELS: Record<Enums<'policy_type_parent'>, string> = {
 };
 
 export default function CompanySettlement() {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const { isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -400,9 +403,19 @@ export default function CompanySettlement() {
                     </TableRow>
                   ) : (
                     data.map((item, index) => (
-                      <TableRow key={index}>
+                      <TableRow 
+                        key={index}
+                        onClick={() => navigate(`/reports/company-settlement/${item.company_id}`)}
+                        className={cn(
+                          "cursor-pointer transition-colors",
+                          "hover:bg-secondary/50"
+                        )}
+                      >
                         <TableCell className="font-medium">
-                          {item.company_name_ar || item.company_name}
+                          <div className="flex items-center gap-2">
+                            {item.company_name_ar || item.company_name}
+                            <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline">
