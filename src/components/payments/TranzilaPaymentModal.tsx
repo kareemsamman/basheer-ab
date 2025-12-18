@@ -7,7 +7,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle, XCircle, AlertCircle, CreditCard } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -37,10 +37,13 @@ export function TranzilaPaymentModal({
   const { toast } = useToast();
   const [status, setStatus] = useState<PaymentStatus>('initializing');
   const [iframeUrl, setIframeUrl] = useState<string | null>(null);
+  const [formFields, setFormFields] = useState<Record<string, string> | null>(null);
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const [formSubmitted, setFormSubmitted] = useState(false);
 
   // Initialize payment when modal opens
   useEffect(() => {
@@ -54,8 +57,10 @@ export function TranzilaPaymentModal({
       }
       setStatus('initializing');
       setIframeUrl(null);
+      setFormFields(null);
       setPaymentId(null);
       setErrorMessage(null);
+      setFormSubmitted(false);
     }
     
     return () => {
@@ -65,10 +70,25 @@ export function TranzilaPaymentModal({
     };
   }, [open]);
 
+  // Submit form to iframe after it's rendered
+  useEffect(() => {
+    if (status === 'iframe' && formRef.current && !formSubmitted && formFields) {
+      // Small delay to ensure iframe is ready
+      const timer = setTimeout(() => {
+        if (formRef.current) {
+          formRef.current.submit();
+          setFormSubmitted(true);
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [status, formFields, formSubmitted]);
+
   const initializePayment = async () => {
     try {
       setStatus('initializing');
       setErrorMessage(null);
+      setFormSubmitted(false);
 
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -111,8 +131,9 @@ export function TranzilaPaymentModal({
         return;
       }
 
-      // Real payment - show iframe
+      // Real payment - set iframe URL and form fields for POST
       setIframeUrl(data.iframe_url);
+      setFormFields(data.form_fields);
       setStatus('iframe');
 
       // Start polling for payment status
@@ -125,21 +146,15 @@ export function TranzilaPaymentModal({
     }
   };
 
-  const startStatusPolling = (paymentId: string) => {
+  const startStatusPolling = (pmtId: string) => {
     // Poll every 3 seconds
     pollingRef.current = setInterval(async () => {
       try {
-        const response = await supabase.functions.invoke('tranzila-status', {
-          body: null,
-          headers: {},
-        });
-
-        // Use query params approach
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
 
         const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-        const statusUrl = `https://${projectId}.supabase.co/functions/v1/tranzila-status?payment_id=${paymentId}`;
+        const statusUrl = `https://${projectId}.supabase.co/functions/v1/tranzila-status?payment_id=${pmtId}`;
         
         const res = await fetch(statusUrl, {
           headers: {
@@ -185,11 +200,6 @@ export function TranzilaPaymentModal({
       pollingRef.current = null;
     }
     
-    // If we have a pending payment, mark it as cancelled
-    if (paymentId && (status === 'iframe' || status === 'polling')) {
-      // Could call an API to cancel, but for now just close
-    }
-    
     onFailure();
     onOpenChange(false);
   };
@@ -223,16 +233,34 @@ export function TranzilaPaymentModal({
             </div>
           )}
 
-          {/* Iframe for real payment */}
-          {status === 'iframe' && iframeUrl && (
+          {/* Iframe for real payment - using POST method */}
+          {status === 'iframe' && iframeUrl && formFields && (
             <div className="flex-1 flex flex-col">
+              {/* Hidden form that POSTs to the iframe (Tranzila recommended method) */}
+              <form
+                ref={formRef}
+                action={iframeUrl}
+                method="POST"
+                target="tranzila-iframe"
+                style={{ display: 'none' }}
+              >
+                {Object.entries(formFields).map(([key, value]) => (
+                  <input key={key} type="hidden" name={key} value={value} />
+                ))}
+              </form>
+
               <div className="flex-1 border rounded-lg overflow-hidden bg-white">
                 <iframe
                   ref={iframeRef}
-                  src={iframeUrl}
+                  name="tranzila-iframe"
                   className="w-full h-full min-h-[400px]"
                   title="Tranzila Payment"
-                  sandbox="allow-forms allow-scripts allow-same-origin allow-top-navigation"
+                  // Enhanced permissions for 3DS and payment flows
+                  sandbox="allow-forms allow-scripts allow-same-origin allow-top-navigation allow-popups allow-popups-to-escape-sandbox"
+                  // Required for Google Pay / Apple Pay / 3DS
+                  allowFullScreen
+                  // @ts-ignore - allowpaymentrequest is valid but not in types
+                  allowpaymentrequest="true"
                 />
               </div>
               <p className="text-xs text-muted-foreground text-center mt-2">
