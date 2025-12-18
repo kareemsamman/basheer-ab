@@ -42,12 +42,12 @@ interface PolicyEditDrawerProps {
       car_type: string | null;
       car_value: number | null;
       year: number | null;
-    };
+    } | null;
     insurance_companies: {
       id: string;
       name: string;
       name_ar: string | null;
-    };
+    } | null;
   };
   onSaved?: () => void;
 }
@@ -172,7 +172,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
         .update({
           policy_type_parent: formData.policy_type_parent as Enums<'policy_type_parent'>,
           policy_type_child: formData.policy_type_child ? formData.policy_type_child as Enums<'policy_type_child'> : null,
-          company_id: formData.company_id,
+          company_id: formData.company_id || null,
           start_date: formData.start_date,
           end_date: formData.end_date,
           insurance_price: insurancePrice,

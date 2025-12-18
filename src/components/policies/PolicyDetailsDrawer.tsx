@@ -61,12 +61,12 @@ interface PolicyDetails {
     car_value: number | null;
     model: string | null;
     color: string | null;
-  };
+  } | null;
   insurance_companies: {
     id: string;
     name: string;
     name_ar: string | null;
-  };
+  } | null;
   brokers?: {
     id: string;
     name: string;
@@ -131,8 +131,8 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
         .select(`
           *,
           clients!inner(id, full_name, phone_number, file_number, id_number, less_than_24),
-          cars!inner(id, car_number, manufacturer_name, year, car_type, car_value, model, color),
-          insurance_companies!inner(id, name, name_ar),
+          cars(id, car_number, manufacturer_name, year, car_type, car_value, model, color),
+          insurance_companies(id, name, name_ar),
           brokers(id, name)
         `)
         .eq('id', policyId)
@@ -344,16 +344,26 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
                   {/* Insurance Tab */}
                   <TabsContent value="insurance" className="p-6 space-y-4 m-0">
                     {/* Company */}
-                    <Card className="p-4">
-                      <div className="flex items-center gap-2 text-primary font-semibold mb-3">
-                        <Building2 className="h-4 w-4" />
-                        <span>شركة التأمين</span>
-                      </div>
-                      <p className="text-lg font-bold">{policy.insurance_companies.name_ar || policy.insurance_companies.name}</p>
-                      {policy.brokers && (
-                        <p className="text-sm text-muted-foreground mt-1">الوسيط: {policy.brokers.name}</p>
-                      )}
-                    </Card>
+                    {policy.insurance_companies ? (
+                      <Card className="p-4">
+                        <div className="flex items-center gap-2 text-primary font-semibold mb-3">
+                          <Building2 className="h-4 w-4" />
+                          <span>شركة التأمين</span>
+                        </div>
+                        <p className="text-lg font-bold">{policy.insurance_companies.name_ar || policy.insurance_companies.name}</p>
+                        {policy.brokers && (
+                          <p className="text-sm text-muted-foreground mt-1">الوسيط: {policy.brokers.name}</p>
+                        )}
+                      </Card>
+                    ) : policy.brokers ? (
+                      <Card className="p-4">
+                        <div className="flex items-center gap-2 text-primary font-semibold mb-3">
+                          <Building2 className="h-4 w-4" />
+                          <span>الوسيط</span>
+                        </div>
+                        <p className="text-lg font-bold">{policy.brokers.name}</p>
+                      </Card>
+                    ) : null}
 
                     {/* Period */}
                     <Card className="p-4">
@@ -461,38 +471,48 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
                     </Card>
 
                     {/* Car */}
-                    <Card className="p-4">
-                      <div className="flex items-center gap-2 text-primary font-semibold mb-3">
-                        <Car className="h-4 w-4" />
-                        <span>بيانات السيارة</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <span className="text-muted-foreground text-xs">رقم السيارة</span>
-                          <p className="font-mono font-semibold text-base" dir="ltr">{policy.cars.car_number}</p>
+                    {policy.cars ? (
+                      <Card className="p-4">
+                        <div className="flex items-center gap-2 text-primary font-semibold mb-3">
+                          <Car className="h-4 w-4" />
+                          <span>بيانات السيارة</span>
                         </div>
-                        <div>
-                          <span className="text-muted-foreground text-xs">الشركة المصنعة</span>
-                          <p className="font-semibold">{policy.cars.manufacturer_name || "-"}</p>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <span className="text-muted-foreground text-xs">رقم السيارة</span>
+                            <p className="font-mono font-semibold text-base" dir="ltr">{policy.cars.car_number}</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground text-xs">الشركة المصنعة</span>
+                            <p className="font-semibold">{policy.cars.manufacturer_name || "-"}</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground text-xs">سنة الصنع</span>
+                            <p>{policy.cars.year || "-"}</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground text-xs">النوع</span>
+                            <p>{policy.cars.car_type ? carTypeLabels[policy.cars.car_type] || policy.cars.car_type : "-"}</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground text-xs">قيمة السيارة</span>
+                            <p className="font-semibold">{policy.cars.car_value ? formatCurrency(policy.cars.car_value) : "-"}</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground text-xs">اللون</span>
+                            <p>{policy.cars.color || "-"}</p>
+                          </div>
                         </div>
-                        <div>
-                          <span className="text-muted-foreground text-xs">سنة الصنع</span>
-                          <p>{policy.cars.year || "-"}</p>
+                      </Card>
+                    ) : (
+                      <Card className="p-4">
+                        <div className="flex items-center gap-2 text-muted-foreground font-semibold mb-3">
+                          <Car className="h-4 w-4" />
+                          <span>بدون سيارة</span>
                         </div>
-                        <div>
-                          <span className="text-muted-foreground text-xs">النوع</span>
-                          <p>{policy.cars.car_type ? carTypeLabels[policy.cars.car_type] || policy.cars.car_type : "-"}</p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground text-xs">قيمة السيارة</span>
-                          <p className="font-semibold">{policy.cars.car_value ? formatCurrency(policy.cars.car_value) : "-"}</p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground text-xs">اللون</span>
-                          <p>{policy.cars.color || "-"}</p>
-                        </div>
-                      </div>
-                    </Card>
+                        <p className="text-sm text-muted-foreground">هذه وثيقة تأمين غير مرتبطة بسيارة</p>
+                      </Card>
+                    )}
                   </TabsContent>
 
                   {/* Files Tab */}
