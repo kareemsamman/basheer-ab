@@ -811,7 +811,17 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
       // Navigate to policy details
       navigate(`/policies`);
 
-      // Upload files in background (non-blocking)
+      // Generate invoices in background (non-blocking)
+      (async () => {
+        try {
+          await supabase.functions.invoke('generate-invoices', {
+            body: { policy_id: policyData.id, languages: ['ar', 'he'] },
+          });
+          console.log('[PolicyWizard] Invoices generated successfully');
+        } catch (e) {
+          console.error('[PolicyWizard] Invoice generation error:', e);
+        }
+      })();
       if (allFiles.length > 0) {
         // Run uploads in background without blocking UI
         (async () => {

@@ -18,6 +18,8 @@ import Cheques from "./pages/Cheques";
 import Media from "./pages/Media";
 import AdminUsers from "./pages/AdminUsers";
 import CompanySettlement from "./pages/CompanySettlement";
+import Invoices from "./pages/Invoices";
+import InvoiceTemplates from "./pages/InvoiceTemplates";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -88,6 +90,16 @@ const App = () => (
               <Route path="/reports/company-settlement" element={
                 <ProtectedRoute>
                   <CompanySettlement />
+                </ProtectedRoute>
+              } />
+              <Route path="/invoices" element={
+                <ProtectedRoute>
+                  <Invoices />
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/invoice-templates" element={
+                <ProtectedRoute>
+                  <InvoiceTemplates />
                 </ProtectedRoute>
               } />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

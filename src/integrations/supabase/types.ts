@@ -201,6 +201,132 @@ export type Database = {
         }
         Relationships: []
       }
+      invoice_templates: {
+        Row: {
+          body_html: string | null
+          created_at: string
+          created_by_admin_id: string | null
+          direction: string
+          footer_html: string | null
+          header_html: string | null
+          id: string
+          is_active: boolean | null
+          language: string
+          logo_url: string | null
+          name: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          body_html?: string | null
+          created_at?: string
+          created_by_admin_id?: string | null
+          direction?: string
+          footer_html?: string | null
+          header_html?: string | null
+          id?: string
+          is_active?: boolean | null
+          language: string
+          logo_url?: string | null
+          name: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          body_html?: string | null
+          created_at?: string
+          created_by_admin_id?: string | null
+          direction?: string
+          footer_html?: string | null
+          header_html?: string | null
+          id?: string
+          is_active?: boolean | null
+          language?: string
+          logo_url?: string | null
+          name?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_templates_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          created_at: string
+          created_by_admin_id: string | null
+          error_message: string | null
+          id: string
+          invoice_number: string
+          issued_at: string
+          language: string
+          metadata_json: Json | null
+          pdf_url: string | null
+          policy_id: string
+          status: string
+          template_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by_admin_id?: string | null
+          error_message?: string | null
+          id?: string
+          invoice_number: string
+          issued_at?: string
+          language: string
+          metadata_json?: Json | null
+          pdf_url?: string | null
+          policy_id: string
+          status?: string
+          template_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by_admin_id?: string | null
+          error_message?: string | null
+          id?: string
+          invoice_number?: string
+          issued_at?: string
+          language?: string
+          metadata_json?: Json | null
+          pdf_url?: string | null
+          policy_id?: string
+          status?: string
+          template_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "policies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       login_attempts: {
         Row: {
           created_at: string
@@ -321,6 +447,7 @@ export type Database = {
           client_id: string
           company_id: string
           created_at: string
+          created_by_admin_id: string | null
           deleted_at: string | null
           end_date: string
           id: string
@@ -347,6 +474,7 @@ export type Database = {
           client_id: string
           company_id: string
           created_at?: string
+          created_by_admin_id?: string | null
           deleted_at?: string | null
           end_date: string
           id?: string
@@ -373,6 +501,7 @@ export type Database = {
           client_id?: string
           company_id?: string
           created_at?: string
+          created_by_admin_id?: string | null
           deleted_at?: string | null
           end_date?: string
           id?: string
@@ -418,6 +547,13 @@ export type Database = {
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "insurance_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policies_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -601,6 +737,7 @@ export type Database = {
         }[]
       }
       generate_file_number: { Args: never; Returns: string }
+      generate_invoice_number: { Args: never; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
