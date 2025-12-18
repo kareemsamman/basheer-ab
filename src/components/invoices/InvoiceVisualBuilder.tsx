@@ -94,10 +94,28 @@ export function InvoiceVisualBuilder({
   const [showGrid, setShowGrid] = useState(true);
   const [history, setHistory] = useState<TemplateElement[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
-  const [elements, setElements] = useState<TemplateElement[]>(layoutJson || []);
+  const [elements, setElements] = useState<TemplateElement[]>(Array.isArray(layoutJson) ? layoutJson : []);
   const isUpdatingRef = useRef(false);
+  const onChangeRef = useRef(onChange);
   const [fabricLoaded, setFabricLoaded] = useState(false);
   const [fabricError, setFabricError] = useState<string | null>(null);
+
+  // Keep latest onChange without re-triggering sync on each parent render
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  // If parent loads a different template/layout, adopt it safely
+  useEffect(() => {
+    const safeLayout = Array.isArray(layoutJson) ? layoutJson : [];
+    isUpdatingRef.current = true;
+    setElements(safeLayout);
+    if (fabricCanvasRef.current) {
+      loadElementsToCanvas(safeLayout, fabricCanvasRef.current);
+    }
+    isUpdatingRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutJson]);
 
   // Load Fabric.js dynamically
   useEffect(() => {
@@ -157,6 +175,7 @@ export function InvoiceVisualBuilder({
       console.error("Failed to initialize canvas:", err);
       setFabricError("فشل في تهيئة لوحة التصميم");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fabricLoaded]);
 
   // Update grid visibility
@@ -174,12 +193,12 @@ export function InvoiceVisualBuilder({
     canvas.renderAll();
   }, [showGrid]);
 
-  // Sync elements with parent
+  // Sync elements with parent (only when elements change)
   useEffect(() => {
     if (!isUpdatingRef.current) {
-      onChange(elements);
+      onChangeRef.current(elements);
     }
-  }, [elements, onChange]);
+  }, [elements]);
 
   const drawGrid = (canvas: any) => {
     // Draw vertical lines
