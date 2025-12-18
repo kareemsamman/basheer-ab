@@ -203,9 +203,18 @@ export function PolicyPaymentsSection({
       setAddDialogOpen(false);
       resetForm();
       onPaymentsChange();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding payment:', error);
-      toast({ title: "خطأ", description: "فشل في إضافة الدفعة", variant: "destructive" });
+      const errorMessage = error.message || '';
+      if (errorMessage.includes('Payment total exceeds')) {
+        toast({ 
+          title: "خطأ في الدفعة", 
+          description: "مجموع الدفعات يتجاوز سعر التأمين. الرجاء تعديل المبلغ.", 
+          variant: "destructive" 
+        });
+      } else {
+        toast({ title: "خطأ", description: "فشل في إضافة الدفعة", variant: "destructive" });
+      }
     } finally {
       setSaving(false);
     }
@@ -254,9 +263,18 @@ export function PolicyPaymentsSection({
       setSelectedPayment(null);
       resetForm();
       onPaymentsChange();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating payment:', error);
-      toast({ title: "خطأ", description: "فشل في تحديث الدفعة", variant: "destructive" });
+      const errorMessage = error.message || '';
+      if (errorMessage.includes('Payment total exceeds')) {
+        toast({ 
+          title: "خطأ في الدفعة", 
+          description: "مجموع الدفعات يتجاوز سعر التأمين. الرجاء تعديل المبلغ.", 
+          variant: "destructive" 
+        });
+      } else {
+        toast({ title: "خطأ", description: "فشل في تحديث الدفعة", variant: "destructive" });
+      }
     } finally {
       setSaving(false);
     }

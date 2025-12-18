@@ -202,6 +202,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
   // Step 4: Payments
   const [payments, setPayments] = useState<PaymentLine[]>([]);
   const [fetchingCarPrice, setFetchingCarPrice] = useState(false);
+  const [paymentValidationError, setPaymentValidationError] = useState<string | null>(null);
   
   // Tranzila state
   const [tranzilaEnabled, setTranzilaEnabled] = useState(false);
@@ -213,6 +214,12 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
   const [insuranceFiles, setInsuranceFiles] = useState<File[]>([]); // ملفات التأمين - للعميل
   const [crmFiles, setCrmFiles] = useState<File[]>([]); // ملفات النظام - هوية، صور سيارة
   const [uploadingFiles, setUploadingFiles] = useState(false);
+
+  // Payment validation computed values
+  const insurancePrice = parseFloat(policy.insurance_price) || 0;
+  const totalPaidPayments = payments.filter(p => !p.refused).reduce((sum, p) => sum + (p.amount || 0), 0);
+  const remainingToPay = insurancePrice - totalPaidPayments;
+  const paymentsExceedPrice = totalPaidPayments > insurancePrice && insurancePrice > 0;
 
   const clearDraft = () => {
     try {
@@ -658,7 +665,17 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
   };
 
   const updatePayment = (id: string, field: string, value: any) => {
-    setPayments(payments.map(p => p.id === id ? { ...p, [field]: value } : p));
+    const updatedPayments = payments.map(p => p.id === id ? { ...p, [field]: value } : p);
+    setPayments(updatedPayments);
+    
+    // Validate total payments don't exceed insurance price
+    const totalPaid = updatedPayments.filter(p => !p.refused).reduce((sum, p) => sum + (p.amount || 0), 0);
+    const price = parseFloat(policy.insurance_price) || 0;
+    if (totalPaid > price && price > 0) {
+      setPaymentValidationError(`مجموع الدفعات (₪${totalPaid.toLocaleString()}) يتجاوز سعر التأمين (₪${price.toLocaleString()})`);
+    } else {
+      setPaymentValidationError(null);
+    }
   };
 
   // Handle Visa payment - creates policy first if needed, then opens Tranzila
@@ -908,7 +925,8 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
         case 2:
           return !!(policy.start_date && policy.end_date && policy.insurance_price);
         case 3:
-          return true;
+          // Block if payments exceed insurance price
+          return !paymentsExceedPrice;
         default:
           return false;
       }
@@ -929,7 +947,8 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
         case 3:
           return !!(policy.policy_type_parent && policy.company_id && policy.start_date && policy.end_date && policy.insurance_price);
         case 4:
-          return true;
+          // Block if payments exceed insurance price
+          return !paymentsExceedPrice;
         default:
           return false;
       }
@@ -1168,7 +1187,17 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
       }
     } catch (error: any) {
       console.error('Error creating policy:', error);
-      toast({ title: "خطأ", description: error.message || "حدث خطأ أثناء الحفظ", variant: "destructive" });
+      // Check if it's a payment validation error
+      const errorMessage = error.message || '';
+      if (errorMessage.includes('Payment total exceeds')) {
+        toast({ 
+          title: "خطأ في الدفعات", 
+          description: "مجموع الدفعات يتجاوز سعر التأمين. الرجاء تعديل المبالغ.", 
+          variant: "destructive" 
+        });
+      } else {
+        toast({ title: "خطأ", description: errorMessage || "حدث خطأ أثناء الحفظ", variant: "destructive" });
+      }
       setSaving(false);
     }
   };
@@ -2058,6 +2087,36 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                 </div>
               </Card>
 
+              {/* Payment Summary - shows when there are payments */}
+              {payments.length > 0 && (
+                <Card className={cn("p-4", paymentsExceedPrice ? "border-destructive bg-destructive/5" : "bg-muted/30")}>
+                  <div className="grid grid-cols-3 gap-4 text-center text-sm">
+                    <div>
+                      <span className="text-muted-foreground text-xs">سعر التأمين</span>
+                      <p className="font-bold">₪{insurancePrice.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground text-xs">مجموع الدفعات</span>
+                      <p className={cn("font-bold", paymentsExceedPrice ? "text-destructive" : "text-success")}>
+                        ₪{totalPaidPayments.toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground text-xs">المتبقي</span>
+                      <p className={cn("font-bold", remainingToPay < 0 ? "text-destructive" : remainingToPay === 0 ? "text-success" : "text-amber-600")}>
+                        ₪{remainingToPay.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  {paymentsExceedPrice && (
+                    <div className="flex items-center gap-2 mt-3 text-destructive text-sm justify-center">
+                      <AlertCircle className="h-4 w-4" />
+                      <span>مجموع الدفعات يتجاوز سعر التأمين! الحد الأقصى: ₪{insurancePrice.toLocaleString()}</span>
+                    </div>
+                  )}
+                </Card>
+              )}
+
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-lg">الدفعات (اختياري)</h3>
                 <Button variant="outline" size="sm" onClick={addPayment}>
@@ -2112,7 +2171,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                               </SelectContent>
                             </Select>
                           </div>
-                          <div>
+                          <div className="space-y-1">
                             <Label>المبلغ</Label>
                             <Input
                               type="number"
@@ -2120,7 +2179,17 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                               onChange={(e) => updatePayment(payment.id, 'amount', parseFloat(e.target.value) || 0)}
                               placeholder="₪"
                               disabled={payment.tranzila_paid}
+                              className={cn(
+                                payment.amount && !payment.refused && 
+                                (payment.amount > (insurancePrice - payments.filter(p => !p.refused && p.id !== payment.id).reduce((s, p) => s + (p.amount || 0), 0)))
+                                  ? "border-destructive" : ""
+                              )}
                             />
+                            {!payment.tranzila_paid && !payment.refused && insurancePrice > 0 && (
+                              <p className="text-xs text-muted-foreground">
+                                الحد الأقصى: ₪{Math.max(0, insurancePrice - payments.filter(p => !p.refused && p.id !== payment.id).reduce((s, p) => s + (p.amount || 0), 0)).toLocaleString()}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

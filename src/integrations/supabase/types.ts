@@ -884,6 +884,12 @@ export type Database = {
         | "THIRD_FULL"
         | "ROAD_SERVICE"
         | "ACCIDENT_FEE_EXEMPTION"
+        | "HEALTH"
+        | "LIFE"
+        | "PROPERTY"
+        | "TRAVEL"
+        | "BUSINESS"
+        | "OTHER"
       pricing_rule_type:
         | "THIRD_PRICE"
         | "FULL_PERCENT"
@@ -1031,6 +1037,12 @@ export const Constants = {
         "THIRD_FULL",
         "ROAD_SERVICE",
         "ACCIDENT_FEE_EXEMPTION",
+        "HEALTH",
+        "LIFE",
+        "PROPERTY",
+        "TRAVEL",
+        "BUSINESS",
+        "OTHER",
       ],
       pricing_rule_type: [
         "THIRD_PRICE",

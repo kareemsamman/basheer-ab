@@ -46,6 +46,12 @@ const POLICY_TYPE_LABELS: Record<Enums<'policy_type_parent'>, string> = {
   THIRD_FULL: 'طرف ثالث / شامل',
   ROAD_SERVICE: 'خدمات الطريق',
   ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
+  HEALTH: 'التأمين الصحي',
+  LIFE: 'تأمين الحياة',
+  PROPERTY: 'تأمين الممتلكات',
+  TRAVEL: 'تأمين السفر',
+  BUSINESS: 'تأمين الشركات',
+  OTHER: 'أخرى',
 };
 
 export default function CompanySettlement() {
