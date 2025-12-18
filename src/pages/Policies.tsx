@@ -14,10 +14,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Search,
-  Filter,
   Download,
   ChevronLeft,
   ChevronRight,
@@ -30,6 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PolicyWizard } from "@/components/policies/PolicyWizard";
 import { PolicyDetailsDrawer } from "@/components/policies/PolicyDetailsDrawer";
 import { PolicyEditDrawer } from "@/components/policies/PolicyEditDrawer";
+import { PolicyFilters, PolicyFilterValues } from "@/components/policies/PolicyFilters";
 import { RowActionsMenu } from "@/components/shared/RowActionsMenu";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { recalculatePolicyProfit } from "@/lib/pricingCalculator";
@@ -102,8 +101,13 @@ export default function Policies() {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const [creatorFilter, setCreatorFilter] = useState<string>("all");
-  const [creators, setCreators] = useState<{ id: string; name: string }[]>([]);
+  const [filters, setFilters] = useState<PolicyFilterValues>({
+    policyType: 'all',
+    companyId: 'all',
+    status: 'all',
+    brokerId: 'all',
+    creatorId: 'all',
+  });
   const pageSize = 25;
 
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -132,8 +136,30 @@ export default function Policies() {
         .order('created_at', { ascending: false })
         .range((currentPage - 1) * pageSize, currentPage * pageSize - 1);
 
-      if (creatorFilter !== 'all') {
-        query = query.eq('created_by_admin_id', creatorFilter);
+      // Apply filters
+      if (filters.policyType !== 'all') {
+        query = query.eq('policy_type_parent', filters.policyType as any);
+      }
+      if (filters.companyId !== 'all') {
+        query = query.eq('company_id', filters.companyId);
+      }
+      if (filters.brokerId !== 'all') {
+        query = query.eq('broker_id', filters.brokerId);
+      }
+      if (filters.creatorId !== 'all') {
+        query = query.eq('created_by_admin_id', filters.creatorId);
+      }
+      if (filters.status !== 'all') {
+        const today = new Date().toISOString().split('T')[0];
+        if (filters.status === 'cancelled') {
+          query = query.eq('cancelled', true);
+        } else if (filters.status === 'transferred') {
+          query = query.eq('transferred', true);
+        } else if (filters.status === 'expired') {
+          query = query.lt('end_date', today).eq('cancelled', false);
+        } else if (filters.status === 'active') {
+          query = query.gte('end_date', today).eq('cancelled', false).eq('transferred', false);
+        }
       }
 
       const { data, error, count } = await query;
@@ -147,22 +173,7 @@ export default function Policies() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchQuery, creatorFilter, toast]);
-
-  // Fetch creators for filter dropdown
-  useEffect(() => {
-    const fetchCreators = async () => {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, full_name, email')
-        .eq('status', 'active');
-      
-      if (data) {
-        setCreators(data.map(p => ({ id: p.id, name: p.full_name || p.email })));
-      }
-    };
-    fetchCreators();
-  }, []);
+  }, [currentPage, searchQuery, filters, toast]);
 
   useEffect(() => {
     fetchPolicies();
@@ -339,17 +350,10 @@ export default function Policies() {
             />
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <Select value={creatorFilter} onValueChange={(v) => { setCreatorFilter(v); setCurrentPage(1); }}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="أنشئ بواسطة" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">كل المستخدمين</SelectItem>
-                {creators.map(c => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <PolicyFilters 
+              filters={filters} 
+              onFiltersChange={(f) => { setFilters(f); setCurrentPage(1); }} 
+            />
             <Button 
               variant="outline" 
               size="sm"

@@ -6,7 +6,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { useToast } from "@/hooks/use-toast";
@@ -99,7 +98,6 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
     if (open) {
       fetchCompanies(policy.policy_type_parent);
       fetchBrokers();
-      // Reset form when opening
       setFormData({
         policy_type_parent: policy.policy_type_parent,
         policy_type_child: policy.policy_type_child || "",
@@ -147,7 +145,6 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
     try {
       const insurancePrice = parseFloat(formData.insurance_price) || 0;
       
-      // Calculate profit
       let companyPayment = insurancePrice;
       let profit = 0;
 
@@ -206,23 +203,22 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
-        className="max-w-xl max-h-[90vh] p-0 overflow-hidden"
+        className="max-w-lg p-0 overflow-hidden"
         dir="rtl"
-        onInteractOutside={(e) => e.preventDefault()}
       >
-        <div className="flex flex-col h-full max-h-[90vh]">
-          <DialogHeader className="p-6 border-b bg-muted/30">
-            <DialogTitle className="text-xl font-bold">تعديل الوثيقة</DialogTitle>
-            <p className="text-sm text-muted-foreground">
-              {policy.clients?.full_name || ''} - {policy.cars?.car_number || ''}
-            </p>
-          </DialogHeader>
+        <DialogHeader className="p-4 border-b bg-muted/30 text-right">
+          <DialogTitle className="text-lg font-bold text-right">تعديل الوثيقة</DialogTitle>
+          <p className="text-sm text-muted-foreground text-right">
+            {policy.clients?.full_name || ''} - {policy.cars?.car_number || ''}
+          </p>
+        </DialogHeader>
 
-          <ScrollArea className="flex-1 p-6">
-            <div className="space-y-6">
-              {/* Policy Type */}
-              <div className="space-y-4">
-                <Label>نوع الوثيقة</Label>
+        <ScrollArea className="max-h-[60vh]">
+          <div className="p-4 space-y-4">
+            {/* Policy Type Row */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-right block text-sm">نوع الوثيقة</Label>
                 <Select
                   value={formData.policy_type_parent}
                   onValueChange={(v) => {
@@ -230,58 +226,63 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
                       ...f, 
                       policy_type_parent: v,
                       policy_type_child: POLICY_TYPES.find(t => t.value === v)?.hasChild ? f.policy_type_child : "",
-                      company_id: "" // Reset company when type changes
+                      company_id: ""
                     }));
                     fetchCompanies(v);
                   }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9 text-right">
                     <SelectValue placeholder="اختر النوع" />
                   </SelectTrigger>
                   <SelectContent>
                     {POLICY_TYPES.map(type => (
-                      <SelectItem key={type.value} value={type.value}>
+                      <SelectItem key={type.value} value={type.value} className="text-right">
                         {type.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
 
-                {selectedType?.hasChild && (
+              {selectedType?.hasChild && (
+                <div className="space-y-1.5">
+                  <Label className="text-right block text-sm">النوع الفرعي</Label>
                   <Select
                     value={formData.policy_type_child}
                     onValueChange={(v) => setFormData(f => ({ ...f, policy_type_child: v }))}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="اختر النوع الفرعي" />
+                    <SelectTrigger className="h-9 text-right">
+                      <SelectValue placeholder="اختر" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="THIRD">طرف ثالث</SelectItem>
-                      <SelectItem value="FULL">شامل</SelectItem>
+                      <SelectItem value="THIRD" className="text-right">طرف ثالث</SelectItem>
+                      <SelectItem value="FULL" className="text-right">شامل</SelectItem>
                     </SelectContent>
                   </Select>
-                )}
-              </div>
+                </div>
+              )}
+            </div>
 
-              {/* Company */}
-              <div className="space-y-2">
-                <Label>شركة التأمين</Label>
+            {/* Company & Broker Row */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-right block text-sm">شركة التأمين</Label>
                 <Select
                   value={formData.company_id}
                   onValueChange={(v) => setFormData(f => ({ ...f, company_id: v }))}
                   disabled={!formData.policy_type_parent}
                 >
-                  <SelectTrigger className={!formData.policy_type_parent ? "opacity-50" : ""}>
-                    <SelectValue placeholder={formData.policy_type_parent ? "اختر الشركة" : "اختر نوع الوثيقة أولاً"} />
+                  <SelectTrigger className={`h-9 text-right ${!formData.policy_type_parent ? "opacity-50" : ""}`}>
+                    <SelectValue placeholder={formData.policy_type_parent ? "اختر" : "اختر النوع أولاً"} />
                   </SelectTrigger>
                   <SelectContent>
                     {loadingCompanies ? (
                       <div className="p-2 text-center text-sm text-muted-foreground">جاري التحميل...</div>
                     ) : companies.length === 0 ? (
-                      <div className="p-2 text-center text-sm text-muted-foreground">لا توجد شركات لهذا النوع</div>
+                      <div className="p-2 text-center text-sm text-muted-foreground">لا توجد شركات</div>
                     ) : (
                       companies.map(company => (
-                        <SelectItem key={company.id} value={company.id}>
+                        <SelectItem key={company.id} value={company.id} className="text-right">
                           {company.name_ar || company.name}
                         </SelectItem>
                       ))
@@ -290,123 +291,125 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
                 </Select>
               </div>
 
-              {/* Broker */}
-              <div className="space-y-2">
-                <Label>الوسيط (اختياري)</Label>
+              <div className="space-y-1.5">
+                <Label className="text-right block text-sm">الوسيط</Label>
                 <Select
                   value={formData.broker_id}
                   onValueChange={(v) => setFormData(f => ({ ...f, broker_id: v }))}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="اختر الوسيط" />
+                  <SelectTrigger className="h-9 text-right">
+                    <SelectValue placeholder="اختياري" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={NO_BROKER}>بدون وسيط</SelectItem>
+                    <SelectItem value={NO_BROKER} className="text-right">بدون وسيط</SelectItem>
                     {brokers.map(broker => (
-                      <SelectItem key={broker.id} value={broker.id}>
+                      <SelectItem key={broker.id} value={broker.id} className="text-right">
                         {broker.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+            </div>
 
-              {/* Dates */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>تاريخ البدء</Label>
-                  <ArabicDatePicker
-                    value={formData.start_date}
-                    onChange={(v) => setFormData(f => ({ ...f, start_date: v }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>تاريخ الانتهاء</Label>
-                  <ArabicDatePicker
-                    value={formData.end_date}
-                    onChange={(v) => setFormData(f => ({ ...f, end_date: v }))}
-                  />
-                </div>
-              </div>
-
-              {/* Price */}
-              <div className="space-y-2">
-                <Label>سعر التأمين (₪)</Label>
-                <Input
-                  type="number"
-                  value={formData.insurance_price}
-                  onChange={(e) => setFormData(f => ({ ...f, insurance_price: e.target.value }))}
-                  dir="ltr"
-                  className="text-left"
+            {/* Dates Row */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-right block text-sm">تاريخ البدء</Label>
+                <ArabicDatePicker
+                  value={formData.start_date}
+                  onChange={(v) => setFormData(f => ({ ...f, start_date: v }))}
                 />
               </div>
-
-              {/* Status Checkboxes */}
-              <Card className="p-4 space-y-4">
-                <div className="flex items-center gap-3">
-                  <Checkbox
-                    id="is_under_24"
-                    checked={formData.is_under_24}
-                    onCheckedChange={(c) => setFormData(f => ({ ...f, is_under_24: !!c }))}
-                  />
-                  <Label htmlFor="is_under_24" className="cursor-pointer">أقل من 24 سنة</Label>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Checkbox
-                    id="cancelled"
-                    checked={formData.cancelled}
-                    onCheckedChange={(c) => setFormData(f => ({ ...f, cancelled: !!c }))}
-                  />
-                  <Label htmlFor="cancelled" className="cursor-pointer">ملغاة</Label>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Checkbox
-                    id="transferred"
-                    checked={formData.transferred}
-                    onCheckedChange={(c) => setFormData(f => ({ ...f, transferred: !!c }))}
-                  />
-                  <Label htmlFor="transferred" className="cursor-pointer">محوّلة</Label>
-                </div>
-                {formData.transferred && (
-                  <div className="mr-6 space-y-2">
-                    <Label>رقم السيارة السابقة</Label>
-                    <Input
-                      value={formData.transferred_car_number}
-                      onChange={(e) => setFormData(f => ({ ...f, transferred_car_number: e.target.value }))}
-                      dir="ltr"
-                      placeholder="رقم السيارة"
-                    />
-                  </div>
-                )}
-              </Card>
-
-              {/* Notes */}
-              <div className="space-y-2">
-                <Label>ملاحظات</Label>
-                <Textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData(f => ({ ...f, notes: e.target.value }))}
-                  rows={3}
+              <div className="space-y-1.5">
+                <Label className="text-right block text-sm">تاريخ الانتهاء</Label>
+                <ArabicDatePicker
+                  value={formData.end_date}
+                  onChange={(v) => setFormData(f => ({ ...f, end_date: v }))}
                 />
               </div>
             </div>
-          </ScrollArea>
 
-          {/* Footer */}
-          <div className="p-4 border-t bg-muted/30 flex gap-3">
-            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
-              <X className="h-4 w-4 ml-2" />
-              إلغاء
-            </Button>
-            <Button className="flex-1" onClick={handleSave} disabled={saving}>
-              {saving ? (
-                <Loader2 className="h-4 w-4 ml-2 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4 ml-2" />
-              )}
-              حفظ التغييرات
-            </Button>
+            {/* Price */}
+            <div className="space-y-1.5">
+              <Label className="text-right block text-sm">سعر التأمين (₪)</Label>
+              <Input
+                type="number"
+                value={formData.insurance_price}
+                onChange={(e) => setFormData(f => ({ ...f, insurance_price: e.target.value }))}
+                dir="ltr"
+                className="h-9 text-left"
+              />
+            </div>
+
+            {/* Status Checkboxes - Compact */}
+            <div className="flex flex-wrap gap-4 py-2 px-3 bg-muted/30 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="is_under_24"
+                  checked={formData.is_under_24}
+                  onCheckedChange={(c) => setFormData(f => ({ ...f, is_under_24: !!c }))}
+                />
+                <Label htmlFor="is_under_24" className="cursor-pointer text-sm">أقل من 24</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="cancelled"
+                  checked={formData.cancelled}
+                  onCheckedChange={(c) => setFormData(f => ({ ...f, cancelled: !!c }))}
+                />
+                <Label htmlFor="cancelled" className="cursor-pointer text-sm">ملغاة</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="transferred"
+                  checked={formData.transferred}
+                  onCheckedChange={(c) => setFormData(f => ({ ...f, transferred: !!c }))}
+                />
+                <Label htmlFor="transferred" className="cursor-pointer text-sm">محوّلة</Label>
+              </div>
+            </div>
+
+            {formData.transferred && (
+              <div className="space-y-1.5">
+                <Label className="text-right block text-sm">رقم السيارة السابقة</Label>
+                <Input
+                  value={formData.transferred_car_number}
+                  onChange={(e) => setFormData(f => ({ ...f, transferred_car_number: e.target.value }))}
+                  dir="ltr"
+                  placeholder="رقم السيارة"
+                  className="h-9"
+                />
+              </div>
+            )}
+
+            {/* Notes */}
+            <div className="space-y-1.5">
+              <Label className="text-right block text-sm">ملاحظات</Label>
+              <Textarea
+                value={formData.notes}
+                onChange={(e) => setFormData(f => ({ ...f, notes: e.target.value }))}
+                rows={2}
+                className="text-right"
+              />
+            </div>
           </div>
+        </ScrollArea>
+
+        {/* Footer */}
+        <div className="p-3 border-t bg-muted/30 flex gap-2">
+          <Button variant="outline" className="flex-1 h-9" onClick={() => onOpenChange(false)}>
+            <X className="h-4 w-4 ml-1" />
+            إلغاء
+          </Button>
+          <Button className="flex-1 h-9" onClick={handleSave} disabled={saving}>
+            {saving ? (
+              <Loader2 className="h-4 w-4 ml-1 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4 ml-1" />
+            )}
+            حفظ
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

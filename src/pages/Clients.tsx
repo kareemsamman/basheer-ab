@@ -16,12 +16,10 @@ import {
 } from "@/components/ui/table";
 import {
   Search,
-  Filter,
   Download,
   ChevronLeft,
   ChevronRight,
   Phone,
-  FileText,
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -29,6 +27,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { ClientDrawer } from "@/components/clients/ClientDrawer";
 import { ClientDetails } from "@/components/clients/ClientDetails";
+import { ClientFilters, ClientFilterValues } from "@/components/clients/ClientFilters";
 import { RowActionsMenu } from "@/components/shared/RowActionsMenu";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 
@@ -54,6 +53,10 @@ export default function Clients() {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [filters, setFilters] = useState<ClientFilterValues>({
+    brokerId: 'all',
+    ageGroup: 'all',
+  });
   const pageSize = 25;
 
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -79,6 +82,18 @@ export default function Clients() {
         );
       }
 
+      // Apply filters
+      if (filters.brokerId !== 'all') {
+        query = query.eq('broker_id', filters.brokerId);
+      }
+      if (filters.ageGroup !== 'all') {
+        if (filters.ageGroup === 'under24') {
+          query = query.eq('less_than_24', true);
+        } else if (filters.ageGroup === 'over24') {
+          query = query.or('less_than_24.eq.false,less_than_24.is.null');
+        }
+      }
+
       const { data, error, count } = await query;
 
       if (error) throw error;
@@ -90,7 +105,7 @@ export default function Clients() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchQuery, toast]);
+  }, [currentPage, searchQuery, filters, toast]);
 
   useEffect(() => {
     fetchClients();
@@ -175,10 +190,10 @@ export default function Clients() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm">
-              <Filter className="ml-2 h-4 w-4" />
-              فلترة
-            </Button>
+            <ClientFilters 
+              filters={filters} 
+              onFiltersChange={(f) => { setFilters(f); setCurrentPage(1); }} 
+            />
             <Button variant="outline" size="sm">
               <Download className="ml-2 h-4 w-4" />
               تصدير
