@@ -536,7 +536,7 @@ export type Database = {
           car_id: string | null
           category_id: string | null
           client_id: string
-          company_id: string
+          company_id: string | null
           created_at: string
           created_by_admin_id: string | null
           deleted_at: string | null
@@ -564,7 +564,7 @@ export type Database = {
           car_id?: string | null
           category_id?: string | null
           client_id: string
-          company_id: string
+          company_id?: string | null
           created_at?: string
           created_by_admin_id?: string | null
           deleted_at?: string | null
@@ -592,7 +592,7 @@ export type Database = {
           car_id?: string | null
           category_id?: string | null
           client_id?: string
-          company_id?: string
+          company_id?: string | null
           created_at?: string
           created_by_admin_id?: string | null
           deleted_at?: string | null
