@@ -1,21 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
 import { 
-  Type, Image, Hash, Table2, Minus, QrCode, Stamp, 
   Undo2, Redo2, Grid3X3, Trash2, Copy, Lock, Unlock,
-  ChevronUp, ChevronDown, Eye, Layers, AlertCircle
+  ChevronUp, ChevronDown, AlertCircle
 } from "lucide-react";
 import { InvoicePropertiesPanel } from "./InvoicePropertiesPanel";
 import { InvoiceElementsSidebar } from "./InvoiceElementsSidebar";
 
-// Dynamic import for Fabric.js to handle SSR and loading issues
+// Dynamic import for Fabric.js
 let FabricCanvas: any = null;
 let Rect: any = null;
 let Textbox: any = null;
@@ -41,8 +37,8 @@ export interface TemplateElement {
     borderWidth?: number;
     borderColor?: string;
   };
-  content?: string; // For text/image URL
-  fieldKey?: string; // For dynamic fields
+  content?: string;
+  fieldKey?: string;
   locked?: boolean;
   tableConfig?: {
     columns: string[];
@@ -58,7 +54,6 @@ interface InvoiceVisualBuilderProps {
   logoUrl?: string;
 }
 
-// A4 dimensions at 72 DPI (595 x 842 pixels)
 const A4_WIDTH = 595;
 const A4_HEIGHT = 842;
 const GRID_SIZE = 10;
@@ -90,7 +85,7 @@ export function InvoiceVisualBuilder({
   const { toast } = useToast();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvasRef = useRef<any>(null);
-  const [selectedElement, setSelectedElement] = useState<TemplateElement | null>(null);
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [history, setHistory] = useState<TemplateElement[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -100,12 +95,13 @@ export function InvoiceVisualBuilder({
   const [fabricLoaded, setFabricLoaded] = useState(false);
   const [fabricError, setFabricError] = useState<string | null>(null);
 
-  // Keep latest onChange without re-triggering sync on each parent render
+  // Derived selected element
+  const selectedElement = elements.find(el => el.id === selectedElementId) || null;
+
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
 
-  // If parent loads a different template/layout, adopt it safely
   useEffect(() => {
     const safeLayout = Array.isArray(layoutJson) ? layoutJson : [];
     isUpdatingRef.current = true;
@@ -114,7 +110,6 @@ export function InvoiceVisualBuilder({
       loadElementsToCanvas(safeLayout, fabricCanvasRef.current);
     }
     isUpdatingRef.current = false;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layoutJson]);
 
   // Load Fabric.js dynamically
@@ -136,7 +131,7 @@ export function InvoiceVisualBuilder({
     loadFabric();
   }, []);
 
-  // Initialize Fabric canvas after fabric is loaded
+  // Initialize Fabric canvas
   useEffect(() => {
     if (!fabricLoaded || !canvasRef.current || !FabricCanvas) return;
 
@@ -151,24 +146,77 @@ export function InvoiceVisualBuilder({
 
       fabricCanvasRef.current = canvas;
 
-      // Draw grid
       if (showGrid) {
         drawGrid(canvas);
       }
 
-      // Handle object selection
-      canvas.on('selection:created', handleSelection);
-      canvas.on('selection:updated', handleSelection);
-      canvas.on('selection:cleared', () => setSelectedElement(null));
+      // Selection handlers
+      canvas.on('selection:created', (e: any) => {
+        const obj = e.selected?.[0];
+        if (obj && (obj as any).elementId) {
+          setSelectedElementId((obj as any).elementId);
+        }
+      });
 
-      // Handle object modifications
-      canvas.on('object:modified', handleObjectModified);
-      canvas.on('object:moving', handleObjectMoving);
+      canvas.on('selection:updated', (e: any) => {
+        const obj = e.selected?.[0];
+        if (obj && (obj as any).elementId) {
+          setSelectedElementId((obj as any).elementId);
+        }
+      });
 
-      // Handle text editing on canvas
-      canvas.on('text:changed', handleTextChanged);
+      canvas.on('selection:cleared', () => {
+        setSelectedElementId(null);
+      });
 
-      // Load existing elements
+      // Object modification
+      canvas.on('object:modified', (e: any) => {
+        const obj = e.target;
+        if (!obj || !(obj as any).elementId) return;
+
+        const elementId = (obj as any).elementId;
+        
+        setElements(prev => {
+          const updated = prev.map(el => {
+            if (el.id === elementId) {
+              return {
+                ...el,
+                x: Math.round(obj.left || 0),
+                y: Math.round(obj.top || 0),
+                width: Math.round((obj.width || 100) * (obj.scaleX || 1)),
+                height: Math.round((obj.height || 30) * (obj.scaleY || 1)),
+              };
+            }
+            return el;
+          });
+          saveToHistory(updated);
+          return updated;
+        });
+      });
+
+      // Snap to grid
+      canvas.on('object:moving', (e: any) => {
+        const obj = e.target;
+        if (!obj) return;
+        if (showGrid) {
+          obj.set({
+            left: Math.round(obj.left! / GRID_SIZE) * GRID_SIZE,
+            top: Math.round(obj.top! / GRID_SIZE) * GRID_SIZE,
+          });
+        }
+      });
+
+      // Text editing on canvas
+      canvas.on('text:changed', (e: any) => {
+        const obj = e.target;
+        if (!obj || !(obj as any).elementId) return;
+        const elementId = (obj as any).elementId;
+        const newText = obj.text || '';
+        setElements(prev => prev.map(el => 
+          el.id === elementId ? { ...el, content: newText } : el
+        ));
+      });
+
       loadElementsToCanvas(elements, canvas);
 
       return () => {
@@ -178,25 +226,21 @@ export function InvoiceVisualBuilder({
       console.error("Failed to initialize canvas:", err);
       setFabricError("فشل في تهيئة لوحة التصميم");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fabricLoaded]);
 
-  // Update grid visibility
+  // Update grid
   useEffect(() => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
-
-    // Remove existing grid
-    const gridObjects = canvas.getObjects().filter(obj => (obj as any).isGrid);
-    gridObjects.forEach(obj => canvas.remove(obj));
-
+    const gridObjects = canvas.getObjects().filter((obj: any) => obj.isGrid);
+    gridObjects.forEach((obj: any) => canvas.remove(obj));
     if (showGrid) {
       drawGrid(canvas);
     }
     canvas.renderAll();
   }, [showGrid]);
 
-  // Sync elements with parent (only when elements change)
+  // Sync elements with parent
   useEffect(() => {
     if (!isUpdatingRef.current) {
       onChangeRef.current(elements);
@@ -204,7 +248,6 @@ export function InvoiceVisualBuilder({
   }, [elements]);
 
   const drawGrid = (canvas: any) => {
-    // Draw vertical lines
     for (let i = 0; i <= A4_WIDTH; i += GRID_SIZE) {
       const line = new Line([i, 0, i, A4_HEIGHT], {
         stroke: '#e5e7eb',
@@ -216,8 +259,6 @@ export function InvoiceVisualBuilder({
       canvas.add(line);
       canvas.sendObjectToBack(line);
     }
-
-    // Draw horizontal lines
     for (let i = 0; i <= A4_HEIGHT; i += GRID_SIZE) {
       const line = new Line([0, i, A4_WIDTH, i], {
         stroke: '#e5e7eb',
@@ -231,84 +272,12 @@ export function InvoiceVisualBuilder({
     }
   };
 
-  const handleSelection = (e: any) => {
-    const obj = e.selected?.[0];
-    if (obj && (obj as any).elementId) {
-      const element = elements.find(el => el.id === (obj as any).elementId);
-      setSelectedElement(element || null);
-    }
-  };
-
-  const handleObjectModified = (e: any) => {
-    const obj = e.target;
-    if (!obj || !(obj as any).elementId) return;
-
-    const elementId = (obj as any).elementId;
-    
-    setElements(prev => {
-      const updated = prev.map(el => {
-        if (el.id === elementId) {
-          return {
-            ...el,
-            x: Math.round(obj.left || 0),
-            y: Math.round(obj.top || 0),
-            width: Math.round((obj.width || 100) * (obj.scaleX || 1)),
-            height: Math.round((obj.height || 30) * (obj.scaleY || 1)),
-          };
-        }
-        return el;
-      });
-      saveToHistory(updated);
-      return updated;
-    });
-  };
-
-  const handleObjectMoving = (e: any) => {
-    const obj = e.target;
-    if (!obj) return;
-
-    // Snap to grid
-    if (showGrid) {
-      obj.set({
-        left: Math.round(obj.left! / GRID_SIZE) * GRID_SIZE,
-        top: Math.round(obj.top! / GRID_SIZE) * GRID_SIZE,
-      });
-    }
-  };
-
-  // Handle text editing directly on canvas
-  const handleTextChanged = (e: any) => {
-    const obj = e.target;
-    if (!obj || !(obj as any).elementId) return;
-
-    const elementId = (obj as any).elementId;
-    const newText = obj.text || '';
-
-    setElements(prev => {
-      const updated = prev.map(el => {
-        if (el.id === elementId) {
-          return { ...el, content: newText };
-        }
-        return el;
-      });
-      return updated;
-    });
-
-    // Update selected element if it's the one being edited
-    if (selectedElement?.id === elementId) {
-      setSelectedElement(prev => prev ? { ...prev, content: newText } : null);
-    }
-  };
-
   const loadElementsToCanvas = (elements: TemplateElement[], canvas: any) => {
-    // Remove non-grid objects
-    const objectsToRemove = canvas.getObjects().filter(obj => !(obj as any).isGrid);
-    objectsToRemove.forEach(obj => canvas.remove(obj));
-
+    const objectsToRemove = canvas.getObjects().filter((obj: any) => !obj.isGrid);
+    objectsToRemove.forEach((obj: any) => canvas.remove(obj));
     elements.forEach(element => {
       addElementToCanvas(element, canvas);
     });
-
     canvas.renderAll();
   };
 
@@ -329,7 +298,7 @@ export function InvoiceVisualBuilder({
           fontSize: element.style.fontSize || 14,
           fontWeight: element.style.fontWeight || 'normal',
           fontFamily: element.style.fontFamily || 'Arial',
-          textAlign: element.style.textAlign as any || (language === 'ar' ? 'right' : 'right'),
+          textAlign: element.style.textAlign as any || 'right',
           fill: element.style.color || '#000000',
           backgroundColor: element.style.backgroundColor || 'transparent',
           direction: element.style.direction || 'rtl',
@@ -337,6 +306,7 @@ export function InvoiceVisualBuilder({
           lockMovementY: element.locked,
           lockScalingX: element.locked,
           lockScalingY: element.locked,
+          editable: true,
         });
         fabricObject = textbox;
         break;
@@ -358,7 +328,7 @@ export function InvoiceVisualBuilder({
       case 'logo':
         const imgUrl = element.type === 'logo' ? logoUrl : element.content;
         if (imgUrl) {
-          FabricImage.fromURL(imgUrl, { crossOrigin: 'anonymous' }).then(img => {
+          FabricImage.fromURL(imgUrl, { crossOrigin: 'anonymous' }).then((img: any) => {
             img.set({
               left: element.x,
               top: element.y,
@@ -371,9 +341,8 @@ export function InvoiceVisualBuilder({
             canvas.add(img);
             canvas.renderAll();
           });
-          return; // Image is loaded async
+          return;
         } else {
-          // Placeholder
           const placeholder = new Rect({
             left: element.x,
             top: element.y,
@@ -388,7 +357,6 @@ export function InvoiceVisualBuilder({
         break;
 
       case 'table':
-        // Simple table representation
         const tableRect = new Rect({
           left: element.x,
           top: element.y,
@@ -454,7 +422,7 @@ export function InvoiceVisualBuilder({
         fontSize: 14,
         fontWeight: 'normal',
         fontFamily: 'Arial',
-        textAlign: language === 'ar' ? 'right' : 'right',
+        textAlign: 'right',
         color: '#000000',
         direction: 'rtl',
       },
@@ -467,31 +435,31 @@ export function InvoiceVisualBuilder({
     setElements(newElements);
     saveToHistory(newElements);
 
-    // Add to canvas
     if (fabricCanvasRef.current) {
       addElementToCanvas(newElement, fabricCanvasRef.current);
       fabricCanvasRef.current.renderAll();
     }
 
-    toast({ title: language === 'ar' ? 'تم الإضافة' : 'נוסף', description: `Element added` });
+    // Auto-select new element
+    setSelectedElementId(id);
+
+    toast({ title: language === 'ar' ? 'تم الإضافة' : 'נוסף' });
   };
 
   const deleteElement = (id: string) => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
 
-    // Remove from canvas
-    const obj = canvas.getObjects().find(o => (o as any).elementId === id);
+    const obj = canvas.getObjects().find((o: any) => o.elementId === id);
     if (obj) {
       canvas.remove(obj);
       canvas.renderAll();
     }
 
-    // Remove from state
     const newElements = elements.filter(el => el.id !== id);
     setElements(newElements);
     saveToHistory(newElements);
-    setSelectedElement(null);
+    setSelectedElementId(null);
   };
 
   const duplicateElement = (id: string) => {
@@ -515,26 +483,74 @@ export function InvoiceVisualBuilder({
     }
   };
 
-  const updateElement = (id: string, updates: Partial<TemplateElement>) => {
-    const newElements = elements.map(el => {
-      if (el.id === id) {
-        return { ...el, ...updates };
+  // Update element and sync to canvas object directly (without full reload)
+  const updateElement = useCallback((id: string, updates: Partial<TemplateElement>) => {
+    setElements(prev => {
+      const newElements = prev.map(el => {
+        if (el.id === id) {
+          const updated = { 
+            ...el, 
+            ...updates,
+            style: updates.style ? { ...el.style, ...updates.style } : el.style
+          };
+          return updated;
+        }
+        return el;
+      });
+      
+      // Update canvas object directly
+      const canvas = fabricCanvasRef.current;
+      if (canvas) {
+        const obj = canvas.getObjects().find((o: any) => o.elementId === id);
+        const updatedEl = newElements.find(e => e.id === id);
+        
+        if (obj && updatedEl) {
+          // Update position/size
+          if (updates.x !== undefined) obj.set('left', updates.x);
+          if (updates.y !== undefined) obj.set('top', updates.y);
+          if (updates.width !== undefined) {
+            obj.set('width', updates.width);
+            obj.set('scaleX', 1);
+          }
+          if (updates.height !== undefined) {
+            obj.set('height', updates.height);
+            obj.set('scaleY', 1);
+          }
+          
+          // Update text content
+          if (updates.content !== undefined && obj.text !== undefined) {
+            obj.set('text', updates.content);
+          }
+          
+          // Update styles
+          if (updates.style) {
+            if (updates.style.fontSize !== undefined) obj.set('fontSize', updates.style.fontSize);
+            if (updates.style.fontWeight !== undefined) obj.set('fontWeight', updates.style.fontWeight);
+            if (updates.style.color !== undefined) obj.set('fill', updates.style.color);
+            if (updates.style.backgroundColor !== undefined) obj.set('backgroundColor', updates.style.backgroundColor);
+            if (updates.style.textAlign !== undefined) obj.set('textAlign', updates.style.textAlign);
+          }
+          
+          // Update lock state
+          if (updates.locked !== undefined) {
+            obj.set('lockMovementX', updates.locked);
+            obj.set('lockMovementY', updates.locked);
+            obj.set('lockScalingX', updates.locked);
+            obj.set('lockScalingY', updates.locked);
+          }
+          
+          canvas.renderAll();
+        } else if (updatedEl && (updates.content && updatedEl.type === 'image')) {
+          // For image content changes, reload the element
+          const oldObj = canvas.getObjects().find((o: any) => o.elementId === id);
+          if (oldObj) canvas.remove(oldObj);
+          addElementToCanvas(updatedEl, canvas);
+        }
       }
-      return el;
+      
+      return newElements;
     });
-    setElements(newElements);
-    saveToHistory(newElements);
-
-    // Update canvas
-    if (fabricCanvasRef.current) {
-      loadElementsToCanvas(newElements, fabricCanvasRef.current);
-    }
-
-    // Update selected element
-    if (selectedElement?.id === id) {
-      setSelectedElement({ ...selectedElement, ...updates });
-    }
-  };
+  }, []);
 
   const toggleLock = (id: string) => {
     const element = elements.find(el => el.id === id);
@@ -546,8 +562,7 @@ export function InvoiceVisualBuilder({
   const bringForward = (id: string) => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
-
-    const obj = canvas.getObjects().find(o => (o as any).elementId === id);
+    const obj = canvas.getObjects().find((o: any) => o.elementId === id);
     if (obj) {
       canvas.bringObjectForward(obj);
       canvas.renderAll();
@@ -557,15 +572,26 @@ export function InvoiceVisualBuilder({
   const sendBackward = (id: string) => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
-
-    const obj = canvas.getObjects().find(o => (o as any).elementId === id);
+    const obj = canvas.getObjects().find((o: any) => o.elementId === id);
     if (obj) {
       canvas.sendObjectBackwards(obj);
       canvas.renderAll();
     }
   };
 
-  // Loading state
+  // Select element on canvas when clicking sidebar
+  const selectElement = (id: string) => {
+    setSelectedElementId(id);
+    const canvas = fabricCanvasRef.current;
+    if (canvas) {
+      const obj = canvas.getObjects().find((o: any) => o.elementId === id);
+      if (obj) {
+        canvas.setActiveObject(obj);
+        canvas.renderAll();
+      }
+    }
+  };
+
   if (!fabricLoaded && !fabricError) {
     return (
       <div className="flex items-center justify-center h-[700px]" dir="rtl">
@@ -577,7 +603,6 @@ export function InvoiceVisualBuilder({
     );
   }
 
-  // Error state
   if (fabricError) {
     return (
       <div className="flex items-center justify-center h-[700px]" dir="rtl">
@@ -597,6 +622,10 @@ export function InvoiceVisualBuilder({
         language={language}
         onAddElement={addElement}
         dynamicFields={DYNAMIC_FIELDS}
+        elements={elements}
+        selectedElementId={selectedElementId}
+        onSelectElement={selectElement}
+        onDeleteElement={deleteElement}
       />
 
       {/* Center - Canvas */}
@@ -640,7 +669,7 @@ export function InvoiceVisualBuilder({
           )}
         </div>
 
-        {/* Canvas Container with drag-drop support */}
+        {/* Canvas Container */}
         <div 
           className="flex-1 overflow-auto bg-muted/30 rounded-lg p-4 flex items-start justify-center"
           onDragOver={(e) => {
@@ -652,7 +681,6 @@ export function InvoiceVisualBuilder({
             const elementType = e.dataTransfer.getData('elementType') as TemplateElement['type'];
             const fieldKey = e.dataTransfer.getData('fieldKey');
             if (elementType) {
-              // Calculate drop position relative to canvas
               const canvasRect = canvasRef.current?.getBoundingClientRect();
               if (canvasRect) {
                 const x = Math.max(0, Math.min(A4_WIDTH - 100, e.clientX - canvasRect.left));
@@ -673,8 +701,8 @@ export function InvoiceVisualBuilder({
       {/* Right Sidebar - Properties */}
       <InvoicePropertiesPanel
         element={selectedElement}
-        onUpdate={(updates) => selectedElement && updateElement(selectedElement.id, updates)}
-        onDelete={() => selectedElement && deleteElement(selectedElement.id)}
+        onUpdate={(updates) => selectedElementId && updateElement(selectedElementId, updates)}
+        onDelete={() => selectedElementId && deleteElement(selectedElementId)}
         language={language}
         dynamicFields={DYNAMIC_FIELDS}
       />
