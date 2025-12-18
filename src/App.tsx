@@ -18,6 +18,7 @@ import Cheques from "./pages/Cheques";
 import Media from "./pages/Media";
 import AdminUsers from "./pages/AdminUsers";
 import CompanySettlement from "./pages/CompanySettlement";
+import CompanySettlementDetail from "./pages/CompanySettlementDetail";
 import Invoices from "./pages/Invoices";
 import InvoiceTemplates from "./pages/InvoiceTemplates";
 import InsuranceCategories from "./pages/InsuranceCategories";
@@ -94,6 +95,11 @@ const App = () => (
               <Route path="/reports/company-settlement" element={
                 <ProtectedRoute>
                   <CompanySettlement />
+                </ProtectedRoute>
+              } />
+              <Route path="/reports/company-settlement/:companyId" element={
+                <ProtectedRoute>
+                  <CompanySettlementDetail />
                 </ProtectedRoute>
               } />
               <Route path="/invoices" element={
