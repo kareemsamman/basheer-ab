@@ -22,6 +22,7 @@ import {
   ChevronRight,
   Phone,
   FileText,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -43,6 +44,7 @@ interface Client {
   image_url: string | null;
   created_at: string;
   broker_id: string | null;
+  broker?: { id: string; name: string } | null;
 }
 
 export default function Clients() {
@@ -66,7 +68,7 @@ export default function Clients() {
     try {
       let query = supabase
         .from('clients')
-        .select('*', { count: 'exact' })
+        .select('*, broker:brokers(id, name)', { count: 'exact' })
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .range((currentPage - 1) * pageSize, currentPage * pageSize - 1);
@@ -132,7 +134,7 @@ export default function Clients() {
           // Refresh the viewing client data
           supabase
             .from('clients')
-            .select('*')
+            .select('*, broker:brokers(id, name)')
             .eq('id', viewingClient.id)
             .single()
             .then(({ data }) => {
@@ -194,6 +196,7 @@ export default function Clients() {
                   <TableHead className="text-muted-foreground font-medium">رقم الهوية</TableHead>
                   <TableHead className="text-muted-foreground font-medium">رقم الملف</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الهاتف</TableHead>
+                  <TableHead className="text-muted-foreground font-medium">الوسيط</TableHead>
                   <TableHead className="text-muted-foreground font-medium">تاريخ الانضمام</TableHead>
                   <TableHead className="text-muted-foreground font-medium">العمر</TableHead>
                   <TableHead className="text-muted-foreground font-medium w-[80px]">إجراءات</TableHead>
@@ -208,13 +211,14 @@ export default function Clients() {
                       <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-28" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-8 w-8" /></TableCell>
                     </TableRow>
                   ))
                 ) : clients.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       لا توجد بيانات
                     </TableCell>
                   </TableRow>
@@ -261,6 +265,16 @@ export default function Clients() {
                           </div>
                         ) : (
                           "-"
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {client.broker ? (
+                          <Badge variant="outline" className="gap-1 bg-amber-500/10 text-amber-700 border-amber-500/20">
+                            <Users className="h-3 w-3" />
+                            {client.broker.name}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
                         )}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
