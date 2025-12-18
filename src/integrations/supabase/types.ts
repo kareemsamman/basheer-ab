@@ -315,6 +315,7 @@ export type Database = {
       policies: {
         Row: {
           broker_id: string | null
+          calc_status: string | null
           cancelled: boolean | null
           car_id: string
           client_id: string
@@ -340,6 +341,7 @@ export type Database = {
         }
         Insert: {
           broker_id?: string | null
+          calc_status?: string | null
           cancelled?: boolean | null
           car_id: string
           client_id: string
@@ -365,6 +367,7 @@ export type Database = {
         }
         Update: {
           broker_id?: string | null
+          calc_status?: string | null
           cancelled?: boolean | null
           car_id?: string
           client_id?: string

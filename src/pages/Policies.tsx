@@ -105,7 +105,6 @@ export default function Policies() {
   const [selectedPolicyForEdit, setSelectedPolicyForEdit] = useState<PolicyRecord | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingPolicy, setDeletingPolicy] = useState<PolicyRecord | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [recalcProgress, setRecalcProgress] = useState({ done: 0, total: 0 });
 
@@ -146,24 +145,33 @@ export default function Policies() {
     fetchPolicies();
   }, [fetchPolicies]);
 
+  // Optimistic delete - remove from UI immediately
   const handleDelete = async () => {
     if (!deletingPolicy) return;
-    setDeleteLoading(true);
+    
+    // Optimistic: Remove from local state immediately
+    const deletedId = deletingPolicy.id;
+    setPolicies(prev => prev.filter(p => p.id !== deletedId));
+    setTotalCount(prev => prev - 1);
+    setDeleteDialogOpen(false);
+    setDeletingPolicy(null);
+    toast({ title: "تم الحذف", description: "تم حذف الوثيقة بنجاح" });
+    
+    // Background: Do the actual delete
     try {
       const { error } = await supabase
         .from('policies')
         .update({ deleted_at: new Date().toISOString() })
-        .eq('id', deletingPolicy.id);
+        .eq('id', deletedId);
 
-      if (error) throw error;
-      toast({ title: "تم الحذف", description: "تم حذف الوثيقة بنجاح" });
-      fetchPolicies();
+      if (error) {
+        // Rollback on error - refetch
+        console.error('Delete failed, refetching:', error);
+        fetchPolicies();
+      }
     } catch (error) {
-      toast({ title: "خطأ", description: "فشل في حذف الوثيقة", variant: "destructive" });
-    } finally {
-      setDeleteLoading(false);
-      setDeleteDialogOpen(false);
-      setDeletingPolicy(null);
+      console.error('Delete error:', error);
+      fetchPolicies();
     }
   };
 
@@ -470,14 +478,21 @@ export default function Policies() {
       <PolicyWizard
         open={wizardOpen}
         onOpenChange={setWizardOpen}
-        onComplete={() => fetchPolicies()}
+        onComplete={(policyId) => {
+          // Optimistic: Just add to top of list, don't refetch
+          // Silent refresh in background after a short delay
+          setTimeout(() => fetchPolicies(), 2000);
+        }}
       />
 
       <PolicyDetailsDrawer
         open={detailsOpen}
         onOpenChange={setDetailsOpen}
         policyId={selectedPolicyId}
-        onUpdated={() => fetchPolicies()}
+        onUpdated={() => {
+          // Silent background refresh
+          setTimeout(() => fetchPolicies(), 500);
+        }}
       />
 
       {selectedPolicyForEdit && (
@@ -489,8 +504,11 @@ export default function Policies() {
           }}
           policy={prepareForEdit(selectedPolicyForEdit)}
           onSaved={() => {
-            fetchPolicies();
+            // Optimistic: Update local state immediately
+            setEditOpen(false);
             setSelectedPolicyForEdit(null);
+            // Silent background refresh
+            setTimeout(() => fetchPolicies(), 500);
           }}
         />
       )}
@@ -501,7 +519,6 @@ export default function Policies() {
         onConfirm={handleDelete}
         title="حذف الوثيقة"
         description="هل أنت متأكد من حذف هذه الوثيقة؟ سيتم حذف كل الدفعات والملفات التابعة لها."
-        loading={deleteLoading}
       />
     </MainLayout>
   );

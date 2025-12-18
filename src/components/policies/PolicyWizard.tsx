@@ -795,53 +795,58 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
         if (paymentsError) throw paymentsError;
       }
 
-      // Upload files if any
+      // Upload files in background (non-blocking)
       const allFiles = [
         ...insuranceFiles.map(f => ({ file: f, type: 'policy_insurance' })),
         ...crmFiles.map(f => ({ file: f, type: 'policy_crm' })),
       ];
       
-      if (allFiles.length > 0) {
-        setUploadingFiles(true);
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        for (const { file, type } of allFiles) {
-          try {
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('entity_type', type);
-            formData.append('entity_id', policyData.id);
-
-            await fetch(
-              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-media`,
-              {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${session?.access_token}`,
-                },
-                body: formData,
-              }
-            );
-          } catch (e) {
-            console.error('Error uploading file:', e);
-          }
-        }
-        setUploadingFiles(false);
-      }
-
+      // Close dialog immediately - don't wait for file uploads
       toast({ title: "تم الحفظ بنجاح", description: "تم إنشاء الوثيقة بنجاح" });
       clearDraft();
       onOpenChange(false);
+      setSaving(false);
       onComplete?.(policyData.id);
       
       // Navigate to policy details
       navigate(`/policies`);
+
+      // Upload files in background (non-blocking)
+      if (allFiles.length > 0) {
+        // Run uploads in background without blocking UI
+        (async () => {
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            
+            // Upload all files in parallel for speed
+            await Promise.allSettled(
+              allFiles.map(async ({ file, type }) => {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('entity_type', type);
+                formData.append('entity_id', policyData.id);
+
+                return fetch(
+                  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-media`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${session?.access_token}`,
+                    },
+                    body: formData,
+                  }
+                );
+              })
+            );
+          } catch (e) {
+            console.error('Background file upload error:', e);
+          }
+        })();
+      }
     } catch (error: any) {
       console.error('Error creating policy:', error);
       toast({ title: "خطأ", description: error.message || "حدث خطأ أثناء الحفظ", variant: "destructive" });
-    } finally {
       setSaving(false);
-      setUploadingFiles(false);
     }
   };
 
