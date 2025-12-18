@@ -20,6 +20,7 @@ import AdminUsers from "./pages/AdminUsers";
 import CompanySettlement from "./pages/CompanySettlement";
 import Invoices from "./pages/Invoices";
 import InvoiceTemplates from "./pages/InvoiceTemplates";
+import InsuranceCategories from "./pages/InsuranceCategories";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -100,6 +101,11 @@ const App = () => (
               <Route path="/admin/invoice-templates" element={
                 <ProtectedRoute>
                   <InvoiceTemplates />
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/insurance-categories" element={
+                <ProtectedRoute>
+                  <InsuranceCategories />
                 </ProtectedRoute>
               } />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

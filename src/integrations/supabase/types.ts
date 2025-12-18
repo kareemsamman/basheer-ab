@@ -165,6 +165,48 @@ export type Database = {
           },
         ]
       }
+      insurance_categories: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          is_default: boolean
+          mode: string
+          name: string
+          name_ar: string | null
+          name_he: string | null
+          slug: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          mode?: string
+          name: string
+          name_ar?: string | null
+          name_he?: string | null
+          slug: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          mode?: string
+          name?: string
+          name_ar?: string | null
+          name_he?: string | null
+          slug?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       insurance_companies: {
         Row: {
           active: boolean | null
