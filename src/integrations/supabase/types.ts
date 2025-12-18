@@ -533,7 +533,8 @@ export type Database = {
           broker_id: string | null
           calc_status: string | null
           cancelled: boolean | null
-          car_id: string
+          car_id: string | null
+          category_id: string | null
           client_id: string
           company_id: string
           created_at: string
@@ -560,7 +561,8 @@ export type Database = {
           broker_id?: string | null
           calc_status?: string | null
           cancelled?: boolean | null
-          car_id: string
+          car_id?: string | null
+          category_id?: string | null
           client_id: string
           company_id: string
           created_at?: string
@@ -587,7 +589,8 @@ export type Database = {
           broker_id?: string | null
           calc_status?: string | null
           cancelled?: boolean | null
-          car_id?: string
+          car_id?: string | null
+          category_id?: string | null
           client_id?: string
           company_id?: string
           created_at?: string
@@ -623,6 +626,13 @@ export type Database = {
             columns: ["car_id"]
             isOneToOne: false
             referencedRelation: "cars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policies_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_categories"
             referencedColumns: ["id"]
           },
           {

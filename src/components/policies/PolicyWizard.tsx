@@ -26,6 +26,16 @@ interface PolicyWizardProps {
   defaultBrokerId?: string;
 }
 
+interface InsuranceCategory {
+  id: string;
+  name: string;
+  name_ar: string | null;
+  slug: string;
+  mode: 'FULL' | 'LIGHT';
+  is_active: boolean;
+  is_default: boolean;
+}
+
 interface Client {
   id: string;
   full_name: string;
@@ -75,14 +85,21 @@ interface ValidationErrors {
   [key: string]: string;
 }
 
-const STEPS = [
+const STEPS_FULL = [
   { id: 1, title: "العميل", icon: User },
   { id: 2, title: "السيارة", icon: Car },
   { id: 3, title: "الوثيقة", icon: FileText },
   { id: 4, title: "الدفعات", icon: CreditCard },
 ];
 
-const POLICY_TYPES = [
+const STEPS_LIGHT = [
+  { id: 1, title: "العميل", icon: User },
+  { id: 2, title: "الوثيقة", icon: FileText },
+  { id: 3, title: "الدفعات", icon: CreditCard },
+];
+
+// Legacy policy types for car insurance categories
+const CAR_POLICY_TYPES = [
   { value: "ELZAMI", label: "إلزامي" },
   { value: "THIRD_FULL", label: "ثالث/شامل", hasChild: true },
   { value: "ROAD_SERVICE", label: "خدمات الطريق" },
@@ -113,6 +130,14 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
   const [currentStep, setCurrentStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<ValidationErrors>({});
+
+  // Insurance Categories
+  const [categories, setCategories] = useState<InsuranceCategory[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<InsuranceCategory | null>(null);
+  
+  // Computed: STEPS based on category mode
+  const isLightMode = selectedCategory?.mode === 'LIGHT';
+  const STEPS = isLightMode ? STEPS_LIGHT : STEPS_FULL;
 
   // Step 1: Client
   const [clientSearch, setClientSearch] = useState("");
@@ -224,6 +249,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
     setCurrentStep(1);
     setSelectedClient(null);
     setSelectedCar(null);
+    setSelectedCategory(null);
     setCreateNewClient(false);
     setCreateNewCar(false);
     setNewClient({ full_name: "", id_number: "", phone_number: "", less_than_24: false, notes: "", broker_id: defaultBrokerId || "" });
@@ -236,6 +262,34 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
     setExistingCar(null);
     setCarConflict(null);
     setErrors({});
+  };
+
+  // Fetch insurance categories
+  const fetchCategories = async () => {
+    const { data } = await supabase
+      .from('insurance_categories')
+      .select('*')
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true });
+    
+    if (data) {
+      const typedCategories = data.map(c => ({
+        ...c,
+        mode: c.mode as 'FULL' | 'LIGHT',
+      }));
+      setCategories(typedCategories);
+      
+      // Set default category
+      const defaultCat = typedCategories.find(c => c.is_default);
+      if (defaultCat && !selectedCategory) {
+        setSelectedCategory(defaultCat);
+        // If FULL mode, set policy_type_parent to slug
+        if (defaultCat.mode === 'FULL') {
+          setPolicy(p => ({ ...p, policy_type_parent: defaultCat.slug }));
+          fetchCompanies(defaultCat.slug);
+        }
+      }
+    }
   };
 
   // Load data on open
@@ -274,8 +328,16 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
       }
     }
     fetchBrokers();
+    fetchCategories();
     checkTranzilaEnabled();
   }, [open, defaultBrokerId]);
+
+  // Re-fetch categories when opening
+  useEffect(() => {
+    if (open) {
+      fetchCategories();
+    }
+  }, [open]);
 
   // Check if Tranzila is enabled
   const checkTranzilaEnabled = async () => {
@@ -751,49 +813,79 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
   const validateStep = (step: number): boolean => {
     const newErrors: ValidationErrors = {};
     
-    switch (step) {
-      case 1:
-        if (!selectedClient && createNewClient) {
-          if (!newClient.full_name.trim()) newErrors.full_name = "الاسم مطلوب";
-
-          const id = digitsOnly(newClient.id_number);
-          if (!id) newErrors.id_number = "رقم الهوية مطلوب";
-          else if (id.length !== 9) newErrors.id_number = "رقم الهوية يجب أن يكون 9 أرقام";
-          else if (!isValidIsraeliId(id)) newErrors.id_number = "رقم الهوية غير صحيح";
-
-          const phone = digitsOnly(newClient.phone_number);
-          if (phone.length > 0 && !isValidPhoneNumber10(phone)) {
-            newErrors.phone_number = "رقم الهاتف يجب أن يكون 10 أرقام";
+    // For LIGHT mode, step mapping is different
+    // LIGHT: step 1 = client, step 2 = policy, step 3 = payments
+    // FULL: step 1 = client, step 2 = car, step 3 = policy, step 4 = payments
+    
+    if (isLightMode) {
+      switch (step) {
+        case 1:
+          if (!selectedClient && createNewClient) {
+            if (!newClient.full_name.trim()) newErrors.full_name = "الاسم مطلوب";
+            const id = digitsOnly(newClient.id_number);
+            if (!id) newErrors.id_number = "رقم الهوية مطلوب";
+            else if (id.length !== 9) newErrors.id_number = "رقم الهوية يجب أن يكون 9 أرقام";
+            else if (!isValidIsraeliId(id)) newErrors.id_number = "رقم الهوية غير صحيح";
+            const phone = digitsOnly(newClient.phone_number);
+            if (phone.length > 0 && !isValidPhoneNumber10(phone)) {
+              newErrors.phone_number = "رقم الهاتف يجب أن يكون 10 أرقام";
+            }
           }
-        }
-        if (!selectedClient && !createNewClient) {
-          newErrors.client = "الرجاء اختيار عميل أو إنشاء عميل جديد";
-        }
-        break;
-        
-      case 2:
-        if (!selectedCar && createNewCar) {
-          if (!newCar.car_number.trim()) newErrors.car_number = "رقم السيارة مطلوب";
-          if (carConflict) newErrors.car_number = carConflict;
-        }
-        if (!selectedCar && !createNewCar && !existingCar) {
-          newErrors.car = "الرجاء اختيار سيارة أو إضافة سيارة جديدة";
-        }
-        break;
-        
-      case 3:
-        if (!policy.policy_type_parent) newErrors.policy_type_parent = "نوع الوثيقة مطلوب";
-        if (!policy.company_id) newErrors.company_id = "شركة التأمين مطلوبة";
-        if (!policy.start_date) newErrors.start_date = "تاريخ البداية مطلوب";
-        if (!policy.end_date) newErrors.end_date = "تاريخ النهاية مطلوب";
-        if (!policy.insurance_price) newErrors.insurance_price = "السعر مطلوب";
-        if (policy.insurance_price && parseFloat(policy.insurance_price) <= 0) {
-          newErrors.insurance_price = "السعر يجب أن يكون أكبر من صفر";
-        }
-        if (policy.policy_type_parent === 'THIRD_FULL' && !policy.policy_type_child) {
-          newErrors.policy_type_child = "النوع الفرعي مطلوب";
-        }
-        break;
+          if (!selectedClient && !createNewClient) {
+            newErrors.client = "الرجاء اختيار عميل أو إنشاء عميل جديد";
+          }
+          break;
+        case 2: // Policy step for LIGHT mode
+          if (!policy.start_date) newErrors.start_date = "تاريخ البداية مطلوب";
+          if (!policy.end_date) newErrors.end_date = "تاريخ النهاية مطلوب";
+          if (!policy.insurance_price) newErrors.insurance_price = "السعر مطلوب";
+          if (policy.insurance_price && parseFloat(policy.insurance_price) <= 0) {
+            newErrors.insurance_price = "السعر يجب أن يكون أكبر من صفر";
+          }
+          break;
+      }
+    } else {
+      // FULL mode (original logic)
+      switch (step) {
+        case 1:
+          if (!selectedClient && createNewClient) {
+            if (!newClient.full_name.trim()) newErrors.full_name = "الاسم مطلوب";
+            const id = digitsOnly(newClient.id_number);
+            if (!id) newErrors.id_number = "رقم الهوية مطلوب";
+            else if (id.length !== 9) newErrors.id_number = "رقم الهوية يجب أن يكون 9 أرقام";
+            else if (!isValidIsraeliId(id)) newErrors.id_number = "رقم الهوية غير صحيح";
+            const phone = digitsOnly(newClient.phone_number);
+            if (phone.length > 0 && !isValidPhoneNumber10(phone)) {
+              newErrors.phone_number = "رقم الهاتف يجب أن يكون 10 أرقام";
+            }
+          }
+          if (!selectedClient && !createNewClient) {
+            newErrors.client = "الرجاء اختيار عميل أو إنشاء عميل جديد";
+          }
+          break;
+        case 2:
+          if (!selectedCar && createNewCar) {
+            if (!newCar.car_number.trim()) newErrors.car_number = "رقم السيارة مطلوب";
+            if (carConflict) newErrors.car_number = carConflict;
+          }
+          if (!selectedCar && !createNewCar && !existingCar) {
+            newErrors.car = "الرجاء اختيار سيارة أو إضافة سيارة جديدة";
+          }
+          break;
+        case 3:
+          if (!policy.policy_type_parent) newErrors.policy_type_parent = "نوع الوثيقة مطلوب";
+          if (!policy.company_id) newErrors.company_id = "شركة التأمين مطلوبة";
+          if (!policy.start_date) newErrors.start_date = "تاريخ البداية مطلوب";
+          if (!policy.end_date) newErrors.end_date = "تاريخ النهاية مطلوب";
+          if (!policy.insurance_price) newErrors.insurance_price = "السعر مطلوب";
+          if (policy.insurance_price && parseFloat(policy.insurance_price) <= 0) {
+            newErrors.insurance_price = "السعر يجب أن يكون أكبر من صفر";
+          }
+          if (policy.policy_type_parent === 'THIRD_FULL' && !policy.policy_type_child) {
+            newErrors.policy_type_child = "النوع الفرعي مطلوب";
+          }
+          break;
+      }
     }
     
     setErrors(newErrors);
@@ -801,24 +893,46 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
   };
 
   const canProceed = (): boolean => {
-    switch (currentStep) {
-      case 1: {
-        const id = digitsOnly(newClient.id_number);
-        const phone = digitsOnly(newClient.phone_number);
-        const phoneOk = phone.length === 0 || isValidPhoneNumber10(phone);
-        return !!(
-          selectedClient ||
-          (createNewClient && newClient.full_name.trim() && id.length === 9 && isValidIsraeliId(id) && phoneOk)
-        );
+    if (isLightMode) {
+      // LIGHT mode: step 1 = client, step 2 = policy, step 3 = payments
+      switch (currentStep) {
+        case 1: {
+          const id = digitsOnly(newClient.id_number);
+          const phone = digitsOnly(newClient.phone_number);
+          const phoneOk = phone.length === 0 || isValidPhoneNumber10(phone);
+          return !!(
+            selectedClient ||
+            (createNewClient && newClient.full_name.trim() && id.length === 9 && isValidIsraeliId(id) && phoneOk)
+          );
+        }
+        case 2:
+          return !!(policy.start_date && policy.end_date && policy.insurance_price);
+        case 3:
+          return true;
+        default:
+          return false;
       }
-      case 2:
-        return !!(selectedCar || existingCar || (createNewCar && newCar.car_number && !carConflict));
-      case 3:
-        return !!(policy.policy_type_parent && policy.company_id && policy.start_date && policy.end_date && policy.insurance_price);
-      case 4:
-        return true;
-      default:
-        return false;
+    } else {
+      // FULL mode (original)
+      switch (currentStep) {
+        case 1: {
+          const id = digitsOnly(newClient.id_number);
+          const phone = digitsOnly(newClient.phone_number);
+          const phoneOk = phone.length === 0 || isValidPhoneNumber10(phone);
+          return !!(
+            selectedClient ||
+            (createNewClient && newClient.full_name.trim() && id.length === 9 && isValidIsraeliId(id) && phoneOk)
+          );
+        }
+        case 2:
+          return !!(selectedCar || existingCar || (createNewCar && newCar.car_number && !carConflict));
+        case 3:
+          return !!(policy.policy_type_parent && policy.company_id && policy.start_date && policy.end_date && policy.insurance_price);
+        case 4:
+          return true;
+        default:
+          return false;
+      }
     }
   };
 
@@ -869,8 +983,8 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
           clientId = newClientData.id;
         }
 
-        // Create car if new
-        if (createNewCar && !carId && clientId) {
+        // Create car if new (only for FULL mode)
+        if (!isLightMode && createNewCar && !carId && clientId) {
           const { data: newCarData, error: carError } = await supabase
             .from('cars')
             .insert({
@@ -898,8 +1012,13 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
           carId = newCarData.id;
         }
 
-        if (!clientId || !carId) {
-          toast({ title: "خطأ", description: "الرجاء اختيار العميل والسيارة", variant: "destructive" });
+        // Validation: FULL mode requires car, LIGHT mode doesn't
+        if (!clientId) {
+          toast({ title: "خطأ", description: "الرجاء اختيار العميل", variant: "destructive" });
+          return;
+        }
+        if (!isLightMode && !carId) {
+          toast({ title: "خطأ", description: "الرجاء اختيار السيارة", variant: "destructive" });
           return;
         }
 
@@ -907,35 +1026,49 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
         const isUnder24 = createNewClient ? newClient.less_than_24 : selectedClient?.less_than_24;
         const ageBand = isUnder24 ? 'UNDER_24' : 'UP_24';
 
-        // Get car data for pricing calculation
-        const carType = (createNewCar ? newCar.car_type : (selectedCar?.car_type || existingCar?.car_type)) || 'car';
-        const carValue = createNewCar 
-          ? (newCar.car_value ? parseFloat(newCar.car_value) : null)
-          : (selectedCar?.car_value || existingCar?.car_value);
-        const carYear = createNewCar 
-          ? (newCar.year ? parseInt(newCar.year) : null)
-          : (selectedCar?.year || existingCar?.year);
+        let profitCalc = { profit: 0, companyPayment: 0 };
+        
+        if (isLightMode) {
+          // LIGHT mode: no profit calculation, profit = insurance_price
+          profitCalc = {
+            profit: parseFloat(policy.insurance_price),
+            companyPayment: 0,
+          };
+        } else {
+          // FULL mode: calculate profit based on pricing rules
+          const carType = (createNewCar ? newCar.car_type : (selectedCar?.car_type || existingCar?.car_type)) || 'car';
+          const carValue = createNewCar 
+            ? (newCar.car_value ? parseFloat(newCar.car_value) : null)
+            : (selectedCar?.car_value || existingCar?.car_value);
+          const carYear = createNewCar 
+            ? (newCar.year ? parseInt(newCar.year) : null)
+            : (selectedCar?.year || existingCar?.year);
 
-        // Calculate profit and company payment
-        const profitCalc = await calculatePolicyProfit({
-          policyTypeParent: policy.policy_type_parent as any,
-          policyTypeChild: policy.policy_type_child as any,
-          companyId: policy.company_id,
-          carType: carType as any,
-          ageBand: ageBand as any,
-          carValue,
-          carYear,
-          insurancePrice: parseFloat(policy.insurance_price),
-        });
+          profitCalc = await calculatePolicyProfit({
+            policyTypeParent: policy.policy_type_parent as any,
+            policyTypeChild: policy.policy_type_child as any,
+            companyId: policy.company_id,
+            carType: carType as any,
+            ageBand: ageBand as any,
+            carValue,
+            carYear,
+            insurancePrice: parseFloat(policy.insurance_price),
+          });
+        }
+
+        // Determine policy_type_parent: use category slug for LIGHT mode
+        const policyTypeParent = isLightMode 
+          ? (selectedCategory?.slug || 'OTHER') 
+          : policy.policy_type_parent;
 
         // Create policy
         const { data: policyData, error: policyError } = await supabase
           .from('policies')
           .insert({
             client_id: clientId,
-            car_id: carId,
-            company_id: policy.company_id,
-            policy_type_parent: policy.policy_type_parent as any,
+            car_id: isLightMode ? null : carId,
+            company_id: isLightMode ? null : policy.company_id,
+            policy_type_parent: policyTypeParent as any,
             policy_type_child: policy.policy_type_child ? policy.policy_type_child as any : null,
             start_date: policy.start_date,
             end_date: policy.end_date,
@@ -947,6 +1080,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
             profit: profitCalc.profit,
             payed_for_company: profitCalc.companyPayment,
             broker_id: createNewClient ? (newClient.broker_id || defaultBrokerId || null) : (selectedClient?.broker_id || defaultBrokerId || null),
+            category_id: selectedCategory?.id || null,
           })
           .select()
           .single();
@@ -1134,6 +1268,31 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
           {/* Step 1: Client */}
           {currentStep === 1 && (
             <div className="space-y-4">
+              {/* Category Selector */}
+              <div className="mb-4">
+                <Label className="text-base font-semibold">نوع التأمين</Label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {categories.map(cat => (
+                    <Button
+                      key={cat.id}
+                      type="button"
+                      variant={selectedCategory?.id === cat.id ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        setSelectedCategory(cat);
+                        if (cat.mode === 'FULL') {
+                          setPolicy(p => ({ ...p, policy_type_parent: cat.slug }));
+                          fetchCompanies(cat.slug);
+                        }
+                      }}
+                    >
+                      {cat.name_ar || cat.name}
+                      {cat.mode === 'FULL' && <Car className="h-3 w-3 mr-1" />}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
               <h3 className="font-semibold text-lg">اختر أو أنشئ عميل</h3>
               
               {!createNewClient ? (
@@ -1573,14 +1732,14 @@ export function PolicyWizard({ open, onOpenChange, onComplete, defaultBrokerId }
                           <SelectValue placeholder="اختر النوع" />
                         </SelectTrigger>
                         <SelectContent>
-                          {POLICY_TYPES.map(t => (
+                          {CAR_POLICY_TYPES.map(t => (
                             <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                       <FieldError error={errors.policy_type_parent} />
                     </div>
-                    {POLICY_TYPES.find(t => t.value === policy.policy_type_parent)?.hasChild && (
+                    {CAR_POLICY_TYPES.find(t => t.value === policy.policy_type_parent)?.hasChild && (
                       <div>
                         <Label>النوع الفرعي *</Label>
                         <Select
