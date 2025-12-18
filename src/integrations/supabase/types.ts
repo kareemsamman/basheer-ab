@@ -486,6 +486,48 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_settings: {
+        Row: {
+          api_password: string | null
+          created_at: string
+          fail_url: string | null
+          id: string
+          is_enabled: boolean
+          notify_url: string | null
+          provider: string
+          success_url: string | null
+          terminal_name: string | null
+          test_mode: boolean
+          updated_at: string
+        }
+        Insert: {
+          api_password?: string | null
+          created_at?: string
+          fail_url?: string | null
+          id?: string
+          is_enabled?: boolean
+          notify_url?: string | null
+          provider?: string
+          success_url?: string | null
+          terminal_name?: string | null
+          test_mode?: boolean
+          updated_at?: string
+        }
+        Update: {
+          api_password?: string | null
+          created_at?: string
+          fail_url?: string | null
+          id?: string
+          is_enabled?: boolean
+          notify_url?: string | null
+          provider?: string
+          success_url?: string | null
+          terminal_name?: string | null
+          test_mode?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       policies: {
         Row: {
           broker_id: string | null
@@ -613,12 +655,18 @@ export type Database = {
           cheque_number: string | null
           cheque_status: string | null
           created_at: string
+          created_by_admin_id: string | null
           id: string
           notes: string | null
           payment_date: string
           payment_type: Database["public"]["Enums"]["payment_type"]
           policy_id: string
+          provider: string | null
           refused: boolean | null
+          tranzila_approval_code: string | null
+          tranzila_index: string | null
+          tranzila_response_code: string | null
+          tranzila_transaction_id: string | null
         }
         Insert: {
           amount: number
@@ -626,12 +674,18 @@ export type Database = {
           cheque_number?: string | null
           cheque_status?: string | null
           created_at?: string
+          created_by_admin_id?: string | null
           id?: string
           notes?: string | null
           payment_date?: string
           payment_type: Database["public"]["Enums"]["payment_type"]
           policy_id: string
+          provider?: string | null
           refused?: boolean | null
+          tranzila_approval_code?: string | null
+          tranzila_index?: string | null
+          tranzila_response_code?: string | null
+          tranzila_transaction_id?: string | null
         }
         Update: {
           amount?: number
@@ -639,14 +693,27 @@ export type Database = {
           cheque_number?: string | null
           cheque_status?: string | null
           created_at?: string
+          created_by_admin_id?: string | null
           id?: string
           notes?: string | null
           payment_date?: string
           payment_type?: Database["public"]["Enums"]["payment_type"]
           policy_id?: string
+          provider?: string | null
           refused?: boolean | null
+          tranzila_approval_code?: string | null
+          tranzila_index?: string | null
+          tranzila_response_code?: string | null
+          tranzila_transaction_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "policy_payments_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "policy_payments_policy_id_fkey"
             columns: ["policy_id"]
