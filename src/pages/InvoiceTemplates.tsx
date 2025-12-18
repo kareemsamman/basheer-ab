@@ -15,8 +15,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Plus, Edit, Trash2, Eye, Copy, FileText, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Plus, Edit, Trash2, Eye, Copy, FileText, Loader2, Palette, Code } from "lucide-react";
+import { InvoiceVisualBuilder, TemplateElement } from "@/components/invoices/InvoiceVisualBuilder";
 
 interface InvoiceTemplate {
   id: string;
@@ -27,29 +27,23 @@ interface InvoiceTemplate {
   header_html: string | null;
   body_html: string | null;
   footer_html: string | null;
+  template_layout_json: TemplateElement[] | null;
   is_active: boolean;
   version: number;
   created_at: string;
   updated_at: string;
 }
 
-const PLACEHOLDERS = [
-  { token: '{{invoice_number}}', label: 'رقم الفاتورة', labelHe: 'מספר חשבונית' },
-  { token: '{{issue_date}}', label: 'تاريخ الإصدار', labelHe: 'תאריך הפקה' },
-  { token: '{{admin_name}}', label: 'اسم الموظف', labelHe: 'שם העובד' },
-  { token: '{{admin_email}}', label: 'بريد الموظف', labelHe: 'אימייל העובד' },
-  { token: '{{client_name}}', label: 'اسم العميل', labelHe: 'שם הלקוח' },
-  { token: '{{client_id_number}}', label: 'رقم هوية العميل', labelHe: 'תעודת זהות' },
-  { token: '{{client_phone}}', label: 'هاتف العميل', labelHe: 'טלפון הלקוח' },
-  { token: '{{policy_number}}', label: 'رقم الوثيقة', labelHe: 'מספר פוליסה' },
-  { token: '{{insurance_type}}', label: 'نوع التأمين', labelHe: 'סוג ביטוח' },
-  { token: '{{company_name}}', label: 'شركة التأمين', labelHe: 'חברת ביטוח' },
-  { token: '{{start_date}}', label: 'تاريخ البداية', labelHe: 'תאריך התחלה' },
-  { token: '{{end_date}}', label: 'تاريخ الانتهاء', labelHe: 'תאריך סיום' },
-  { token: '{{car_number}}', label: 'رقم السيارة', labelHe: 'מספר רכב' },
-  { token: '{{total_amount}}', label: 'المبلغ الإجمالي', labelHe: 'סכום כולל' },
-  { token: '{{payment_method}}', label: 'طريقة الدفع', labelHe: 'אמצעי תשלום' },
-];
+interface PreviewPolicy {
+  id: string;
+  insurance_price: number;
+  policy_type_parent: string;
+  start_date: string;
+  end_date: string;
+  client: { full_name: string; id_number: string; phone_number: string | null } | null;
+  car: { car_number: string } | null;
+  company: { name: string; name_ar: string | null } | null;
+}
 
 export default function InvoiceTemplates() {
   const { toast } = useToast();
@@ -60,6 +54,9 @@ export default function InvoiceTemplates() {
   const [editingTemplate, setEditingTemplate] = useState<InvoiceTemplate | null>(null);
   const [showEditor, setShowEditor] = useState(false);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [policies, setPolicies] = useState<PreviewPolicy[]>([]);
+  const [selectedPreviewPolicy, setSelectedPreviewPolicy] = useState<string>('');
+  const [previewData, setPreviewData] = useState<Record<string, string>>({});
 
   // Form state
   const [formData, setFormData] = useState({
@@ -70,11 +67,13 @@ export default function InvoiceTemplates() {
     header_html: '',
     body_html: '',
     footer_html: '',
+    template_layout_json: [] as TemplateElement[],
     is_active: false,
   });
 
   useEffect(() => {
     fetchTemplates();
+    fetchPolicies();
   }, []);
 
   const fetchTemplates = async () => {
@@ -90,8 +89,53 @@ export default function InvoiceTemplates() {
       toast({ title: "خطأ", description: "فشل في تحميل القوالب", variant: "destructive" });
       return;
     }
-    setTemplates(data || []);
+    setTemplates((data || []).map(t => ({
+      ...t,
+      template_layout_json: (t.template_layout_json as unknown as TemplateElement[]) || []
+    })));
   };
+
+  const fetchPolicies = async () => {
+    const { data } = await supabase
+      .from('policies')
+      .select(`
+        id, insurance_price, policy_type_parent, start_date, end_date,
+        client:clients(full_name, id_number, phone_number),
+        car:cars(car_number),
+        company:insurance_companies(name, name_ar)
+      `)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (data) {
+      setPolicies(data as any);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedPreviewPolicy) {
+      const policy = policies.find(p => p.id === selectedPreviewPolicy);
+      if (policy) {
+        setPreviewData({
+          invoice_number: '2024-000001',
+          issue_date: new Date().toLocaleDateString(formData.language === 'ar' ? 'ar-SA' : 'he-IL'),
+          client_name: policy.client?.full_name || '',
+          client_id_number: policy.client?.id_number || '',
+          client_phone: policy.client?.phone_number || '',
+          car_number: policy.car?.car_number || '',
+          company_name: formData.language === 'ar' ? (policy.company?.name_ar || policy.company?.name || '') : (policy.company?.name || ''),
+          insurance_type: policy.policy_type_parent || '',
+          start_date: policy.start_date || '',
+          end_date: policy.end_date || '',
+          total_amount: policy.insurance_price?.toLocaleString() || '0',
+          payment_method: formData.language === 'ar' ? 'نقدي' : 'מזומן',
+          admin_name: user?.email?.split('@')[0] || '',
+          policy_number: `${policy.policy_type_parent} ${new Date(policy.start_date).getFullYear()} ${policy.car?.car_number || ''}`,
+        });
+      }
+    }
+  }, [selectedPreviewPolicy, policies, formData.language]);
 
   const handleEdit = (template: InvoiceTemplate) => {
     setEditingTemplate(template);
@@ -103,6 +147,7 @@ export default function InvoiceTemplates() {
       header_html: template.header_html || '',
       body_html: template.body_html || '',
       footer_html: template.footer_html || '',
+      template_layout_json: template.template_layout_json || [],
       is_active: template.is_active,
     });
     setShowEditor(true);
@@ -118,9 +163,57 @@ export default function InvoiceTemplates() {
       header_html: '',
       body_html: '',
       footer_html: '',
+      template_layout_json: [],
       is_active: false,
     });
     setShowEditor(true);
+  };
+
+  const handleDuplicate = async (template: InvoiceTemplate) => {
+    const { error } = await supabase
+      .from('invoice_templates')
+      .insert({
+        name: `${template.name} (نسخة)`,
+        language: template.language as any,
+        direction: template.direction as any,
+        logo_url: template.logo_url,
+        header_html: template.header_html,
+        body_html: template.body_html,
+        footer_html: template.footer_html,
+        template_layout_json: template.template_layout_json as any,
+        is_active: false,
+        created_by_admin_id: user?.id,
+      });
+
+    if (error) {
+      toast({ title: "خطأ", description: "فشل في نسخ القالب", variant: "destructive" });
+      return;
+    }
+
+    toast({ title: "تم النسخ", description: "تم نسخ القالب بنجاح" });
+    fetchTemplates();
+  };
+
+  const handleSetActive = async (template: InvoiceTemplate) => {
+    // First deactivate all templates of the same language
+    await supabase
+      .from('invoice_templates')
+      .update({ is_active: false })
+      .eq('language', template.language);
+
+    // Then activate this one
+    const { error } = await supabase
+      .from('invoice_templates')
+      .update({ is_active: true })
+      .eq('id', template.id);
+
+    if (error) {
+      toast({ title: "خطأ", description: "فشل في تفعيل القالب", variant: "destructive" });
+      return;
+    }
+
+    toast({ title: "تم التفعيل", description: "تم تعيين هذا القالب كنشط" });
+    fetchTemplates();
   };
 
   const handleSave = async () => {
@@ -132,7 +225,6 @@ export default function InvoiceTemplates() {
     setSaving(true);
     try {
       if (editingTemplate) {
-        // Update - increment version
         const { error } = await supabase
           .from('invoice_templates')
           .update({
@@ -143,6 +235,7 @@ export default function InvoiceTemplates() {
             header_html: formData.header_html,
             body_html: formData.body_html,
             footer_html: formData.footer_html,
+            template_layout_json: formData.template_layout_json as any,
             is_active: formData.is_active,
             version: editingTemplate.version + 1,
           })
@@ -151,7 +244,6 @@ export default function InvoiceTemplates() {
         if (error) throw error;
         toast({ title: "تم الحفظ", description: `تم تحديث القالب (النسخة ${editingTemplate.version + 1})` });
       } else {
-        // Create new
         const { error } = await supabase
           .from('invoice_templates')
           .insert({
@@ -162,6 +254,7 @@ export default function InvoiceTemplates() {
             header_html: formData.header_html,
             body_html: formData.body_html,
             footer_html: formData.footer_html,
+            template_layout_json: formData.template_layout_json as any,
             is_active: formData.is_active,
             created_by_admin_id: user?.id,
           });
@@ -196,78 +289,6 @@ export default function InvoiceTemplates() {
     fetchTemplates();
   };
 
-  const handleToggleActive = async (template: InvoiceTemplate) => {
-    const { error } = await supabase
-      .from('invoice_templates')
-      .update({ is_active: !template.is_active })
-      .eq('id', template.id);
-
-    if (error) {
-      toast({ title: "خطأ", description: "فشل في تحديث الحالة", variant: "destructive" });
-      return;
-    }
-
-    fetchTemplates();
-  };
-
-  const insertPlaceholder = (token: string, field: 'header_html' | 'body_html' | 'footer_html') => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: prev[field] + token,
-    }));
-  };
-
-  const buildPreviewHtml = () => {
-    const sampleData: Record<string, string> = {
-      '{{invoice_number}}': '2024-000001',
-      '{{issue_date}}': new Date().toLocaleDateString('ar-SA'),
-      '{{admin_name}}': 'أحمد محمد',
-      '{{admin_email}}': 'admin@example.com',
-      '{{client_name}}': 'خالد العلي',
-      '{{client_id_number}}': '123456789',
-      '{{client_phone}}': '0501234567',
-      '{{policy_number}}': 'ELZAMI 2024 1234567',
-      '{{insurance_type}}': 'إلزامي',
-      '{{company_name}}': 'شركة التأمين',
-      '{{start_date}}': '01/01/2024',
-      '{{end_date}}': '31/12/2024',
-      '{{car_number}}': '1234567',
-      '{{total_amount}}': '1,500',
-      '{{payment_method}}': 'نقدي',
-    };
-
-    let html = formData.header_html + formData.body_html + formData.footer_html;
-    Object.entries(sampleData).forEach(([token, value]) => {
-      html = html.replace(new RegExp(token.replace(/[{}]/g, '\\$&'), 'g'), value);
-    });
-
-    const logoHtml = formData.logo_url 
-      ? `<div style="text-align: center; margin-bottom: 20px;"><img src="${formData.logo_url}" alt="Logo" style="max-height: 80px;" /></div>`
-      : '';
-
-    return `
-<!DOCTYPE html>
-<html dir="${formData.direction}" lang="${formData.language}">
-<head>
-  <meta charset="UTF-8">
-  <style>
-    body {
-      font-family: 'Arial', 'Tahoma', sans-serif;
-      margin: 0;
-      padding: 40px;
-      direction: ${formData.direction};
-      text-align: ${formData.direction === 'rtl' ? 'right' : 'left'};
-    }
-  </style>
-</head>
-<body>
-  ${logoHtml}
-  ${html}
-</body>
-</html>
-    `.trim();
-  };
-
   if (!isAdmin) {
     return (
       <MainLayout>
@@ -285,7 +306,7 @@ export default function InvoiceTemplates() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold">قوالب الفواتير</h1>
-            <p className="text-muted-foreground">إدارة قوالب سندات القبض</p>
+            <p className="text-muted-foreground">إدارة قوالب سندات القبض بالسحب والإفلات</p>
           </div>
           <Button onClick={handleCreate}>
             <Plus className="h-4 w-4 ml-2" />
@@ -301,7 +322,6 @@ export default function InvoiceTemplates() {
                 <TableRow>
                   <TableHead className="text-right">الاسم</TableHead>
                   <TableHead className="text-right">اللغة</TableHead>
-                  <TableHead className="text-right">الاتجاه</TableHead>
                   <TableHead className="text-right">النسخة</TableHead>
                   <TableHead className="text-right">الحالة</TableHead>
                   <TableHead className="text-right">آخر تحديث</TableHead>
@@ -312,14 +332,14 @@ export default function InvoiceTemplates() {
                 {loading ? (
                   Array.from({ length: 3 }).map((_, i) => (
                     <TableRow key={i}>
-                      {Array.from({ length: 7 }).map((_, j) => (
+                      {Array.from({ length: 6 }).map((_, j) => (
                         <TableCell key={j}><Skeleton className="h-5 w-full" /></TableCell>
                       ))}
                     </TableRow>
                   ))
                 ) : templates.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       لا توجد قوالب. أنشئ قالبك الأول.
                     </TableCell>
                   </TableRow>
@@ -332,13 +352,15 @@ export default function InvoiceTemplates() {
                           {template.language === 'ar' ? 'عربي' : template.language === 'he' ? 'עברית' : 'كلاهما'}
                         </Badge>
                       </TableCell>
-                      <TableCell>{template.direction === 'rtl' ? 'RTL' : 'LTR'}</TableCell>
                       <TableCell>v{template.version}</TableCell>
                       <TableCell>
-                        <Switch
-                          checked={template.is_active}
-                          onCheckedChange={() => handleToggleActive(template)}
-                        />
+                        {template.is_active ? (
+                          <Badge className="bg-green-100 text-green-800">نشط</Badge>
+                        ) : (
+                          <Button variant="ghost" size="sm" onClick={() => handleSetActive(template)}>
+                            تعيين كنشط
+                          </Button>
+                        )}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {new Date(template.updated_at).toLocaleDateString('ar-SA')}
@@ -348,26 +370,8 @@ export default function InvoiceTemplates() {
                           <Button variant="ghost" size="icon" onClick={() => handleEdit(template)} title="تعديل">
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            onClick={() => {
-                              setEditingTemplate(template);
-                              setFormData({
-                                name: template.name,
-                                language: template.language,
-                                direction: template.direction,
-                                logo_url: template.logo_url || '',
-                                header_html: template.header_html || '',
-                                body_html: template.body_html || '',
-                                footer_html: template.footer_html || '',
-                                is_active: template.is_active,
-                              });
-                              setPreviewHtml(buildPreviewHtml());
-                            }} 
-                            title="معاينة"
-                          >
-                            <Eye className="h-4 w-4" />
+                          <Button variant="ghost" size="icon" onClick={() => handleDuplicate(template)} title="نسخ">
+                            <Copy className="h-4 w-4" />
                           </Button>
                           <Button variant="ghost" size="icon" onClick={() => handleDelete(template)} title="حذف">
                             <Trash2 className="h-4 w-4 text-destructive" />
@@ -383,192 +387,161 @@ export default function InvoiceTemplates() {
         </Card>
       </div>
 
-      {/* Editor Dialog */}
+      {/* Editor Dialog - Full Screen */}
       <Dialog open={showEditor} onOpenChange={setShowEditor}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto" dir="rtl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              {editingTemplate ? `تعديل: ${editingTemplate.name}` : 'قالب جديد'}
-            </DialogTitle>
-          </DialogHeader>
-
-          <Tabs defaultValue="settings" dir="rtl">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="settings">الإعدادات</TabsTrigger>
-              <TabsTrigger value="header">الرأس</TabsTrigger>
-              <TabsTrigger value="body">المحتوى</TabsTrigger>
-              <TabsTrigger value="footer">التذييل</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="settings" className="space-y-4 mt-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <Label>اسم القالب *</Label>
+        <DialogContent className="max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] overflow-hidden p-0" dir="rtl">
+          <div className="flex flex-col h-full">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b">
+              <div className="flex items-center gap-4">
+                <DialogTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  {editingTemplate ? `تعديل: ${editingTemplate.name}` : 'قالب جديد'}
+                </DialogTitle>
+                <div className="flex items-center gap-2">
                   <Input
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="مثال: سند قبض عربي"
+                    placeholder="اسم القالب"
+                    className="w-48 h-8"
                   />
-                </div>
-                <div>
-                  <Label>اللغة</Label>
                   <Select value={formData.language} onValueChange={(v) => setFormData({ ...formData, language: v })}>
-                    <SelectTrigger>
+                    <SelectTrigger className="w-24 h-8">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="ar">عربي</SelectItem>
                       <SelectItem value="he">עברית</SelectItem>
-                      <SelectItem value="both">كلاهما</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-                <div>
-                  <Label>الاتجاه</Label>
-                  <Select value={formData.direction} onValueChange={(v) => setFormData({ ...formData, direction: v })}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="rtl">من اليمين لليسار (RTL)</SelectItem>
-                      <SelectItem value="ltr">من اليسار لليمين (LTR)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>رابط الشعار (اختياري)</Label>
-                  <Input
-                    value={formData.logo_url}
-                    onChange={(e) => setFormData({ ...formData, logo_url: e.target.value })}
-                    placeholder="https://..."
-                    dir="ltr"
-                  />
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Switch
-                  checked={formData.is_active}
-                  onCheckedChange={(c) => setFormData({ ...formData, is_active: c })}
-                />
-                <Label>نشط (سيتم استخدامه للفواتير الجديدة)</Label>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="header" className="space-y-4 mt-4">
-              <div>
-                <Label>رمز التضمين</Label>
-                <div className="flex flex-wrap gap-1 mt-2 mb-3">
-                  {PLACEHOLDERS.slice(0, 5).map((p) => (
-                    <Button
-                      key={p.token}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => insertPlaceholder(p.token, 'header_html')}
-                    >
-                      <Copy className="h-3 w-3 ml-1" />
-                      {formData.language === 'he' ? p.labelHe : p.label}
-                    </Button>
-                  ))}
+                <div className="flex items-center gap-2 ml-4">
+                  <Label className="text-sm">معاينة مع:</Label>
+                  <Select value={selectedPreviewPolicy} onValueChange={setSelectedPreviewPolicy}>
+                    <SelectTrigger className="w-48 h-8">
+                      <SelectValue placeholder="اختر وثيقة للمعاينة" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {policies.map(p => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.client?.full_name} - {p.car?.car_number}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <Textarea
-                  value={formData.header_html}
-                  onChange={(e) => setFormData({ ...formData, header_html: e.target.value })}
-                  placeholder="<div>...</div>"
-                  rows={8}
-                  dir="ltr"
-                  className="font-mono text-sm"
-                />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="body" className="space-y-4 mt-4">
-              <div>
-                <Label>رمز التضمين</Label>
-                <div className="flex flex-wrap gap-1 mt-2 mb-3">
-                  {PLACEHOLDERS.map((p) => (
-                    <Button
-                      key={p.token}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => insertPlaceholder(p.token, 'body_html')}
-                    >
-                      <Copy className="h-3 w-3 ml-1" />
-                      {formData.language === 'he' ? p.labelHe : p.label}
-                    </Button>
-                  ))}
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={formData.is_active}
+                    onCheckedChange={(c) => setFormData({ ...formData, is_active: c })}
+                    id="active-toggle"
+                  />
+                  <Label htmlFor="active-toggle" className="text-sm">نشط</Label>
                 </div>
-                <Textarea
-                  value={formData.body_html}
-                  onChange={(e) => setFormData({ ...formData, body_html: e.target.value })}
-                  placeholder="<div>...</div>"
-                  rows={12}
-                  dir="ltr"
-                  className="font-mono text-sm"
-                />
+                <Button variant="outline" onClick={() => setShowEditor(false)}>
+                  إلغاء
+                </Button>
+                <Button onClick={handleSave} disabled={saving}>
+                  {saving && <Loader2 className="h-4 w-4 animate-spin ml-2" />}
+                  حفظ
+                </Button>
               </div>
-            </TabsContent>
-
-            <TabsContent value="footer" className="space-y-4 mt-4">
-              <div>
-                <Label>رمز التضمين</Label>
-                <div className="flex flex-wrap gap-1 mt-2 mb-3">
-                  {PLACEHOLDERS.slice(0, 3).map((p) => (
-                    <Button
-                      key={p.token}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => insertPlaceholder(p.token, 'footer_html')}
-                    >
-                      <Copy className="h-3 w-3 ml-1" />
-                      {formData.language === 'he' ? p.labelHe : p.label}
-                    </Button>
-                  ))}
-                </div>
-                <Textarea
-                  value={formData.footer_html}
-                  onChange={(e) => setFormData({ ...formData, footer_html: e.target.value })}
-                  placeholder="<div>...</div>"
-                  rows={6}
-                  dir="ltr"
-                  className="font-mono text-sm"
-                />
-              </div>
-            </TabsContent>
-          </Tabs>
-
-          <div className="flex justify-between items-center mt-6 pt-4 border-t">
-            <Button variant="outline" onClick={() => setPreviewHtml(buildPreviewHtml())}>
-              <Eye className="h-4 w-4 ml-2" />
-              معاينة
-            </Button>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowEditor(false)}>
-                إلغاء
-              </Button>
-              <Button onClick={handleSave} disabled={saving}>
-                {saving && <Loader2 className="h-4 w-4 animate-spin ml-2" />}
-                حفظ
-              </Button>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
-      {/* Preview Dialog */}
-      <Dialog open={!!previewHtml} onOpenChange={() => setPreviewHtml(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto" dir="rtl">
-          <DialogHeader>
-            <DialogTitle>معاينة القالب</DialogTitle>
-          </DialogHeader>
-          <div 
-            className="border rounded-lg p-4 bg-white"
-            dangerouslySetInnerHTML={{ __html: previewHtml || '' }}
-          />
-          <div className="flex justify-end">
-            <Button variant="outline" onClick={() => setPreviewHtml(null)}>
-              إغلاق
-            </Button>
+            {/* Content */}
+            <div className="flex-1 overflow-hidden">
+              <Tabs defaultValue="visual" className="h-full flex flex-col" dir="rtl">
+                <div className="px-4 border-b">
+                  <TabsList className="grid w-64 grid-cols-2">
+                    <TabsTrigger value="visual" className="flex items-center gap-2">
+                      <Palette className="h-4 w-4" />
+                      تصميم بصري
+                    </TabsTrigger>
+                    <TabsTrigger value="code" className="flex items-center gap-2">
+                      <Code className="h-4 w-4" />
+                      HTML
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
+
+                <TabsContent value="visual" className="flex-1 p-4 overflow-auto mt-0">
+                  <InvoiceVisualBuilder
+                    layoutJson={formData.template_layout_json}
+                    onChange={(layout) => setFormData({ ...formData, template_layout_json: layout })}
+                    language={formData.language}
+                    previewData={previewData}
+                    logoUrl={formData.logo_url}
+                  />
+                </TabsContent>
+
+                <TabsContent value="code" className="flex-1 p-4 overflow-auto mt-0">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="space-y-4">
+                      <div>
+                        <Label>رابط الشعار</Label>
+                        <Input
+                          value={formData.logo_url}
+                          onChange={(e) => setFormData({ ...formData, logo_url: e.target.value })}
+                          placeholder="https://..."
+                          dir="ltr"
+                        />
+                      </div>
+                      <div>
+                        <Label>الرأس (HTML)</Label>
+                        <Textarea
+                          value={formData.header_html}
+                          onChange={(e) => setFormData({ ...formData, header_html: e.target.value })}
+                          rows={6}
+                          dir="ltr"
+                          className="font-mono text-sm"
+                        />
+                      </div>
+                      <div>
+                        <Label>المحتوى (HTML)</Label>
+                        <Textarea
+                          value={formData.body_html}
+                          onChange={(e) => setFormData({ ...formData, body_html: e.target.value })}
+                          rows={10}
+                          dir="ltr"
+                          className="font-mono text-sm"
+                        />
+                      </div>
+                      <div>
+                        <Label>التذييل (HTML)</Label>
+                        <Textarea
+                          value={formData.footer_html}
+                          onChange={(e) => setFormData({ ...formData, footer_html: e.target.value })}
+                          rows={4}
+                          dir="ltr"
+                          className="font-mono text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label>الرموز المتاحة</Label>
+                      <div className="bg-muted p-4 rounded-lg mt-2 text-sm font-mono space-y-1">
+                        <p>{"{{invoice_number}}"} - رقم الفاتورة</p>
+                        <p>{"{{issue_date}}"} - تاريخ الإصدار</p>
+                        <p>{"{{client_name}}"} - اسم العميل</p>
+                        <p>{"{{client_id_number}}"} - رقم الهوية</p>
+                        <p>{"{{client_phone}}"} - الهاتف</p>
+                        <p>{"{{car_number}}"} - رقم السيارة</p>
+                        <p>{"{{insurance_type}}"} - نوع التأمين</p>
+                        <p>{"{{company_name}}"} - شركة التأمين</p>
+                        <p>{"{{start_date}}"} - تاريخ البداية</p>
+                        <p>{"{{end_date}}"} - تاريخ الانتهاء</p>
+                        <p>{"{{total_amount}}"} - المبلغ</p>
+                        <p>{"{{payment_method}}"} - طريقة الدفع</p>
+                        <p>{"{{admin_name}}"} - اسم الموظف</p>
+                        <p>{"{{policy_number}}"} - رقم الوثيقة</p>
+                      </div>
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

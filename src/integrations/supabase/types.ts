@@ -214,6 +214,7 @@ export type Database = {
           language: string
           logo_url: string | null
           name: string
+          template_layout_json: Json | null
           updated_at: string
           version: number
         }
@@ -229,6 +230,7 @@ export type Database = {
           language: string
           logo_url?: string | null
           name: string
+          template_layout_json?: Json | null
           updated_at?: string
           version?: number
         }
@@ -244,6 +246,7 @@ export type Database = {
           language?: string
           logo_url?: string | null
           name?: string
+          template_layout_json?: Json | null
           updated_at?: string
           version?: number
         }
@@ -271,6 +274,7 @@ export type Database = {
           policy_id: string
           status: string
           template_id: string | null
+          template_version_used: number | null
           updated_at: string
         }
         Insert: {
@@ -286,6 +290,7 @@ export type Database = {
           policy_id: string
           status?: string
           template_id?: string | null
+          template_version_used?: number | null
           updated_at?: string
         }
         Update: {
@@ -301,6 +306,7 @@ export type Database = {
           policy_id?: string
           status?: string
           template_id?: string | null
+          template_version_used?: number | null
           updated_at?: string
         }
         Relationships: [
