@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
         provider: 'tranzila',
         tranzila_index: tranzilaIndex,
         created_by_admin_id: user.id,
-        cheque_status: 'pending', // Reusing this field for payment status
+        refused: null, // null = pending, false = paid, true = refused
       })
       .select()
       .single()
@@ -109,7 +109,7 @@ Deno.serve(async (req) => {
       await supabase
         .from('policy_payments')
         .update({
-          cheque_status: 'paid',
+          refused: false,
           tranzila_transaction_id: 'TEST-' + Date.now(),
           tranzila_approval_code: 'TEST-APPROVED',
           tranzila_response_code: '000',
@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Build Tranzila iframe URL
+    // Build Tranzila form data for POST method (official recommended approach)
     const terminalName = settings.terminal_name
     if (!terminalName) {
       return new Response(JSON.stringify({ error: 'Terminal name not configured' }), {
@@ -135,37 +135,36 @@ Deno.serve(async (req) => {
       })
     }
 
-    const baseUrl = `https://direct.tranzila.com/${terminalName}/iframenew.php`
+    const iframeUrl = `https://direct.tranzila.com/${terminalName}/iframenew.php`
     
-    // Build query params
-    const params = new URLSearchParams({
+    // Build form fields for POST submission (per Tranzila docs)
+    const formFields: Record<string, string> = {
       sum: amount.toString(),
       currency: '1', // 1 = NIS
-      cred_type: '1', // 1 = credit card
-      tranmode: 'A', // Standard transaction
-      myid: tranzilaIndex, // Our reference ID
-    })
+      cred_type: '1', // 1 = regular credit card
+      tranmode: 'A', // A = standard transaction
+      myid: tranzilaIndex, // Our reference ID for matching webhook
+    }
 
     // Add callback URLs if configured
     if (settings.success_url) {
-      params.append('success_url_address', settings.success_url + `?payment_id=${payment.id}`)
+      formFields.success_url_address = `${settings.success_url}?payment_id=${payment.id}`
     }
     if (settings.fail_url) {
-      params.append('fail_url_address', settings.fail_url + `?payment_id=${payment.id}`)
+      formFields.fail_url_address = `${settings.fail_url}?payment_id=${payment.id}`
     }
     if (settings.notify_url) {
-      params.append('notify_url_address', settings.notify_url)
+      formFields.notify_url_address = settings.notify_url
     }
 
-    const iframeUrl = `${baseUrl}?${params.toString()}`
-
-    console.log('Generated Tranzila URL:', iframeUrl)
+    console.log('Generated Tranzila form fields:', JSON.stringify(formFields))
 
     return new Response(JSON.stringify({
       success: true,
       test_mode: false,
       payment_id: payment.id,
       iframe_url: iframeUrl,
+      form_fields: formFields, // Return fields for POST submission
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
