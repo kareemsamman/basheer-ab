@@ -77,6 +77,11 @@ export async function calculatePolicyProfit(params: CalculateProfitParams): Prom
         basePrice = getRuleValue('ROAD_SERVICE_BASE', false, true);
       }
 
+      // If no road service rules exist, full profit
+      if (basePrice === 0) {
+        return { companyPayment: 0, profit: insurancePrice };
+      }
+
       let extraOld = 0;
       if (carYear && carYear <= 2007) {
         extraOld = getRuleValue('ROAD_SERVICE_EXTRA_OLD_CAR', false, false);
@@ -92,6 +97,10 @@ export async function calculatePolicyProfit(params: CalculateProfitParams): Prom
 
       // THIRD only
       if (policyTypeChild === 'THIRD' || !policyTypeChild) {
+        // If no third price rule exists, full profit (empty = no company cost)
+        if (thirdPrice === 0) {
+          return { companyPayment: 0, profit: insurancePrice };
+        }
         return { companyPayment: thirdPrice, profit: insurancePrice - thirdPrice };
       }
 
@@ -99,6 +108,13 @@ export async function calculatePolicyProfit(params: CalculateProfitParams): Prom
       if (policyTypeChild === 'FULL') {
         // Get discount - this is a FIXED ₪ amount that REPLACES third_price, NOT a percentage
         const discount = getRuleValue('DISCOUNT', true, false);
+        const fullPercent = getRuleValue('FULL_PERCENT', true, false);
+        const minPrice = getRuleValue('MIN_PRICE', true, false);
+        
+        // If no full rules exist (no percent, no discount, no min), full profit
+        if (fullPercent === 0 && discount === 0 && minPrice === 0 && thirdPrice === 0) {
+          return { companyPayment: 0, profit: insurancePrice };
+        }
         
         // If discount exists, use it as third_component; otherwise use thirdPrice
         let thirdComponent = thirdPrice;
@@ -106,17 +122,14 @@ export async function calculatePolicyProfit(params: CalculateProfitParams): Prom
           thirdComponent = discount;  // FIXED: discount replaces third_price, not reduces it
         }
 
-        // Get min price and full percent
-        const minPrice = getRuleValue('MIN_PRICE', true, false);
-        const fullPercent = getRuleValue('FULL_PERCENT', true, false);
-
         // Calculate full component
         let fullComponent = 0;
-        if (carValue && carValue >= 60000) {
+        if (carValue && carValue >= 60000 && fullPercent > 0) {
           fullComponent = carValue * (fullPercent / 100);
-        } else {
+        } else if (minPrice > 0) {
           fullComponent = minPrice;
         }
+        // If no full percent and no min price, full component stays 0
 
         const companyPayment = fullComponent + thirdComponent;
         return { companyPayment, profit: insurancePrice - companyPayment };
@@ -126,11 +139,15 @@ export async function calculatePolicyProfit(params: CalculateProfitParams): Prom
     // ACCIDENT_FEE_EXEMPTION
     if (policyTypeParent === 'ACCIDENT_FEE_EXEMPTION') {
       const fixedPrice = getRuleValue('THIRD_PRICE', false, false);
+      // If no rule, full profit
+      if (fixedPrice === 0) {
+        return { companyPayment: 0, profit: insurancePrice };
+      }
       return { companyPayment: fixedPrice, profit: insurancePrice - fixedPrice };
     }
 
-    // Default: assume all goes to company (safest default)
-    return { companyPayment: insurancePrice, profit: 0 };
+    // Default: No rules found = full profit (empty = full profit rule)
+    return { companyPayment: 0, profit: insurancePrice };
   } catch (error) {
     console.error('Error calculating profit:', error);
     // Return safe defaults on error
