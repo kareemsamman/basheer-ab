@@ -270,6 +270,31 @@ export function TranzilaPaymentModal({
           {/* Iframe for real payment - using POST method */}
           {status === 'iframe' && iframeUrl && formFields && (
             <div className="flex-1 flex flex-col">
+              {(() => {
+                let embedded = false;
+                try {
+                  embedded = window.self !== window.top;
+                } catch {
+                  embedded = true;
+                }
+
+                if (!embedded) return null;
+
+                return (
+                  <div className="mb-3 rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
+                    ملاحظة: بوابات الدفع (3DS) قد لا تعمل داخل نافذة المعاينة لأنها تعمل داخل iframe.
+                    جرّب فتح النظام في تبويب جديد ثم أعد المحاولة.
+                    <div className="mt-2 flex justify-end">
+                      <Button asChild variant="outline" size="sm">
+                        <a href={window.location.href} target="_blank" rel="noreferrer">
+                          فتح في تبويب جديد
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Hidden form that POSTs to the iframe (Tranzila recommended method) */}
               <form
                 ref={formRef}
@@ -289,9 +314,7 @@ export function TranzilaPaymentModal({
                   name="tranzila-iframe"
                   className="w-full h-full min-h-[400px]"
                   title="Tranzila Payment"
-                  // NOTE: Tranzila docs do NOT require sandbox; sandbox can break their internal JS.
-                  allowFullScreen
-                  allow="payment *; fullscreen *"
+                  // Per Tranzila docs: allowpaymentrequest='true'
                   // @ts-ignore - allowpaymentrequest is valid but not in types
                   allowpaymentrequest="true"
                 />
