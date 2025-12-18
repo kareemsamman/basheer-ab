@@ -48,7 +48,6 @@ const clientSchema = z.object({
     .refine((v) => v.length === 0 || v.length === 10, 'رقم الهاتف يجب أن يكون 10 أرقام'),
   notes: z.string().optional(),
   less_than_24: z.boolean().default(false),
-  image_url: z.string().optional(),
   broker_id: z.string().optional(),
 });
 
@@ -95,7 +94,6 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
       phone_number: '',
       notes: '',
       less_than_24: false,
-      image_url: '',
       broker_id: '',
     },
   });
@@ -122,7 +120,6 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
         phone_number: client?.phone_number || '',
         notes: client?.notes || '',
         less_than_24: client?.less_than_24 || false,
-        image_url: client?.image_url || '',
         broker_id: client?.broker_id || defaultBrokerId || '',
       });
     }
@@ -138,7 +135,6 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
         phone_number: data.phone_number || null,
         notes: data.notes || null,
         less_than_24: data.less_than_24,
-        image_url: data.image_url || null,
         broker_id: data.broker_id || null,
       };
 
@@ -279,20 +275,6 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
                       ))}
                     </SelectContent>
                   </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="image_url"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>رابط الصورة</FormLabel>
-                  <FormControl>
-                    <Input placeholder="رابط صورة العميل من CDN" {...field} />
-                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
