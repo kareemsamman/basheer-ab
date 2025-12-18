@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { PolicyEditDrawer } from "./PolicyEditDrawer";
 import { PolicyPaymentsSection } from "./PolicyPaymentsSection";
 import { PolicyImagesSection } from "./PolicyImagesSection";
+import { PolicyInvoicesSection } from "./PolicyInvoicesSection";
 
 interface PolicyDetailsDrawerProps {
   open: boolean;
@@ -316,7 +317,11 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
 
               {/* Tabs Content */}
               <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden" dir="rtl">
-                <TabsList className="mx-6 mt-4 grid grid-cols-4 h-10 flex-row-reverse">
+                <TabsList className="mx-6 mt-4 grid grid-cols-5 h-10 flex-row-reverse">
+                  <TabsTrigger value="invoices" className="text-xs gap-1">
+                    <FileText className="h-3 w-3" />
+                    الفواتير
+                  </TabsTrigger>
                   <TabsTrigger value="files" className="text-xs gap-1">
                     <ImageIcon className="h-3 w-3" />
                     الملفات
@@ -493,6 +498,11 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
                   {/* Files Tab */}
                   <TabsContent value="files" className="p-6 m-0">
                     <PolicyImagesSection policyId={policy.id} />
+                  </TabsContent>
+
+                  {/* Invoices Tab */}
+                  <TabsContent value="invoices" className="p-6 m-0">
+                    <PolicyInvoicesSection policyId={policy.id} />
                   </TabsContent>
                 </ScrollArea>
               </Tabs>
