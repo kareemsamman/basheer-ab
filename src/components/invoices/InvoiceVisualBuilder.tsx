@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Canvas as FabricCanvas, Rect, Textbox, Line, Image as FabricImage, Group, FabricObject } from "fabric";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,10 +10,17 @@ import { cn } from "@/lib/utils";
 import { 
   Type, Image, Hash, Table2, Minus, QrCode, Stamp, 
   Undo2, Redo2, Grid3X3, Trash2, Copy, Lock, Unlock,
-  ChevronUp, ChevronDown, Eye, Layers
+  ChevronUp, ChevronDown, Eye, Layers, AlertCircle
 } from "lucide-react";
 import { InvoicePropertiesPanel } from "./InvoicePropertiesPanel";
 import { InvoiceElementsSidebar } from "./InvoiceElementsSidebar";
+
+// Dynamic import for Fabric.js to handle SSR and loading issues
+let FabricCanvas: any = null;
+let Rect: any = null;
+let Textbox: any = null;
+let Line: any = null;
+let FabricImage: any = null;
 
 export interface TemplateElement {
   id: string;
@@ -83,49 +89,75 @@ export function InvoiceVisualBuilder({
 }: InvoiceVisualBuilderProps) {
   const { toast } = useToast();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const fabricCanvasRef = useRef<FabricCanvas | null>(null);
+  const fabricCanvasRef = useRef<any>(null);
   const [selectedElement, setSelectedElement] = useState<TemplateElement | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [history, setHistory] = useState<TemplateElement[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [elements, setElements] = useState<TemplateElement[]>(layoutJson || []);
   const isUpdatingRef = useRef(false);
+  const [fabricLoaded, setFabricLoaded] = useState(false);
+  const [fabricError, setFabricError] = useState<string | null>(null);
 
-  // Initialize Fabric canvas
+  // Load Fabric.js dynamically
   useEffect(() => {
-    if (!canvasRef.current) return;
-
-    const canvas = new FabricCanvas(canvasRef.current, {
-      width: A4_WIDTH,
-      height: A4_HEIGHT,
-      backgroundColor: '#ffffff',
-      selection: true,
-      preserveObjectStacking: true,
-    });
-
-    fabricCanvasRef.current = canvas;
-
-    // Draw grid
-    if (showGrid) {
-      drawGrid(canvas);
-    }
-
-    // Handle object selection
-    canvas.on('selection:created', handleSelection);
-    canvas.on('selection:updated', handleSelection);
-    canvas.on('selection:cleared', () => setSelectedElement(null));
-
-    // Handle object modifications
-    canvas.on('object:modified', handleObjectModified);
-    canvas.on('object:moving', handleObjectMoving);
-
-    // Load existing elements
-    loadElementsToCanvas(elements, canvas);
-
-    return () => {
-      canvas.dispose();
+    const loadFabric = async () => {
+      try {
+        const fabric = await import("fabric");
+        FabricCanvas = fabric.Canvas;
+        Rect = fabric.Rect;
+        Textbox = fabric.Textbox;
+        Line = fabric.Line;
+        FabricImage = fabric.Image;
+        setFabricLoaded(true);
+      } catch (err) {
+        console.error("Failed to load Fabric.js:", err);
+        setFabricError("فشل في تحميل محرر التصميم");
+      }
     };
+    loadFabric();
   }, []);
+
+  // Initialize Fabric canvas after fabric is loaded
+  useEffect(() => {
+    if (!fabricLoaded || !canvasRef.current || !FabricCanvas) return;
+
+    try {
+      const canvas = new FabricCanvas(canvasRef.current, {
+        width: A4_WIDTH,
+        height: A4_HEIGHT,
+        backgroundColor: '#ffffff',
+        selection: true,
+        preserveObjectStacking: true,
+      });
+
+      fabricCanvasRef.current = canvas;
+
+      // Draw grid
+      if (showGrid) {
+        drawGrid(canvas);
+      }
+
+      // Handle object selection
+      canvas.on('selection:created', handleSelection);
+      canvas.on('selection:updated', handleSelection);
+      canvas.on('selection:cleared', () => setSelectedElement(null));
+
+      // Handle object modifications
+      canvas.on('object:modified', handleObjectModified);
+      canvas.on('object:moving', handleObjectMoving);
+
+      // Load existing elements
+      loadElementsToCanvas(elements, canvas);
+
+      return () => {
+        canvas.dispose();
+      };
+    } catch (err) {
+      console.error("Failed to initialize canvas:", err);
+      setFabricError("فشل في تهيئة لوحة التصميم");
+    }
+  }, [fabricLoaded]);
 
   // Update grid visibility
   useEffect(() => {
@@ -149,7 +181,7 @@ export function InvoiceVisualBuilder({
     }
   }, [elements, onChange]);
 
-  const drawGrid = (canvas: FabricCanvas) => {
+  const drawGrid = (canvas: any) => {
     // Draw vertical lines
     for (let i = 0; i <= A4_WIDTH; i += GRID_SIZE) {
       const line = new Line([i, 0, i, A4_HEIGHT], {
@@ -222,7 +254,7 @@ export function InvoiceVisualBuilder({
     }
   };
 
-  const loadElementsToCanvas = (elements: TemplateElement[], canvas: FabricCanvas) => {
+  const loadElementsToCanvas = (elements: TemplateElement[], canvas: any) => {
     // Remove non-grid objects
     const objectsToRemove = canvas.getObjects().filter(obj => !(obj as any).isGrid);
     objectsToRemove.forEach(obj => canvas.remove(obj));
@@ -234,8 +266,8 @@ export function InvoiceVisualBuilder({
     canvas.renderAll();
   };
 
-  const addElementToCanvas = (element: TemplateElement, canvas: FabricCanvas) => {
-    let fabricObject: FabricObject | null = null;
+  const addElementToCanvas = (element: TemplateElement, canvas: any) => {
+    let fabricObject: any = null;
 
     const displayText = element.type === 'field' && element.fieldKey
       ? (previewData?.[element.fieldKey] || `{{${element.fieldKey}}}`)
@@ -482,6 +514,31 @@ export function InvoiceVisualBuilder({
       canvas.renderAll();
     }
   };
+
+  // Loading state
+  if (!fabricLoaded && !fabricError) {
+    return (
+      <div className="flex items-center justify-center h-[700px]" dir="rtl">
+        <div className="text-center space-y-4">
+          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto" />
+          <p className="text-muted-foreground">جاري تحميل محرر التصميم...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (fabricError) {
+    return (
+      <div className="flex items-center justify-center h-[700px]" dir="rtl">
+        <div className="text-center space-y-4">
+          <AlertCircle className="h-12 w-12 text-destructive mx-auto" />
+          <p className="text-destructive">{fabricError}</p>
+          <Button onClick={() => window.location.reload()}>إعادة تحميل الصفحة</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex gap-4 h-[700px]" dir="rtl">
