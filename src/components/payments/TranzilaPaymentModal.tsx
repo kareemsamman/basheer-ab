@@ -84,6 +84,40 @@ export function TranzilaPaymentModal({
     }
   }, [status, formFields, formSubmitted]);
 
+  // Listen for postMessage from payment success/fail pages loaded in iframe
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Check if message is from our payment pages
+      if (event.data?.type === 'TRANZILA_PAYMENT_RESULT') {
+        const { status: paymentStatus, payment_id } = event.data;
+        
+        // Clear polling since we got direct result
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+
+        if (paymentStatus === 'success') {
+          setStatus('success');
+          toast({
+            title: "تم الدفع بنجاح",
+            description: "تم استلام الدفع بنجاح",
+          });
+          setTimeout(() => {
+            onSuccess();
+            onOpenChange(false);
+          }, 1500);
+        } else if (paymentStatus === 'failed') {
+          setStatus('failed');
+          setErrorMessage('فشلت عملية الدفع');
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [onSuccess, onOpenChange, toast]);
+
   const initializePayment = async () => {
     try {
       setStatus('initializing');

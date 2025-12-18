@@ -138,15 +138,19 @@ Deno.serve(async (req) => {
     const iframeUrl = `https://direct.tranzila.com/${terminalName}/iframenew.php`
     
     // Build form fields for POST submission (per Tranzila docs)
+    // See: https://docs.tranzila.com/docs/payments-billing/795m2yi7q4nmq-iframe-integration
     const formFields: Record<string, string> = {
       sum: amount.toString(),
       currency: '1', // 1 = NIS
       cred_type: '1', // 1 = regular credit card
       tranmode: 'A', // A = standard transaction
       myid: tranzilaIndex, // Our reference ID for matching webhook
+      lang: 'il', // Hebrew language display
+      nologo: '1', // Hide Tranzila logo for cleaner look
+      buttonLabel: 'שלם עכשיו', // Hebrew pay button text
     }
 
-    // Add callback URLs if configured
+    // Add callback URLs - these should be absolute URLs to our payment result pages
     if (settings.success_url) {
       formFields.success_url_address = `${settings.success_url}?payment_id=${payment.id}`
     }
