@@ -871,6 +871,22 @@ export type Database = {
         Returns: boolean
       }
       is_active_user: { Args: { _user_id: string }; Returns: boolean }
+      user_directory_get_by_ids: {
+        Args: { p_ids: string[] }
+        Returns: {
+          display_name: string
+          email: string
+          id: string
+        }[]
+      }
+      user_directory_list_active: {
+        Args: never
+        Returns: {
+          display_name: string
+          email: string
+          id: string
+        }[]
+      }
     }
     Enums: {
       age_band: "UNDER_24" | "UP_24" | "ANY"
