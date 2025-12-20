@@ -141,16 +141,17 @@ export function ClientSignatureSection({
 
       {/* Signature Preview Dialog */}
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="sm:max-w-md" dir="rtl">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh]" dir="rtl">
           <DialogHeader>
             <DialogTitle>توقيع العميل - {clientName}</DialogTitle>
           </DialogHeader>
-          <div className="flex items-center justify-center p-4 bg-white rounded-lg border">
+          <div className="flex items-center justify-center p-4 bg-background rounded-lg border">
             {signatureUrl && (
               <img
                 src={signatureUrl}
-                alt="توقيع العميل"
-                className="max-w-full max-h-48 object-contain"
+                alt={`توقيع العميل ${clientName}`}
+                loading="lazy"
+                className="max-w-full max-h-[70vh] object-contain"
               />
             )}
           </div>

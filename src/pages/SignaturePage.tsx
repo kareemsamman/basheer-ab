@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from "react";
+import { Helmet } from "react-helmet-async";
 import { useParams, useNavigate } from "react-router-dom";
 import { Canvas as FabricCanvas, PencilBrush } from "fabric";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -34,6 +37,7 @@ export default function SignaturePage() {
   
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [accepted, setAccepted] = useState(false);
   const [signatureInfo, setSignatureInfo] = useState<SignatureInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
@@ -169,136 +173,179 @@ export default function SignaturePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4" dir="rtl">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <Skeleton className="h-8 w-32 mx-auto" />
-            <Skeleton className="h-4 w-48 mx-auto mt-2" />
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-48 w-full" />
-          </CardContent>
-        </Card>
-      </div>
+      <>
+        <Helmet>
+          <title>توقيع العميل | AB Insurance CRM</title>
+          <meta name="description" content="توقيع العميل على نموذج التأمين عبر رابط آمن لمرة واحدة." />
+          <link rel="canonical" href={typeof window !== "undefined" ? window.location.href : "/"} />
+        </Helmet>
+        <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4" dir="rtl">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <Skeleton className="h-8 w-32 mx-auto" />
+              <Skeleton className="h-4 w-48 mx-auto mt-2" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-48 w-full" />
+            </CardContent>
+          </Card>
+        </div>
+      </>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4" dir="rtl">
-        <Card className="w-full max-w-md text-center">
-          <CardHeader>
-            <div className="mx-auto w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
-              <AlertCircle className="h-8 w-8 text-destructive" />
-            </div>
-            <CardTitle className="text-destructive">رابط غير صالح</CardTitle>
-            <CardDescription>{error}</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
+      <>
+        <Helmet>
+          <title>رابط توقيع غير صالح | AB Insurance CRM</title>
+          <meta name="description" content="رابط التوقيع غير صالح أو منتهي." />
+          <link rel="canonical" href={typeof window !== "undefined" ? window.location.href : "/"} />
+        </Helmet>
+        <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4" dir="rtl">
+          <Card className="w-full max-w-md text-center">
+            <CardHeader>
+              <div className="mx-auto w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+                <AlertCircle className="h-8 w-8 text-destructive" />
+              </div>
+              <CardTitle className="text-destructive">رابط غير صالح</CardTitle>
+              <CardDescription>{error}</CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      </>
     );
   }
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4" dir="rtl">
-        <Card className="w-full max-w-md text-center">
-          <CardHeader>
-            <div className="mx-auto w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mb-4">
-              <Check className="h-8 w-8 text-success" />
-            </div>
-            <CardTitle className="text-success">تم التوقيع بنجاح</CardTitle>
-            <CardDescription>
-              شكراً لك {signatureInfo?.client_name}، تم حفظ توقيعك بنجاح.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
+      <>
+        <Helmet>
+          <title>تم التوقيع | AB Insurance CRM</title>
+          <meta name="description" content="تم حفظ توقيع العميل بنجاح." />
+          <link rel="canonical" href={typeof window !== "undefined" ? window.location.href : "/"} />
+        </Helmet>
+        <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4" dir="rtl">
+          <Card className="w-full max-w-md text-center">
+            <CardHeader>
+              <div className="mx-auto w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mb-4">
+                <Check className="h-8 w-8 text-success" />
+              </div>
+              <CardTitle className="text-success">تم التوقيع بنجاح</CardTitle>
+              <CardDescription>
+                شكراً لك {signatureInfo?.client_name}، تم حفظ توقيعك بنجاح.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4" dir="rtl">
-      <Card className="w-full max-w-lg">
-        <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-2">
-            <FileSignature className="h-6 w-6 text-primary" />
-          </div>
-          <CardTitle>توقيع العميل</CardTitle>
-          <CardDescription>
-            مرحباً {signatureInfo?.client_name}، يرجى التوقيع في المربع أدناه
-          </CardDescription>
-        </CardHeader>
-        
-        <CardContent className="space-y-4">
-          {/* Template content if available */}
-          {signatureInfo?.template && (
-            <div 
-              className="prose prose-sm max-w-none mb-4 p-4 bg-muted/30 rounded-lg text-sm"
-              dir={signatureInfo.template.direction || "rtl"}
-            >
-              {signatureInfo.template.logo_url && (
-                <img 
-                  src={signatureInfo.template.logo_url} 
-                  alt="Logo" 
-                  className="h-12 mx-auto mb-4"
-                />
-              )}
-              {signatureInfo.template.header_html && (
-                <div dangerouslySetInnerHTML={{ __html: signatureInfo.template.header_html }} />
-              )}
-              {signatureInfo.template.body_html && (
-                <div dangerouslySetInnerHTML={{ __html: signatureInfo.template.body_html }} />
-              )}
+    <>
+      <Helmet>
+        <title>توقيع العميل | AB Insurance CRM</title>
+        <meta name="description" content="توقيع العميل على نموذج التأمين عبر رابط آمن لمرة واحدة." />
+        <link rel="canonical" href={typeof window !== "undefined" ? window.location.href : "/"} />
+      </Helmet>
+      <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4" dir="rtl">
+        <Card className="w-full max-w-lg">
+          <CardHeader className="text-center">
+            <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-2">
+              <FileSignature className="h-6 w-6 text-primary" />
             </div>
-          )}
+            <CardTitle>توقيع العميل</CardTitle>
+            <CardDescription>
+              مرحباً {signatureInfo?.client_name}، يرجى التوقيع في المربع أدناه
+            </CardDescription>
+          </CardHeader>
+          
+          <CardContent className="space-y-4">
+            {/* Template content if available */}
+            {signatureInfo?.template && (
+              <div 
+                className="prose prose-sm max-w-none mb-4 p-4 bg-muted/30 rounded-lg text-sm"
+                dir={signatureInfo.template.direction || "rtl"}
+              >
+                {signatureInfo.template.logo_url && (
+                  <img 
+                    src={signatureInfo.template.logo_url} 
+                    alt="شعار الشركة"
+                    className="h-12 mx-auto mb-4"
+                    loading="lazy"
+                  />
+                )}
+                {signatureInfo.template.header_html && (
+                  <div dangerouslySetInnerHTML={{ __html: signatureInfo.template.header_html }} />
+                )}
+                {signatureInfo.template.body_html && (
+                  <div dangerouslySetInnerHTML={{ __html: signatureInfo.template.body_html }} />
+                )}
+                {signatureInfo.template.footer_html && (
+                  <div dangerouslySetInnerHTML={{ __html: signatureInfo.template.footer_html }} />
+                )}
+              </div>
+            )}
 
-          {/* Signature Canvas */}
-          <div className="border-2 border-dashed border-primary/30 rounded-lg p-2 bg-white">
-            <canvas 
-              ref={canvasRef} 
-              className="w-full touch-none"
-              style={{ maxWidth: "100%", height: "200px" }}
-            />
-          </div>
+            {/* Signature Canvas */}
+            <div className="border-2 border-dashed border-primary/30 rounded-lg p-2 bg-background">
+              <canvas 
+                ref={canvasRef} 
+                className="w-full touch-none"
+                style={{ maxWidth: "100%", height: "200px" }}
+              />
+            </div>
 
-          <p className="text-xs text-muted-foreground text-center">
-            استخدم الماوس أو إصبعك للتوقيع
-          </p>
-
-          {/* Action Buttons */}
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              onClick={handleClear}
-              className="flex-1"
-              disabled={submitting}
-            >
-              <RotateCcw className="h-4 w-4 ml-2" />
-              مسح
-            </Button>
-            <Button
-              onClick={handleSubmit}
-              className="flex-1"
-              disabled={submitting}
-            >
-              {submitting ? (
-                <Loader2 className="h-4 w-4 animate-spin ml-2" />
-              ) : (
-                <Check className="h-4 w-4 ml-2" />
-              )}
-              تأكيد التوقيع
-            </Button>
-          </div>
-
-          {/* Expiry notice */}
-          {signatureInfo?.expires_at && (
             <p className="text-xs text-muted-foreground text-center">
-              ينتهي هذا الرابط في: {new Date(signatureInfo.expires_at).toLocaleString("ar-EG")}
+              استخدم الماوس أو إصبعك للتوقيع
             </p>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+
+            <div className="flex items-start gap-2 rounded-lg border bg-muted/30 p-3">
+              <Checkbox
+                id="accept"
+                checked={accepted}
+                onCheckedChange={(v) => setAccepted(!!v)}
+              />
+              <Label htmlFor="accept" className="text-sm leading-relaxed">
+                أقرّ أنني قرأت وأوافق على المحتوى أعلاه.
+              </Label>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={handleClear}
+                className="flex-1"
+                disabled={submitting}
+              >
+                <RotateCcw className="h-4 w-4 ml-2" />
+                مسح
+              </Button>
+              <Button
+                onClick={handleSubmit}
+                className="flex-1"
+                disabled={submitting || !accepted}
+              >
+                {submitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin ml-2" />
+                ) : (
+                  <Check className="h-4 w-4 ml-2" />
+                )}
+                تأكيد التوقيع
+              </Button>
+            </div>
+
+            {/* Expiry notice */}
+            {signatureInfo?.expires_at && (
+              <p className="text-xs text-muted-foreground text-center">
+                ينتهي هذا الرابط في: {new Date(signatureInfo.expires_at).toLocaleString("ar-EG")}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </>
   );
 }

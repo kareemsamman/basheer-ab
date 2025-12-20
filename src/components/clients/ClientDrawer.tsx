@@ -145,6 +145,15 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
       const newBranchId = data.branch_id || null;
       const branchChanged = isEditing && oldBranchId !== newBranchId && newBranchId;
 
+      let createdByAdminId: string | null = null;
+      if (!isEditing) {
+        const { data: authData, error: authError } = await supabase.auth.getUser();
+        if (authError || !authData.user) {
+          throw authError || new Error('Not authenticated');
+        }
+        createdByAdminId = authData.user.id;
+      }
+
       const clientData = {
         full_name: data.full_name,
         id_number: data.id_number,
@@ -154,6 +163,7 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
         less_than_24: data.less_than_24,
         broker_id: data.broker_id || null,
         branch_id: newBranchId,
+        ...(!isEditing ? { created_by_admin_id: createdByAdminId } : {}),
       };
 
       if (isEditing) {
