@@ -1,14 +1,24 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.88.0";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+// HTML response headers - important to set correctly for browsers to render HTML
+const htmlHeaders = {
+  "Content-Type": "text/html; charset=utf-8",
+  "Cache-Control": "no-cache, no-store, must-revalidate",
+  "X-Content-Type-Options": "nosniff",
 };
 
 serve(async (req) => {
+  // Handle OPTIONS for CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { 
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+      }
+    });
   }
 
   try {
@@ -20,9 +30,10 @@ serve(async (req) => {
     const token = url.searchParams.get("token");
 
     if (!token) {
-      return new Response(buildErrorHtml("رابط غير صالح", "الرجاء التأكد من صحة الرابط"), {
+      const errorHtml = buildErrorHtml("رابط غير صالح", "الرجاء التأكد من صحة الرابط");
+      return new Response(errorHtml, {
         status: 400,
-        headers: { "Content-Type": "text/html; charset=utf-8" },
+        headers: htmlHeaders,
       });
     }
 
@@ -44,9 +55,10 @@ serve(async (req) => {
 
     if (signatureError || !signatureRecord) {
       console.error("[signature-page] Token not found:", signatureError);
-      return new Response(buildErrorHtml("رابط غير صالح", "هذا الرابط غير موجود أو منتهي الصلاحية"), {
+      const errorHtml = buildErrorHtml("رابط غير صالح", "هذا الرابط غير موجود أو منتهي الصلاحية");
+      return new Response(errorHtml, {
         status: 404,
-        headers: { "Content-Type": "text/html; charset=utf-8" },
+        headers: htmlHeaders,
       });
     }
 
@@ -65,17 +77,19 @@ serve(async (req) => {
 
     // Check if token is expired
     if (signatureRecord.token_expires_at && new Date(signatureRecord.token_expires_at) < new Date()) {
-      return new Response(buildErrorHtml("الرابط منتهي الصلاحية", "انتهت صلاحية هذا الرابط، يرجى طلب رابط جديد"), {
+      const errorHtml = buildErrorHtml("الرابط منتهي الصلاحية", "انتهت صلاحية هذا الرابط، يرجى طلب رابط جديد");
+      return new Response(errorHtml, {
         status: 400,
-        headers: { "Content-Type": "text/html; charset=utf-8" },
+        headers: htmlHeaders,
       });
     }
 
     // Check if already signed
     if (signatureRecord.signature_image_url && signatureRecord.signature_image_url !== "") {
-      return new Response(buildSuccessHtml(clientName, signatureRecord.signed_at), {
+      const successHtml = buildSuccessHtml(clientName, signatureRecord.signed_at);
+      return new Response(successHtml, {
         status: 200,
-        headers: { "Content-Type": "text/html; charset=utf-8" },
+        headers: htmlHeaders,
       });
     }
 
@@ -103,14 +117,15 @@ serve(async (req) => {
     
     return new Response(html, {
       status: 200,
-      headers: { "Content-Type": "text/html; charset=utf-8" },
+      headers: htmlHeaders,
     });
 
   } catch (error: unknown) {
     console.error("[signature-page] Fatal error:", error);
-    return new Response(buildErrorHtml("خطأ في النظام", "حدث خطأ غير متوقع، يرجى المحاولة لاحقاً"), {
+    const errorHtml = buildErrorHtml("خطأ في النظام", "حدث خطأ غير متوقع، يرجى المحاولة لاحقاً");
+    return new Response(errorHtml, {
       status: 500,
-      headers: { "Content-Type": "text/html; charset=utf-8" },
+      headers: htmlHeaders,
     });
   }
 });
