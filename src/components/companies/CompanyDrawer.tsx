@@ -139,6 +139,26 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
     
     setDeleting(true);
     try {
+      // Check if there are related policies
+      const { count, error: countError } = await supabase
+        .from('policies')
+        .select('*', { count: 'exact', head: true })
+        .eq('company_id', company.id)
+        .is('deleted_at', null);
+
+      if (countError) throw countError;
+
+      if (count && count > 0) {
+        toast({
+          title: 'لا يمكن الحذف',
+          description: `لا يمكن حذف الشركة لأن هناك ${count} وثيقة تأمين مرتبطة بها. يرجى حذف الوثائق أولاً أو نقلها لشركة أخرى.`,
+          variant: 'destructive',
+        });
+        setDeleteDialogOpen(false);
+        setDeleting(false);
+        return;
+      }
+
       // First delete all pricing rules for this company
       const { error: rulesError } = await supabase
         .from('pricing_rules')

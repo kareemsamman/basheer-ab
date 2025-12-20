@@ -24,6 +24,7 @@ import {
   Clock,
   XCircle,
   Plus,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PolicyEditDrawer } from "./PolicyEditDrawer";
@@ -65,6 +66,7 @@ interface PolicyDetails {
     file_number: string | null;
     id_number: string;
     less_than_24: boolean | null;
+    signature_url: string | null;
   };
   cars: {
     id: string;
@@ -153,7 +155,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
         .select(
           `
           *,
-          clients!inner(id, full_name, phone_number, file_number, id_number, less_than_24),
+          clients!inner(id, full_name, phone_number, file_number, id_number, less_than_24, signature_url),
           cars(id, car_number, manufacturer_name, year, car_type, car_value, model, color),
           insurance_companies(id, name, name_ar),
           brokers(id, name)
@@ -282,6 +284,13 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
                         <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">أقل من 24</Badge>
                       )}
                     </div>
+                    {/* Signature Warning */}
+                    {!policy.clients.signature_url && (
+                      <div className="flex items-center gap-2 mt-2 text-amber-600 bg-amber-500/10 rounded-md px-3 py-1.5 text-xs">
+                        <AlertTriangle className="h-4 w-4" />
+                        <span>العميل لم يوقّع بعد - يرجى إرسال طلب توقيع</span>
+                      </div>
+                    )}
                     {creatorName && <p className="text-xs text-muted-foreground mt-1">أنشئ بواسطة: {creatorName}</p>}
                   </div>
                   <div className="flex gap-2 ml-[20px]">

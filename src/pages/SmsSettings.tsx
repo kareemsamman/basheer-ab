@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { Save, Loader2, MessageSquare, Send, Settings2 } from "lucide-react";
+import { Save, Loader2, MessageSquare, Send, Settings2, FileSignature, Image, Upload, X } from "lucide-react";
 import { Navigate } from "react-router-dom";
 
 interface SmsSettings {
@@ -24,6 +24,14 @@ interface SmsSettings {
   is_enabled: boolean;
   invoice_sms_template?: string | null;
   signature_sms_template?: string | null;
+  // Signature page branding from invoice_templates default_signature_template_id
+}
+
+interface SignaturePageSettings {
+  logo_url: string;
+  header_html: string;
+  body_html: string;
+  footer_html: string;
 }
 
 export default function SmsSettings() {
@@ -33,6 +41,7 @@ export default function SmsSettings() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testPhone, setTestPhone] = useState("");
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   
   const [settings, setSettings] = useState<SmsSettings>({
     provider: "019sms",
@@ -44,6 +53,15 @@ export default function SmsSettings() {
     signature_sms_template: null,
   });
 
+  const [signaturePageSettings, setSignaturePageSettings] = useState<SignaturePageSettings>({
+    logo_url: "",
+    header_html: "",
+    body_html: "",
+    footer_html: "",
+  });
+  
+  const [signatureTemplateId, setSignatureTemplateId] = useState<string | null>(null);
+
   useEffect(() => {
     fetchSettings();
   }, []);
@@ -53,7 +71,7 @@ export default function SmsSettings() {
     try {
       const { data, error } = await supabase
         .from("sms_settings")
-        .select("*")
+        .select("*, invoice_templates:default_signature_template_id(*)")
         .limit(1)
         .maybeSingle();
 
@@ -69,6 +87,18 @@ export default function SmsSettings() {
           invoice_sms_template: data.invoice_sms_template ?? null,
           signature_sms_template: data.signature_sms_template ?? null,
         });
+
+        // Load signature template settings
+        if (data.default_signature_template_id && data.invoice_templates) {
+          const template = data.invoice_templates as any;
+          setSignatureTemplateId(data.default_signature_template_id);
+          setSignaturePageSettings({
+            logo_url: template.logo_url || "",
+            header_html: template.header_html || "",
+            body_html: template.body_html || "",
+            footer_html: template.footer_html || "",
+          });
+        }
       }
     } catch (error) {
       console.error("Error fetching SMS settings:", error);
@@ -128,6 +158,113 @@ export default function SmsSettings() {
     }
   };
 
+  const handleSaveSignaturePage = async () => {
+    setSaving(true);
+    try {
+      if (signatureTemplateId) {
+        // Update existing signature template
+        const { error } = await supabase
+          .from("invoice_templates")
+          .update({
+            logo_url: signaturePageSettings.logo_url || null,
+            header_html: signaturePageSettings.header_html || null,
+            body_html: signaturePageSettings.body_html || null,
+            footer_html: signaturePageSettings.footer_html || null,
+          })
+          .eq("id", signatureTemplateId);
+
+        if (error) throw error;
+      } else {
+        // Create new signature template
+        const { data: newTemplate, error: createError } = await supabase
+          .from("invoice_templates")
+          .insert({
+            name: "Signature Page Template",
+            template_type: "signature",
+            language: "ar",
+            direction: "rtl",
+            is_active: true,
+            logo_url: signaturePageSettings.logo_url || null,
+            header_html: signaturePageSettings.header_html || null,
+            body_html: signaturePageSettings.body_html || null,
+            footer_html: signaturePageSettings.footer_html || null,
+          })
+          .select()
+          .single();
+
+        if (createError) throw createError;
+
+        // Update sms_settings with the new template id
+        if (settings.id) {
+          const { error: updateError } = await supabase
+            .from("sms_settings")
+            .update({ default_signature_template_id: newTemplate.id })
+            .eq("id", settings.id);
+
+          if (updateError) throw updateError;
+        }
+
+        setSignatureTemplateId(newTemplate.id);
+      }
+
+      toast({ title: "تم الحفظ", description: "تم حفظ إعدادات صفحة التوقيع بنجاح" });
+    } catch (error: any) {
+      console.error("Error saving signature page settings:", error);
+      toast({
+        title: "خطأ",
+        description: error.message || "فشل في حفظ الإعدادات",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadingLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('entity_type', 'signature_logo');
+      formData.append('entity_id', 'global');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-media`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session?.access_token}`,
+          },
+          body: formData,
+        }
+      );
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Upload failed');
+      }
+
+      const result = await response.json();
+      setSignaturePageSettings(prev => ({ ...prev, logo_url: result.cdn_url }));
+      toast({ title: "تم الرفع", description: "تم رفع الشعار بنجاح" });
+    } catch (error: any) {
+      console.error('Error uploading logo:', error);
+      toast({ 
+        title: "خطأ", 
+        description: error.message || "فشل في رفع الشعار", 
+        variant: "destructive" 
+      });
+    } finally {
+      setUploadingLogo(false);
+      event.target.value = '';
+    }
+  };
+
   const handleTestSms = async () => {
     if (!testPhone.trim()) {
       toast({ title: "خطأ", description: "يرجى إدخال رقم الهاتف للاختبار", variant: "destructive" });
@@ -181,10 +318,14 @@ export default function SmsSettings() {
 
       <div className="p-6 space-y-6">
         <Tabs defaultValue="settings" dir="rtl">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsList className="grid w-full max-w-lg grid-cols-3">
             <TabsTrigger value="settings" className="gap-2">
               <Settings2 className="h-4 w-4" />
               الإعدادات
+            </TabsTrigger>
+            <TabsTrigger value="signature" className="gap-2">
+              <FileSignature className="h-4 w-4" />
+              صفحة التوقيع
             </TabsTrigger>
             <TabsTrigger value="test" className="gap-2">
               <Send className="h-4 w-4" />
@@ -324,6 +465,146 @@ export default function SmsSettings() {
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          {/* Signature Page Editor Tab */}
+          <TabsContent value="signature" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileSignature className="h-5 w-5 text-primary" />
+                  إعدادات صفحة التوقيع
+                </CardTitle>
+                <CardDescription>
+                  تخصيص المحتوى الذي يظهر للعميل عند فتح رابط التوقيع
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Logo Upload */}
+                <div className="space-y-2">
+                  <Label>شعار الشركة</Label>
+                  <div className="flex items-center gap-4">
+                    {signaturePageSettings.logo_url ? (
+                      <div className="relative">
+                        <img 
+                          src={signaturePageSettings.logo_url} 
+                          alt="الشعار" 
+                          className="h-16 w-auto rounded border"
+                        />
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          className="absolute -top-2 -right-2 h-6 w-6"
+                          onClick={() => setSignaturePageSettings(prev => ({ ...prev, logo_url: "" }))}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLogoUpload}
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                          disabled={uploadingLogo}
+                        />
+                        <Button variant="outline" disabled={uploadingLogo}>
+                          {uploadingLogo ? (
+                            <Loader2 className="h-4 w-4 animate-spin ml-2" />
+                          ) : (
+                            <Upload className="h-4 w-4 ml-2" />
+                          )}
+                          رفع شعار
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Header HTML */}
+                <div className="space-y-2">
+                  <Label htmlFor="header_html">العنوان (يمكن إضافة HTML)</Label>
+                  <Textarea
+                    id="header_html"
+                    value={signaturePageSettings.header_html}
+                    onChange={(e) =>
+                      setSignaturePageSettings(prev => ({ ...prev, header_html: e.target.value }))
+                    }
+                    placeholder="<h2>عنوان الصفحة</h2>"
+                    className="min-h-[80px] font-mono text-sm"
+                    dir="rtl"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    يظهر في أعلى صفحة التوقيع
+                  </p>
+                </div>
+
+                {/* Body HTML */}
+                <div className="space-y-2">
+                  <Label htmlFor="body_html">المحتوى الرئيسي (يمكن إضافة HTML)</Label>
+                  <Textarea
+                    id="body_html"
+                    value={signaturePageSettings.body_html}
+                    onChange={(e) =>
+                      setSignaturePageSettings(prev => ({ ...prev, body_html: e.target.value }))
+                    }
+                    placeholder="<p>أقرّ أنا الموقع أدناه بأنني قد اطلعت على شروط التأمين وأوافق عليها.</p>"
+                    className="min-h-[150px] font-mono text-sm"
+                    dir="rtl"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    النص الذي يجب على العميل قراءته قبل التوقيع
+                  </p>
+                </div>
+
+                {/* Footer HTML */}
+                <div className="space-y-2">
+                  <Label htmlFor="footer_html">التذييل (يمكن إضافة HTML)</Label>
+                  <Textarea
+                    id="footer_html"
+                    value={signaturePageSettings.footer_html}
+                    onChange={(e) =>
+                      setSignaturePageSettings(prev => ({ ...prev, footer_html: e.target.value }))
+                    }
+                    placeholder="<p>جميع الحقوق محفوظة © AB Insurance</p>"
+                    className="min-h-[60px] font-mono text-sm"
+                    dir="rtl"
+                  />
+                </div>
+
+                {/* Preview */}
+                {(signaturePageSettings.header_html || signaturePageSettings.body_html || signaturePageSettings.footer_html) && (
+                  <div className="space-y-2">
+                    <Label>معاينة</Label>
+                    <div className="border rounded-lg p-4 bg-muted/30 prose prose-sm max-w-none" dir="rtl">
+                      {signaturePageSettings.logo_url && (
+                        <img src={signaturePageSettings.logo_url} alt="الشعار" className="h-12 mx-auto mb-4" />
+                      )}
+                      {signaturePageSettings.header_html && (
+                        <div dangerouslySetInnerHTML={{ __html: signaturePageSettings.header_html }} />
+                      )}
+                      {signaturePageSettings.body_html && (
+                        <div dangerouslySetInnerHTML={{ __html: signaturePageSettings.body_html }} />
+                      )}
+                      {signaturePageSettings.footer_html && (
+                        <div dangerouslySetInnerHTML={{ __html: signaturePageSettings.footer_html }} />
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Save Button */}
+                <Button onClick={handleSaveSignaturePage} disabled={saving} className="w-full">
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin ml-2" />
+                  ) : (
+                    <Save className="h-4 w-4 ml-2" />
+                  )}
+                  حفظ إعدادات صفحة التوقيع
+                </Button>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="test" className="mt-6">

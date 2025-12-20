@@ -1,19 +1,20 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { 
   ImageIcon, Plus, Trash2, Download, X, Loader2, FileText, FolderOpen, 
-  Save, Hash, CheckCircle2
+  Save, Hash, CheckCircle2, Send, AlertTriangle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 
 interface MediaFile {
   id: string;
@@ -28,10 +29,20 @@ interface MediaFile {
 interface PolicyFilesSectionProps {
   policyId: string;
   policyNumber?: string | null;
+  clientId?: string;
+  clientPhoneNumber?: string | null;
+  clientName?: string;
   onPolicyNumberSaved?: (policyNumber: string) => void;
 }
 
-export function PolicyFilesSection({ policyId, policyNumber: initialPolicyNumber, onPolicyNumberSaved }: PolicyFilesSectionProps) {
+export function PolicyFilesSection({ 
+  policyId, 
+  policyNumber: initialPolicyNumber, 
+  clientId,
+  clientPhoneNumber,
+  clientName,
+  onPolicyNumberSaved 
+}: PolicyFilesSectionProps) {
   const { toast } = useToast();
   const [insuranceFiles, setInsuranceFiles] = useState<MediaFile[]>([]);
   const [crmFiles, setCrmFiles] = useState<MediaFile[]>([]);
@@ -47,6 +58,13 @@ export function PolicyFilesSection({ policyId, policyNumber: initialPolicyNumber
   const [policyNumber, setPolicyNumber] = useState(initialPolicyNumber || "");
   const [savingPolicyNumber, setSavingPolicyNumber] = useState(false);
   const [policyNumberSaved, setPolicyNumberSaved] = useState(!!initialPolicyNumber);
+
+  // Auto-send popup state
+  const [showSendPopup, setShowSendPopup] = useState(false);
+  const [sendingToClient, setSendingToClient] = useState(false);
+  const [countdown, setCountdown] = useState(5);
+  const countdownRef = useRef<NodeJS.Timeout | null>(null);
+  const autoSendRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     setPolicyNumber(initialPolicyNumber || "");
@@ -123,6 +141,26 @@ export function PolicyFilesSection({ policyId, policyNumber: initialPolicyNumber
 
       toast({ title: "تم الرفع", description: "تم رفع الملفات بنجاح" });
       fetchFiles();
+
+      // Show auto-send popup only for insurance files and if client has phone
+      if (fileType === 'insurance' && clientPhoneNumber) {
+        setCountdown(5);
+        setShowSendPopup(true);
+        // Start countdown
+        countdownRef.current = setInterval(() => {
+          setCountdown(prev => {
+            if (prev <= 1) {
+              clearInterval(countdownRef.current!);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+        // Auto-send after 5 seconds
+        autoSendRef.current = setTimeout(() => {
+          handleSendToClient();
+        }, 5000);
+      }
     } catch (error: any) {
       console.error('Error uploading:', error);
       toast({ 
@@ -134,6 +172,33 @@ export function PolicyFilesSection({ policyId, policyNumber: initialPolicyNumber
       setUploading(null);
       event.target.value = '';
     }
+  };
+
+  const handleSendToClient = async () => {
+    // Cancel auto-send timer
+    if (autoSendRef.current) clearTimeout(autoSendRef.current);
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    
+    setSendingToClient(true);
+    try {
+      const { error } = await supabase.functions.invoke('send-invoice-sms', {
+        body: { policy_id: policyId }
+      });
+      if (error) throw error;
+      toast({ title: "تم الإرسال", description: "تم إرسال الملفات للعميل بنجاح" });
+    } catch (err: any) {
+      console.error('Error sending to client:', err);
+      toast({ title: "خطأ", description: err.message || "فشل في الإرسال", variant: "destructive" });
+    } finally {
+      setSendingToClient(false);
+      setShowSendPopup(false);
+    }
+  };
+
+  const handleCancelSend = () => {
+    if (autoSendRef.current) clearTimeout(autoSendRef.current);
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    setShowSendPopup(false);
   };
 
   const handleSavePolicyNumber = async () => {
@@ -434,6 +499,39 @@ export function PolicyFilesSection({ policyId, policyNumber: initialPolicyNumber
         description={`هل أنت متأكد من حذف "${deletingImage?.original_name}"؟`}
         loading={deleting}
       />
+
+      {/* Auto-Send Popup */}
+      <Dialog open={showSendPopup} onOpenChange={(open) => !open && handleCancelSend()}>
+        <DialogContent dir="rtl" className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5 text-primary" />
+              إرسال للعميل
+            </DialogTitle>
+            <DialogDescription>
+              هل تريد إرسال ملفات البوليصة والفواتير للعميل {clientName}؟
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <div className="flex items-center justify-center gap-2 text-muted-foreground mb-2">
+              <AlertTriangle className="h-4 w-4" />
+              <span>سيتم الإرسال تلقائياً خلال {countdown} ثوانٍ</span>
+            </div>
+            <Progress value={(5 - countdown) * 20} className="h-2" />
+          </div>
+
+          <DialogFooter className="flex-row-reverse gap-2 sm:gap-2">
+            <Button onClick={handleSendToClient} disabled={sendingToClient}>
+              {sendingToClient ? <Loader2 className="h-4 w-4 animate-spin ml-2" /> : <Send className="h-4 w-4 ml-2" />}
+              إرسال الآن
+            </Button>
+            <Button variant="outline" onClick={handleCancelSend} disabled={sendingToClient}>
+              إلغاء
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
