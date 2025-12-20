@@ -292,7 +292,7 @@ export default function SmsSettings() {
                       className="min-h-[110px]"
                     />
                     <p className="text-xs text-muted-foreground">
-                      المتغيرات المتاحة: {{client_name}} ، {{signature_url}}
+                      المتغيرات المتاحة: {"{{client_name}}"} ، {"{{signature_url}}"}
                     </p>
                   </div>
 
@@ -308,7 +308,7 @@ export default function SmsSettings() {
                       className="min-h-[110px]"
                     />
                     <p className="text-xs text-muted-foreground">
-                      المتغيرات المتاحة: {{client_name}} ، {{policy_number}} ، {{ab_invoice_url}} ، {{insurance_invoice_url}}
+                      المتغيرات المتاحة: {"{{client_name}}"} ، {"{{policy_number}}"} ، {"{{ab_invoice_url}}"} ، {"{{insurance_invoice_url}}"}
                     </p>
                   </div>
 
