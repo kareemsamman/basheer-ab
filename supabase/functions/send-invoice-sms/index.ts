@@ -83,22 +83,14 @@ serve(async (req) => {
       );
     }
 
-    // Check if policy has policy_number
-    if (!policy.policy_number) {
-      return new Response(
-        JSON.stringify({ error: "Policy number is required before sending invoices" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Check if policy has insurance files
+    // Get insurance files (uploaded policy documents from Bunny CDN)
     const { data: insuranceFiles, error: filesError } = await supabase
       .from("media_files")
-      .select("id")
+      .select("id, cdn_url, original_name, mime_type")
       .eq("entity_id", policy_id)
       .in("entity_type", ["policy", "policy_insurance"])
       .is("deleted_at", null)
-      .limit(1);
+      .order("created_at", { ascending: false });
 
     if (filesError) {
       console.error("[send-invoice-sms] Error fetching files:", filesError);
@@ -106,7 +98,7 @@ serve(async (req) => {
 
     if (!insuranceFiles || insuranceFiles.length === 0) {
       return new Response(
-        JSON.stringify({ error: "At least one policy file must be uploaded before sending invoices" }),
+        JSON.stringify({ error: "At least one policy file must be uploaded before sending" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -141,10 +133,10 @@ serve(async (req) => {
       );
     }
 
-    // Get invoices for this policy
+    // Get invoices for this policy (AB invoice)
     const { data: invoices, error: invoicesError } = await supabase
       .from("invoices")
-      .select("id, language, status, metadata_json")
+      .select("id, language, status, metadata_json, pdf_url")
       .eq("policy_id", policy_id)
       .in("status", ["generated", "regenerated"]);
 
@@ -152,22 +144,33 @@ serve(async (req) => {
       console.error("[send-invoice-sms] Error fetching invoices:", invoicesError);
     }
 
-    // Build invoice URLs dynamically from request origin
-    const origin = req.headers.get("Origin") || req.headers.get("Referer")?.replace(/\/$/, "") || "";
-    const baseUrl = `${origin}/invoice-preview`;
-    const invoiceUrls = invoices?.map(inv => {
-      return `${baseUrl}/${inv.id}`;
-    }) || [];
+    // Build policy file URLs (direct Bunny CDN links)
+    const policyFileUrls = insuranceFiles.map(f => f.cdn_url);
+    const firstPolicyUrl = policyFileUrls[0] || "";
 
-    // Build SMS message
+    // AB Invoice URL - use pdf_url if exists, otherwise use generated HTML preview
+    const origin = req.headers.get("Origin") || req.headers.get("Referer")?.replace(/\/$/, "") || "";
+    let abInvoiceUrl = "";
+    if (invoices && invoices.length > 0) {
+      const inv = invoices[0];
+      if (inv.pdf_url) {
+        abInvoiceUrl = inv.pdf_url;
+      } else {
+        // Fallback to HTML preview
+        abInvoiceUrl = `${origin}/invoice-preview/${inv.id}`;
+      }
+    }
+
+    // Build SMS message using template
     let smsMessage = smsSettings.invoice_sms_template || 
-      "مرحباً {{client_name}}، تم إصدار فواتير وثيقة التأمين رقم {{policy_number}}. فاتورة AB: {{ab_invoice_url}} فاتورة شركة التأمين: {{insurance_invoice_url}}";
+      "مرحباً {{client_name}}، وثيقة التأمين جاهزة. البوليصة: {{policy_url}} فاتورة AB: {{ab_invoice_url}}";
 
     smsMessage = smsMessage
       .replace(/\{\{client_name\}\}/g, policy.client?.full_name || "عميل")
       .replace(/\{\{policy_number\}\}/g, policy.policy_number || "")
-      .replace(/\{\{ab_invoice_url\}\}/g, invoiceUrls[0] || "")
-      .replace(/\{\{insurance_invoice_url\}\}/g, invoiceUrls.slice(1).join(" ") || invoiceUrls[0] || "");
+      .replace(/\{\{policy_url\}\}/g, firstPolicyUrl)
+      .replace(/\{\{ab_invoice_url\}\}/g, abInvoiceUrl)
+      .replace(/\{\{insurance_invoice_url\}\}/g, firstPolicyUrl); // Legacy placeholder
 
     const escapeXml = (value: string) =>
       value
@@ -195,6 +198,8 @@ serve(async (req) => {
       `</sms>`;
 
     console.log(`[send-invoice-sms] Sending SMS to ${cleanPhone}`);
+    console.log(`[send-invoice-sms] Policy URL: ${firstPolicyUrl}`);
+    console.log(`[send-invoice-sms] AB Invoice URL: ${abInvoiceUrl}`);
 
     const smsResponse = await fetch("https://019sms.co.il/api", {
       method: "POST",
@@ -240,8 +245,10 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: "Invoices sent via SMS",
+        message: "Documents sent via SMS",
         sent_to: cleanPhone,
+        policy_url: firstPolicyUrl,
+        ab_invoice_url: abInvoiceUrl,
         duration_ms: duration
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

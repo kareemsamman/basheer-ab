@@ -435,18 +435,18 @@ export default function SmsSettings() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="invoice_sms_template">نص رسالة الفواتير</Label>
+                    <Label htmlFor="invoice_sms_template">نص رسالة الوثائق والفواتير</Label>
                     <Textarea
                       id="invoice_sms_template"
                       value={settings.invoice_sms_template || ""}
                       onChange={(e) =>
                         setSettings((prev) => ({ ...prev, invoice_sms_template: e.target.value }))
                       }
-                      placeholder="مرحباً {{client_name}}، تم إصدار فواتير وثيقة التأمين رقم {{policy_number}}. فاتورة AB: {{ab_invoice_url}} فاتورة شركة التأمين: {{insurance_invoice_url}}"
+                      placeholder="مرحباً {{client_name}}، وثيقة التأمين جاهزة. البوليصة: {{policy_url}} فاتورة AB: {{ab_invoice_url}}"
                       className="min-h-[110px]"
                     />
                     <p className="text-xs text-muted-foreground">
-                      المتغيرات المتاحة: {"{{client_name}}"} ، {"{{policy_number}}"} ، {"{{ab_invoice_url}}"} ، {"{{insurance_invoice_url}}"}
+                      المتغيرات المتاحة: {"{{client_name}}"} ، {"{{policy_number}}"} ، {"{{policy_url}}"} (رابط ملف البوليصة) ، {"{{ab_invoice_url}}"} (رابط فاتورة AB)
                     </p>
                   </div>
 
