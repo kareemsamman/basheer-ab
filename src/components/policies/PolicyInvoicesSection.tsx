@@ -203,17 +203,17 @@ export function PolicyInvoicesSection({ policyId }: PolicyInvoicesSectionProps) 
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header with Add Button */}
+    <div className="space-y-4 text-right" dir="rtl">
+      {/* Header with Add Button - RTL: title on right, button on left */}
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold flex items-center gap-2">
-          <FileText className="h-4 w-4" />
-          الفواتير ({invoices.length})
-        </h3>
         <Button size="sm" onClick={() => setShowGenerateDialog(true)}>
           <Plus className="h-4 w-4 ml-1" />
           إنشاء فاتورة
         </Button>
+        <h3 className="font-semibold flex items-center gap-2 text-right">
+          <FileText className="h-4 w-4" />
+          الفواتير ({invoices.length})
+        </h3>
       </div>
 
       {/* Invoices List */}
@@ -229,9 +229,40 @@ export function PolicyInvoicesSection({ policyId }: PolicyInvoicesSectionProps) 
       ) : (
         <div className="space-y-3">
           {invoices.map((invoice) => (
-            <Card key={invoice.id} className="p-4">
+            <Card key={invoice.id} className="p-4 text-right">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+                {/* Content on right side in RTL */}
+                <div className="flex flex-col items-start gap-1">
+                  <div className="flex items-center gap-2">
+                    {getStatusBadge(invoice.status)}
+                    <Badge variant="outline">{getLanguageLabel(invoice.language)}</Badge>
+                    <span className="font-mono text-sm" dir="ltr">{invoice.invoice_number}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    {invoice.template?.name && (
+                      <span dir="auto">• {invoice.template.name}</span>
+                    )}
+                    <span dir="auto">{new Date(invoice.issued_at).toLocaleDateString('ar-SA')}</span>
+                  </div>
+                </div>
+                {/* Actions on left side in RTL */}
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handlePrint(invoice)}
+                    title="طباعة"
+                  >
+                    <Printer className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setPreviewInvoice(invoice)}
+                    title="معاينة"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -245,35 +276,6 @@ export function PolicyInvoicesSection({ policyId }: PolicyInvoicesSectionProps) 
                       <RefreshCw className="h-4 w-4" />
                     )}
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setPreviewInvoice(invoice)}
-                    title="معاينة"
-                  >
-                    <Eye className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handlePrint(invoice)}
-                    title="طباعة"
-                  >
-                    <Printer className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm">{invoice.invoice_number}</span>
-                    <Badge variant="outline">{getLanguageLabel(invoice.language)}</Badge>
-                    {getStatusBadge(invoice.status)}
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{new Date(invoice.issued_at).toLocaleDateString('ar-SA')}</span>
-                    {invoice.template?.name && (
-                      <span className="text-muted-foreground">• {invoice.template.name}</span>
-                    )}
-                  </div>
                 </div>
               </div>
             </Card>
@@ -361,16 +363,14 @@ export function PolicyInvoicesSection({ policyId }: PolicyInvoicesSectionProps) 
 
       {/* Preview Dialog */}
       <Dialog open={!!previewInvoice} onOpenChange={() => setPreviewInvoice(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden p-0">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden p-0" dir="rtl">
           <DialogHeader className="p-4 border-b">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => previewInvoice && handlePrint(previewInvoice)}>
-                  <Printer className="h-4 w-4 ml-1" />
-                  طباعة
-                </Button>
-              </div>
-              <DialogTitle>معاينة الفاتورة - {previewInvoice?.invoice_number}</DialogTitle>
+              <Button variant="outline" size="sm" onClick={() => previewInvoice && handlePrint(previewInvoice)}>
+                <Printer className="h-4 w-4 ml-1" />
+                طباعة
+              </Button>
+              <DialogTitle className="text-right">معاينة الفاتورة - <span dir="ltr">{previewInvoice?.invoice_number}</span></DialogTitle>
             </div>
           </DialogHeader>
           <div className="flex-1 overflow-auto p-4 bg-gray-50">
