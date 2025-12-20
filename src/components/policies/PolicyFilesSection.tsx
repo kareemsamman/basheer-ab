@@ -1,13 +1,19 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { ImageIcon, Plus, Trash2, Download, X, Loader2, FileText, FolderOpen } from "lucide-react";
+import { 
+  ImageIcon, Plus, Trash2, Download, X, Loader2, FileText, FolderOpen, 
+  Save, Hash, CheckCircle2
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
+import { Badge } from "@/components/ui/badge";
 
 interface MediaFile {
   id: string;
@@ -19,11 +25,13 @@ interface MediaFile {
   entity_type: string | null;
 }
 
-interface PolicyImagesSectionProps {
+interface PolicyFilesSectionProps {
   policyId: string;
+  policyNumber?: string | null;
+  onPolicyNumberSaved?: (policyNumber: string) => void;
 }
 
-export function PolicyImagesSection({ policyId }: PolicyImagesSectionProps) {
+export function PolicyFilesSection({ policyId, policyNumber: initialPolicyNumber, onPolicyNumberSaved }: PolicyFilesSectionProps) {
   const { toast } = useToast();
   const [insuranceFiles, setInsuranceFiles] = useState<MediaFile[]>([]);
   const [crmFiles, setCrmFiles] = useState<MediaFile[]>([]);
@@ -34,11 +42,21 @@ export function PolicyImagesSection({ policyId }: PolicyImagesSectionProps) {
   const [deletingImage, setDeletingImage] = useState<MediaFile | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [activeTab, setActiveTab] = useState("insurance");
+  
+  // Policy number state
+  const [policyNumber, setPolicyNumber] = useState(initialPolicyNumber || "");
+  const [savingPolicyNumber, setSavingPolicyNumber] = useState(false);
+  const [policyNumberSaved, setPolicyNumberSaved] = useState(!!initialPolicyNumber);
+
+  useEffect(() => {
+    setPolicyNumber(initialPolicyNumber || "");
+    setPolicyNumberSaved(!!initialPolicyNumber);
+  }, [initialPolicyNumber]);
 
   const fetchFiles = async () => {
     setLoading(true);
     try {
-      // Fetch insurance files
+      // Fetch insurance files (policy files from insurance company)
       const { data: insuranceData, error: insuranceError } = await supabase
         .from('media_files')
         .select('*')
@@ -50,7 +68,7 @@ export function PolicyImagesSection({ policyId }: PolicyImagesSectionProps) {
       if (insuranceError) throw insuranceError;
       setInsuranceFiles(insuranceData || []);
 
-      // Fetch CRM files
+      // Fetch CRM files (internal docs)
       const { data: crmData, error: crmError } = await supabase
         .from('media_files')
         .select('*')
@@ -115,6 +133,36 @@ export function PolicyImagesSection({ policyId }: PolicyImagesSectionProps) {
     } finally {
       setUploading(null);
       event.target.value = '';
+    }
+  };
+
+  const handleSavePolicyNumber = async () => {
+    if (!policyNumber.trim()) {
+      toast({ title: "خطأ", description: "يرجى إدخال رقم البوليصة", variant: "destructive" });
+      return;
+    }
+
+    setSavingPolicyNumber(true);
+    try {
+      const { error } = await supabase
+        .from('policies')
+        .update({ policy_number: policyNumber.trim() })
+        .eq('id', policyId);
+
+      if (error) throw error;
+
+      toast({ title: "تم الحفظ", description: "تم حفظ رقم البوليصة بنجاح" });
+      setPolicyNumberSaved(true);
+      onPolicyNumberSaved?.(policyNumber.trim());
+    } catch (error: any) {
+      console.error('Error saving policy number:', error);
+      toast({ 
+        title: "خطأ", 
+        description: error.message || "فشل في حفظ رقم البوليصة", 
+        variant: "destructive" 
+      });
+    } finally {
+      setSavingPolicyNumber(false);
     }
   };
 
@@ -253,6 +301,50 @@ export function PolicyImagesSection({ policyId }: PolicyImagesSectionProps) {
 
   return (
     <>
+      {/* Policy Number Section - Always visible at top */}
+      <Card className="p-4 mb-4 border-2 border-primary/20">
+        <div className="flex items-center gap-2 mb-3">
+          <Hash className="h-4 w-4 text-primary" />
+          <Label className="font-semibold text-primary">رقم البوليصة</Label>
+          {policyNumberSaved && (
+            <Badge variant="success" className="gap-1">
+              <CheckCircle2 className="h-3 w-3" />
+              محفوظ
+            </Badge>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Input
+            placeholder="أدخل رقم البوليصة..."
+            value={policyNumber}
+            onChange={(e) => {
+              setPolicyNumber(e.target.value);
+              setPolicyNumberSaved(false);
+            }}
+            className="flex-1"
+            dir="ltr"
+          />
+          <Button 
+            onClick={handleSavePolicyNumber}
+            disabled={savingPolicyNumber || !policyNumber.trim() || policyNumberSaved}
+            size="sm"
+          >
+            {savingPolicyNumber ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <Save className="h-4 w-4 ml-1" />
+                حفظ
+              </>
+            )}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">
+          هذا الرقم يستخدم للبحث السريع عن الوثيقة
+        </p>
+      </Card>
+
+      {/* Files Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} dir="rtl" className="space-y-4">
         <TabsList className="grid grid-cols-2 w-full" dir="rtl">
           <TabsTrigger value="insurance" className="text-xs gap-1">
@@ -271,11 +363,13 @@ export function PolicyImagesSection({ policyId }: PolicyImagesSectionProps) {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-primary font-semibold">
                 <ImageIcon className="h-4 w-4" />
-                <span>ملفات التأمين</span>
+                <span>ملفات البوليصة</span>
               </div>
               {renderUploadButton('insurance')}
             </div>
-            <p className="text-xs text-muted-foreground">فواتير، إيصالات، وثائق ترسل للعميل</p>
+            <p className="text-xs text-muted-foreground">
+              البوليصة من شركة التأمين - يمكنك رفع صور متعددة أو PDF
+            </p>
             {loading ? (
               <div className="text-center py-4 text-muted-foreground">جاري التحميل...</div>
             ) : (

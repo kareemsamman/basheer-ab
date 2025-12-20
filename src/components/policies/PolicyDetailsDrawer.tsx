@@ -28,7 +28,7 @@ import {
 import { cn } from "@/lib/utils";
 import { PolicyEditDrawer } from "./PolicyEditDrawer";
 import { PolicyPaymentsSection } from "./PolicyPaymentsSection";
-import { PolicyImagesSection } from "./PolicyImagesSection";
+import { PolicyFilesSection } from "./PolicyFilesSection";
 import { PolicyInvoicesSection } from "./PolicyInvoicesSection";
 
 interface PolicyDetailsDrawerProps {
@@ -42,6 +42,7 @@ interface PolicyDetails {
   id: string;
   policy_type_parent: string;
   policy_type_child: string | null;
+  policy_number: string | null;
   start_date: string;
   end_date: string;
   insurance_price: number;
@@ -110,10 +111,16 @@ const policyChildLabels: Record<string, string> = {
 };
 
 const policyTypeColors: Record<string, string> = {
-  ELZAMI: "bg-blue-500/10 text-blue-600 border-blue-500/20",
-  THIRD_FULL: "bg-purple-500/10 text-purple-600 border-purple-500/20",
-  ROAD_SERVICE: "bg-orange-500/10 text-orange-600 border-orange-500/20",
-  ACCIDENT_FEE_EXEMPTION: "bg-green-500/10 text-green-600 border-green-500/20",
+  ELZAMI: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+  THIRD_FULL: "bg-purple-500/10 text-purple-700 border-purple-500/20",
+  ROAD_SERVICE: "bg-orange-500/10 text-orange-700 border-orange-500/20",
+  ACCIDENT_FEE_EXEMPTION: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20",
+  HEALTH: "bg-rose-500/10 text-rose-700 border-rose-500/20",
+  LIFE: "bg-teal-500/10 text-teal-700 border-teal-500/20",
+  PROPERTY: "bg-amber-500/10 text-amber-700 border-amber-500/20",
+  TRAVEL: "bg-cyan-500/10 text-cyan-700 border-cyan-500/20",
+  BUSINESS: "bg-indigo-500/10 text-indigo-700 border-indigo-500/20",
+  OTHER: "bg-slate-500/10 text-slate-700 border-slate-500/20",
 };
 
 const carTypeLabels: Record<string, string> = {
@@ -364,26 +371,26 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
                 className="flex-1 flex flex-col overflow-hidden"
                 dir="rtl"
               >
-                <TabsList className="mx-6 mt-4 grid grid-cols-5 h-10 flex-row-reverse">
-                  <TabsTrigger value="invoices" className="text-xs gap-1">
-                    <FileText className="h-3 w-3" />
-                    الفواتير
-                  </TabsTrigger>
-                  <TabsTrigger value="files" className="text-xs gap-1">
-                    <ImageIcon className="h-3 w-3" />
-                    الملفات
-                  </TabsTrigger>
-                  <TabsTrigger value="customer" className="text-xs gap-1">
-                    <User className="h-3 w-3" />
-                    العميل
+                <TabsList className="mx-6 mt-4 grid grid-cols-5 h-10" dir="rtl">
+                  <TabsTrigger value="insurance" className="text-xs gap-1">
+                    <Banknote className="h-3 w-3" />
+                    التأمين
                   </TabsTrigger>
                   <TabsTrigger value="payments" className="text-xs gap-1">
                     <CreditCard className="h-3 w-3" />
                     الدفعات ({payments.length})
                   </TabsTrigger>
-                  <TabsTrigger value="insurance" className="text-xs gap-1">
-                    <Banknote className="h-3 w-3" />
-                    التأمين
+                  <TabsTrigger value="customer" className="text-xs gap-1">
+                    <User className="h-3 w-3" />
+                    العميل
+                  </TabsTrigger>
+                  <TabsTrigger value="files" className="text-xs gap-1">
+                    <ImageIcon className="h-3 w-3" />
+                    الملفات
+                  </TabsTrigger>
+                  <TabsTrigger value="invoices" className="text-xs gap-1">
+                    <FileText className="h-3 w-3" />
+                    الفواتير
                   </TabsTrigger>
                 </TabsList>
 
@@ -584,7 +591,11 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
 
                   {/* Files Tab */}
                   <TabsContent value="files" className="p-6 m-0">
-                    <PolicyImagesSection policyId={policy.id} />
+                    <PolicyFilesSection 
+                      policyId={policy.id} 
+                      policyNumber={policy.policy_number}
+                      onPolicyNumberSaved={() => fetchPolicyDetails()}
+                    />
                   </TabsContent>
 
                   {/* Invoices Tab */}

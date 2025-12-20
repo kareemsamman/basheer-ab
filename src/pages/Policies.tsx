@@ -94,10 +94,16 @@ const policyChildLabels: Record<string, string> = {
 };
 
 const policyTypeColors: Record<string, string> = {
-  "ELZAMI": "bg-blue-500/10 text-blue-600 border-blue-500/20",
-  "THIRD_FULL": "bg-purple-500/10 text-purple-600 border-purple-500/20",
-  "ROAD_SERVICE": "bg-orange-500/10 text-orange-600 border-orange-500/20",
-  "ACCIDENT_FEE_EXEMPTION": "bg-green-500/10 text-green-600 border-green-500/20",
+  "ELZAMI": "bg-blue-500/10 text-blue-700 border-blue-500/20",
+  "THIRD_FULL": "bg-purple-500/10 text-purple-700 border-purple-500/20",
+  "ROAD_SERVICE": "bg-orange-500/10 text-orange-700 border-orange-500/20",
+  "ACCIDENT_FEE_EXEMPTION": "bg-emerald-500/10 text-emerald-700 border-emerald-500/20",
+  "HEALTH": "bg-rose-500/10 text-rose-700 border-rose-500/20",
+  "LIFE": "bg-teal-500/10 text-teal-700 border-teal-500/20",
+  "PROPERTY": "bg-amber-500/10 text-amber-700 border-amber-500/20",
+  "TRAVEL": "bg-cyan-500/10 text-cyan-700 border-cyan-500/20",
+  "BUSINESS": "bg-indigo-500/10 text-indigo-700 border-indigo-500/20",
+  "OTHER": "bg-slate-500/10 text-slate-700 border-slate-500/20",
 };
 
 export default function Policies() {

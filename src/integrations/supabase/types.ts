@@ -626,10 +626,12 @@ export type Database = {
           end_date: string
           id: string
           insurance_price: number
+          invoices_sent_at: string | null
           is_under_24: boolean | null
           legacy_wp_id: number | null
           notes: string | null
           payed_for_company: number | null
+          policy_number: string | null
           policy_type_child:
             | Database["public"]["Enums"]["policy_type_child"]
             | null
@@ -655,10 +657,12 @@ export type Database = {
           end_date: string
           id?: string
           insurance_price: number
+          invoices_sent_at?: string | null
           is_under_24?: boolean | null
           legacy_wp_id?: number | null
           notes?: string | null
           payed_for_company?: number | null
+          policy_number?: string | null
           policy_type_child?:
             | Database["public"]["Enums"]["policy_type_child"]
             | null
@@ -684,10 +688,12 @@ export type Database = {
           end_date?: string
           id?: string
           insurance_price?: number
+          invoices_sent_at?: string | null
           is_under_24?: boolean | null
           legacy_wp_id?: number | null
           notes?: string | null
           payed_for_company?: number | null
+          policy_number?: string | null
           policy_type_child?:
             | Database["public"]["Enums"]["policy_type_child"]
             | null
