@@ -181,11 +181,46 @@ export function PolicyFilesSection({
     
     setSendingToClient(true);
     try {
-      const { error } = await supabase.functions.invoke('send-invoice-sms', {
+      const { data, error } = await supabase.functions.invoke('send-invoice-sms', {
         body: { policy_id: policyId }
       });
-      if (error) throw error;
-      toast({ title: "تم الإرسال", description: "تم إرسال الملفات للعميل بنجاح" });
+      
+      // Parse edge function error response
+      if (error) {
+        // Try to get detailed error from response
+        let errorMessage = "فشل في الإرسال";
+        try {
+          const errorBody = typeof error.message === 'string' && error.message.includes('{') 
+            ? JSON.parse(error.message) 
+            : null;
+          if (errorBody?.error) {
+            errorMessage = getArabicErrorMessage(errorBody.error);
+          }
+        } catch {
+          // Check if error.context has the response
+          if (error.context?.body) {
+            try {
+              const body = typeof error.context.body === 'string' 
+                ? JSON.parse(error.context.body) 
+                : error.context.body;
+              if (body?.error) {
+                errorMessage = getArabicErrorMessage(body.error);
+              }
+            } catch {}
+          }
+        }
+        throw new Error(errorMessage);
+      }
+      
+      // Check if response indicates failure
+      if (data && data.success === false) {
+        toast({ 
+          title: "تنبيه", 
+          description: data.message || "تم إرسال الفواتير مسبقاً",
+        });
+      } else {
+        toast({ title: "تم الإرسال", description: "تم إرسال الملفات للعميل بنجاح" });
+      }
     } catch (err: any) {
       console.error('Error sending to client:', err);
       toast({ title: "خطأ", description: err.message || "فشل في الإرسال", variant: "destructive" });
@@ -193,6 +228,24 @@ export function PolicyFilesSection({
       setSendingToClient(false);
       setShowSendPopup(false);
     }
+  };
+
+  // Helper to translate common edge function errors to Arabic
+  const getArabicErrorMessage = (englishError: string): string => {
+    const errorMap: Record<string, string> = {
+      "Policy number is required before sending invoices": "يجب إدخال رقم البوليصة قبل الإرسال",
+      "At least one policy file must be uploaded before sending invoices": "يجب رفع ملف بوليصة واحد على الأقل قبل الإرسال",
+      "Client phone number is required": "رقم هاتف العميل مطلوب",
+      "SMS service is not enabled": "خدمة الرسائل غير مفعلة",
+      "Policy not found": "الوثيقة غير موجودة",
+      "Client not found": "العميل غير موجود",
+      "Client already has a signature": "العميل لديه توقيع مسبق",
+      "Failed to fetch SMS settings": "فشل في جلب إعدادات الرسائل",
+      "Failed to create signature request": "فشل في إنشاء طلب التوقيع",
+      "Missing authorization header": "خطأ في المصادقة",
+      "Invalid authentication": "جلسة غير صالحة",
+    };
+    return errorMap[englishError] || englishError;
   };
 
   const handleCancelSend = () => {
