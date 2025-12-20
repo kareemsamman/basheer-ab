@@ -260,6 +260,24 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
               {/* Header - Insurance Focus */}
               <div className="p-6 bg-gradient-to-l from-primary/5 to-transparent border-b">
                 <div className="flex items-start justify-between mb-4">
+                  <div className="text-right">
+                    <DialogTitle className="text-xl font-bold mb-2">تفاصيل الوثيقة</DialogTitle>
+                    <div className="flex flex-wrap gap-2 justify-end">
+                      <Badge className={cn("border text-sm", policyTypeColors[policy.policy_type_parent])}>
+                        {policyTypeLabels[policy.policy_type_parent]}
+                        {policy.policy_type_child && ` - ${policyChildLabels[policy.policy_type_child]}`}
+                      </Badge>
+                      <Badge variant={status.variant} className="gap-1">
+                        <StatusIcon className="h-3 w-3" />
+                        {status.label}
+                      </Badge>
+                      {policy.is_under_24 && (
+                        <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">أقل من 24</Badge>
+                      )}
+                    </div>
+                    {creatorName && <p className="text-xs text-muted-foreground mt-1">أنشئ بواسطة: {creatorName}</p>}
+                  </div>
+
                   <div className="flex gap-2">
                     {remaining > 0 && (
                       <Button
@@ -277,23 +295,6 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
                       <Pencil className="h-4 w-4 ml-1" />
                       تعديل
                     </Button>
-                  </div>
-                  <div className="text-right">
-                    <DialogTitle className="text-xl font-bold mb-2">تفاصيل الوثيقة</DialogTitle>
-                    <div className="flex flex-wrap gap-2 justify-end">
-                      <Badge className={cn("border text-sm", policyTypeColors[policy.policy_type_parent])}>
-                        {policyTypeLabels[policy.policy_type_parent]}
-                        {policy.policy_type_child && ` - ${policyChildLabels[policy.policy_type_child]}`}
-                      </Badge>
-                      <Badge variant={status.variant} className="gap-1">
-                        <StatusIcon className="h-3 w-3" />
-                        {status.label}
-                      </Badge>
-                      {policy.is_under_24 && (
-                        <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">أقل من 24</Badge>
-                      )}
-                    </div>
-                    {creatorName && <p className="text-xs text-muted-foreground mt-1">أنشئ بواسطة: {creatorName}</p>}
                   </div>
                 </div>
 
@@ -364,26 +365,26 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
                 className="flex-1 flex flex-col overflow-hidden"
                 dir="rtl"
               >
-                <TabsList className="mx-6 mt-4 flex gap-1 h-10">
-                  <TabsTrigger value="insurance" className="text-xs gap-1">
-                    <Banknote className="h-3 w-3" />
-                    التأمين
-                  </TabsTrigger>
-                  <TabsTrigger value="payments" className="text-xs gap-1">
-                    <CreditCard className="h-3 w-3" />
-                    الدفعات ({payments.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="customer" className="text-xs gap-1">
-                    <User className="h-3 w-3" />
-                    العميل
+                <TabsList className="mx-6 mt-4 grid grid-cols-5 h-10 flex-row-reverse">
+                  <TabsTrigger value="invoices" className="text-xs gap-1">
+                    <FileText className="h-3 w-3" />
+                    الفواتير
                   </TabsTrigger>
                   <TabsTrigger value="files" className="text-xs gap-1">
                     <ImageIcon className="h-3 w-3" />
                     الملفات
                   </TabsTrigger>
-                  <TabsTrigger value="invoices" className="text-xs gap-1">
-                    <FileText className="h-3 w-3" />
-                    الفواتير
+                  <TabsTrigger value="customer" className="text-xs gap-1">
+                    <User className="h-3 w-3" />
+                    العميل
+                  </TabsTrigger>
+                  <TabsTrigger value="payments" className="text-xs gap-1">
+                    <CreditCard className="h-3 w-3" />
+                    الدفعات ({payments.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="insurance" className="text-xs gap-1">
+                    <Banknote className="h-3 w-3" />
+                    التأمين
                   </TabsTrigger>
                 </TabsList>
 
