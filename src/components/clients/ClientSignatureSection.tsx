@@ -29,6 +29,24 @@ export function ClientSignatureSection({
 
   const hasSigned = !!signatureUrl;
 
+  // Helper to translate common edge function errors to Arabic
+  const getArabicErrorMessage = (englishError: string): string => {
+    const errorMap: Record<string, string> = {
+      "Policy number is required before sending invoices": "يجب إدخال رقم البوليصة قبل الإرسال",
+      "At least one policy file must be uploaded before sending invoices": "يجب رفع ملف بوليصة واحد على الأقل قبل الإرسال",
+      "Client phone number is required": "رقم هاتف العميل مطلوب",
+      "SMS service is not enabled": "خدمة الرسائل غير مفعلة",
+      "Policy not found": "الوثيقة غير موجودة",
+      "Client not found": "العميل غير موجود",
+      "Client already has a signature": "العميل لديه توقيع مسبق",
+      "Failed to fetch SMS settings": "فشل في جلب إعدادات الرسائل",
+      "Failed to create signature request": "فشل في إنشاء طلب التوقيع",
+      "Missing authorization header": "خطأ في المصادقة",
+      "Invalid authentication": "جلسة غير صالحة",
+    };
+    return errorMap[englishError] || englishError;
+  };
+
   const handleSendSignatureRequest = async () => {
     if (!phoneNumber) {
       toast({
@@ -41,30 +59,47 @@ export function ClientSignatureSection({
 
     setSending(true);
     try {
-      const { data: session } = await supabase.auth.getSession();
+      const { data, error } = await supabase.functions.invoke('send-signature-sms', {
+        body: { client_id: clientId },
+      });
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-signature-sms`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.session?.access_token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ client_id: clientId }),
+      // Parse edge function error response
+      if (error) {
+        let errorMessage = "فشل في إرسال طلب التوقيع";
+        try {
+          const errorBody = typeof error.message === 'string' && error.message.includes('{') 
+            ? JSON.parse(error.message) 
+            : null;
+          if (errorBody?.error) {
+            errorMessage = getArabicErrorMessage(errorBody.error);
+          }
+        } catch {
+          if (error.context?.body) {
+            try {
+              const body = typeof error.context.body === 'string' 
+                ? JSON.parse(error.context.body) 
+                : error.context.body;
+              if (body?.error) {
+                errorMessage = getArabicErrorMessage(body.error);
+              }
+            } catch {}
+          }
         }
-      );
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || "فشل في إرسال طلب التوقيع");
+        throw new Error(errorMessage);
       }
 
-      toast({
-        title: "تم الإرسال",
-        description: `تم إرسال رابط التوقيع إلى ${phoneNumber}`,
-      });
+      // Check if response indicates the client already signed
+      if (data && data.success === false) {
+        toast({
+          title: "تنبيه",
+          description: getArabicErrorMessage(data.message) || "العميل لديه توقيع مسبق",
+        });
+      } else {
+        toast({
+          title: "تم الإرسال",
+          description: `تم إرسال رابط التوقيع إلى ${phoneNumber}`,
+        });
+      }
       onSignatureSent?.();
     } catch (error: any) {
       console.error("Error sending signature request:", error);

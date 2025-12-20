@@ -148,9 +148,9 @@ serve(async (req) => {
       );
     }
 
-    // Build signature URL
-    const projectId = Deno.env.get("SUPABASE_URL")?.match(/https:\/\/([^.]+)/)?.[1] || "";
-    const signatureUrl = `https://${projectId}.lovableproject.com/sign/${signatureToken}`;
+    // Build signature URL dynamically from request origin
+    const origin = req.headers.get("Origin") || req.headers.get("Referer")?.replace(/\/$/, "") || "";
+    const signatureUrl = `${origin}/sign/${signatureToken}`;
 
     // Build SMS message
     let smsMessage = smsSettings.signature_sms_template || 

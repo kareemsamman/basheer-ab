@@ -152,9 +152,9 @@ serve(async (req) => {
       console.error("[send-invoice-sms] Error fetching invoices:", invoicesError);
     }
 
-    // Build invoice URLs (using metadata_json.html_content as preview URL)
-    // In production, these would be actual PDF URLs
-    const baseUrl = `${supabaseUrl.replace("supabase.co", "lovableproject.com")}/invoice-preview`;
+    // Build invoice URLs dynamically from request origin
+    const origin = req.headers.get("Origin") || req.headers.get("Referer")?.replace(/\/$/, "") || "";
+    const baseUrl = `${origin}/invoice-preview`;
     const invoiceUrls = invoices?.map(inv => {
       return `${baseUrl}/${inv.id}`;
     }) || [];
