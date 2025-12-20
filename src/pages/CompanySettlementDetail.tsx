@@ -28,25 +28,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { CalculationExplanationModal } from '@/components/reports/CalculationExplanationModal';
+import { 
+  POLICY_TYPE_LABELS, 
+  POLICY_CHILD_LABELS, 
+  getInsuranceTypeBadgeClass,
+  getInsuranceTypeLabel 
+} from '@/lib/insuranceTypes';
 import type { Enums } from '@/integrations/supabase/types';
-
-const POLICY_TYPE_LABELS: Record<Enums<'policy_type_parent'>, string> = {
-  ELZAMI: 'إلزامي',
-  THIRD_FULL: 'طرف ثالث / شامل',
-  ROAD_SERVICE: 'خدمات الطريق',
-  ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
-  HEALTH: 'التأمين الصحي',
-  LIFE: 'تأمين الحياة',
-  PROPERTY: 'تأمين الممتلكات',
-  TRAVEL: 'تأمين السفر',
-  BUSINESS: 'تأمين الشركات',
-  OTHER: 'أخرى',
-};
-
-const POLICY_TYPE_CHILD_LABELS: Record<string, string> = {
-  THIRD: 'ثالث',
-  FULL: 'شامل',
-};
 
 interface PolicyDetail {
   id: string;
@@ -237,9 +225,9 @@ export default function CompanySettlementDetail() {
     return new Date(dateStr).toLocaleDateString('ar-EG');
   };
 
-  const getInsuranceTypeLabel = (policy: PolicyDetail) => {
+  const getInsuranceTypeLabelLocal = (policy: PolicyDetail) => {
     if (policy.policy_type_parent === 'THIRD_FULL' && policy.policy_type_child) {
-      return POLICY_TYPE_CHILD_LABELS[policy.policy_type_child] || policy.policy_type_child;
+      return POLICY_CHILD_LABELS[policy.policy_type_child] || policy.policy_type_child;
     }
     return POLICY_TYPE_LABELS[policy.policy_type_parent];
   };
@@ -276,7 +264,7 @@ export default function CompanySettlementDetail() {
       policy.client?.full_name || '-',
       policy.car?.car_number || '-',
       getCarTypeLabel(policy.car?.car_type || null),
-      getInsuranceTypeLabel(policy),
+      getInsuranceTypeLabelLocal(policy),
       formatDate(policy.start_date),
       formatDate(policy.end_date),
       policy.insurance_price,
@@ -500,8 +488,8 @@ export default function CompanySettlementDetail() {
                           {getCarTypeLabel(policy.car?.car_type || null)}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline">
-                            {getInsuranceTypeLabel(policy)}
+                          <Badge variant="outline" className={getInsuranceTypeBadgeClass(policy.policy_type_parent)}>
+                            {getInsuranceTypeLabelLocal(policy)}
                           </Badge>
                         </TableCell>
                         <TableCell>{formatDate(policy.start_date)}</TableCell>

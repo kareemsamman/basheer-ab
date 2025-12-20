@@ -28,6 +28,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
+import { POLICY_TYPE_LABELS, getInsuranceTypeBadgeClass } from '@/lib/insuranceTypes';
 import type { Tables, Enums } from '@/integrations/supabase/types';
 
 type Company = Tables<'insurance_companies'>;
@@ -42,19 +43,6 @@ interface CompanySettlementData {
   total_company_payment: number;
   total_profit: number;
 }
-
-const POLICY_TYPE_LABELS: Record<Enums<'policy_type_parent'>, string> = {
-  ELZAMI: 'إلزامي',
-  THIRD_FULL: 'طرف ثالث / شامل',
-  ROAD_SERVICE: 'خدمات الطريق',
-  ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
-  HEALTH: 'التأمين الصحي',
-  LIFE: 'تأمين الحياة',
-  PROPERTY: 'تأمين الممتلكات',
-  TRAVEL: 'تأمين السفر',
-  BUSINESS: 'تأمين الشركات',
-  OTHER: 'أخرى',
-};
 
 export default function CompanySettlement() {
   const navigate = useNavigate();
@@ -418,7 +406,7 @@ export default function CompanySettlement() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline">
+                          <Badge variant="outline" className={getInsuranceTypeBadgeClass(item.policy_type)}>
                             {POLICY_TYPE_LABELS[item.policy_type]}
                           </Badge>
                         </TableCell>

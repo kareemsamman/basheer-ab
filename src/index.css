@@ -69,6 +69,23 @@
     font-family: 'Cairo', sans-serif;
   }
 
+  /* RTL: Radix ScrollArea viewport must inherit RTL */
+  [dir="rtl"] [data-radix-scroll-area-viewport] {
+    direction: rtl;
+  }
+
+  /* RTL: Tables default to right-aligned */
+  [dir="rtl"] table th,
+  [dir="rtl"] table td {
+    text-align: right;
+  }
+
+  /* RTL: Action columns centered */
+  [dir="rtl"] table th.text-center,
+  [dir="rtl"] table td.text-center {
+    text-align: center;
+  }
+
   /* Light glass effect */
   .glass {
     background: hsl(0 0% 100% / 0.9);

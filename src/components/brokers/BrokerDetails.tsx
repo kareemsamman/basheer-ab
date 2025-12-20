@@ -185,9 +185,9 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
               <div>
                 <h1 className="text-2xl font-bold text-foreground">{broker.name}</h1>
                 {broker.phone && (
-                  <div className="flex items-center gap-1 text-muted-foreground" dir="ltr">
+                  <div className="flex items-center gap-1 text-muted-foreground">
                     <Phone className="h-4 w-4" />
-                    {broker.phone}
+                    <span dir="ltr">{broker.phone}</span>
                   </div>
                 )}
               </div>
@@ -228,8 +228,8 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">المحصل</p>
-                  <p className="text-2xl font-bold text-green-600" dir="ltr">
-                    {formatCurrency(stats.totalCollected)}
+                  <p className="text-2xl font-bold text-green-600">
+                    <span dir="ltr">{formatCurrency(stats.totalCollected)}</span>
                   </p>
                 </div>
               </div>
@@ -243,8 +243,8 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">المتبقي</p>
-                  <p className="text-2xl font-bold text-destructive" dir="ltr">
-                    {formatCurrency(stats.totalRemaining)}
+                  <p className="text-2xl font-bold text-destructive">
+                    <span dir="ltr">{formatCurrency(stats.totalRemaining)}</span>
                   </p>
                 </div>
               </div>
@@ -258,8 +258,8 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">الربح</p>
-                  <p className="text-2xl font-bold text-primary" dir="ltr">
-                    {formatCurrency(stats.totalProfit)}
+                  <p className="text-2xl font-bold text-primary">
+                    <span dir="ltr">{formatCurrency(stats.totalProfit)}</span>
                   </p>
                 </div>
               </div>
