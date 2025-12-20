@@ -21,6 +21,7 @@ import {
   ChevronRight,
   Phone,
   Users,
+  Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -43,7 +44,9 @@ interface Client {
   image_url: string | null;
   created_at: string;
   broker_id: string | null;
+  branch_id: string | null;
   broker?: { id: string; name: string } | null;
+  branch?: { id: string; name: string; name_ar: string | null } | null;
 }
 
 export default function Clients() {
@@ -72,7 +75,7 @@ export default function Clients() {
     try {
       let query = supabase
         .from('clients')
-        .select('*, broker:brokers(id, name)', { count: 'exact' })
+        .select('*, broker:brokers(id, name), branch:branches(id, name, name_ar)', { count: 'exact' })
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .range((currentPage - 1) * pageSize, currentPage * pageSize - 1);
@@ -216,6 +219,7 @@ export default function Clients() {
                   <TableHead className="text-muted-foreground font-medium">رقم الملف</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الهاتف</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الوسيط</TableHead>
+                  <TableHead className="text-muted-foreground font-medium">الفرع</TableHead>
                   <TableHead className="text-muted-foreground font-medium">تاريخ الانضمام</TableHead>
                   <TableHead className="text-muted-foreground font-medium">العمر</TableHead>
                   <TableHead className="text-muted-foreground font-medium w-[80px]">إجراءات</TableHead>
@@ -291,6 +295,16 @@ export default function Clients() {
                           <Badge variant="outline" className="gap-1 bg-amber-500/10 text-amber-700 border-amber-500/20">
                             <Users className="h-3 w-3" />
                             {client.broker.name}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {client.branch ? (
+                          <Badge variant="outline" className="gap-1 bg-blue-500/10 text-blue-700 border-blue-500/20">
+                            <Building2 className="h-3 w-3" />
+                            {client.branch.name_ar || client.branch.name}
                           </Badge>
                         ) : (
                           <span className="text-muted-foreground text-sm">-</span>

@@ -1287,7 +1287,27 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
         {/* Header */}
         <DialogHeader className="sticky top-0 z-10 bg-background border-b px-6 py-4">
           <div className="flex items-center justify-between">
-            <DialogTitle className="text-xl font-semibold">إضافة وثيقة جديدة</DialogTitle>
+            <div className="flex items-center gap-4">
+              <DialogTitle className="text-xl font-semibold">إضافة وثيقة جديدة</DialogTitle>
+              {/* Branch selector - Admin only */}
+              {isAdmin && branches.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                  <Select value={selectedBranchId} onValueChange={setSelectedBranchId}>
+                    <SelectTrigger className="w-[160px] h-9">
+                      <SelectValue placeholder="اختر الفرع" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {branches.map((branch) => (
+                        <SelectItem key={branch.id} value={branch.id}>
+                          {branch.name_ar || branch.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
             <Button variant="ghost" size="icon" onClick={handleClose} className="h-8 w-8">
               <X className="h-4 w-4" />
             </Button>

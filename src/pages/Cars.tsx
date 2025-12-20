@@ -21,6 +21,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Car as CarIcon,
+  Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -43,8 +44,14 @@ interface CarRecord {
   license_type: string | null;
   license_expiry: string | null;
   last_license: string | null;
+  branch_id: string | null;
   clients?: {
     full_name: string;
+  };
+  branch?: {
+    id: string;
+    name: string;
+    name_ar: string | null;
   };
 }
 
@@ -86,7 +93,7 @@ export default function Cars() {
     try {
       let query = supabase
         .from('cars')
-        .select('*, clients(full_name)', { count: 'exact' })
+        .select('*, clients(full_name), branch:branches(id, name, name_ar)', { count: 'exact' })
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .range((currentPage - 1) * pageSize, currentPage * pageSize - 1);
@@ -207,6 +214,7 @@ export default function Cars() {
                   <TableHead className="text-muted-foreground font-medium">النوع</TableHead>
                   <TableHead className="text-muted-foreground font-medium">اللون</TableHead>
                   <TableHead className="text-muted-foreground font-medium">القيمة</TableHead>
+                  <TableHead className="text-muted-foreground font-medium">الفرع</TableHead>
                   <TableHead className="text-muted-foreground font-medium">انتهاء الرخصة</TableHead>
                   <TableHead className="text-muted-foreground font-medium w-[80px]">إجراءات</TableHead>
                 </TableRow>
@@ -272,6 +280,16 @@ export default function Cars() {
                       <TableCell className="text-muted-foreground">{car.color || "-"}</TableCell>
                       <TableCell className="font-medium">
                         {car.car_value ? `₪${car.car_value.toLocaleString('ar-EG')}` : "-"}
+                      </TableCell>
+                      <TableCell>
+                        {car.branch ? (
+                          <Badge variant="outline" className="gap-1 bg-blue-500/10 text-blue-700 border-blue-500/20">
+                            <Building2 className="h-3 w-3" />
+                            {car.branch.name_ar || car.branch.name}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         {car.license_expiry ? (

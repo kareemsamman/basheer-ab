@@ -52,6 +52,7 @@ interface PolicyRecord {
   notes: string | null;
   broker_id: string | null;
   created_by_admin_id: string | null;
+  branch_id: string | null;
   clients?: {
     id: string;
     full_name: string;
@@ -72,6 +73,11 @@ interface PolicyRecord {
   created_by?: {
     full_name: string | null;
     email: string;
+  };
+  branch?: {
+    id: string;
+    name: string;
+    name_ar: string | null;
   };
 }
 
@@ -131,7 +137,8 @@ export default function Policies() {
           clients(id, full_name, less_than_24),
           cars(id, car_number, car_type, car_value, year),
           insurance_companies(id, name, name_ar),
-          created_by:profiles!policies_created_by_admin_id_fkey(full_name, email)
+          created_by:profiles!policies_created_by_admin_id_fkey(full_name, email),
+          branch:branches(id, name, name_ar)
         `, { count: 'exact' })
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
@@ -396,6 +403,7 @@ export default function Policies() {
                   <TableHead className="text-muted-foreground font-medium">السعر</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الربح</TableHead>
                   <TableHead className="text-muted-foreground font-medium">أنشئ بواسطة</TableHead>
+                  <TableHead className="text-muted-foreground font-medium">الفرع</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الحالة</TableHead>
                   <TableHead className="text-muted-foreground font-medium w-[80px]">إجراءات</TableHead>
                 </TableRow>
@@ -464,6 +472,15 @@ export default function Policies() {
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {policy.created_by?.full_name || policy.created_by?.email || '-'}
+                        </TableCell>
+                        <TableCell>
+                          {policy.branch ? (
+                            <Badge variant="outline" className="gap-1 bg-blue-500/10 text-blue-700 border-blue-500/20">
+                              {policy.branch.name_ar || policy.branch.name}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">-</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge variant={status.variant}>
