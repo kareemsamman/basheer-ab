@@ -3,6 +3,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { Header } from "@/components/layout/Header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -11,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { Save, Loader2, MessageSquare, Send, FileSignature, Settings2 } from "lucide-react";
+import { Save, Loader2, MessageSquare, Send, Settings2 } from "lucide-react";
 import { Navigate } from "react-router-dom";
 
 interface SmsSettings {
@@ -21,6 +22,8 @@ interface SmsSettings {
   sms_token: string;
   sms_source: string;
   is_enabled: boolean;
+  invoice_sms_template?: string | null;
+  signature_sms_template?: string | null;
 }
 
 export default function SmsSettings() {
@@ -37,6 +40,8 @@ export default function SmsSettings() {
     sms_token: "",
     sms_source: "",
     is_enabled: false,
+    invoice_sms_template: null,
+    signature_sms_template: null,
   });
 
   useEffect(() => {
@@ -61,6 +66,8 @@ export default function SmsSettings() {
           sms_token: data.sms_token || "",
           sms_source: data.sms_source || "",
           is_enabled: data.is_enabled || false,
+          invoice_sms_template: data.invoice_sms_template ?? null,
+          signature_sms_template: data.signature_sms_template ?? null,
         });
       }
     } catch (error) {
@@ -82,6 +89,8 @@ export default function SmsSettings() {
             sms_token: settings.sms_token,
             sms_source: settings.sms_source,
             is_enabled: settings.is_enabled,
+            invoice_sms_template: settings.invoice_sms_template ?? null,
+            signature_sms_template: settings.signature_sms_template ?? null,
           })
           .eq("id", settings.id);
 
@@ -96,6 +105,8 @@ export default function SmsSettings() {
             sms_token: settings.sms_token,
             sms_source: settings.sms_source,
             is_enabled: settings.is_enabled,
+            invoice_sms_template: settings.invoice_sms_template ?? null,
+            signature_sms_template: settings.signature_sms_template ?? null,
           })
           .select()
           .single();
@@ -125,30 +136,18 @@ export default function SmsSettings() {
 
     setTesting(true);
     try {
-      const { data: session } = await supabase.auth.getSession();
-      
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-sms`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.session?.access_token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            phone: testPhone,
-            message: "رسالة اختبار من AB Insurance CRM - Test message from AB Insurance CRM",
-          }),
-        }
-      );
+      const { data, error } = await supabase.functions.invoke("send-sms", {
+        body: {
+          phone: testPhone,
+          message: "رسالة اختبار من AB Insurance CRM - Test message from AB Insurance CRM",
+        },
+      });
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to send SMS");
+      if (error) {
+        throw new Error(error.message || "Failed to send SMS");
       }
 
-      toast({ title: "تم الإرسال", description: "تم إرسال رسالة الاختبار بنجاح" });
+      toast({ title: "تم الإرسال", description: data?.message || "تم إرسال رسالة الاختبار بنجاح" });
     } catch (error: any) {
       console.error("Error sending test SMS:", error);
       toast({
@@ -277,6 +276,39 @@ export default function SmsSettings() {
                     />
                     <p className="text-xs text-muted-foreground">
                       الاسم الذي سيظهر للعميل كمرسل الرسالة
+                    </p>
+                  </div>
+
+                  {/* Templates */}
+                  <div className="space-y-2">
+                    <Label htmlFor="signature_sms_template">نص رسالة التوقيع</Label>
+                    <Textarea
+                      id="signature_sms_template"
+                      value={settings.signature_sms_template || ""}
+                      onChange={(e) =>
+                        setSettings((prev) => ({ ...prev, signature_sms_template: e.target.value }))
+                      }
+                      placeholder="مرحباً {{client_name}}، يرجى التوقيع على الرابط التالي: {{signature_url}}"
+                      className="min-h-[110px]"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      المتغيرات المتاحة: {{client_name}} ، {{signature_url}}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="invoice_sms_template">نص رسالة الفواتير</Label>
+                    <Textarea
+                      id="invoice_sms_template"
+                      value={settings.invoice_sms_template || ""}
+                      onChange={(e) =>
+                        setSettings((prev) => ({ ...prev, invoice_sms_template: e.target.value }))
+                      }
+                      placeholder="مرحباً {{client_name}}، تم إصدار فواتير وثيقة التأمين رقم {{policy_number}}. فاتورة AB: {{ab_invoice_url}} فاتورة شركة التأمين: {{insurance_invoice_url}}"
+                      className="min-h-[110px]"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      المتغيرات المتاحة: {{client_name}} ، {{policy_number}} ، {{ab_invoice_url}} ، {{insurance_invoice_url}}
                     </p>
                   </div>
 

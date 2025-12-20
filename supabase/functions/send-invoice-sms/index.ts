@@ -208,9 +208,13 @@ serve(async (req) => {
     const smsResult = await smsResponse.text();
     console.log("[send-invoice-sms] 019sms raw response:", smsResult);
 
-    const doc = new DOMParser().parseFromString(smsResult, "application/xml");
-    const status = doc?.querySelector("status")?.textContent?.trim();
-    const apiMessage = doc?.querySelector("message")?.textContent?.trim();
+    const extractTag = (xml: string, tag: string) => {
+      const match = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "i"));
+      return match?.[1]?.trim() ?? null;
+    };
+
+    const status = extractTag(smsResult, "status");
+    const apiMessage = extractTag(smsResult, "message");
 
     if (!smsResponse.ok || status !== "0") {
       console.error(`[send-invoice-sms] SMS failed: status=${status} message=${apiMessage}`);
