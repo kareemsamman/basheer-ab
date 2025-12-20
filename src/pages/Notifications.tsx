@@ -12,7 +12,12 @@ import {
   Trash2, 
   FileSignature, 
   ExternalLink,
-  Loader2 
+  Loader2,
+  Wallet,
+  FileText,
+  UserPlus,
+  AlertTriangle,
+  Clock
 } from 'lucide-react';
 import { useNotifications, Notification } from '@/hooks/useNotifications';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -30,13 +35,33 @@ import {
 import { useToast } from '@/hooks/use-toast';
 
 const NOTIFICATION_ICONS: Record<string, React.ReactNode> = {
-  signature: <FileSignature className="h-5 w-5 text-primary" />,
+  signature: <FileSignature className="h-5 w-5 text-emerald-500" />,
+  payment: <Wallet className="h-5 w-5 text-blue-500" />,
+  policy: <FileText className="h-5 w-5 text-purple-500" />,
+  client: <UserPlus className="h-5 w-5 text-orange-500" />,
+  expiring: <AlertTriangle className="h-5 w-5 text-amber-500" />,
+  reminder: <Clock className="h-5 w-5 text-cyan-500" />,
   general: <Bell className="h-5 w-5 text-muted-foreground" />,
 };
 
 const NOTIFICATION_COLORS: Record<string, string> = {
-  signature: 'bg-primary/10 border-primary/20',
+  signature: 'bg-emerald-500/10 border-emerald-500/20',
+  payment: 'bg-blue-500/10 border-blue-500/20',
+  policy: 'bg-purple-500/10 border-purple-500/20',
+  client: 'bg-orange-500/10 border-orange-500/20',
+  expiring: 'bg-amber-500/10 border-amber-500/20',
+  reminder: 'bg-cyan-500/10 border-cyan-500/20',
   general: 'bg-muted/50 border-border',
+};
+
+const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
+  signature: 'توقيع',
+  payment: 'دفعة',
+  policy: 'وثيقة',
+  client: 'عميل',
+  expiring: 'تنبيه انتهاء',
+  reminder: 'تذكير',
+  general: 'عام',
 };
 
 export default function Notifications() {
@@ -267,7 +292,7 @@ export default function Notifications() {
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">النوع:</span>
                         <Badge variant="outline">
-                          {selectedNotification.type === 'signature' ? 'توقيع' : 'عام'}
+                          {NOTIFICATION_TYPE_LABELS[selectedNotification.type] || 'عام'}
                         </Badge>
                       </div>
                       <div className="flex justify-between">
