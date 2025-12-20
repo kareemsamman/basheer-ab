@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.submit-signature]
 verify_jwt = false
+
+[functions.check-expiring-policies]
+verify_jwt = false

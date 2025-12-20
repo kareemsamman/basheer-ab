@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 
@@ -16,11 +16,37 @@ export interface Notification {
   read_at: string | null;
 }
 
+// Notification sound URL (using a free notification sound)
+const NOTIFICATION_SOUND_URL = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
+
 export function useNotifications() {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Initialize audio element
+  useEffect(() => {
+    audioRef.current = new Audio(NOTIFICATION_SOUND_URL);
+    audioRef.current.volume = 0.5;
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  const playNotificationSound = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(err => {
+        // Browser may block autoplay, that's ok
+        console.log('Could not play notification sound:', err);
+      });
+    }
+  }, []);
 
   const fetchNotifications = useCallback(async () => {
     if (!user) {
@@ -148,6 +174,8 @@ export function useNotifications() {
           const newNotification = payload.new as Notification;
           setNotifications(prev => [newNotification, ...prev]);
           setUnreadCount(prev => prev + 1);
+          // Play sound for new notification
+          playNotificationSound();
         }
       )
       .subscribe();
@@ -155,7 +183,7 @@ export function useNotifications() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, playNotificationSound]);
 
   return {
     notifications,
