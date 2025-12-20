@@ -603,6 +603,9 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
                     <PolicyFilesSection 
                       policyId={policy.id} 
                       policyNumber={policy.policy_number}
+                      clientId={policy.clients.id}
+                      clientPhoneNumber={policy.clients.phone_number}
+                      clientName={policy.clients.full_name}
                       onPolicyNumberSaved={() => fetchPolicyDetails()}
                     />
                   </TabsContent>

@@ -229,28 +229,25 @@ export default function SmsSettings() {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('entity_type', 'signature_logo');
-      formData.append('entity_id', 'global');
-
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-media`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session?.access_token}`,
-          },
-          body: formData,
-        }
-      );
-
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Upload failed');
+      // entity_id في media_files هو UUID، لذلك لا نرسل "global".
+      if (signatureTemplateId) {
+        formData.append('entity_id', signatureTemplateId);
       }
 
-      const result = await response.json();
-      setSignaturePageSettings(prev => ({ ...prev, logo_url: result.cdn_url }));
+      const { data, error } = await supabase.functions.invoke('upload-media', {
+        body: formData,
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Upload failed');
+      }
+
+      const uploaded = data?.file;
+      if (!uploaded?.cdn_url) {
+        throw new Error('Upload failed');
+      }
+
+      setSignaturePageSettings(prev => ({ ...prev, logo_url: uploaded.cdn_url }));
       toast({ title: "تم الرفع", description: "تم رفع الشعار بنجاح" });
     } catch (error: any) {
       console.error('Error uploading logo:', error);

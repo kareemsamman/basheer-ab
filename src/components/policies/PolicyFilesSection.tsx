@@ -236,23 +236,12 @@ export function PolicyFilesSection({
 
     setDeleting(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-media`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session?.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ mediaId: deletingImage.id }),
-        }
-      );
+      const { error } = await supabase.functions.invoke('delete-media', {
+        body: { fileIds: [deletingImage.id] },
+      });
 
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Delete failed');
+      if (error) {
+        throw new Error(error.message || 'Delete failed');
       }
 
       toast({ title: "تم الحذف", description: "تم حذف الملف بنجاح" });
