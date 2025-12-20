@@ -28,6 +28,7 @@ import CustomerSignatures from "./pages/CustomerSignatures";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import PaymentFail from "./pages/PaymentFail";
 import SignaturePage from "./pages/SignaturePage";
+import Notifications from "./pages/Notifications";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -133,6 +134,11 @@ const App = () => (
               <Route path="/admin/customer-signatures" element={
                 <ProtectedRoute>
                   <CustomerSignatures />
+                </ProtectedRoute>
+              } />
+              <Route path="/notifications" element={
+                <ProtectedRoute>
+                  <Notifications />
                 </ProtectedRoute>
               } />
               {/* Public payment callback routes (loaded in iframe) */}

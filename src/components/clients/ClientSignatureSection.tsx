@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { getFullCdnUrl } from "@/lib/utils";
 import { FileSignature, Send, Loader2, CheckCircle2, AlertTriangle, ExternalLink } from "lucide-react";
 
 interface ClientSignatureSectionProps {
@@ -27,6 +28,8 @@ export function ClientSignatureSection({
   const [sending, setSending] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
+  // Ensure signature URL has full CDN prefix
+  const fullSignatureUrl = getFullCdnUrl(signatureUrl);
   const hasSigned = !!signatureUrl;
 
   // Helper to translate common edge function errors to Arabic
@@ -181,9 +184,9 @@ export function ClientSignatureSection({
             <DialogTitle>توقيع العميل - {clientName}</DialogTitle>
           </DialogHeader>
           <div className="flex items-center justify-center p-4 bg-background rounded-lg border">
-            {signatureUrl && (
+            {fullSignatureUrl && (
               <img
-                src={signatureUrl}
+                src={fullSignatureUrl}
                 alt={`توقيع العميل ${clientName}`}
                 loading="lazy"
                 className="max-w-full max-h-[70vh] object-contain"
