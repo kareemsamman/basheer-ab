@@ -277,7 +277,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
                     </div>
                     {creatorName && <p className="text-xs text-muted-foreground mt-1">أنشئ بواسطة: {creatorName}</p>}
                   </div>
-                  <div className="flex gap-2 ml-[10px]">
+                  <div className="flex gap-2 ml-[20px]">
                     {remaining > 0 && (
                       <Button
                         size="sm"
