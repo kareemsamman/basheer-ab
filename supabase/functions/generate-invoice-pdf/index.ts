@@ -1,17 +1,18 @@
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.88.0";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface SendInvoiceSmsRequest {
+interface GenerateInvoicePdfRequest {
   policy_id: string;
+  invoice_id?: string; // If provided, regenerate for this specific invoice
 }
 
 // Map policy types to Arabic labels
-const POLICY_TYPE_LABELS: Record<string, string> = {
+const POLICY_TYPE_LABELS = {
   ELZAMI: 'إلزامي',
   THIRD_FULL: 'ثالث/شامل',
   ROAD_SERVICE: 'خدمات الطريق',
@@ -20,7 +21,7 @@ const POLICY_TYPE_LABELS: Record<string, string> = {
   FULL: 'شامل',
 };
 
-const PAYMENT_TYPE_LABELS: Record<string, string> = {
+const PAYMENT_TYPE_LABELS = {
   cash: 'نقدي',
   cheque: 'شيك',
   visa: 'فيزا',
@@ -36,8 +37,8 @@ const CAR_TYPE_LABELS: Record<string, string> = {
   tjeraup4: 'تجارة أكثر من 4 طن',
 };
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
+serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
@@ -52,8 +53,8 @@ serve(async (req) => {
       );
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const bunnyApiKey = Deno.env.get('BUNNY_API_KEY');
     const bunnyStorageZone = Deno.env.get('BUNNY_STORAGE_ZONE');
     const bunnyCdnUrl = Deno.env.get('BUNNY_CDN_URL') || 'https://basheer-ab.b-cdn.net';
@@ -71,112 +72,48 @@ serve(async (req) => {
       );
     }
 
-    const { policy_id }: SendInvoiceSmsRequest = await req.json();
-
-    if (!policy_id) {
-      return new Response(
-        JSON.stringify({ error: "policy_id is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    console.log(`[send-invoice-sms] Processing policy: ${policy_id}`);
-
-    // Get policy with all related data
-    const { data: policy, error: policyError } = await supabase
-      .from("policies")
-      .select(`
-        *,
-        client:clients(full_name, phone_number, id_number, signature_url),
-        car:cars(car_number, manufacturer_name, model, year, car_type, color),
-        company:insurance_companies(name, name_ar),
-        broker:brokers(name),
-        created_by:profiles!policies_created_by_admin_id_fkey(full_name, email)
-      `)
-      .eq("id", policy_id)
-      .single();
-
-    if (policyError || !policy) {
-      console.error("[send-invoice-sms] Policy not found:", policyError);
-      return new Response(
-        JSON.stringify({ error: "Policy not found" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Check if already sent
-    if (policy.invoices_sent_at) {
-      console.log("[send-invoice-sms] Invoices already sent at:", policy.invoices_sent_at);
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: "Invoices already sent",
-          sent_at: policy.invoices_sent_at
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Get insurance files (uploaded policy documents from Bunny CDN)
-    const { data: insuranceFiles, error: filesError } = await supabase
-      .from("media_files")
-      .select("id, cdn_url, original_name, mime_type")
-      .eq("entity_id", policy_id)
-      .in("entity_type", ["policy", "policy_insurance"])
-      .is("deleted_at", null)
-      .order("created_at", { ascending: true });
-
-    if (filesError) {
-      console.error("[send-invoice-sms] Error fetching files:", filesError);
-    }
-
-    if (!insuranceFiles || insuranceFiles.length === 0) {
-      return new Response(
-        JSON.stringify({ error: "يجب رفع ملف البوليصة أولاً" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Check if client has phone number
-    if (!policy.client?.phone_number) {
-      return new Response(
-        JSON.stringify({ error: "رقم هاتف العميل مطلوب" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Get SMS settings
-    const { data: smsSettings, error: smsSettingsError } = await supabase
-      .from("sms_settings")
-      .select("*")
-      .limit(1)
-      .maybeSingle();
-
-    if (smsSettingsError) {
-      console.error("[send-invoice-sms] Error fetching SMS settings:", smsSettingsError);
-      return new Response(
-        JSON.stringify({ error: "فشل في جلب إعدادات الرسائل" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    if (!smsSettings || !smsSettings.is_enabled) {
-      return new Response(
-        JSON.stringify({ error: "خدمة الرسائل غير مفعلة" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Check Bunny configuration for AB invoice generation
     if (!bunnyApiKey || !bunnyStorageZone) {
-      console.error('[send-invoice-sms] Missing Bunny configuration');
+      console.error('[generate-invoice-pdf] Missing Bunny configuration');
       return new Response(
-        JSON.stringify({ error: 'إعدادات التخزين غير مكتملة' }),
+        JSON.stringify({ error: 'Storage not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Get payment details for invoice
+    const { policy_id, invoice_id } = await req.json() as GenerateInvoicePdfRequest;
+
+    if (!policy_id) {
+      return new Response(
+        JSON.stringify({ error: 'policy_id is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`[generate-invoice-pdf] Starting for policy: ${policy_id}`);
+
+    // Fetch policy with all related data
+    const { data: policy, error: policyError } = await supabase
+      .from('policies')
+      .select(`
+        *,
+        client:clients(full_name, id_number, phone_number, signature_url),
+        car:cars(car_number, manufacturer_name, model, year, car_type, color, license_type),
+        company:insurance_companies(name, name_ar),
+        broker:brokers(name),
+        created_by:profiles!policies_created_by_admin_id_fkey(full_name, email)
+      `)
+      .eq('id', policy_id)
+      .single();
+
+    if (policyError || !policy) {
+      console.error(`[generate-invoice-pdf] Policy not found: ${policy_id}`, policyError);
+      return new Response(
+        JSON.stringify({ error: 'Policy not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Get payment details
     const { data: payments } = await supabase
       .from('policy_payments')
       .select('payment_type, amount, payment_date')
@@ -188,21 +125,25 @@ serve(async (req) => {
     const totalPaid = payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
     const remaining = (policy.insurance_price || 0) - totalPaid;
 
-    // Generate AB Invoice HTML and upload to Bunny CDN
-    const abInvoiceHtml = buildAbInvoiceHtml(policy, payments || [], paymentType, totalPaid, remaining);
-    
+    // Build comprehensive invoice HTML
+    const htmlContent = buildAbInvoiceHtml(policy, payments || [], paymentType);
+
+    // Convert HTML to PDF using an external service or generate as HTML file
+    // For now, we'll create an HTML file that can be printed as PDF
+    // In production, you could use a service like html2pdf.app, pdfshift.io, or self-hosted Puppeteer
+
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const timestamp = Date.now();
     const randomId = crypto.randomUUID().slice(0, 8);
-    const clientNameSafe = policy.client?.full_name?.replace(/[^a-zA-Z0-9\u0600-\u06FF]/g, '_') || 'customer';
-    const storagePath = `invoices/${year}/${month}/ab_invoice_${clientNameSafe}_${timestamp}_${randomId}.html`;
+    const fileName = `invoice_${policy.client?.full_name?.replace(/[^a-zA-Z0-9\u0600-\u06FF]/g, '_') || 'customer'}_${timestamp}`;
+    const storagePath = `invoices/${year}/${month}/${fileName}_${randomId}.html`;
 
-    // Upload AB Invoice to Bunny Storage
+    // Upload HTML to Bunny Storage
     const bunnyUploadUrl = `https://storage.bunnycdn.com/${bunnyStorageZone}/${storagePath}`;
     
-    console.log(`[send-invoice-sms] Uploading AB invoice to: ${bunnyUploadUrl}`);
+    console.log(`[generate-invoice-pdf] Uploading to: ${bunnyUploadUrl}`);
 
     const uploadResponse = await fetch(bunnyUploadUrl, {
       method: 'PUT',
@@ -210,128 +151,52 @@ serve(async (req) => {
         'AccessKey': bunnyApiKey,
         'Content-Type': 'text/html; charset=utf-8',
       },
-      body: abInvoiceHtml,
+      body: htmlContent,
     });
 
     if (!uploadResponse.ok) {
       const errorText = await uploadResponse.text();
-      console.error('[send-invoice-sms] Bunny upload failed:', errorText);
+      console.error('[generate-invoice-pdf] Bunny upload failed:', errorText);
       return new Response(
-        JSON.stringify({ error: 'فشل في رفع الفاتورة' }),
+        JSON.stringify({ error: 'Failed to upload invoice' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const abInvoiceUrl = `${bunnyCdnUrl}/${storagePath}`;
-    console.log(`[send-invoice-sms] AB Invoice uploaded: ${abInvoiceUrl}`);
+    const cdnUrl = `${bunnyCdnUrl}/${storagePath}`;
+    console.log(`[generate-invoice-pdf] Invoice uploaded: ${cdnUrl}`);
 
-    // Build policy file URLs (all uploaded files - could be multiple)
-    const policyFileUrls = insuranceFiles.map(f => f.cdn_url);
-    const firstPolicyUrl = policyFileUrls[0] || "";
-    
-    // Build list of all policy files for SMS (if multiple)
-    const allPolicyUrls = policyFileUrls.join('\n');
+    // Update invoice record if invoice_id provided
+    if (invoice_id) {
+      const { error: updateError } = await supabase
+        .from('invoices')
+        .update({
+          pdf_url: cdnUrl,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', invoice_id);
 
-    // Build SMS message using template
-    let smsMessage = smsSettings.invoice_sms_template || 
-      "مرحباً {{client_name}}، وثيقة التأمين جاهزة.\nالبوليصة: {{policy_url}}\nفاتورة AB: {{ab_invoice_url}}";
-
-    smsMessage = smsMessage
-      .replace(/\{\{client_name\}\}/g, policy.client?.full_name || "عميل")
-      .replace(/\{\{policy_number\}\}/g, policy.policy_number || "")
-      .replace(/\{\{policy_url\}\}/g, firstPolicyUrl)
-      .replace(/\{\{all_policy_urls\}\}/g, allPolicyUrls)
-      .replace(/\{\{ab_invoice_url\}\}/g, abInvoiceUrl)
-      .replace(/\{\{insurance_invoice_url\}\}/g, firstPolicyUrl); // Legacy placeholder
-
-    const escapeXml = (value: string) =>
-      value
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/\"/g, "&quot;")
-        .replace(/'/g, "&apos;");
-
-    // Normalize phone for 019sms (expects 05xxxxxxx or 5xxxxxxx)
-    let cleanPhone = policy.client.phone_number.replace(/[^0-9]/g, "");
-    if (cleanPhone.startsWith("972")) {
-      cleanPhone = "0" + cleanPhone.substring(3);
-    }
-
-    // Send SMS via 019sms (official XML API)
-    const dlr = crypto.randomUUID();
-    const smsXml =
-      `<?xml version="1.0" encoding="UTF-8"?>` +
-      `<sms>` +
-      `<user><username>${escapeXml(smsSettings.sms_user || "")}</username></user>` +
-      `<source>${escapeXml(smsSettings.sms_source || "")}</source>` +
-      `<destinations><phone id="${dlr}">${escapeXml(cleanPhone)}</phone></destinations>` +
-      `<message>${escapeXml(smsMessage)}</message>` +
-      `</sms>`;
-
-    console.log(`[send-invoice-sms] Sending SMS to ${cleanPhone}`);
-    console.log(`[send-invoice-sms] Policy URLs: ${policyFileUrls.length} files`);
-    console.log(`[send-invoice-sms] AB Invoice URL: ${abInvoiceUrl}`);
-
-    const smsResponse = await fetch("https://019sms.co.il/api", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${smsSettings.sms_token}`,
-        "Content-Type": "application/xml; charset=utf-8",
-      },
-      body: smsXml,
-    });
-
-    const smsResult = await smsResponse.text();
-    console.log("[send-invoice-sms] 019sms raw response:", smsResult);
-
-    const extractTag = (xml: string, tag: string) => {
-      const match = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "i"));
-      return match?.[1]?.trim() ?? null;
-    };
-
-    const status = extractTag(smsResult, "status");
-    const apiMessage = extractTag(smsResult, "message");
-
-    if (!smsResponse.ok || status !== "0") {
-      console.error(`[send-invoice-sms] SMS failed: status=${status} message=${apiMessage}`);
-      return new Response(
-        JSON.stringify({ error: apiMessage || `خطأ في إرسال الرسالة (status=${status ?? "unknown"})` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Mark as sent
-    const { error: updateError } = await supabase
-      .from("policies")
-      .update({ invoices_sent_at: new Date().toISOString() })
-      .eq("id", policy_id);
-
-    if (updateError) {
-      console.error("[send-invoice-sms] Error updating policy:", updateError);
+      if (updateError) {
+        console.error('[generate-invoice-pdf] Error updating invoice:', updateError);
+      }
     }
 
     const duration = Date.now() - startTime;
-    console.log(`[send-invoice-sms] Completed in ${duration}ms`);
+    console.log(`[generate-invoice-pdf] Completed in ${duration}ms`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: "تم إرسال الوثائق عبر الرسائل",
-        sent_to: cleanPhone,
-        policy_urls: policyFileUrls,
-        ab_invoice_url: abInvoiceUrl,
+        pdf_url: cdnUrl,
         duration_ms: duration
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-
-  } catch (error: unknown) {
-    console.error("[send-invoice-sms] Fatal error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Internal server error";
+  } catch (error: any) {
+    console.error('[generate-invoice-pdf] Error:', error);
     return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
@@ -343,9 +208,9 @@ function formatDate(dateStr: string): string {
 }
 
 function getInsuranceTypeLabel(parent: string, child: string | null): string {
-  const parentLabel = POLICY_TYPE_LABELS[parent] || parent;
-  if (child && POLICY_TYPE_LABELS[child]) {
-    return `${parentLabel} - ${POLICY_TYPE_LABELS[child]}`;
+  const parentLabel = POLICY_TYPE_LABELS[parent as keyof typeof POLICY_TYPE_LABELS] || parent;
+  if (child && POLICY_TYPE_LABELS[child as keyof typeof POLICY_TYPE_LABELS]) {
+    return `${parentLabel} - ${POLICY_TYPE_LABELS[child as keyof typeof POLICY_TYPE_LABELS]}`;
   }
   return parentLabel;
 }
@@ -353,9 +218,7 @@ function getInsuranceTypeLabel(parent: string, child: string | null): string {
 function buildAbInvoiceHtml(
   policy: any,
   payments: any[],
-  paymentType: string,
-  totalPaid: number,
-  remaining: number
+  paymentType: string
 ): string {
   const client = policy.client || {};
   const car = policy.car || {};
@@ -363,17 +226,20 @@ function buildAbInvoiceHtml(
   const broker = policy.broker || {};
   const createdBy = policy.created_by || {};
 
+  const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const remaining = (policy.insurance_price || 0) - totalPaid;
   const isPaid = remaining <= 0;
+
   const insuranceType = getInsuranceTypeLabel(policy.policy_type_parent, policy.policy_type_child);
   const carType = CAR_TYPE_LABELS[car.car_type] || car.car_type || '-';
-  const paymentLabel = PAYMENT_TYPE_LABELS[paymentType] || paymentType;
+  const paymentLabel = PAYMENT_TYPE_LABELS[paymentType as keyof typeof PAYMENT_TYPE_LABELS] || paymentType;
 
   // Build payments table rows
   const paymentRows = payments.map((p, i) => `
     <tr>
       <td style="padding: 8px; border: 1px solid #ddd;">${i + 1}</td>
       <td style="padding: 8px; border: 1px solid #ddd;">${formatDate(p.payment_date)}</td>
-      <td style="padding: 8px; border: 1px solid #ddd;">${PAYMENT_TYPE_LABELS[p.payment_type] || p.payment_type}</td>
+      <td style="padding: 8px; border: 1px solid #ddd;">${PAYMENT_TYPE_LABELS[p.payment_type as keyof typeof PAYMENT_TYPE_LABELS] || p.payment_type}</td>
       <td style="padding: 8px; border: 1px solid #ddd;">₪${p.amount?.toLocaleString() || 0}</td>
     </tr>
   `).join('');
@@ -386,8 +252,15 @@ function buildAbInvoiceHtml(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>فاتورة - ${client.full_name || 'عميل'}</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    @page { size: A4; margin: 15mm; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    @page {
+      size: A4;
+      margin: 15mm;
+    }
     body {
       font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
       font-size: 14px;
@@ -397,15 +270,25 @@ function buildAbInvoiceHtml(
       padding: 20px;
       direction: rtl;
     }
-    .container { max-width: 800px; margin: 0 auto; }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
     .header {
       text-align: center;
       margin-bottom: 30px;
       padding-bottom: 20px;
       border-bottom: 3px solid #1a365d;
     }
-    .header h1 { color: #1a365d; font-size: 28px; margin-bottom: 5px; }
-    .header p { color: #666; font-size: 14px; }
+    .header h1 {
+      color: #1a365d;
+      font-size: 28px;
+      margin-bottom: 5px;
+    }
+    .header p {
+      color: #666;
+      font-size: 14px;
+    }
     .invoice-meta {
       display: flex;
       justify-content: space-between;
@@ -413,12 +296,19 @@ function buildAbInvoiceHtml(
       background: #f8fafc;
       padding: 15px;
       border-radius: 8px;
-      flex-wrap: wrap;
-      gap: 10px;
     }
-    .invoice-meta div { text-align: center; flex: 1; min-width: 100px; }
-    .invoice-meta strong { display: block; color: #1a365d; font-size: 12px; margin-bottom: 5px; }
-    .section { margin-bottom: 25px; }
+    .invoice-meta div {
+      text-align: center;
+    }
+    .invoice-meta strong {
+      display: block;
+      color: #1a365d;
+      font-size: 12px;
+      margin-bottom: 5px;
+    }
+    .section {
+      margin-bottom: 25px;
+    }
     .section-title {
       background: #1a365d;
       color: white;
@@ -433,17 +323,33 @@ function buildAbInvoiceHtml(
       padding: 15px;
       border-radius: 0 0 5px 5px;
     }
-    .info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 15px;
+    }
     .info-item {
       display: flex;
       justify-content: space-between;
       padding: 8px 0;
       border-bottom: 1px dashed #e2e8f0;
     }
-    .info-item:last-child { border-bottom: none; }
-    .info-label { color: #666; font-weight: 500; }
-    .info-value { color: #1a365d; font-weight: 600; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    .info-item:last-child {
+      border-bottom: none;
+    }
+    .info-label {
+      color: #666;
+      font-weight: 500;
+    }
+    .info-value {
+      color: #1a365d;
+      font-weight: 600;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
     th {
       background: #f1f5f9;
       padding: 10px;
@@ -452,9 +358,18 @@ function buildAbInvoiceHtml(
       font-weight: 600;
       color: #1a365d;
     }
-    td { padding: 8px 10px; border: 1px solid #ddd; text-align: right; }
-    .total-row { background: #f8fafc; font-weight: bold; }
-    .total-row td { color: #1a365d; }
+    td {
+      padding: 8px 10px;
+      border: 1px solid #ddd;
+      text-align: right;
+    }
+    .total-row {
+      background: #f8fafc;
+      font-weight: bold;
+    }
+    .total-row td {
+      color: #1a365d;
+    }
     .status-badge {
       display: inline-block;
       padding: 5px 15px;
@@ -462,9 +377,18 @@ function buildAbInvoiceHtml(
       font-size: 14px;
       font-weight: bold;
     }
-    .status-paid { background: #dcfce7; color: #166534; }
-    .status-partial { background: #fef3c7; color: #92400e; }
-    .status-unpaid { background: #fee2e2; color: #991b1b; }
+    .status-paid {
+      background: #dcfce7;
+      color: #166534;
+    }
+    .status-partial {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    .status-unpaid {
+      background: #fee2e2;
+      color: #991b1b;
+    }
     .summary-box {
       background: linear-gradient(135deg, #1a365d 0%, #2d4a7c 100%);
       color: white;
@@ -478,8 +402,16 @@ function buildAbInvoiceHtml(
       gap: 20px;
       text-align: center;
     }
-    .summary-item strong { display: block; font-size: 12px; opacity: 0.8; margin-bottom: 5px; }
-    .summary-item span { font-size: 22px; font-weight: bold; }
+    .summary-item strong {
+      display: block;
+      font-size: 12px;
+      opacity: 0.8;
+      margin-bottom: 5px;
+    }
+    .summary-item span {
+      font-size: 22px;
+      font-weight: bold;
+    }
     .footer {
       margin-top: 40px;
       padding-top: 20px;
@@ -488,13 +420,28 @@ function buildAbInvoiceHtml(
       color: #666;
       font-size: 12px;
     }
-    .signature-section { margin-top: 30px; display: flex; justify-content: space-between; }
-    .signature-box { width: 45%; text-align: center; }
-    .signature-line { border-top: 1px solid #333; margin-top: 50px; padding-top: 10px; }
-    @media print { body { padding: 0; font-size: 12px; } }
-    @media (max-width: 600px) {
-      .info-grid { grid-template-columns: 1fr; }
-      .summary-grid { grid-template-columns: 1fr; gap: 10px; }
+    .signature-section {
+      margin-top: 30px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .signature-box {
+      width: 45%;
+      text-align: center;
+    }
+    .signature-line {
+      border-top: 1px solid #333;
+      margin-top: 50px;
+      padding-top: 10px;
+    }
+    @media print {
+      body {
+        padding: 0;
+        font-size: 12px;
+      }
+      .no-print {
+        display: none;
+      }
     }
   </style>
 </head>
@@ -664,7 +611,7 @@ function buildAbInvoiceHtml(
     <div class="signature-section">
       <div class="signature-box">
         <div class="signature-line">توقيع العميل</div>
-        ${client.signature_url ? `<img src="${client.signature_url}" alt="توقيع" style="max-height: 60px; margin-top: 10px;">` : ''}
+        ${client.signature_url ? `<img src="${client.signature_url}" alt="توقيع العميل" style="max-height: 60px; margin-top: 10px;">` : ''}
       </div>
       <div class="signature-box">
         <div class="signature-line">توقيع الموظف</div>
