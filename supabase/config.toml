@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.check-expiring-policies]
 verify_jwt = false
+
+[functions.signature-page]
+verify_jwt = false

@@ -148,9 +148,8 @@ serve(async (req) => {
       );
     }
 
-    // Build signature URL dynamically from request origin
-    const origin = req.headers.get("Origin") || req.headers.get("Referer")?.replace(/\/$/, "") || "";
-    const signatureUrl = `${origin}/sign/${signatureToken}`;
+    // Build signature URL - use edge function that serves HTML page
+    const signatureUrl = `${supabaseUrl}/functions/v1/signature-page?token=${signatureToken}`;
 
     // Build SMS message
     let smsMessage = smsSettings.signature_sms_template || 
