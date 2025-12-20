@@ -56,7 +56,12 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const bunnyApiKey = Deno.env.get('BUNNY_API_KEY');
     const bunnyStorageZone = Deno.env.get('BUNNY_STORAGE_ZONE');
-    const bunnyCdnUrl = Deno.env.get('BUNNY_CDN_URL') || 'https://basheer-ab.b-cdn.net';
+    // Validate BUNNY_CDN_URL - must start with https://
+    let bunnyCdnUrl = Deno.env.get('BUNNY_CDN_URL');
+    if (!bunnyCdnUrl || !bunnyCdnUrl.startsWith('https://')) {
+      bunnyCdnUrl = 'https://basheer-ab.b-cdn.net';
+      console.log('[send-invoice-sms] Using default Bunny CDN URL:', bunnyCdnUrl);
+    }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 

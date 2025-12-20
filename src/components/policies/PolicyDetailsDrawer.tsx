@@ -25,6 +25,8 @@ import {
   XCircle,
   Plus,
   AlertTriangle,
+  Send,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PolicyEditDrawer } from "./PolicyEditDrawer";
@@ -143,6 +145,44 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
   const [activeTab, setActiveTab] = useState("insurance");
   const [showQuickPayment, setShowQuickPayment] = useState(false);
   const [creatorName, setCreatorName] = useState<string | null>(null);
+  const [sendingSignatureSms, setSendingSignatureSms] = useState(false);
+
+  const handleSendSignatureSms = async () => {
+    if (!policy || !policy.clients.phone_number) {
+      toast({ title: "خطأ", description: "رقم هاتف العميل مطلوب", variant: "destructive" });
+      return;
+    }
+
+    setSendingSignatureSms(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("send-signature-sms", {
+        body: { 
+          client_id: policy.clients.id,
+          policy_id: policy.id 
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      toast({ 
+        title: "تم الإرسال", 
+        description: "تم إرسال رابط التوقيع للعميل بنجاح" 
+      });
+    } catch (error: any) {
+      console.error("Error sending signature SMS:", error);
+      toast({ 
+        title: "خطأ", 
+        description: error.message || "فشل في إرسال طلب التوقيع", 
+        variant: "destructive" 
+      });
+    } finally {
+      setSendingSignatureSms(false);
+    }
+  };
 
   const fetchPolicyDetails = async () => {
     if (!policyId) return;
@@ -288,7 +328,21 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
                     {!policy.clients.signature_url && (
                       <div className="flex items-center gap-2 mt-2 text-amber-600 bg-amber-500/10 rounded-md px-3 py-1.5 text-xs">
                         <AlertTriangle className="h-4 w-4" />
-                        <span>العميل لم يوقّع بعد - يرجى إرسال طلب توقيع</span>
+                        <span>العميل لم يوقّع بعد</span>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          className="h-6 px-2 text-amber-700 hover:text-amber-800 hover:bg-amber-500/20"
+                          onClick={handleSendSignatureSms}
+                          disabled={sendingSignatureSms || !policy.clients.phone_number}
+                        >
+                          {sendingSignatureSms ? (
+                            <Loader2 className="h-3 w-3 animate-spin ml-1" />
+                          ) : (
+                            <Send className="h-3 w-3 ml-1" />
+                          )}
+                          إرسال طلب توقيع
+                        </Button>
                       </div>
                     )}
                     {creatorName && <p className="text-xs text-muted-foreground mt-1">أنشئ بواسطة: {creatorName}</p>}
