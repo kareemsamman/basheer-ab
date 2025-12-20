@@ -333,26 +333,26 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
 
               {/* Tabs Content */}
               <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden" dir="rtl">
-                <TabsList className="mx-6 mt-4 grid grid-cols-5 h-10 flex-row-reverse">
-                  <TabsTrigger value="invoices" className="text-xs gap-1">
-                    <FileText className="h-3 w-3" />
-                    الفواتير
-                  </TabsTrigger>
-                  <TabsTrigger value="files" className="text-xs gap-1">
-                    <ImageIcon className="h-3 w-3" />
-                    الملفات
-                  </TabsTrigger>
-                  <TabsTrigger value="customer" className="text-xs gap-1">
-                    <User className="h-3 w-3" />
-                    العميل
+                <TabsList className="mx-6 mt-4 flex justify-end gap-1 h-10">
+                  <TabsTrigger value="insurance" className="text-xs gap-1">
+                    <Banknote className="h-3 w-3" />
+                    التأمين
                   </TabsTrigger>
                   <TabsTrigger value="payments" className="text-xs gap-1">
                     <CreditCard className="h-3 w-3" />
                     الدفعات ({payments.length})
                   </TabsTrigger>
-                  <TabsTrigger value="insurance" className="text-xs gap-1">
-                    <Banknote className="h-3 w-3" />
-                    التأمين
+                  <TabsTrigger value="customer" className="text-xs gap-1">
+                    <User className="h-3 w-3" />
+                    العميل
+                  </TabsTrigger>
+                  <TabsTrigger value="files" className="text-xs gap-1">
+                    <ImageIcon className="h-3 w-3" />
+                    الملفات
+                  </TabsTrigger>
+                  <TabsTrigger value="invoices" className="text-xs gap-1">
+                    <FileText className="h-3 w-3" />
+                    الفواتير
                   </TabsTrigger>
                 </TabsList>
 
