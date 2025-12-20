@@ -45,8 +45,10 @@ interface Client {
   created_at: string;
   broker_id: string | null;
   branch_id: string | null;
+  created_by_admin_id: string | null;
   broker?: { id: string; name: string } | null;
   branch?: { id: string; name: string; name_ar: string | null } | null;
+  created_by?: { full_name: string | null; email: string } | null;
 }
 
 export default function Clients() {
@@ -75,7 +77,7 @@ export default function Clients() {
     try {
       let query = supabase
         .from('clients')
-        .select('*, broker:brokers(id, name), branch:branches(id, name, name_ar)', { count: 'exact' })
+        .select('*, broker:brokers(id, name), branch:branches(id, name, name_ar), created_by:profiles!clients_created_by_admin_id_fkey(full_name, email)', { count: 'exact' })
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .range((currentPage - 1) * pageSize, currentPage * pageSize - 1);
@@ -156,7 +158,7 @@ export default function Clients() {
           // Refresh the viewing client data
           supabase
             .from('clients')
-            .select('*, broker:brokers(id, name), branch:branches(id, name, name_ar)')
+            .select('*, broker:brokers(id, name), branch:branches(id, name, name_ar), created_by:profiles!clients_created_by_admin_id_fkey(full_name, email)')
             .eq('id', viewingClient.id)
             .single()
             .then(({ data }) => {
@@ -220,6 +222,7 @@ export default function Clients() {
                   <TableHead className="text-muted-foreground font-medium">الهاتف</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الوسيط</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الفرع</TableHead>
+                  <TableHead className="text-muted-foreground font-medium">أنشئ بواسطة</TableHead>
                   <TableHead className="text-muted-foreground font-medium">تاريخ الانضمام</TableHead>
                   <TableHead className="text-muted-foreground font-medium">العمر</TableHead>
                   <TableHead className="text-muted-foreground font-medium w-[80px]">إجراءات</TableHead>
@@ -241,7 +244,7 @@ export default function Clients() {
                   ))
                 ) : clients.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                       لا توجد بيانات
                     </TableCell>
                   </TableRow>
@@ -309,6 +312,9 @@ export default function Clients() {
                         ) : (
                           <span className="text-muted-foreground text-sm">-</span>
                         )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {client.created_by?.full_name || client.created_by?.email || "-"}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {formatDate(client.date_joined)}
