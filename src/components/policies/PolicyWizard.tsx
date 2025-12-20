@@ -12,6 +12,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Search, Plus, Check, Car, User, FileText, CreditCard, Loader2, X, AlertCircle, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -129,6 +130,7 @@ const POLICY_WIZARD_DRAFT_KEY = "abcrm:policyWizardDraft:v2";
 export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultBrokerId, preselectedClientId }: PolicyWizardProps) {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<ValidationErrors>({});
@@ -788,7 +790,8 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
         // Create policy
         const { data: policyData, error: policyError } = await supabase
           .from('policies')
-          .insert({
+.insert({
+            created_by_admin_id: user?.id || null,
             client_id: clientId,
             car_id: carId,
             company_id: policy.company_id,
@@ -1105,7 +1108,8 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
         // Create policy
         const { data: policyData, error: policyError } = await supabase
           .from('policies')
-          .insert({
+.insert({
+            created_by_admin_id: user?.id || null,
             client_id: clientId,
             car_id: isLightMode ? null : carId,
             company_id: isLightMode ? null : policy.company_id,

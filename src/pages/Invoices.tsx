@@ -336,6 +336,9 @@ export default function Invoices() {
               <FileText className="h-5 w-5" />
               معاينة الفاتورة - {previewInvoice?.invoice_number}
             </DialogTitle>
+            <p className="text-sm text-muted-foreground text-right" dir="auto">
+              أنشئ بواسطة: {previewInvoice?.created_by?.full_name || previewInvoice?.created_by?.email || '-'}
+            </p>
           </DialogHeader>
           {previewInvoice?.metadata_json?.html_content ? (
             <div 

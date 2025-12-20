@@ -23,6 +23,8 @@ interface Invoice {
   status: string;
   issued_at: string;
   template_id: string | null;
+  created_by_admin_id: string | null;
+  created_by?: { full_name: string | null; email: string } | null;
   metadata_json: InvoiceMetadata | null;
   template?: {
     name: string;
@@ -60,11 +62,12 @@ export function PolicyInvoicesSection({ policyId }: PolicyInvoicesSectionProps) 
 
   const fetchInvoices = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+const { data, error } = await supabase
       .from('invoices')
       .select(`
         *,
-        template:invoice_templates(name)
+        template:invoice_templates(name),
+        created_by:profiles!invoices_created_by_admin_id_fkey(full_name, email)
       `)
       .eq('policy_id', policyId)
       .order('issued_at', { ascending: false });
@@ -238,11 +241,12 @@ export function PolicyInvoicesSection({ policyId }: PolicyInvoicesSectionProps) 
                     <Badge variant="outline">{getLanguageLabel(invoice.language)}</Badge>
                     <span className="font-mono text-sm" dir="ltr">{invoice.invoice_number}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground" dir="auto">
                     {invoice.template?.name && (
                       <span dir="auto">• {invoice.template.name}</span>
                     )}
                     <span dir="auto">{new Date(invoice.issued_at).toLocaleDateString('ar-SA')}</span>
+                    <span dir="auto">• أنشئ بواسطة: {invoice.created_by?.full_name || invoice.created_by?.email || '-'}</span>
                   </div>
                 </div>
                 {/* Actions on left side in RTL */}
@@ -364,7 +368,7 @@ export function PolicyInvoicesSection({ policyId }: PolicyInvoicesSectionProps) 
       {/* Preview Dialog */}
       <Dialog open={!!previewInvoice} onOpenChange={() => setPreviewInvoice(null)}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden p-0" dir="rtl">
-          <DialogHeader className="p-4 border-b">
+          <DialogHeader className="p-4 border-b space-y-1">
             <div className="flex items-center justify-between">
               <Button variant="outline" size="sm" onClick={() => previewInvoice && handlePrint(previewInvoice)}>
                 <Printer className="h-4 w-4 ml-1" />
@@ -372,6 +376,9 @@ export function PolicyInvoicesSection({ policyId }: PolicyInvoicesSectionProps) 
               </Button>
               <DialogTitle className="text-right">معاينة الفاتورة - <span dir="ltr">{previewInvoice?.invoice_number}</span></DialogTitle>
             </div>
+            <p className="text-sm text-muted-foreground text-right" dir="auto">
+              أنشئ بواسطة: {previewInvoice?.created_by?.full_name || previewInvoice?.created_by?.email || '-'}
+            </p>
           </DialogHeader>
           <div className="flex-1 overflow-auto p-4 bg-gray-50">
             {previewInvoice?.metadata_json?.html_content ? (

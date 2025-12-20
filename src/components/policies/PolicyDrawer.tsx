@@ -29,6 +29,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Loader2, Save } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 
 const policySchema = z.object({
@@ -78,6 +79,7 @@ const POLICY_TYPES = [
 ];
 
 export function PolicyDrawer({ open, onOpenChange, onSaved }: PolicyDrawerProps) {
+  const { user } = useAuth();
   const [saving, setSaving] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [cars, setCars] = useState<Car[]>([]);
@@ -169,9 +171,10 @@ export function PolicyDrawer({ open, onOpenChange, onSaved }: PolicyDrawerProps)
         payedForCompany = data.insurance_price;
       }
 
-      const { error } = await supabase
+const { error } = await supabase
         .from('policies')
         .insert({
+          created_by_admin_id: user?.id || null,
           client_id: data.client_id,
           car_id: data.car_id,
           company_id: data.company_id,
