@@ -256,6 +256,7 @@ export default function CompanySettlementDetail() {
       'سعر التأمين',
       'المستحق للشركة',
       'الربح',
+      'أنشئ بواسطة',
       'تاريخ الإنشاء',
     ];
     
@@ -270,6 +271,7 @@ export default function CompanySettlementDetail() {
       policy.insurance_price,
       policy.payed_for_company || 0,
       policy.profit || 0,
+      policy.creator?.full_name || policy.creator?.email || '-',
       formatDate(policy.created_at),
     ]);
 
@@ -454,6 +456,7 @@ export default function CompanySettlementDetail() {
                     <TableHead className="text-right">سعر التأمين</TableHead>
                     <TableHead className="text-right">المستحق للشركة</TableHead>
                     <TableHead className="text-right">الربح</TableHead>
+                    <TableHead className="text-right">أنشئ بواسطة</TableHead>
                     <TableHead className="text-right">شرح الحسبة</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -461,14 +464,14 @@ export default function CompanySettlementDetail() {
                   {loading ? (
                     Array.from({ length: 10 }).map((_, i) => (
                       <TableRow key={i}>
-                        {Array.from({ length: 11 }).map((_, j) => (
+                        {Array.from({ length: 13 }).map((_, j) => (
                           <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
                         ))}
                       </TableRow>
                     ))
                   ) : filteredPolicies.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
                         لا توجد وثائق للفترة المحددة
                       </TableCell>
                     </TableRow>
@@ -502,6 +505,9 @@ export default function CompanySettlementDetail() {
                         </TableCell>
                         <TableCell className="font-mono text-success">
                           ₪{Number(policy.profit || 0).toLocaleString('ar-EG')}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {policy.creator?.full_name || policy.creator?.email || '-'}
                         </TableCell>
                         <TableCell>
                           <Button

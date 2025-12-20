@@ -91,6 +91,7 @@ interface PolicyRecord {
   cancelled: boolean | null;
   company: { name: string; name_ar: string | null } | null;
   car: { car_number: string } | null;
+  creator: { full_name: string | null; email: string } | null;
 }
 
 interface PaymentSummary {
@@ -231,7 +232,8 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
           id, policy_type_parent, policy_type_child, start_date, end_date, 
           insurance_price, profit, cancelled,
           company:insurance_companies(name, name_ar),
-          car:cars(car_number)
+          car:cars(car_number),
+          creator:profiles!policies_created_by_admin_id_fkey(full_name, email)
         `)
         .eq('client_id', client.id)
         .is('deleted_at', null)
@@ -864,6 +866,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                       <TableHead className="text-right">تاريخ البداية</TableHead>
                       <TableHead className="text-right">تاريخ الانتهاء</TableHead>
                       <TableHead className="text-right">السعر</TableHead>
+                      <TableHead className="text-right">أنشئ بواسطة</TableHead>
                       <TableHead className="text-right">الحالة</TableHead>
                       <TableHead className="text-center w-[60px]">عرض</TableHead>
                     </TableRow>
@@ -887,6 +890,9 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                           <TableCell>{formatDate(policy.start_date)}</TableCell>
                           <TableCell>{formatDate(policy.end_date)}</TableCell>
                           <TableCell className="font-semibold">₪{policy.insurance_price.toLocaleString()}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {policy.creator?.full_name || policy.creator?.email || '-'}
+                          </TableCell>
                           <TableCell>
                             <Badge variant={status.variant}>{status.label}</Badge>
                           </TableCell>
