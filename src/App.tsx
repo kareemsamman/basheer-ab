@@ -23,6 +23,7 @@ import Invoices from "./pages/Invoices";
 import InvoiceTemplates from "./pages/InvoiceTemplates";
 import InsuranceCategories from "./pages/InsuranceCategories";
 import PaymentSettings from "./pages/PaymentSettings";
+import SmsSettings from "./pages/SmsSettings";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import PaymentFail from "./pages/PaymentFail";
 import NotFound from "./pages/NotFound";
@@ -120,6 +121,11 @@ const App = () => (
               <Route path="/admin/payment-settings" element={
                 <ProtectedRoute>
                   <PaymentSettings />
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/sms-settings" element={
+                <ProtectedRoute>
+                  <SmsSettings />
                 </ProtectedRoute>
               } />
               {/* Public payment callback routes (loaded in iframe) */}

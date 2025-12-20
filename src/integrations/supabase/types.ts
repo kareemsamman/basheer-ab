@@ -83,6 +83,7 @@ export type Database = {
           client_id: string
           color: string | null
           created_at: string
+          created_by_admin_id: string | null
           deleted_at: string | null
           id: string
           last_license: string | null
@@ -102,6 +103,7 @@ export type Database = {
           client_id: string
           color?: string | null
           created_at?: string
+          created_by_admin_id?: string | null
           deleted_at?: string | null
           id?: string
           last_license?: string | null
@@ -121,6 +123,7 @@ export type Database = {
           client_id?: string
           color?: string | null
           created_at?: string
+          created_by_admin_id?: string | null
           deleted_at?: string | null
           id?: string
           last_license?: string | null
@@ -147,6 +150,13 @@ export type Database = {
             referencedRelation: "clients"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "cars_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       clients: {
@@ -154,6 +164,7 @@ export type Database = {
           branch_id: string | null
           broker_id: string | null
           created_at: string
+          created_by_admin_id: string | null
           date_joined: string | null
           deleted_at: string | null
           file_number: string | null
@@ -164,12 +175,14 @@ export type Database = {
           less_than_24: boolean | null
           notes: string | null
           phone_number: string | null
+          signature_url: string | null
           updated_at: string
         }
         Insert: {
           branch_id?: string | null
           broker_id?: string | null
           created_at?: string
+          created_by_admin_id?: string | null
           date_joined?: string | null
           deleted_at?: string | null
           file_number?: string | null
@@ -180,12 +193,14 @@ export type Database = {
           less_than_24?: boolean | null
           notes?: string | null
           phone_number?: string | null
+          signature_url?: string | null
           updated_at?: string
         }
         Update: {
           branch_id?: string | null
           broker_id?: string | null
           created_at?: string
+          created_by_admin_id?: string | null
           date_joined?: string | null
           deleted_at?: string | null
           file_number?: string | null
@@ -196,6 +211,7 @@ export type Database = {
           less_than_24?: boolean | null
           notes?: string | null
           phone_number?: string | null
+          signature_url?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -211,6 +227,67 @@ export type Database = {
             columns: ["broker_id"]
             isOneToOne: false
             referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clients_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_signatures: {
+        Row: {
+          branch_id: string | null
+          client_id: string
+          created_at: string
+          id: string
+          ip_address: string | null
+          signature_image_url: string
+          signed_at: string
+          token: string | null
+          token_expires_at: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          client_id: string
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          signature_image_url: string
+          signed_at?: string
+          token?: string | null
+          token_expires_at?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          client_id?: string
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          signature_image_url?: string
+          signed_at?: string
+          token?: string | null
+          token_expires_at?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_signatures_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_signatures_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
         ]
@@ -307,6 +384,7 @@ export type Database = {
           logo_url: string | null
           name: string
           template_layout_json: Json | null
+          template_type: string
           updated_at: string
           version: number
         }
@@ -323,6 +401,7 @@ export type Database = {
           logo_url?: string | null
           name: string
           template_layout_json?: Json | null
+          template_type?: string
           updated_at?: string
           version?: number
         }
@@ -339,6 +418,7 @@ export type Database = {
           logo_url?: string | null
           name?: string
           template_layout_json?: Json | null
+          template_type?: string
           updated_at?: string
           version?: number
         }
@@ -937,6 +1017,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sms_settings: {
+        Row: {
+          created_at: string
+          id: string
+          is_enabled: boolean
+          provider: string
+          sms_source: string | null
+          sms_token: string | null
+          sms_user: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          provider?: string
+          sms_source?: string | null
+          sms_token?: string | null
+          sms_user?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          provider?: string
+          sms_source?: string | null
+          sms_token?: string | null
+          sms_user?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {

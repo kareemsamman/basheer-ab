@@ -45,6 +45,7 @@ interface CarRecord {
   license_expiry: string | null;
   last_license: string | null;
   branch_id: string | null;
+  created_by_admin_id: string | null;
   clients?: {
     full_name: string;
   };
@@ -52,6 +53,10 @@ interface CarRecord {
     id: string;
     name: string;
     name_ar: string | null;
+  };
+  created_by?: {
+    full_name: string | null;
+    email: string;
   };
 }
 
@@ -93,7 +98,7 @@ export default function Cars() {
     try {
       let query = supabase
         .from('cars')
-        .select('*, clients(full_name), branch:branches(id, name, name_ar)', { count: 'exact' })
+        .select('*, clients(full_name), branch:branches(id, name, name_ar), created_by:profiles!cars_created_by_admin_id_fkey(full_name, email)', { count: 'exact' })
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .range((currentPage - 1) * pageSize, currentPage * pageSize - 1);
@@ -215,6 +220,7 @@ export default function Cars() {
                   <TableHead className="text-muted-foreground font-medium">اللون</TableHead>
                   <TableHead className="text-muted-foreground font-medium">القيمة</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الفرع</TableHead>
+                  <TableHead className="text-muted-foreground font-medium">أنشئ بواسطة</TableHead>
                   <TableHead className="text-muted-foreground font-medium">انتهاء الرخصة</TableHead>
                   <TableHead className="text-muted-foreground font-medium w-[80px]">إجراءات</TableHead>
                 </TableRow>
@@ -234,7 +240,7 @@ export default function Cars() {
                   ))
                 ) : cars.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                       لا توجد بيانات
                     </TableCell>
                   </TableRow>
@@ -290,6 +296,9 @@ export default function Cars() {
                         ) : (
                           <span className="text-muted-foreground text-sm">-</span>
                         )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {car.created_by?.full_name || car.created_by?.email || "-"}
                       </TableCell>
                       <TableCell>
                         {car.license_expiry ? (
