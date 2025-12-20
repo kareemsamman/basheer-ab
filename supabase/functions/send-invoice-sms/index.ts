@@ -340,7 +340,13 @@ serve(async (req) => {
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
   const date = new Date(dateStr);
-  return date.toLocaleDateString('ar-SA');
+  // Use Gregorian calendar (en-GB format but with Arabic locale for day/month names)
+  return date.toLocaleDateString('ar-EG', { 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric',
+    calendar: 'gregory'
+  });
 }
 
 function getInsuranceTypeLabel(parent: string, child: string | null): string {
@@ -385,123 +391,149 @@ function buildAbInvoiceHtml(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
   <title>فاتورة - ${client.full_name || 'عميل'}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     @page { size: A4; margin: 15mm; }
     body {
-      font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+      font-family: 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif;
       font-size: 14px;
-      line-height: 1.6;
-      color: #333;
+      line-height: 1.7;
+      color: #2d3748;
       background: #fff;
-      padding: 20px;
+      padding: 25px;
       direction: rtl;
     }
     .container { max-width: 800px; margin: 0 auto; }
     .header {
       text-align: center;
+      margin-bottom: 35px;
+      padding-bottom: 25px;
+      border-bottom: 3px solid #1e3a5f;
+      background: linear-gradient(135deg, #f8fafc 0%, #edf2f7 100%);
+      padding: 30px;
+      border-radius: 12px;
       margin-bottom: 30px;
-      padding-bottom: 20px;
-      border-bottom: 3px solid #1a365d;
     }
-    .header h1 { color: #1a365d; font-size: 28px; margin-bottom: 5px; }
-    .header p { color: #666; font-size: 14px; }
+    .header h1 { 
+      color: #1e3a5f; 
+      font-size: 32px; 
+      font-weight: 800;
+      margin-bottom: 8px;
+      letter-spacing: 1px;
+    }
+    .header .english-name {
+      color: #4a5568;
+      font-size: 18px;
+      font-weight: 500;
+      letter-spacing: 2px;
+      margin-bottom: 10px;
+    }
+    .header p { color: #718096; font-size: 15px; font-weight: 500; }
     .invoice-meta {
       display: flex;
       justify-content: space-between;
-      margin-bottom: 25px;
-      background: #f8fafc;
-      padding: 15px;
-      border-radius: 8px;
+      margin-bottom: 30px;
+      background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+      padding: 20px;
+      border-radius: 12px;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 15px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     }
-    .invoice-meta div { text-align: center; flex: 1; min-width: 100px; }
-    .invoice-meta strong { display: block; color: #1a365d; font-size: 12px; margin-bottom: 5px; }
-    .section { margin-bottom: 25px; }
+    .invoice-meta div { text-align: center; flex: 1; min-width: 120px; }
+    .invoice-meta strong { display: block; color: #1e3a5f; font-size: 13px; margin-bottom: 8px; font-weight: 600; }
+    .section { margin-bottom: 28px; }
     .section-title {
-      background: #1a365d;
+      background: linear-gradient(135deg, #1e3a5f 0%, #2d4a6f 100%);
       color: white;
-      padding: 10px 15px;
-      font-size: 16px;
-      font-weight: bold;
-      border-radius: 5px 5px 0 0;
+      padding: 12px 18px;
+      font-size: 17px;
+      font-weight: 700;
+      border-radius: 8px 8px 0 0;
+      letter-spacing: 0.5px;
     }
     .section-content {
       border: 1px solid #e2e8f0;
       border-top: none;
-      padding: 15px;
-      border-radius: 0 0 5px 5px;
+      padding: 18px;
+      border-radius: 0 0 8px 8px;
+      background: #fafbfc;
     }
-    .info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+    .info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
     .info-item {
       display: flex;
       justify-content: space-between;
-      padding: 8px 0;
+      padding: 10px 12px;
       border-bottom: 1px dashed #e2e8f0;
+      background: white;
+      border-radius: 6px;
     }
     .info-item:last-child { border-bottom: none; }
-    .info-label { color: #666; font-weight: 500; }
-    .info-value { color: #1a365d; font-weight: 600; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    .info-label { color: #718096; font-weight: 500; }
+    .info-value { color: #1e3a5f; font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
     th {
-      background: #f1f5f9;
-      padding: 10px;
+      background: linear-gradient(135deg, #edf2f7 0%, #e2e8f0 100%);
+      padding: 12px;
       border: 1px solid #ddd;
       text-align: right;
-      font-weight: 600;
-      color: #1a365d;
+      font-weight: 700;
+      color: #1e3a5f;
     }
-    td { padding: 8px 10px; border: 1px solid #ddd; text-align: right; }
-    .total-row { background: #f8fafc; font-weight: bold; }
-    .total-row td { color: #1a365d; }
+    td { padding: 10px 12px; border: 1px solid #e2e8f0; text-align: right; background: white; }
+    .total-row { background: #f0f4f8; font-weight: bold; }
+    .total-row td { color: #1e3a5f; }
     .status-badge {
       display: inline-block;
-      padding: 5px 15px;
-      border-radius: 20px;
+      padding: 6px 18px;
+      border-radius: 25px;
       font-size: 14px;
-      font-weight: bold;
+      font-weight: 700;
     }
-    .status-paid { background: #dcfce7; color: #166534; }
-    .status-partial { background: #fef3c7; color: #92400e; }
-    .status-unpaid { background: #fee2e2; color: #991b1b; }
+    .status-paid { background: #c6f6d5; color: #22543d; }
+    .status-partial { background: #feebc8; color: #744210; }
+    .status-unpaid { background: #fed7d7; color: #822727; }
     .summary-box {
-      background: linear-gradient(135deg, #1a365d 0%, #2d4a7c 100%);
+      background: linear-gradient(135deg, #1e3a5f 0%, #2d5a8a 100%);
       color: white;
-      padding: 20px;
-      border-radius: 10px;
-      margin-top: 25px;
+      padding: 25px;
+      border-radius: 14px;
+      margin-top: 30px;
+      box-shadow: 0 4px 15px rgba(30, 58, 95, 0.3);
     }
     .summary-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 20px;
+      gap: 25px;
       text-align: center;
     }
-    .summary-item strong { display: block; font-size: 12px; opacity: 0.8; margin-bottom: 5px; }
-    .summary-item span { font-size: 22px; font-weight: bold; }
+    .summary-item strong { display: block; font-size: 13px; opacity: 0.85; margin-bottom: 8px; font-weight: 500; }
+    .summary-item span { font-size: 26px; font-weight: 800; }
     .footer {
-      margin-top: 40px;
-      padding-top: 20px;
+      margin-top: 45px;
+      padding-top: 25px;
       border-top: 2px solid #e2e8f0;
       text-align: center;
-      color: #666;
-      font-size: 12px;
+      color: #718096;
+      font-size: 13px;
     }
-    .signature-section { margin-top: 30px; display: flex; justify-content: space-between; }
-    .signature-box { width: 45%; text-align: center; }
-    .signature-line { border-top: 1px solid #333; margin-top: 50px; padding-top: 10px; }
+    .signature-section { margin-top: 40px; display: flex; justify-content: center; }
+    .signature-box { width: 50%; text-align: center; }
+    .signature-line { border-top: 2px solid #1e3a5f; margin-top: 60px; padding-top: 12px; font-weight: 600; color: #1e3a5f; }
+    .basheer-signature { font-family: 'Tajawal', cursive; font-size: 28px; font-weight: 800; color: #1e3a5f; margin-top: 15px; }
     @media print { body { padding: 0; font-size: 12px; } }
     @media (max-width: 600px) {
       .info-grid { grid-template-columns: 1fr; }
-      .summary-grid { grid-template-columns: 1fr; gap: 10px; }
+      .summary-grid { grid-template-columns: 1fr; gap: 12px; }
     }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
+      <div class="english-name">BASHEER INSURANCE</div>
       <h1>بشير للتأمينات</h1>
       <p>إيصال / فاتورة ضريبية</p>
     </div>
@@ -538,10 +570,6 @@ function buildAbInvoiceHtml(
           <div class="info-item">
             <span class="info-label">رقم الهاتف:</span>
             <span class="info-value">${client.phone_number || '-'}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">الوسيط:</span>
-            <span class="info-value">${broker.name || '-'}</span>
           </div>
         </div>
       </div>
@@ -664,11 +692,8 @@ function buildAbInvoiceHtml(
 
     <div class="signature-section">
       <div class="signature-box">
-        <div class="signature-line">توقيع العميل</div>
-        ${client.signature_url ? `<img src="${client.signature_url}" alt="توقيع" style="max-height: 60px; margin-top: 10px;">` : ''}
-      </div>
-      <div class="signature-box">
-        <div class="signature-line">توقيع الموظف</div>
+        <div class="basheer-signature">Basheer</div>
+        <div class="signature-line">التوقيع المعتمد</div>
       </div>
     </div>
 
