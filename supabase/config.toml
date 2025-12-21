@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.signature-page]
 verify_jwt = false
+
+[functions.payment-result]
+verify_jwt = false
