@@ -142,9 +142,10 @@ Deno.serve(async (req) => {
     const formFields: Record<string, string> = {
       sum: amount.toString(),
       currency: '1', // 1 = NIS
-      cred_type: '1', // 1 = regular credit card
+      cred_type: '8', // 8 = installments (תשלומים)
+      maxpay: '12', // Up to 12 payments
+      lang: 'il', // Hebrew language
       tranmode: 'A', // A = standard transaction
-      myid: tranzilaIndex, // Our reference ID for matching webhook
       newprocess: '1', // 3DS V2 (can also be enabled in terminal settings)
     }
 
