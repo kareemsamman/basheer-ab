@@ -149,13 +149,14 @@ Deno.serve(async (req) => {
       newprocess: '1', // 3DS V2 (can also be enabled in terminal settings)
     }
 
-    // Add callback URLs - these should be absolute URLs to our payment result pages
-    if (settings.success_url) {
-      formFields.success_url_address = `${settings.success_url}?payment_id=${payment.id}`
-    }
-    if (settings.fail_url) {
-      formFields.fail_url_address = `${settings.fail_url}?payment_id=${payment.id}`
-    }
+    // Build edge function URLs for success/fail - these are simple HTML pages
+    const baseEdgeFunctionUrl = `${supabaseUrl}/functions/v1/payment-result`
+    
+    // Always use edge function URLs (ignore settings.success_url/fail_url as they may be stale)
+    formFields.success_url_address = `${baseEdgeFunctionUrl}?status=success&payment_id=${payment.id}`
+    formFields.fail_url_address = `${baseEdgeFunctionUrl}?status=failed&payment_id=${payment.id}`
+    
+    // Webhook for server-to-server notification
     if (settings.notify_url) {
       formFields.notify_url_address = settings.notify_url
     }
