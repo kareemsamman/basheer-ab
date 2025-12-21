@@ -892,12 +892,15 @@ export type Database = {
         Row: {
           amount: number
           branch_id: string | null
+          card_expiry: string | null
+          card_last_four: string | null
           cheque_image_url: string | null
           cheque_number: string | null
           cheque_status: string | null
           created_at: string
           created_by_admin_id: string | null
           id: string
+          installments_count: number | null
           notes: string | null
           payment_date: string
           payment_type: Database["public"]["Enums"]["payment_type"]
@@ -906,18 +909,22 @@ export type Database = {
           refused: boolean | null
           tranzila_approval_code: string | null
           tranzila_index: string | null
+          tranzila_receipt_url: string | null
           tranzila_response_code: string | null
           tranzila_transaction_id: string | null
         }
         Insert: {
           amount: number
           branch_id?: string | null
+          card_expiry?: string | null
+          card_last_four?: string | null
           cheque_image_url?: string | null
           cheque_number?: string | null
           cheque_status?: string | null
           created_at?: string
           created_by_admin_id?: string | null
           id?: string
+          installments_count?: number | null
           notes?: string | null
           payment_date?: string
           payment_type: Database["public"]["Enums"]["payment_type"]
@@ -926,18 +933,22 @@ export type Database = {
           refused?: boolean | null
           tranzila_approval_code?: string | null
           tranzila_index?: string | null
+          tranzila_receipt_url?: string | null
           tranzila_response_code?: string | null
           tranzila_transaction_id?: string | null
         }
         Update: {
           amount?: number
           branch_id?: string | null
+          card_expiry?: string | null
+          card_last_four?: string | null
           cheque_image_url?: string | null
           cheque_number?: string | null
           cheque_status?: string | null
           created_at?: string
           created_by_admin_id?: string | null
           id?: string
+          installments_count?: number | null
           notes?: string | null
           payment_date?: string
           payment_type?: Database["public"]["Enums"]["payment_type"]
@@ -946,6 +957,7 @@ export type Database = {
           refused?: boolean | null
           tranzila_approval_code?: string | null
           tranzila_index?: string | null
+          tranzila_receipt_url?: string | null
           tranzila_response_code?: string | null
           tranzila_transaction_id?: string | null
         }
