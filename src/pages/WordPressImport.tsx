@@ -147,32 +147,69 @@ const WordPressImport = () => {
     }));
   };
 
-  // Extract payments from policies
+  // Extract payments from policies - enhanced to handle payment_way and notes
   const extractPayments = (policies: any[]): any[] => {
     const payments: any[] = [];
     for (const policy of policies || []) {
+      // Extract payment_way from policy notes for mapping
+      const policyNotes = policy.notes || '';
+      const paymentWay = policy.payment_way || '';
+      
       for (const payment of policy.payments || []) {
+        // Use payment_type from payment, fallback to payment_way, then check notes
+        let paymentType = payment.payment_type || paymentWay;
+        if (!paymentType && policyNotes.includes('Payment Way:')) {
+          const match = policyNotes.match(/Payment Way:\s*(\w+)/i);
+          if (match) paymentType = match[1];
+        }
+        
         payments.push({
           policy_legacy_wp_id: policy.legacy_wp_id,
-          ...payment,
+          payment_type: paymentType,
+          check_number: payment.check_number || payment.cheque_number || '',
+          amount: payment.amount,
+          date: payment.date,
+          check_image_url: payment.check_image_url || payment.cheque_image_url || '',
+          refused_status: payment.refused_status,
+          policy_notes: policyNotes, // Pass notes for server-side fallback
         });
       }
     }
     return payments;
   };
 
-  // Extract media from policies
+  // Extract media (images array) from policies
   const extractMedia = (policies: any[]): any[] => {
     const media: any[] = [];
     for (const policy of policies || []) {
       for (const url of policy.images || []) {
-        media.push({
-          policy_legacy_wp_id: policy.legacy_wp_id,
-          url,
-        });
+        if (url) {
+          media.push({
+            policy_legacy_wp_id: policy.legacy_wp_id,
+            url,
+          });
+        }
       }
     }
     return media;
+  };
+
+  // Extract invoices (PDFs) from policies
+  const extractInvoices = (policies: any[]): any[] => {
+    const invoices: any[] = [];
+    for (const policy of policies || []) {
+      for (const invoice of policy.invoices || []) {
+        if (invoice.pdf) {
+          invoices.push({
+            policy_legacy_wp_id: policy.legacy_wp_id,
+            pdf: invoice.pdf,
+            date: invoice.date,
+            amount: invoice.amount_of_fatoorah,
+          });
+        }
+      }
+    }
+    return invoices;
   };
 
   // Count data for preview
@@ -182,12 +219,14 @@ const WordPressImport = () => {
     const carsMap = new Map<string, any>();
     let paymentsCount = 0;
     let mediaCount = 0;
+    let invoicesCount = 0;
 
     for (const policy of policies) {
       if (policy.company_name) companiesMap.set(policy.company_name.toLowerCase(), true);
       if (policy.car_number) carsMap.set(policy.car_number, true);
       paymentsCount += (policy.payments || []).length;
       mediaCount += (policy.images || []).length;
+      invoicesCount += (policy.invoices || []).filter((i: any) => i.pdf).length;
     }
 
     return {
@@ -199,7 +238,7 @@ const WordPressImport = () => {
       policies: policies.length,
       payments: paymentsCount,
       outsideCheques: (data.outside_cheques || []).length,
-      invoices: 0,
+      invoices: invoicesCount,
       mediaFiles: mediaCount,
       carAccidents: 0,
     };
@@ -258,6 +297,7 @@ const WordPressImport = () => {
       policies: { inserted: 0, updated: 0, errors: [] },
       payments: { inserted: 0, updated: 0, errors: [] },
       media: { inserted: 0, updated: 0, errors: [] },
+      invoices: { inserted: 0, updated: 0, errors: [] },
       outsideCheques: { inserted: 0, updated: 0, errors: [] },
     };
 
@@ -271,6 +311,7 @@ const WordPressImport = () => {
       { key: 'policies', label: 'الوثائق', status: 'pending', count: 0 },
       { key: 'payments', label: 'المدفوعات', status: 'pending', count: 0 },
       { key: 'media', label: 'ملفات الوسائط', status: 'pending', count: 0 },
+      { key: 'invoices', label: 'فواتير PDF', status: 'pending', count: 0 },
       { key: 'outsideCheques', label: 'الشيكات الخارجية', status: 'pending', count: 0 },
     ];
     setSteps(initialSteps);
@@ -415,9 +456,25 @@ const WordPressImport = () => {
         }
       }
       updateStep('media', 'done', media.length);
-      setProgress(92);
+      setProgress(88);
 
-      // Step 10: Import outside cheques
+      // Step 10: Import invoices (PDFs)
+      const invoices = extractInvoices(jsonData.policies || []);
+      updateStep('invoices', 'running', invoices.length);
+      for (const batch of chunkArray(invoices, BATCH_SIZE)) {
+        const { data: result } = await supabase.functions.invoke('wordpress-import', {
+          body: { action: 'importBatch', entityType: 'invoices', batch, data: { mappings } }
+        });
+        if (result) {
+          stats.invoices.inserted += result.stats.inserted;
+          stats.invoices.updated += result.stats.updated;
+          stats.invoices.errors.push(...result.stats.errors);
+        }
+      }
+      updateStep('invoices', 'done', invoices.length);
+      setProgress(94);
+
+      // Step 11: Import outside cheques
       const outsideCheques = jsonData.outside_cheques || [];
       updateStep('outsideCheques', 'running', outsideCheques.length);
       for (const batch of chunkArray(outsideCheques, BATCH_SIZE)) {
