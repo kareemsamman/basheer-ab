@@ -34,52 +34,74 @@ function convertDate(dateStr: string | null | undefined): string | null {
 }
 
 // Policy type parent mapping
-function mapPolicyTypeParent(wpType: string): string | null {
+function mapPolicyTypeParent(wpType: string | null | undefined): string | null {
+  if (!wpType) return null;
   const mapping: Record<string, string> = {
     'ELZAMI': 'ELZAMI',
     'THIRD_FULL': 'THIRD_FULL',
     'ROAD_SERVICE': 'ROAD_SERVICE',
     'ACCIDENT_FEE_EXEMPTION': 'ACCIDENT_FEE_EXEMPTION',
+    'HEALTH': 'HEALTH',
+    'LIFE': 'LIFE',
+    'PROPERTY': 'PROPERTY',
+    'TRAVEL': 'TRAVEL',
+    'BUSINESS': 'BUSINESS',
+    'OTHER': 'OTHER',
   };
-  return mapping[wpType?.toUpperCase()] || null;
+  return mapping[wpType.toUpperCase()] || null;
 }
 
 // Policy type child mapping
-function mapPolicyTypeChild(wpType: string): string | null {
+function mapPolicyTypeChild(wpType: string | null | undefined): string | null {
+  if (!wpType) return null;
   const mapping: Record<string, string> = {
     'THIRD': 'THIRD',
     'FULL': 'FULL',
   };
-  return mapping[wpType?.toUpperCase()] || null;
+  return mapping[wpType.toUpperCase()] || null;
 }
 
-// Car type mapping
-function mapCarType(wpType: string): string {
+// Car type mapping from Arabic to enum
+function mapCarType(wpType: string | null | undefined): string {
+  if (!wpType) return 'car';
   const mapping: Record<string, string> = {
     'car': 'car',
-    'motorcycle': 'motorcycle',
-    'truck': 'truck',
-    'bus': 'bus',
-    'trailer': 'trailer',
-    'tractor': 'tractor',
-    'special': 'special',
+    'cargo': 'cargo',
+    'small': 'small',
+    'taxi': 'taxi',
+    'tjeradown4': 'tjeradown4',
+    'tjeraup4': 'tjeraup4',
+    'سيارة': 'car',
+    'شاحنة': 'cargo',
+    'صغيرة': 'small',
+    'تكسي': 'taxi',
+    'تجارية تحت 4 طن': 'tjeradown4',
+    'تجارية فوق 4 طن': 'tjeraup4',
   };
-  return mapping[wpType?.toLowerCase()] || 'car';
+  return mapping[wpType.toLowerCase()] || 'car';
 }
 
 // Payment type mapping
-function mapPaymentType(wpType: string): string {
+function mapPaymentType(wpType: string | null | undefined): string {
+  if (!wpType) return 'cash';
   const mapping: Record<string, string> = {
     'cash': 'cash',
+    'كاش': 'cash',
     'cheque': 'cheque',
-    'bank_transfer': 'bank_transfer',
-    'credit_card': 'credit_card',
+    'check': 'cheque',
+    'شيك': 'cheque',
+    'visa': 'visa',
+    'فيزا': 'visa',
+    'transfer': 'transfer',
+    'حوالة': 'transfer',
+    'bank_transfer': 'transfer',
   };
-  return mapping[wpType?.toLowerCase()] || 'cash';
+  return mapping[wpType.toLowerCase()] || 'cash';
 }
 
 // Rule type mapping
-function mapRuleType(wpType: string): string | null {
+function mapRuleType(wpType: string | null | undefined): string | null {
+  if (!wpType) return null;
   const mapping: Record<string, string> = {
     'THIRD_PRICE': 'THIRD_PRICE',
     'FULL_PERCENT': 'FULL_PERCENT',
@@ -89,17 +111,155 @@ function mapRuleType(wpType: string): string | null {
     'ROAD_SERVICE_PRICE': 'ROAD_SERVICE_PRICE',
     'ROAD_SERVICE_EXTRA_OLD_CAR': 'ROAD_SERVICE_EXTRA_OLD_CAR',
   };
-  return mapping[wpType?.toUpperCase()] || null;
+  return mapping[wpType.toUpperCase()] || null;
 }
 
 // Age band mapping
-function mapAgeBand(wpBand: string): string {
+function mapAgeBand(wpBand: string | null | undefined): string {
+  if (!wpBand) return 'ANY';
   const mapping: Record<string, string> = {
     'UNDER_24': 'UNDER_24',
-    'OVER_24': 'OVER_24',
+    'under_24': 'UNDER_24',
+    'UP_24': 'UP_24',
+    'up_24': 'UP_24',
+    'OVER_24': 'UP_24',
     'ANY': 'ANY',
   };
-  return mapping[wpBand?.toUpperCase()] || 'ANY';
+  return mapping[wpBand] || 'ANY';
+}
+
+// Extract unique companies from policies
+function extractCompaniesFromPolicies(policies: any[]): any[] {
+  const companiesMap = new Map<string, any>();
+  
+  for (const policy of policies || []) {
+    if (policy.company_details && policy.company_name) {
+      const companyName = policy.company_name.toLowerCase();
+      if (!companiesMap.has(companyName)) {
+        companiesMap.set(companyName, {
+          name: policy.company_name,
+          legacy_wp_id: policy.company_legacy_id,
+          category_parent: mapCategoryFromParentTerm(policy.company_details.parent_term_name),
+          details: policy.company_details,
+        });
+      }
+    }
+  }
+  
+  return Array.from(companiesMap.values());
+}
+
+// Map parent term name to category
+function mapCategoryFromParentTerm(termName: string | null | undefined): string | null {
+  if (!termName) return null;
+  const mapping: Record<string, string> = {
+    'الزامي': 'ELZAMI',
+    'ثالث/شامل': 'THIRD_FULL',
+    'خدمات الطريق': 'ROAD_SERVICE',
+    'اعفاء رسوم حادث': 'ACCIDENT_FEE_EXEMPTION',
+  };
+  return mapping[termName] || null;
+}
+
+// Extract unique cars from policies
+function extractCarsFromPolicies(policies: any[]): any[] {
+  const carsMap = new Map<string, any>();
+  
+  for (const policy of policies || []) {
+    if (policy.car_details && policy.car_number) {
+      const carNumber = policy.car_number;
+      if (!carsMap.has(carNumber)) {
+        carsMap.set(carNumber, {
+          ...policy.car_details,
+          car_number: carNumber,
+          client_id_number: policy.client_details?.id_number,
+        });
+      }
+    }
+  }
+  
+  return Array.from(carsMap.values());
+}
+
+// Extract unique clients from both clients array and policies
+function extractClientsFromData(data: any): any[] {
+  const clientsMap = new Map<string, any>();
+  
+  // First, add clients from the clients array
+  for (const client of data.clients || []) {
+    if (client.id_number) {
+      clientsMap.set(client.id_number, client);
+    }
+  }
+  
+  // Then, add any missing clients from policies
+  for (const policy of data.policies || []) {
+    if (policy.client_details && policy.client_details.id_number) {
+      const idNumber = policy.client_details.id_number;
+      if (!clientsMap.has(idNumber)) {
+        clientsMap.set(idNumber, policy.client_details);
+      }
+    }
+  }
+  
+  return Array.from(clientsMap.values());
+}
+
+// Count all data for preview
+function countData(data: any) {
+  // Extract unique entities from policies
+  const policies = data.policies || [];
+  
+  // Extract companies from policies
+  const companiesMap = new Map<string, any>();
+  for (const policy of policies) {
+    if (policy.company_name) {
+      companiesMap.set(policy.company_name.toLowerCase(), policy.company_details);
+    }
+  }
+  
+  // Extract cars from policies
+  const carsMap = new Map<string, any>();
+  for (const policy of policies) {
+    if (policy.car_number) {
+      carsMap.set(policy.car_number, policy.car_details);
+    }
+  }
+  
+  // Count payments from policies
+  let paymentsCount = 0;
+  let mediaCount = 0;
+  let accidentsCount = 0;
+  
+  for (const policy of policies) {
+    paymentsCount += (policy.payments || []).length;
+    mediaCount += (policy.images || []).length;
+    
+    if (policy.car_details?.accidents) {
+      accidentsCount += policy.car_details.accidents.length;
+    }
+  }
+  
+  // Add media from cars
+  for (const policy of policies) {
+    if (policy.car_details?.images) {
+      mediaCount += policy.car_details.images.length;
+    }
+  }
+  
+  return {
+    insuranceCompanies: companiesMap.size,
+    pricingRules: 0, // Will be computed from company details later
+    brokers: (data.brokers || []).length,
+    clients: (data.clients || []).length,
+    cars: carsMap.size,
+    policies: policies.length,
+    payments: paymentsCount,
+    outsideCheques: (data.outside_cheques || []).length,
+    invoices: 0, // No separate invoices array
+    mediaFiles: mediaCount,
+    carAccidents: accidentsCount,
+  };
 }
 
 Deno.serve(async (req) => {
@@ -115,27 +275,13 @@ Deno.serve(async (req) => {
     const { action, data, clearBeforeImport } = await req.json();
 
     if (action === 'preview') {
-      // Return counts of each entity in the JSON
-      const counts = {
-        insuranceCompanies: data.insurance_companies?.length || 0,
-        pricingRules: data.pricing_rules?.length || 0,
-        brokers: data.brokers?.length || 0,
-        clients: data.clients?.length || 0,
-        cars: data.cars?.length || 0,
-        policies: data.policies?.length || 0,
-        payments: data.policy_payments?.length || 0,
-        outsideCheques: data.outside_cheques?.length || 0,
-        invoices: data.invoices?.length || 0,
-        mediaFiles: data.media_files?.length || 0,
-        carAccidents: data.car_accidents?.length || 0,
-      };
+      const counts = countData(data);
       return new Response(JSON.stringify({ success: true, counts }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     if (action === 'clear') {
-      // Clear all data except insurance_companies, pricing_rules, branches, profiles, user_roles
       console.log('Clearing all data...');
       
       // Delete in correct order (respecting foreign keys)
@@ -192,9 +338,12 @@ Deno.serve(async (req) => {
         await supabase.from('brokers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       }
 
-      // 1. Import Insurance Companies
-      console.log('Importing insurance companies...');
-      for (const company of data.insurance_companies || []) {
+      // 1. Extract and Import Insurance Companies from policies
+      console.log('Extracting and importing insurance companies...');
+      const companies = extractCompaniesFromPolicies(data.policies || []);
+      console.log(`Found ${companies.length} unique companies`);
+      
+      for (const company of companies) {
         try {
           const { data: existing } = await supabase
             .from('insurance_companies')
@@ -204,9 +353,9 @@ Deno.serve(async (req) => {
 
           const companyData = {
             name: company.name,
-            name_ar: company.name_ar || null,
-            active: company.active !== false,
-            category_parent: mapPolicyTypeParent(company.category_parent) || null,
+            name_ar: company.name,
+            active: true,
+            category_parent: company.category_parent,
           };
 
           if (existing) {
@@ -217,7 +366,7 @@ Deno.serve(async (req) => {
             companyMap.set(company.name.toLowerCase(), existing.id);
             stats.insuranceCompanies.updated++;
           } else {
-            const { data: inserted } = await supabase
+            const { data: inserted, error } = await supabase
               .from('insurance_companies')
               .insert(companyData)
               .select('id')
@@ -225,6 +374,8 @@ Deno.serve(async (req) => {
             if (inserted) {
               companyMap.set(company.name.toLowerCase(), inserted.id);
               stats.insuranceCompanies.inserted++;
+            } else if (error) {
+              stats.insuranceCompanies.errors.push(`Company ${company.name}: ${error.message}`);
             }
           }
         } catch (e: any) {
@@ -232,71 +383,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      // 2. Import Pricing Rules
-      console.log('Importing pricing rules...');
-      for (const rule of data.pricing_rules || []) {
-        try {
-          const companyId = companyMap.get(rule.company_name?.toLowerCase());
-          if (!companyId) {
-            stats.pricingRules.errors.push(`Rule: Company not found: ${rule.company_name}`);
-            continue;
-          }
-
-          const ruleType = mapRuleType(rule.rule_type);
-          if (!ruleType) {
-            stats.pricingRules.errors.push(`Rule: Invalid rule type: ${rule.rule_type}`);
-            continue;
-          }
-
-          const policyTypeParent = mapPolicyTypeParent(rule.policy_type_parent);
-          if (!policyTypeParent) {
-            stats.pricingRules.errors.push(`Rule: Invalid policy type: ${rule.policy_type_parent}`);
-            continue;
-          }
-
-          const ageBand = mapAgeBand(rule.age_band || 'ANY');
-          const carType = mapCarType(rule.car_type || 'car');
-
-          const { data: existing } = await supabase
-            .from('pricing_rules')
-            .select('id')
-            .eq('company_id', companyId)
-            .eq('rule_type', ruleType)
-            .eq('age_band', ageBand)
-            .eq('car_type', carType)
-            .eq('policy_type_parent', policyTypeParent)
-            .maybeSingle();
-
-          const ruleData = {
-            company_id: companyId,
-            rule_type: ruleType,
-            policy_type_parent: policyTypeParent,
-            age_band: ageBand,
-            car_type: carType,
-            value: parseFloat(rule.value) || 0,
-            effective_from: convertDate(rule.effective_from),
-            effective_to: convertDate(rule.effective_to),
-            notes: rule.notes || null,
-          };
-
-          if (existing) {
-            await supabase
-              .from('pricing_rules')
-              .update(ruleData)
-              .eq('id', existing.id);
-            stats.pricingRules.updated++;
-          } else {
-            await supabase
-              .from('pricing_rules')
-              .insert(ruleData);
-            stats.pricingRules.inserted++;
-          }
-        } catch (e: any) {
-          stats.pricingRules.errors.push(`Rule: ${e.message}`);
-        }
-      }
-
-      // 3. Import Brokers
+      // 2. Import Brokers
       console.log('Importing brokers...');
       for (const broker of data.brokers || []) {
         try {
@@ -321,7 +408,7 @@ Deno.serve(async (req) => {
             brokerMap.set(broker.name.toLowerCase(), existing.id);
             stats.brokers.updated++;
           } else {
-            const { data: inserted } = await supabase
+            const { data: inserted, error } = await supabase
               .from('brokers')
               .insert(brokerData)
               .select('id')
@@ -329,6 +416,8 @@ Deno.serve(async (req) => {
             if (inserted) {
               brokerMap.set(broker.name.toLowerCase(), inserted.id);
               stats.brokers.inserted++;
+            } else if (error) {
+              stats.brokers.errors.push(`Broker ${broker.name}: ${error.message}`);
             }
           }
         } catch (e: any) {
@@ -336,10 +425,18 @@ Deno.serve(async (req) => {
         }
       }
 
-      // 4. Import Clients
+      // 3. Import Clients
       console.log('Importing clients...');
-      for (const client of data.clients || []) {
+      const clients = extractClientsFromData(data);
+      console.log(`Found ${clients.length} unique clients`);
+      
+      for (const client of clients) {
         try {
+          if (!client.id_number) {
+            stats.clients.errors.push(`Client missing id_number: ${client.full_name}`);
+            continue;
+          }
+
           const { data: existing } = await supabase
             .from('clients')
             .select('id')
@@ -350,7 +447,7 @@ Deno.serve(async (req) => {
           const brokerId = client.broker_name ? brokerMap.get(client.broker_name.toLowerCase()) : null;
 
           const clientData = {
-            full_name: client.full_name,
+            full_name: client.full_name || 'غير معروف',
             id_number: client.id_number,
             phone_number: client.phone_number || null,
             file_number: client.file_number || null,
@@ -370,7 +467,7 @@ Deno.serve(async (req) => {
             clientMap.set(client.id_number, existing.id);
             stats.clients.updated++;
           } else {
-            const { data: inserted } = await supabase
+            const { data: inserted, error } = await supabase
               .from('clients')
               .insert(clientData)
               .select('id')
@@ -378,6 +475,8 @@ Deno.serve(async (req) => {
             if (inserted) {
               clientMap.set(client.id_number, inserted.id);
               stats.clients.inserted++;
+            } else if (error) {
+              stats.clients.errors.push(`Client ${client.id_number}: ${error.message}`);
             }
           }
         } catch (e: any) {
@@ -385,11 +484,14 @@ Deno.serve(async (req) => {
         }
       }
 
-      // 5. Import Cars
-      console.log('Importing cars...');
-      for (const car of data.cars || []) {
+      // 4. Extract and Import Cars from policies
+      console.log('Extracting and importing cars...');
+      const cars = extractCarsFromPolicies(data.policies || []);
+      console.log(`Found ${cars.length} unique cars`);
+      
+      for (const car of cars) {
         try {
-          const clientId = clientMap.get(car.client_id_number);
+          const clientId = car.client_id_number ? clientMap.get(car.client_id_number) : null;
           if (!clientId) {
             stats.cars.errors.push(`Car ${car.car_number}: Client not found: ${car.client_id_number}`);
             continue;
@@ -411,10 +513,10 @@ Deno.serve(async (req) => {
             year: car.year ? parseInt(car.year) : null,
             color: car.color || null,
             car_value: car.car_value ? parseFloat(car.car_value) : null,
-            car_type: mapCarType(car.car_type || 'car'),
+            car_type: mapCarType(car.car_type),
             license_type: car.license_type || null,
             last_license: convertDate(car.last_license),
-            license_expiry: convertDate(car.license_expiry),
+            license_expiry: convertDate(car.license_finish),
           };
 
           if (existing) {
@@ -425,7 +527,7 @@ Deno.serve(async (req) => {
             carMap.set(car.car_number, existing.id);
             stats.cars.updated++;
           } else {
-            const { data: inserted } = await supabase
+            const { data: inserted, error } = await supabase
               .from('cars')
               .insert(carData)
               .select('id')
@@ -433,6 +535,8 @@ Deno.serve(async (req) => {
             if (inserted) {
               carMap.set(car.car_number, inserted.id);
               stats.cars.inserted++;
+            } else if (error) {
+              stats.cars.errors.push(`Car ${car.car_number}: ${error.message}`);
             }
           }
         } catch (e: any) {
@@ -440,13 +544,19 @@ Deno.serve(async (req) => {
         }
       }
 
-      // 6. Import Policies
+      // 5. Import Policies
       console.log('Importing policies...');
       for (const policy of data.policies || []) {
         try {
-          const clientId = clientMap.get(policy.client_id_number);
+          const clientIdNumber = policy.client_details?.id_number;
+          if (!clientIdNumber) {
+            stats.policies.errors.push(`Policy ${policy.legacy_wp_id}: No client id_number`);
+            continue;
+          }
+
+          const clientId = clientMap.get(clientIdNumber);
           if (!clientId) {
-            stats.policies.errors.push(`Policy ${policy.wp_id}: Client not found: ${policy.client_id_number}`);
+            stats.policies.errors.push(`Policy ${policy.legacy_wp_id}: Client not found: ${clientIdNumber}`);
             continue;
           }
 
@@ -454,24 +564,31 @@ Deno.serve(async (req) => {
           const companyId = policy.company_name ? companyMap.get(policy.company_name.toLowerCase()) : null;
           const brokerId = policy.broker_name ? brokerMap.get(policy.broker_name.toLowerCase()) : null;
 
+          const policyTypeParent = mapPolicyTypeParent(policy.policy_type_parent);
+          if (!policyTypeParent) {
+            stats.policies.errors.push(`Policy ${policy.legacy_wp_id}: Invalid policy type: ${policy.policy_type_parent}`);
+            continue;
+          }
+
+          // Check if policy exists by legacy_wp_id
           const { data: existing } = await supabase
             .from('policies')
             .select('id')
-            .eq('legacy_wp_id', policy.wp_id)
+            .eq('legacy_wp_id', policy.legacy_wp_id)
             .is('deleted_at', null)
             .maybeSingle();
 
           const policyData = {
-            legacy_wp_id: policy.wp_id,
+            legacy_wp_id: policy.legacy_wp_id,
+            policy_number: policy.policy_number_hint || null,
             client_id: clientId,
             car_id: carId,
             company_id: companyId,
             broker_id: brokerId,
-            policy_number: policy.policy_number || null,
-            policy_type_parent: mapPolicyTypeParent(policy.policy_type_parent),
+            policy_type_parent: policyTypeParent,
             policy_type_child: mapPolicyTypeChild(policy.policy_type_child),
-            start_date: convertDate(policy.start_date),
-            end_date: convertDate(policy.end_date),
+            start_date: convertDate(policy.start_date) || new Date().toISOString().split('T')[0],
+            end_date: convertDate(policy.end_date) || new Date().toISOString().split('T')[0],
             insurance_price: parseFloat(policy.insurance_price) || 0,
             profit: parseFloat(policy.profit) || 0,
             payed_for_company: parseFloat(policy.payed_for_company) || 0,
@@ -480,6 +597,7 @@ Deno.serve(async (req) => {
             transferred: policy.transferred === true,
             transferred_car_number: policy.transferred_car_number || null,
             notes: policy.notes || null,
+            calc_status: policy.calc_status || 'pending',
           };
 
           if (existing) {
@@ -487,104 +605,132 @@ Deno.serve(async (req) => {
               .from('policies')
               .update(policyData)
               .eq('id', existing.id);
-            policyMap.set(policy.wp_id, existing.id);
+            policyMap.set(policy.legacy_wp_id, existing.id);
             stats.policies.updated++;
           } else {
-            const { data: inserted } = await supabase
+            const { data: inserted, error } = await supabase
               .from('policies')
               .insert(policyData)
               .select('id')
               .single();
             if (inserted) {
-              policyMap.set(policy.wp_id, inserted.id);
+              policyMap.set(policy.legacy_wp_id, inserted.id);
               stats.policies.inserted++;
+            } else if (error) {
+              stats.policies.errors.push(`Policy ${policy.legacy_wp_id}: ${error.message}`);
+            }
+          }
+
+          // Import policy payments
+          const policyId = policyMap.get(policy.legacy_wp_id);
+          if (policyId && policy.payments && Array.isArray(policy.payments)) {
+            for (const payment of policy.payments) {
+              try {
+                const paymentDate = convertDate(payment.date);
+                if (!paymentDate) continue;
+
+                const amount = parseFloat(payment.amount) || 0;
+                if (amount <= 0) continue;
+
+                // Check for existing payment
+                const { data: existingPayment } = await supabase
+                  .from('policy_payments')
+                  .select('id')
+                  .eq('policy_id', policyId)
+                  .eq('payment_date', paymentDate)
+                  .eq('amount', amount)
+                  .maybeSingle();
+
+                const paymentData = {
+                  policy_id: policyId,
+                  payment_type: mapPaymentType(payment.payment_type) as any,
+                  amount: amount,
+                  payment_date: paymentDate,
+                  cheque_number: payment.check_number || null,
+                  cheque_image_url: payment.check_image_url || null,
+                  refused: payment.refused_status === 'refused',
+                };
+
+                if (existingPayment) {
+                  stats.payments.updated++;
+                } else {
+                  const { error } = await supabase
+                    .from('policy_payments')
+                    .insert(paymentData);
+                  if (error) {
+                    stats.payments.errors.push(`Payment for policy ${policy.legacy_wp_id}: ${error.message}`);
+                  } else {
+                    stats.payments.inserted++;
+                  }
+                }
+              } catch (e: any) {
+                stats.payments.errors.push(`Payment: ${e.message}`);
+              }
+            }
+          }
+
+          // Import policy images as media files
+          if (policyId && policy.images && Array.isArray(policy.images)) {
+            for (const imageUrl of policy.images) {
+              try {
+                if (!imageUrl) continue;
+
+                const { data: existingMedia } = await supabase
+                  .from('media_files')
+                  .select('id')
+                  .eq('cdn_url', imageUrl)
+                  .maybeSingle();
+
+                if (!existingMedia) {
+                  const fileName = imageUrl.split('/').pop() || 'file';
+                  const mimeType = imageUrl.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg';
+
+                  await supabase
+                    .from('media_files')
+                    .insert({
+                      cdn_url: imageUrl,
+                      storage_path: imageUrl,
+                      original_name: fileName,
+                      mime_type: mimeType,
+                      size: 0,
+                      entity_type: 'policy',
+                      entity_id: policyId,
+                    });
+                  stats.mediaFiles.inserted++;
+                } else {
+                  stats.mediaFiles.updated++;
+                }
+              } catch (e: any) {
+                stats.mediaFiles.errors.push(`Media: ${e.message}`);
+              }
             }
           }
         } catch (e: any) {
-          stats.policies.errors.push(`Policy ${policy.wp_id}: ${e.message}`);
+          stats.policies.errors.push(`Policy ${policy.legacy_wp_id}: ${e.message}`);
         }
       }
 
-      // 7. Import Policy Payments
-      console.log('Importing payments...');
-      for (const payment of data.policy_payments || []) {
-        try {
-          const policyId = policyMap.get(payment.policy_wp_id);
-          if (!policyId) {
-            stats.payments.errors.push(`Payment: Policy not found: ${payment.policy_wp_id}`);
-            continue;
-          }
-
-          const paymentDate = convertDate(payment.payment_date) || new Date().toISOString().split('T')[0];
-
-          // Match by policy_id + cheque_number + payment_date + amount
-          let existing = null;
-          if (payment.cheque_number) {
-            const { data } = await supabase
-              .from('policy_payments')
-              .select('id')
-              .eq('policy_id', policyId)
-              .eq('cheque_number', payment.cheque_number)
-              .eq('payment_date', paymentDate)
-              .eq('amount', parseFloat(payment.amount) || 0)
-              .maybeSingle();
-            existing = data;
-          }
-
-          const paymentData = {
-            policy_id: policyId,
-            amount: parseFloat(payment.amount) || 0,
-            payment_type: mapPaymentType(payment.payment_type || 'cash'),
-            payment_date: paymentDate,
-            cheque_number: payment.cheque_number || null,
-            cheque_image_url: payment.cheque_image_url || null,
-            cheque_status: payment.cheque_status || 'pending',
-            refused: payment.refused === true,
-            notes: payment.notes || null,
-          };
-
-          if (existing) {
-            await supabase
-              .from('policy_payments')
-              .update(paymentData)
-              .eq('id', existing.id);
-            stats.payments.updated++;
-          } else {
-            await supabase
-              .from('policy_payments')
-              .insert(paymentData);
-            stats.payments.inserted++;
-          }
-        } catch (e: any) {
-          stats.payments.errors.push(`Payment: ${e.message}`);
-        }
-      }
-
-      // 8. Import Outside Cheques
+      // 6. Import Outside Cheques
       console.log('Importing outside cheques...');
       for (const cheque of data.outside_cheques || []) {
         try {
+          const { data: existing } = await supabase
+            .from('outside_cheques')
+            .select('id')
+            .eq('name', cheque.name)
+            .eq('amount', parseFloat(cheque.amount) || 0)
+            .maybeSingle();
+
           const chequeData = {
-            name: cheque.name,
+            name: cheque.name || 'غير معروف',
             amount: parseFloat(cheque.amount) || 0,
             cheque_number: cheque.cheque_number || null,
             cheque_date: convertDate(cheque.cheque_date),
             cheque_image_url: cheque.cheque_image_url || null,
-            used: cheque.used === true,
-            refused: cheque.refused === true,
             notes: cheque.notes || null,
+            refused: cheque.refused === true,
+            used: cheque.used === true,
           };
-
-          // Match by cheque_number if exists
-          let existing = null;
-          if (cheque.cheque_number) {
-            const { data } = await supabase
-              .from('outside_cheques')
-              .select('id')
-              .eq('cheque_number', cheque.cheque_number)
-              .maybeSingle();
-            existing = data;
-          }
 
           if (existing) {
             await supabase
@@ -593,153 +739,22 @@ Deno.serve(async (req) => {
               .eq('id', existing.id);
             stats.outsideCheques.updated++;
           } else {
-            await supabase
+            const { error } = await supabase
               .from('outside_cheques')
               .insert(chequeData);
-            stats.outsideCheques.inserted++;
+            if (error) {
+              stats.outsideCheques.errors.push(`Cheque ${cheque.name}: ${error.message}`);
+            } else {
+              stats.outsideCheques.inserted++;
+            }
           }
         } catch (e: any) {
           stats.outsideCheques.errors.push(`Cheque: ${e.message}`);
         }
       }
 
-      // 9. Import Invoices
-      console.log('Importing invoices...');
-      for (const invoice of data.invoices || []) {
-        try {
-          const policyId = policyMap.get(invoice.policy_wp_id);
-          if (!policyId) {
-            stats.invoices.errors.push(`Invoice: Policy not found: ${invoice.policy_wp_id}`);
-            continue;
-          }
-
-          // Match by invoice_number
-          const { data: existing } = await supabase
-            .from('invoices')
-            .select('id')
-            .eq('invoice_number', invoice.invoice_number)
-            .maybeSingle();
-
-          const invoiceData = {
-            policy_id: policyId,
-            invoice_number: invoice.invoice_number,
-            language: invoice.language || 'ar',
-            pdf_url: invoice.pdf_url || null,
-            status: invoice.status || 'pending',
-            metadata_json: invoice.metadata_json || null,
-          };
-
-          if (existing) {
-            await supabase
-              .from('invoices')
-              .update(invoiceData)
-              .eq('id', existing.id);
-            stats.invoices.updated++;
-          } else {
-            await supabase
-              .from('invoices')
-              .insert(invoiceData);
-            stats.invoices.inserted++;
-          }
-        } catch (e: any) {
-          stats.invoices.errors.push(`Invoice: ${e.message}`);
-        }
-      }
-
-      // 10. Import Media Files
-      console.log('Importing media files...');
-      for (const media of data.media_files || []) {
-        try {
-          // Match by cdn_url
-          const { data: existing } = await supabase
-            .from('media_files')
-            .select('id')
-            .eq('cdn_url', media.cdn_url)
-            .maybeSingle();
-
-          // Resolve entity_id from legacy references
-          let entityId = null;
-          if (media.entity_type === 'policy' && media.policy_wp_id) {
-            entityId = policyMap.get(media.policy_wp_id);
-          } else if (media.entity_type === 'car' && media.car_number) {
-            entityId = carMap.get(media.car_number);
-          } else if (media.entity_type === 'client' && media.client_id_number) {
-            entityId = clientMap.get(media.client_id_number);
-          }
-
-          const mediaData = {
-            cdn_url: media.cdn_url,
-            storage_path: media.storage_path || media.cdn_url,
-            original_name: media.original_name || 'imported_file',
-            mime_type: media.mime_type || 'application/octet-stream',
-            size: media.size || 0,
-            entity_type: media.entity_type || null,
-            entity_id: entityId,
-          };
-
-          if (existing) {
-            await supabase
-              .from('media_files')
-              .update(mediaData)
-              .eq('id', existing.id);
-            stats.mediaFiles.updated++;
-          } else {
-            await supabase
-              .from('media_files')
-              .insert(mediaData);
-            stats.mediaFiles.inserted++;
-          }
-        } catch (e: any) {
-          stats.mediaFiles.errors.push(`Media: ${e.message}`);
-        }
-      }
-
-      // 11. Import Car Accidents
-      console.log('Importing car accidents...');
-      for (const accident of data.car_accidents || []) {
-        try {
-          const carId = carMap.get(accident.car_number);
-          if (!carId) {
-            stats.carAccidents.errors.push(`Accident: Car not found: ${accident.car_number}`);
-            continue;
-          }
-
-          const accidentDate = convertDate(accident.accident_date);
-
-          // Match by car_id + accident_name + accident_date
-          const { data: existing } = await supabase
-            .from('car_accidents')
-            .select('id')
-            .eq('car_id', carId)
-            .eq('accident_name', accident.accident_name)
-            .eq('accident_date', accidentDate || '1900-01-01')
-            .maybeSingle();
-
-          const accidentData = {
-            car_id: carId,
-            accident_name: accident.accident_name,
-            accident_date: accidentDate,
-            notes: accident.notes || null,
-          };
-
-          if (existing) {
-            await supabase
-              .from('car_accidents')
-              .update(accidentData)
-              .eq('id', existing.id);
-            stats.carAccidents.updated++;
-          } else {
-            await supabase
-              .from('car_accidents')
-              .insert(accidentData);
-            stats.carAccidents.inserted++;
-          }
-        } catch (e: any) {
-          stats.carAccidents.errors.push(`Accident: ${e.message}`);
-        }
-      }
-
-      console.log('Import complete!', stats);
+      console.log('Import completed!');
+      console.log('Stats:', JSON.stringify(stats, null, 2));
 
       return new Response(JSON.stringify({ success: true, stats }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -750,6 +765,7 @@ Deno.serve(async (req) => {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
+
   } catch (error: any) {
     console.error('Import error:', error);
     return new Response(JSON.stringify({ error: error.message }), {
