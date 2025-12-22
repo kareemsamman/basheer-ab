@@ -65,9 +65,25 @@ function mapCarType(wpType: string | null | undefined): string {
   return mapping[wpType.toLowerCase()] || 'car';
 }
 
-// Payment type mapping
-function mapPaymentType(wpType: string | null | undefined): string {
+// Payment type mapping - enhanced to handle multiple formats
+function mapPaymentType(wpType: string | null | undefined, notes?: string | null): string {
+  if (!wpType && !notes) return 'cash';
+  
+  // Check notes for "Payment Way:" pattern
+  if (notes) {
+    const match = notes.match(/Payment Way:\s*(\w+)/i);
+    if (match) {
+      const extracted = match[1].toLowerCase();
+      if (['visa', 'فيزا'].includes(extracted)) return 'visa';
+      if (['cheque', 'check', 'شيك'].includes(extracted)) return 'cheque';
+      if (['transfer', 'حوالة', 'bank_transfer'].includes(extracted)) return 'transfer';
+      if (['cash', 'كاش'].includes(extracted)) return 'cash';
+    }
+  }
+  
   if (!wpType) return 'cash';
+  
+  const typeStr = wpType.toLowerCase().trim();
   const mapping: Record<string, string> = {
     'cash': 'cash',
     'كاش': 'cash',
@@ -80,7 +96,7 @@ function mapPaymentType(wpType: string | null | undefined): string {
     'حوالة': 'transfer',
     'bank_transfer': 'transfer',
   };
-  return mapping[wpType.toLowerCase()] || 'cash';
+  return mapping[typeStr] || 'cash';
 }
 
 // Map parent term name to category
@@ -95,6 +111,81 @@ function mapCategoryFromParentTerm(termName: string | null | undefined): string 
   return mapping[termName] || null;
 }
 
+// Upload file from URL to Bunny CDN
+async function uploadToBunnyCDN(
+  fileUrl: string, 
+  BUNNY_API_KEY: string, 
+  BUNNY_STORAGE_ZONE: string
+): Promise<{ cdnUrl: string; storagePath: string; mimeType: string; size: number } | null> {
+  try {
+    console.log(`Downloading file from: ${fileUrl}`);
+    
+    // Download the file
+    const response = await fetch(fileUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; WordPress-Import/1.0)'
+      }
+    });
+    
+    if (!response.ok) {
+      console.warn(`Failed to download: ${fileUrl} - ${response.status}`);
+      return null;
+    }
+    
+    const fileBuffer = await response.arrayBuffer();
+    const size = fileBuffer.byteLength;
+    
+    // Determine MIME type from URL
+    const urlLower = fileUrl.toLowerCase();
+    let mimeType = 'application/octet-stream';
+    if (urlLower.endsWith('.pdf')) mimeType = 'application/pdf';
+    else if (urlLower.endsWith('.jpg') || urlLower.endsWith('.jpeg')) mimeType = 'image/jpeg';
+    else if (urlLower.endsWith('.png')) mimeType = 'image/png';
+    else if (urlLower.endsWith('.webp')) mimeType = 'image/webp';
+    else if (urlLower.endsWith('.gif')) mimeType = 'image/gif';
+    
+    // Extract filename from URL
+    const urlParts = fileUrl.split('/');
+    let originalName = urlParts[urlParts.length - 1] || 'file';
+    originalName = decodeURIComponent(originalName.split('?')[0]);
+    
+    // Generate organized path
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const timestamp = Date.now();
+    const randomId = crypto.randomUUID().slice(0, 8);
+    const ext = originalName.split('.').pop()?.toLowerCase() || 'bin';
+    const storagePath = `wp-import/${year}/${month}/${timestamp}_${randomId}.${ext}`;
+    
+    // Upload to Bunny Storage
+    const bunnyUploadUrl = `https://storage.bunnycdn.com/${BUNNY_STORAGE_ZONE}/${storagePath}`;
+    
+    const uploadResponse = await fetch(bunnyUploadUrl, {
+      method: 'PUT',
+      headers: {
+        'AccessKey': BUNNY_API_KEY,
+        'Content-Type': 'application/octet-stream',
+      },
+      body: fileBuffer,
+    });
+    
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      console.error(`Bunny upload failed for ${fileUrl}:`, errorText);
+      return null;
+    }
+    
+    const cdnUrl = `https://basheer-ab.b-cdn.net/${storagePath}`;
+    console.log(`Uploaded to CDN: ${cdnUrl}`);
+    
+    return { cdnUrl, storagePath, mimeType, size };
+  } catch (error) {
+    console.error(`Error uploading ${fileUrl}:`, error);
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -104,6 +195,9 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    const BUNNY_API_KEY = Deno.env.get('BUNNY_API_KEY');
+    const BUNNY_STORAGE_ZONE = Deno.env.get('BUNNY_STORAGE_ZONE');
 
     const { action, data, entityType, batch } = await req.json();
 
@@ -372,6 +466,12 @@ Deno.serve(async (req) => {
               .is('deleted_at', null)
               .maybeSingle();
 
+            // Extract notes - remove "Payment Way:" from notes if present
+            let notes = policy.notes || null;
+            if (notes) {
+              notes = notes.replace(/Payment Way:\s*\w+/gi, '').trim() || null;
+            }
+
             const policyData = {
               legacy_wp_id: policy.legacy_wp_id,
               policy_number: policy.policy_number_hint || null,
@@ -390,7 +490,7 @@ Deno.serve(async (req) => {
               cancelled: policy.cancelled === true,
               transferred: policy.transferred === true,
               transferred_car_number: policy.transferred_car_number || null,
-              notes: policy.notes || null,
+              notes: notes,
               calc_status: policy.calc_status || 'done',
             };
 
@@ -439,12 +539,15 @@ Deno.serve(async (req) => {
               .eq('amount', amount)
               .maybeSingle();
 
+            // Enhanced payment type extraction
+            const paymentType = mapPaymentType(payment.payment_type, payment.policy_notes) as any;
+
             if (!existingPayment) {
               const { error } = await supabase
                 .from('policy_payments')
                 .insert({
                   policy_id: policyId,
-                  payment_type: mapPaymentType(payment.payment_type) as any,
+                  payment_type: paymentType,
                   amount: amount,
                   payment_date: paymentDate,
                   cheque_number: payment.check_number || null,
@@ -457,6 +560,16 @@ Deno.serve(async (req) => {
                 stats.inserted++;
               }
             } else {
+              // Update existing payment
+              await supabase
+                .from('policy_payments')
+                .update({
+                  payment_type: paymentType,
+                  cheque_number: payment.check_number || null,
+                  cheque_image_url: payment.check_image_url || null,
+                  refused: payment.refused_status === 'refused',
+                })
+                .eq('id', existingPayment.id);
               stats.updated++;
             }
           } catch (e: any) {
@@ -466,38 +579,129 @@ Deno.serve(async (req) => {
       }
 
       if (entityType === 'media') {
+        if (!BUNNY_API_KEY || !BUNNY_STORAGE_ZONE) {
+          console.warn('Bunny CDN not configured, storing original URLs');
+        }
+
         for (const media of batch || []) {
           try {
             const policyId = media.policy_legacy_wp_id ? mappings.policies?.[media.policy_legacy_wp_id] : null;
             if (!policyId || !media.url) continue;
 
+            // Check if already imported (by original URL in notes or exact CDN url)
             const { data: existingMedia } = await supabase
               .from('media_files')
               .select('id')
-              .eq('cdn_url', media.url)
+              .eq('entity_id', policyId)
+              .eq('entity_type', 'policy')
+              .ilike('original_name', `%${media.url.split('/').pop()}%`)
               .maybeSingle();
 
-            if (!existingMedia) {
-              const fileName = media.url.split('/').pop() || 'file';
-              const mimeType = media.url.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg';
-
-              await supabase
-                .from('media_files')
-                .insert({
-                  cdn_url: media.url,
-                  storage_path: media.url,
-                  original_name: fileName,
-                  mime_type: mimeType,
-                  size: 0,
-                  entity_type: 'policy',
-                  entity_id: policyId,
-                });
-              stats.inserted++;
-            } else {
+            if (existingMedia) {
               stats.updated++;
+              continue;
+            }
+
+            let cdnUrl = media.url;
+            let storagePath = media.url;
+            let mimeType = media.url.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg';
+            let size = 0;
+            const originalName = decodeURIComponent(media.url.split('/').pop() || 'file');
+
+            // Upload to Bunny CDN if configured
+            if (BUNNY_API_KEY && BUNNY_STORAGE_ZONE) {
+              const uploadResult = await uploadToBunnyCDN(media.url, BUNNY_API_KEY, BUNNY_STORAGE_ZONE);
+              if (uploadResult) {
+                cdnUrl = uploadResult.cdnUrl;
+                storagePath = uploadResult.storagePath;
+                mimeType = uploadResult.mimeType;
+                size = uploadResult.size;
+              }
+            }
+
+            const { error } = await supabase
+              .from('media_files')
+              .insert({
+                cdn_url: cdnUrl,
+                storage_path: storagePath,
+                original_name: originalName,
+                mime_type: mimeType,
+                size: size,
+                entity_type: 'policy',
+                entity_id: policyId,
+              });
+            
+            if (error) {
+              stats.errors.push(`Media ${originalName}: ${error.message}`);
+            } else {
+              stats.inserted++;
             }
           } catch (e: any) {
             stats.errors.push(`Media: ${e.message}`);
+          }
+        }
+      }
+
+      if (entityType === 'invoices') {
+        if (!BUNNY_API_KEY || !BUNNY_STORAGE_ZONE) {
+          console.warn('Bunny CDN not configured for invoice PDFs');
+        }
+
+        for (const invoice of batch || []) {
+          try {
+            const policyId = invoice.policy_legacy_wp_id ? mappings.policies?.[invoice.policy_legacy_wp_id] : null;
+            if (!policyId || !invoice.pdf) continue;
+
+            const pdfUrl = invoice.pdf;
+            const originalName = decodeURIComponent(pdfUrl.split('/').pop() || 'invoice.pdf');
+
+            // Check if already imported
+            const { data: existingMedia } = await supabase
+              .from('media_files')
+              .select('id')
+              .eq('entity_id', policyId)
+              .eq('entity_type', 'invoice')
+              .ilike('original_name', `%${originalName}%`)
+              .maybeSingle();
+
+            if (existingMedia) {
+              stats.updated++;
+              continue;
+            }
+
+            let cdnUrl = pdfUrl;
+            let storagePath = pdfUrl;
+            let size = 0;
+
+            // Upload to Bunny CDN if configured
+            if (BUNNY_API_KEY && BUNNY_STORAGE_ZONE) {
+              const uploadResult = await uploadToBunnyCDN(pdfUrl, BUNNY_API_KEY, BUNNY_STORAGE_ZONE);
+              if (uploadResult) {
+                cdnUrl = uploadResult.cdnUrl;
+                storagePath = uploadResult.storagePath;
+                size = uploadResult.size;
+              }
+            }
+
+            const { error } = await supabase
+              .from('media_files')
+              .insert({
+                cdn_url: cdnUrl,
+                storage_path: storagePath,
+                original_name: originalName,
+                mime_type: 'application/pdf',
+                size: size,
+                entity_type: 'invoice',
+                entity_id: policyId,
+              });
+            
+            if (error) {
+              stats.errors.push(`Invoice PDF ${originalName}: ${error.message}`);
+            } else {
+              stats.inserted++;
+            }
+          } catch (e: any) {
+            stats.errors.push(`Invoice: ${e.message}`);
           }
         }
       }
