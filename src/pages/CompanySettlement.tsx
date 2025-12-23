@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Building2, Download, Wallet, FileText, ChevronLeft, Users } from 'lucide-react';
+import { Building2, Download, Wallet, FileText, ChevronLeft, Users, Calendar, RotateCcw, AlertCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -31,7 +31,6 @@ import { cn } from '@/lib/utils';
 import { POLICY_TYPE_LABELS, getInsuranceTypeBadgeClass } from '@/lib/insuranceTypes';
 import type { Tables, Enums } from '@/integrations/supabase/types';
 
-type Company = Tables<'insurance_companies'>;
 type Broker = Tables<'brokers'>;
 
 interface CompanySettlementData {
@@ -44,17 +43,23 @@ interface CompanySettlementData {
   total_company_payment: number;
 }
 
+interface CompanyOption {
+  company_id: string;
+  company_name: string;
+  company_name_ar: string | null;
+}
+
 export default function CompanySettlement() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<CompanySettlementData[]>([]);
-  const [companies, setCompanies] = useState<Company[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
-  const [filteredCompanies, setFilteredCompanies] = useState<Company[]>([]);
+  const [filteredCompanies, setFilteredCompanies] = useState<CompanyOption[]>([]);
   
   // Filters
+  const [showAllTime, setShowAllTime] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -72,165 +77,107 @@ export default function CompanySettlement() {
   });
 
   useEffect(() => {
-    fetchInitialData();
+    fetchBrokers();
   }, []);
 
   useEffect(() => {
     fetchFilteredCompanies();
-  }, [selectedMonth, selectedCategory, selectedBroker, companies]);
+  }, [selectedMonth, selectedCategory, selectedBroker, showAllTime]);
 
   useEffect(() => {
     fetchSettlementData();
-  }, [selectedMonth, selectedCompany, selectedCategory, selectedBroker, includeCancelled]);
+  }, [selectedMonth, selectedCompany, selectedCategory, selectedBroker, includeCancelled, showAllTime]);
 
-  const fetchInitialData = async () => {
+  const fetchBrokers = async () => {
     try {
-      const [companiesRes, brokersRes] = await Promise.all([
-        supabase
-          .from('insurance_companies')
-          .select('*')
-          .or('active.is.null,active.eq.true')
-          .order('name_ar'),
-        supabase
-          .from('brokers')
-          .select('*')
-          .order('name')
-      ]);
+      const { data: brokersData, error } = await supabase
+        .from('brokers')
+        .select('*')
+        .order('name');
 
-      if (companiesRes.error) throw companiesRes.error;
-      if (brokersRes.error) throw brokersRes.error;
-      
-      setCompanies(companiesRes.data || []);
-      setBrokers(brokersRes.data || []);
+      if (error) throw error;
+      setBrokers(brokersData || []);
     } catch (error) {
-      console.error('Error fetching initial data:', error);
+      console.error('Error fetching brokers:', error);
     }
   };
 
-  // Fetch companies that have policies matching current filters (for dropdown)
+  // Get date range based on current filter mode
+  const getDateRange = () => {
+    if (showAllTime) {
+      return { startDate: null, endDate: null };
+    }
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
+    const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+    return { startDate, endDate };
+  };
+
+  // Fetch companies that have policies matching current filters (using RPC)
   const fetchFilteredCompanies = async () => {
     try {
-      const [year, month] = selectedMonth.split('-').map(Number);
-      const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
-      const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+      const { startDate, endDate } = getDateRange();
 
-      let query = supabase
-        .from('policies')
-        .select('company_id')
-        .is('deleted_at', null)
-        .not('company_id', 'is', null)
-        .gte('start_date', startDate)
-        .lte('start_date', endDate);
+      const { data: companies, error } = await supabase.rpc('report_company_settlement_company_options', {
+        p_start_date: startDate,
+        p_end_date: endDate,
+        p_policy_type_parent: selectedCategory !== 'all' ? selectedCategory as Enums<'policy_type_parent'> : null,
+        p_broker_id: selectedBroker !== 'all' ? selectedBroker : null,
+      });
 
-      if (selectedBroker !== 'all') {
-        query = query.eq('broker_id', selectedBroker);
-      }
-
-      if (selectedCategory !== 'all') {
-        query = query.eq('policy_type_parent', selectedCategory as Enums<'policy_type_parent'>);
-      }
-
-      const { data: policies, error } = await query;
       if (error) throw error;
 
-      // Get distinct company IDs
-      const companyIds = [...new Set(policies?.map(p => p.company_id).filter(Boolean) || [])];
-      
-      // Filter companies to only those with matching policies
-      const filtered = companies.filter(c => companyIds.includes(c.id));
-      setFilteredCompanies(filtered);
+      const options: CompanyOption[] = (companies || []).map((c: any) => ({
+        company_id: c.company_id,
+        company_name: c.company_name,
+        company_name_ar: c.company_name_ar,
+      }));
+
+      setFilteredCompanies(options);
 
       // Clear selected company if it's no longer valid
-      if (selectedCompany !== 'all' && !companyIds.includes(selectedCompany)) {
-        setSelectedCompany('all');
+      if (selectedCompany !== 'all') {
+        const stillValid = options.some(c => c.company_id === selectedCompany);
+        if (!stillValid) {
+          setSelectedCompany('all');
+        }
       }
     } catch (error) {
       console.error('Error fetching filtered companies:', error);
-      setFilteredCompanies(companies);
+      setFilteredCompanies([]);
     }
   };
 
   const fetchSettlementData = async () => {
     setLoading(true);
     try {
-      // Parse month for date range
-      const [year, month] = selectedMonth.split('-').map(Number);
-      const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
-      const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+      const { startDate, endDate } = getDateRange();
 
-      // Build query - policies as base
-      let query = supabase
-        .from('policies')
-        .select(`
-          id,
-          policy_type_parent,
-          insurance_price,
-          payed_for_company,
-          company_id,
-          cancelled,
-          broker_id,
-          insurance_companies!inner (
-            id,
-            name,
-            name_ar
-          )
-        `)
-        .is('deleted_at', null)
-        .gte('start_date', startDate)
-        .lte('start_date', endDate);
-
-      if (!includeCancelled) {
-        query = query.eq('cancelled', false);
-      }
-
-      if (selectedCompany !== 'all') {
-        query = query.eq('company_id', selectedCompany);
-      }
-
-      if (selectedCategory !== 'all') {
-        query = query.eq('policy_type_parent', selectedCategory as Enums<'policy_type_parent'>);
-      }
-
-      if (selectedBroker !== 'all') {
-        query = query.eq('broker_id', selectedBroker);
-      }
-
-      const { data: policies, error } = await query;
+      const { data: result, error } = await supabase.rpc('report_company_settlement', {
+        p_start_date: startDate,
+        p_end_date: endDate,
+        p_company_id: selectedCompany !== 'all' ? selectedCompany : null,
+        p_policy_type_parent: selectedCategory !== 'all' ? selectedCategory as Enums<'policy_type_parent'> : null,
+        p_broker_id: selectedBroker !== 'all' ? selectedBroker : null,
+        p_include_cancelled: includeCancelled,
+      });
 
       if (error) throw error;
 
-      // Aggregate data by company and policy type
-      const aggregated = new Map<string, CompanySettlementData>();
+      const mapped: CompanySettlementData[] = (result || []).map((r: any) => ({
+        company_id: r.company_id,
+        company_name: r.company_name,
+        company_name_ar: r.company_name_ar,
+        policy_type: r.policy_type,
+        policy_count: Number(r.policy_count),
+        total_insurance_price: Number(r.total_insurance_price),
+        total_company_payment: Number(r.total_company_payment),
+      }));
 
-      policies?.forEach((policy: any) => {
-        const key = `${policy.company_id}-${policy.policy_type_parent}`;
-        const existing = aggregated.get(key);
-
-        if (existing) {
-          existing.policy_count += 1;
-          existing.total_insurance_price += Number(policy.insurance_price) || 0;
-          existing.total_company_payment += Number(policy.payed_for_company) || 0;
-        } else {
-          aggregated.set(key, {
-            company_id: policy.company_id,
-            company_name: policy.insurance_companies.name,
-            company_name_ar: policy.insurance_companies.name_ar,
-            policy_type: policy.policy_type_parent,
-            policy_count: 1,
-            total_insurance_price: Number(policy.insurance_price) || 0,
-            total_company_payment: Number(policy.payed_for_company) || 0,
-          });
-        }
-      });
-
-      const result = Array.from(aggregated.values()).sort((a, b) => 
-        (a.company_name_ar || a.company_name).localeCompare(b.company_name_ar || b.company_name)
-      );
-
-      setData(result);
+      setData(mapped);
 
       // Calculate summary
-      const totals = result.reduce(
+      const totals = mapped.reduce(
         (acc, item) => ({
           totalPolicies: acc.totalPolicies + item.policy_count,
           totalInsurancePrice: acc.totalInsurancePrice + item.total_insurance_price,
@@ -252,6 +199,20 @@ export default function CompanySettlement() {
     }
   };
 
+  const handleShowAllTime = () => {
+    setShowAllTime(true);
+  };
+
+  const handleResetFilters = () => {
+    const now = new Date();
+    setSelectedMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+    setSelectedCompany('all');
+    setSelectedCategory('all');
+    setSelectedBroker('all');
+    setIncludeCancelled(false);
+    setShowAllTime(false);
+  };
+
   const exportToCSV = () => {
     const headers = ['الشركة', 'نوع الوثيقة', 'عدد الوثائق', 'إجمالي المحصل', 'المستحق للشركة'];
     const rows = data.map(item => [
@@ -267,9 +228,28 @@ export default function CompanySettlement() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `company-settlement-${selectedMonth}.csv`;
+    link.download = `company-settlement-${showAllTime ? 'all-time' : selectedMonth}.csv`;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  // Format the current filter description
+  const getFilterDescription = () => {
+    const parts: string[] = [];
+    
+    if (showAllTime) {
+      parts.push('كل الفترات');
+    } else {
+      const [year, month] = selectedMonth.split('-');
+      const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+      parts.push(`${monthNames[parseInt(month) - 1]} ${year}`);
+    }
+
+    if (!includeCancelled) {
+      parts.push('بدون الملغية');
+    }
+
+    return parts.join(' • ');
   };
 
   if (!isAdmin) {
@@ -294,17 +274,43 @@ export default function CompanySettlement() {
       />
 
       <div className="p-6 space-y-6">
+        {/* Filter Status Banner */}
+        <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border">
+          <div className="flex items-center gap-2 text-sm">
+            <AlertCircle className="h-4 w-4 text-muted-foreground" />
+            <span className="text-muted-foreground">النتائج المعروضة:</span>
+            <Badge variant="secondary">{getFilterDescription()}</Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            {!showAllTime && (
+              <Button variant="outline" size="sm" onClick={handleShowAllTime}>
+                <Calendar className="h-4 w-4 ml-2" />
+                عرض كل الفترات
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={handleResetFilters}>
+              <RotateCcw className="h-4 w-4 ml-2" />
+              إعادة ضبط
+            </Button>
+          </div>
+        </div>
+
         {/* Filters */}
         <Card>
           <CardContent className="pt-6">
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
               <div className="space-y-2">
                 <Label>الشهر</Label>
                 <Input
                   type="month"
                   value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedMonth(e.target.value);
+                    setShowAllTime(false);
+                  }}
+                  disabled={showAllTime}
                   dir="ltr"
+                  className={cn(showAllTime && "opacity-50")}
                 />
               </div>
 
@@ -334,8 +340,8 @@ export default function CompanySettlement() {
                   <SelectContent align="end">
                     <SelectItem value="all">جميع الشركات ({filteredCompanies.length})</SelectItem>
                     {filteredCompanies.map((company) => (
-                      <SelectItem key={company.id} value={company.id}>
-                        {company.name_ar || company.name}
+                      <SelectItem key={company.company_id} value={company.company_id}>
+                        {company.company_name_ar || company.company_name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -355,6 +361,22 @@ export default function CompanySettlement() {
                         {label}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>الملغية</Label>
+                <Select 
+                  value={includeCancelled ? 'include' : 'exclude'} 
+                  onValueChange={(v) => setIncludeCancelled(v === 'include')}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent align="end">
+                    <SelectItem value="exclude">استبعاد الملغية</SelectItem>
+                    <SelectItem value="include">تضمين الملغية</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -444,7 +466,7 @@ export default function CompanySettlement() {
                       ))
                   ) : data.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                         لا توجد بيانات للفترة المحددة
                       </TableCell>
                     </TableRow>
@@ -465,15 +487,13 @@ export default function CompanySettlement() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={getInsuranceTypeBadgeClass(item.policy_type)}>
+                          <Badge className={getInsuranceTypeBadgeClass(item.policy_type)}>
                             {POLICY_TYPE_LABELS[item.policy_type]}
                           </Badge>
                         </TableCell>
                         <TableCell>{item.policy_count.toLocaleString('ar-EG')}</TableCell>
-                        <TableCell className="font-mono">
-                          ₪{item.total_insurance_price.toLocaleString('ar-EG')}
-                        </TableCell>
-                        <TableCell className="font-mono text-destructive">
+                        <TableCell>₪{item.total_insurance_price.toLocaleString('ar-EG')}</TableCell>
+                        <TableCell className="text-destructive font-medium">
                           ₪{item.total_company_payment.toLocaleString('ar-EG')}
                         </TableCell>
                       </TableRow>

@@ -1320,6 +1320,38 @@ export type Database = {
         Returns: boolean
       }
       is_active_user: { Args: { _user_id: string }; Returns: boolean }
+      report_company_settlement: {
+        Args: {
+          p_broker_id?: string
+          p_company_id?: string
+          p_end_date?: string
+          p_include_cancelled?: boolean
+          p_policy_type_parent?: Database["public"]["Enums"]["policy_type_parent"]
+          p_start_date?: string
+        }
+        Returns: {
+          company_id: string
+          company_name: string
+          company_name_ar: string
+          policy_count: number
+          policy_type: Database["public"]["Enums"]["policy_type_parent"]
+          total_company_payment: number
+          total_insurance_price: number
+        }[]
+      }
+      report_company_settlement_company_options: {
+        Args: {
+          p_broker_id?: string
+          p_end_date?: string
+          p_policy_type_parent?: Database["public"]["Enums"]["policy_type_parent"]
+          p_start_date?: string
+        }
+        Returns: {
+          company_id: string
+          company_name: string
+          company_name_ar: string
+        }[]
+      }
       user_directory_get_by_ids: {
         Args: { p_ids: string[] }
         Returns: {
