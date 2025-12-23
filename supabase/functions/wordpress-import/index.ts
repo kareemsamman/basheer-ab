@@ -1049,63 +1049,60 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Action: Link policies without company_id to companies based on notes/legacy data
+// Action: Link policies without company_id to companies using JSON company_name data
     if (action === 'linkPoliciesToCompanies') {
-      console.log('Linking policies to companies...');
+      const { policyCompanyMap } = data || {};
+      console.log('Linking policies to companies using JSON data...');
       
       // Get all policies without company_id
       const { data: orphanPolicies, error: fetchError } = await supabase
         .from('policies')
-        .select('id, legacy_wp_id, notes')
+        .select('id, legacy_wp_id')
         .is('company_id', null)
         .is('deleted_at', null);
       
       if (fetchError) throw fetchError;
+      console.log(`Found ${orphanPolicies?.length || 0} policies without company`);
       
       // Get all companies for matching
       const { data: companies } = await supabase
         .from('insurance_companies')
         .select('id, name, name_ar');
       
+      // Build company map with both name and name_ar for flexible matching
       const companyMap: Record<string, string> = {};
       for (const c of companies || []) {
-        if (c.name) companyMap[c.name.toLowerCase()] = c.id;
-        if (c.name_ar) companyMap[c.name_ar.toLowerCase()] = c.id;
+        if (c.name) {
+          companyMap[c.name.toLowerCase().trim()] = c.id;
+        }
+        if (c.name_ar) {
+          companyMap[c.name_ar.toLowerCase().trim()] = c.id;
+        }
       }
+      console.log(`Company map has ${Object.keys(companyMap).length} entries`);
       
       let linked = 0;
       const notFoundSet = new Set<string>();
       
       for (const policy of orphanPolicies || []) {
-        // Try to extract company name from notes
-        let companyName: string | null = null;
-        
-        if (policy.notes) {
-          // Look for patterns like "Company: xyz" or "شركة: xyz"
-          const patterns = [
-            /Company:\s*([^\n,]+)/i,
-            /شركة:\s*([^\n,]+)/i,
-            /Insurance:\s*([^\n,]+)/i,
-            /تأمين:\s*([^\n,]+)/i,
-          ];
-          
-          for (const pattern of patterns) {
-            const match = policy.notes.match(pattern);
-            if (match) {
-              companyName = match[1].trim();
-              break;
-            }
-          }
-        }
+        // Get company_name from the provided policyCompanyMap (legacy_wp_id -> company_name)
+        const companyName = policyCompanyMap?.[policy.legacy_wp_id];
         
         if (companyName) {
-          const companyId = companyMap[companyName.toLowerCase()];
+          const normalizedName = companyName.toLowerCase().trim();
+          const companyId = companyMap[normalizedName];
+          
           if (companyId) {
-            await supabase
+            const { error: updateError } = await supabase
               .from('policies')
               .update({ company_id: companyId })
               .eq('id', policy.id);
-            linked++;
+            
+            if (!updateError) {
+              linked++;
+            } else {
+              console.error(`Failed to update policy ${policy.id}:`, updateError);
+            }
           } else {
             notFoundSet.add(companyName);
           }
@@ -1113,12 +1110,114 @@ Deno.serve(async (req) => {
       }
       
       console.log(`Linked ${linked} policies, ${notFoundSet.size} company names not found`);
+      console.log('Not found companies:', Array.from(notFoundSet).slice(0, 10));
       
       return new Response(JSON.stringify({ 
         success: true, 
         found: orphanPolicies?.length || 0,
         linked,
-        notFound: Array.from(notFoundSet).slice(0, 50),
+        notFound: Array.from(notFoundSet).slice(0, 100),
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Action: Import media with parallel upload, persistent cursor, batched
+    if (action === 'importMediaBatchParallel') {
+      const { mediaItems, mappings, offset, batchSize = 100, concurrency = 10 } = data;
+      
+      if (!BUNNY_API_KEY || !BUNNY_STORAGE_ZONE) {
+        return new Response(JSON.stringify({ 
+          success: false, 
+          error: 'Bunny CDN not configured' 
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      console.log(`Starting parallel media upload: offset=${offset}, batchSize=${batchSize}, concurrency=${concurrency}`);
+      const results = { inserted: 0, failed: 0, errors: [] as string[] };
+      
+      // Process in concurrent groups
+      for (let i = 0; i < mediaItems.length; i += concurrency) {
+        const concurrentBatch = mediaItems.slice(i, i + concurrency);
+        
+        const promises = concurrentBatch.map(async (media: any, idx: number) => {
+          const globalIdx = offset + i + idx;
+          try {
+            const policyId = media.policy_legacy_wp_id ? mappings.policies?.[media.policy_legacy_wp_id] : null;
+            if (!policyId) {
+              return { success: false, error: `[${globalIdx}] Missing policy mapping for legacy_wp_id: ${media.policy_legacy_wp_id}` };
+            }
+            if (!media.url) {
+              return { success: false, error: `[${globalIdx}] Missing URL` };
+            }
+
+            const originalName = decodeURIComponent(media.url.split('/').pop() || 'file');
+            
+            // Check if already exists
+            const { data: existingMedia } = await supabase
+              .from('media_files')
+              .select('id')
+              .eq('entity_id', policyId)
+              .eq('entity_type', 'policy')
+              .ilike('original_name', `%${originalName.substring(0, 50)}%`)
+              .maybeSingle();
+
+            if (existingMedia) {
+              return { success: true, skipped: true };
+            }
+
+            // Upload to Bunny CDN
+            const uploadResult = await uploadToBunnyCDN(media.url, BUNNY_API_KEY, BUNNY_STORAGE_ZONE);
+            
+            if (!uploadResult) {
+              return { success: false, error: `[${globalIdx}] CDN upload failed: ${originalName}` };
+            }
+
+            const { error: insertError } = await supabase
+              .from('media_files')
+              .insert({
+                cdn_url: uploadResult.cdnUrl,
+                storage_path: uploadResult.storagePath,
+                original_name: originalName,
+                mime_type: uploadResult.mimeType,
+                size: uploadResult.size,
+                entity_type: 'policy',
+                entity_id: policyId,
+                branch_id: BEIT_HANINA_BRANCH_ID,
+              });
+
+            if (insertError) {
+              return { success: false, error: `[${globalIdx}] DB insert failed: ${insertError.message}` };
+            }
+            return { success: true };
+          } catch (e: any) {
+            return { success: false, error: `[${globalIdx}] Exception: ${e.message}` };
+          }
+        });
+
+        const batchResults = await Promise.all(promises);
+        
+        for (const result of batchResults) {
+          if (result.success) {
+            if (!result.skipped) results.inserted++;
+          } else {
+            results.failed++;
+            if (result.error) results.errors.push(result.error);
+          }
+        }
+      }
+
+      console.log(`Batch complete: inserted=${results.inserted}, failed=${results.failed}`);
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        inserted: results.inserted,
+        failed: results.failed,
+        errors: results.errors.slice(0, 50), // Limit errors to prevent huge response
+        processedCount: mediaItems.length,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

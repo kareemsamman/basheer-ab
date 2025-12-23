@@ -709,48 +709,78 @@ const WordPressImport = () => {
       }
       setProgress(65);
 
-      // Step 11: Import media with resume support
+      // Step 11: Import media with parallel upload and persistent cursor
       if (!completedSteps.includes('media')) {
         updateStep('media', 'running', totalMedia, mediaOffset);
         
+        const MEDIA_BATCH_SIZE = 100; // Larger batch for parallel processing
+        const CONCURRENCY = 10; // 10 concurrent uploads
+        
         // Process media from offset
         const remainingMedia = media.slice(mediaOffset);
-        const mediaBatches = chunkArray(remainingMedia, BATCH_SIZE);
+        const mediaBatches = chunkArray(remainingMedia, MEDIA_BATCH_SIZE);
         
         for (let batchIndex = 0; batchIndex < mediaBatches.length; batchIndex++) {
           const batch = mediaBatches[batchIndex];
-          const { data: result, error } = await supabase.functions.invoke('wordpress-import', {
-            body: { action: 'importBatch', entityType: 'media', batch, data: { mappings } }
-          });
+          const currentOffset = mediaOffset + (batchIndex * MEDIA_BATCH_SIZE);
           
-          if (error) {
-            const lastUrl = batch[batch.length - 1]?.url || 'unknown';
-            addError('media', lastUrl, error.message);
-            updateStep('media', 'error', totalMedia, mediaOffset + (batchIndex * BATCH_SIZE), `فشل عند: ${lastUrl}`);
-            // Save progress so we can resume
-            await saveProgress(9, completedSteps, mappings, stats, mediaOffset + (batchIndex * BATCH_SIZE), totalMedia, 'paused');
-            throw new Error(`توقف رفع الوسائط عند الملف ${mediaOffset + (batchIndex * BATCH_SIZE) + 1}: ${error.message}`);
-          }
-          
-          if (result) {
-            stats.media.inserted += result.stats.inserted;
-            stats.media.updated += result.stats.updated;
-            result.stats.errors.forEach((e: string) => {
-              const urlMatch = e.match(/Media\s+(.+?):/);
-              addError('media', urlMatch?.[1] || 'unknown', e);
+          try {
+            const { data: result, error } = await supabase.functions.invoke('wordpress-import', {
+              body: { 
+                action: 'importMediaBatchParallel', 
+                data: { 
+                  mediaItems: batch, 
+                  mappings, 
+                  offset: currentOffset,
+                  batchSize: MEDIA_BATCH_SIZE,
+                  concurrency: CONCURRENCY,
+                }
+              }
             });
-          }
-          
-          mediaOffset = mediaOffset + ((batchIndex + 1) * BATCH_SIZE);
-          updateStep('media', 'running', totalMedia, Math.min(mediaOffset, totalMedia));
-          setProgress(65 + Math.round((Math.min(mediaOffset, totalMedia) / totalMedia) * 20));
-          
-          // Save progress periodically
-          if (batchIndex % 5 === 0) {
-            await saveProgress(9, completedSteps, mappings, stats, Math.min(mediaOffset, totalMedia), totalMedia);
+            
+            if (error) {
+              addError('media', `batch-${batchIndex}`, error.message);
+              updateStep('media', 'error', totalMedia, currentOffset, `فشل عند الدفعة ${batchIndex + 1}: ${error.message}`);
+              // Save progress for resume
+              await saveProgress(9, completedSteps, mappings, stats, currentOffset, totalMedia, 'paused');
+              throw new Error(`توقف رفع الوسائط عند الملف ${currentOffset + 1}: ${error.message}`);
+            }
+            
+            if (result) {
+              stats.media.inserted += result.inserted || 0;
+              stats.media.updated += 0; // Skipped files
+              
+              // Add errors to stats
+              (result.errors || []).forEach((e: string) => {
+                addError('media', e.split(':')[0] || 'unknown', e);
+              });
+              
+              if (result.failed > 0) {
+                console.log(`Media batch ${batchIndex + 1}: ${result.inserted} inserted, ${result.failed} failed`);
+              }
+            }
+            
+            // Update progress
+            const processedCount = currentOffset + (result?.processedCount || batch.length);
+            updateStep('media', 'running', totalMedia, Math.min(processedCount, totalMedia));
+            setProgress(65 + Math.round((Math.min(processedCount, totalMedia) / totalMedia) * 20));
+            
+            // Save progress after each batch
+            await saveProgress(9, completedSteps, mappings, stats, processedCount, totalMedia);
+            
+          } catch (err: any) {
+            // Already handled above, but in case of network errors
+            if (!err.message.includes('توقف رفع الوسائط')) {
+              addError('media', `batch-${batchIndex}`, err.message);
+              await saveProgress(9, completedSteps, mappings, stats, currentOffset, totalMedia, 'paused');
+              throw new Error(`خطأ في الشبكة عند الدفعة ${batchIndex + 1}: ${err.message}`);
+            }
+            throw err;
           }
         }
         
+        // Update final offset
+        mediaOffset = totalMedia;
         updateStep('media', 'done', totalMedia, totalMedia);
         completedSteps.push('media');
         await saveProgress(9, completedSteps, mappings, stats, totalMedia, totalMedia);
@@ -852,12 +882,34 @@ const WordPressImport = () => {
   };
 
   const handleLinkPoliciesToCompanies = async () => {
+    if (!jsonData?.policies) {
+      toast({ 
+        title: "خطأ", 
+        description: "يرجى تحميل ملف JSON أولاً للحصول على بيانات الشركات", 
+        variant: "destructive" 
+      });
+      return;
+    }
+    
     setLinkingPolicies(true);
     setLinkingStats(null);
     
     try {
+      // Build a map of legacy_wp_id -> company_name from JSON data
+      const policyCompanyMap: Record<number, string> = {};
+      for (const policy of jsonData.policies || []) {
+        if (policy.legacy_wp_id && policy.company_name) {
+          policyCompanyMap[policy.legacy_wp_id] = policy.company_name;
+        }
+      }
+      
+      console.log(`Built policy-company map with ${Object.keys(policyCompanyMap).length} entries`);
+      
       const { data: result, error } = await supabase.functions.invoke('wordpress-import', {
-        body: { action: 'linkPoliciesToCompanies' }
+        body: { 
+          action: 'linkPoliciesToCompanies',
+          data: { policyCompanyMap }
+        }
       });
       
       if (error) throw error;
@@ -1193,11 +1245,18 @@ const WordPressImport = () => {
                   ربط الوثائق بشركات التأمين
                 </CardTitle>
                 <CardDescription>
-                  يبحث عن الوثائق التي لها company_id = null ويحاول ربطها بالشركات الموجودة بناءً على اسم الشركة في البيانات
+                  يبحث عن الوثائق التي لها company_id = null ويحاول ربطها بالشركات الموجودة بناءً على اسم الشركة في ملف JSON
+                  <br />
+                  <strong className="text-amber-600">مطلوب:</strong> تحميل ملف JSON أولاً للحصول على أسماء الشركات من البيانات الأصلية
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Button onClick={handleLinkPoliciesToCompanies} disabled={linkingPolicies}>
+                {!jsonData && (
+                  <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-700 dark:text-amber-300">
+                    ⚠️ يرجى تحميل ملف JSON أولاً من تبويب "الاستيراد" للحصول على بيانات الشركات
+                  </div>
+                )}
+                <Button onClick={handleLinkPoliciesToCompanies} disabled={linkingPolicies || !jsonData}>
                   {linkingPolicies ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : <Link2 className="h-4 w-4 ml-2" />}
                   {linkingPolicies ? "جاري الربط..." : "بدء الربط"}
                 </Button>
