@@ -1334,7 +1334,6 @@ export type Database = {
           company_name: string
           company_name_ar: string
           policy_count: number
-          policy_type: Database["public"]["Enums"]["policy_type_parent"]
           total_company_payment: number
           total_insurance_price: number
         }[]

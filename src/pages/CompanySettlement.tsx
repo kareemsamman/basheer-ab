@@ -23,12 +23,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Building2, Download, Wallet, FileText, ChevronLeft, Users, Calendar, RotateCcw, AlertCircle } from 'lucide-react';
+import { Building2, Download, Wallet, FileText, ChevronLeft, Calendar, RotateCcw, AlertCircle, Printer } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
-import { POLICY_TYPE_LABELS, getInsuranceTypeBadgeClass } from '@/lib/insuranceTypes';
+import { POLICY_TYPE_LABELS } from '@/lib/insuranceTypes';
 import type { Tables, Enums } from '@/integrations/supabase/types';
 
 type Broker = Tables<'brokers'>;
@@ -37,7 +37,6 @@ interface CompanySettlementData {
   company_id: string;
   company_name: string;
   company_name_ar: string | null;
-  policy_type: Enums<'policy_type_parent'>;
   policy_count: number;
   total_insurance_price: number;
   total_company_payment: number;
@@ -58,8 +57,8 @@ export default function CompanySettlement() {
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [filteredCompanies, setFilteredCompanies] = useState<CompanyOption[]>([]);
   
-  // Filters
-  const [showAllTime, setShowAllTime] = useState(false);
+  // Filters - default to all time
+  const [showAllTime, setShowAllTime] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -168,7 +167,6 @@ export default function CompanySettlement() {
         company_id: r.company_id,
         company_name: r.company_name,
         company_name_ar: r.company_name_ar,
-        policy_type: r.policy_type,
         policy_count: Number(r.policy_count),
         total_insurance_price: Number(r.total_insurance_price),
         total_company_payment: Number(r.total_company_payment),
@@ -199,10 +197,6 @@ export default function CompanySettlement() {
     }
   };
 
-  const handleShowAllTime = () => {
-    setShowAllTime(true);
-  };
-
   const handleResetFilters = () => {
     const now = new Date();
     setSelectedMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
@@ -210,14 +204,13 @@ export default function CompanySettlement() {
     setSelectedCategory('all');
     setSelectedBroker('all');
     setIncludeCancelled(false);
-    setShowAllTime(false);
+    setShowAllTime(true);
   };
 
   const exportToCSV = () => {
-    const headers = ['الشركة', 'نوع الوثيقة', 'عدد الوثائق', 'إجمالي المحصل', 'المستحق للشركة'];
+    const headers = ['الشركة', 'عدد الوثائق', 'إجمالي المحصل', 'المستحق للشركة'];
     const rows = data.map(item => [
       item.company_name_ar || item.company_name,
-      POLICY_TYPE_LABELS[item.policy_type],
       item.policy_count,
       item.total_insurance_price,
       item.total_company_payment,
@@ -231,6 +224,10 @@ export default function CompanySettlement() {
     link.download = `company-settlement-${showAllTime ? 'all-time' : selectedMonth}.csv`;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handlePrint = () => {
+    window.print();
   };
 
   // Format the current filter description
@@ -273,21 +270,15 @@ export default function CompanySettlement() {
         subtitle="ملخص المبالغ المستحقة للشركات والأرباح"
       />
 
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-6 print:p-0">
         {/* Filter Status Banner */}
-        <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border">
+        <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border print:hidden">
           <div className="flex items-center gap-2 text-sm">
             <AlertCircle className="h-4 w-4 text-muted-foreground" />
             <span className="text-muted-foreground">النتائج المعروضة:</span>
             <Badge variant="secondary">{getFilterDescription()}</Badge>
           </div>
           <div className="flex items-center gap-2">
-            {!showAllTime && (
-              <Button variant="outline" size="sm" onClick={handleShowAllTime}>
-                <Calendar className="h-4 w-4 ml-2" />
-                عرض كل الفترات
-              </Button>
-            )}
             <Button variant="ghost" size="sm" onClick={handleResetFilters}>
               <RotateCcw className="h-4 w-4 ml-2" />
               إعادة ضبط
@@ -296,7 +287,7 @@ export default function CompanySettlement() {
         </div>
 
         {/* Filters */}
-        <Card>
+        <Card className="print:hidden">
           <CardContent className="pt-6">
             <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
               <div className="space-y-2">
@@ -308,10 +299,19 @@ export default function CompanySettlement() {
                     setSelectedMonth(e.target.value);
                     setShowAllTime(false);
                   }}
-                  disabled={showAllTime}
                   dir="ltr"
-                  className={cn(showAllTime && "opacity-50")}
                 />
+                {!showAllTime && (
+                  <Button 
+                    variant="link" 
+                    size="sm" 
+                    className="p-0 h-auto text-xs"
+                    onClick={() => setShowAllTime(true)}
+                  >
+                    <Calendar className="h-3 w-3 ml-1" />
+                    عرض كل الفترات
+                  </Button>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -381,15 +381,24 @@ export default function CompanySettlement() {
                 </Select>
               </div>
 
-              <div className="flex items-end">
-                <Button variant="outline" onClick={exportToCSV} className="w-full">
+              <div className="flex items-end gap-2">
+                <Button variant="outline" onClick={exportToCSV} className="flex-1">
                   <Download className="h-4 w-4 ml-2" />
-                  تصدير CSV
+                  CSV
+                </Button>
+                <Button variant="outline" onClick={handlePrint}>
+                  <Printer className="h-4 w-4" />
                 </Button>
               </div>
             </div>
           </CardContent>
         </Card>
+
+        {/* Print Header */}
+        <div className="hidden print:block text-center mb-6">
+          <h1 className="text-2xl font-bold">تقرير تسوية الشركات</h1>
+          <p className="text-muted-foreground">{getFilterDescription()}</p>
+        </div>
 
         {/* Summary Cards */}
         <div className="grid gap-4 md:grid-cols-3">
@@ -400,7 +409,7 @@ export default function CompanySettlement() {
                   <p className="text-sm font-medium text-muted-foreground">عدد الوثائق</p>
                   <p className="text-2xl font-bold">{summary.totalPolicies.toLocaleString('ar-EG')}</p>
                 </div>
-                <div className="rounded-xl bg-primary/10 p-3">
+                <div className="rounded-xl bg-primary/10 p-3 print:hidden">
                   <FileText className="h-6 w-6 text-primary" />
                 </div>
               </div>
@@ -414,7 +423,7 @@ export default function CompanySettlement() {
                   <p className="text-sm font-medium text-muted-foreground">إجمالي المحصل</p>
                   <p className="text-2xl font-bold">₪{summary.totalInsurancePrice.toLocaleString('ar-EG')}</p>
                 </div>
-                <div className="rounded-xl bg-blue-500/10 p-3">
+                <div className="rounded-xl bg-blue-500/10 p-3 print:hidden">
                   <Wallet className="h-6 w-6 text-blue-500" />
                 </div>
               </div>
@@ -428,7 +437,7 @@ export default function CompanySettlement() {
                   <p className="text-sm font-medium text-muted-foreground">المستحق للشركات</p>
                   <p className="text-2xl font-bold text-destructive">₪{summary.totalCompanyPayment.toLocaleString('ar-EG')}</p>
                 </div>
-                <div className="rounded-xl bg-destructive/10 p-3">
+                <div className="rounded-xl bg-destructive/10 p-3 print:hidden">
                   <Building2 className="h-6 w-6 text-destructive" />
                 </div>
               </div>
@@ -438,7 +447,7 @@ export default function CompanySettlement() {
 
         {/* Data Table */}
         <Card>
-          <CardHeader>
+          <CardHeader className="print:pb-2">
             <CardTitle>تفاصيل التسوية حسب الشركة</CardTitle>
           </CardHeader>
           <CardContent>
@@ -447,7 +456,6 @@ export default function CompanySettlement() {
                 <TableHeader>
                     <TableRow>
                       <TableHead className="text-right">الشركة</TableHead>
-                      <TableHead className="text-right">نوع الوثيقة</TableHead>
                       <TableHead className="text-right">عدد الوثائق</TableHead>
                       <TableHead className="text-right">إجمالي المحصل</TableHead>
                       <TableHead className="text-right">المستحق للشركة</TableHead>
@@ -458,7 +466,6 @@ export default function CompanySettlement() {
                       Array.from({ length: 5 }).map((_, i) => (
                         <TableRow key={i}>
                           <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-20" /></TableCell>
@@ -466,7 +473,7 @@ export default function CompanySettlement() {
                       ))
                   ) : data.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                         لا توجد بيانات للفترة المحددة
                       </TableCell>
                     </TableRow>
@@ -476,20 +483,15 @@ export default function CompanySettlement() {
                         key={index}
                         onClick={() => navigate(`/reports/company-settlement/${item.company_id}`)}
                         className={cn(
-                          "cursor-pointer transition-colors",
+                          "cursor-pointer transition-colors print:cursor-default",
                           "hover:bg-secondary/50"
                         )}
                       >
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
                             {item.company_name_ar || item.company_name}
-                            <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+                            <ChevronLeft className="h-4 w-4 text-muted-foreground print:hidden" />
                           </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={getInsuranceTypeBadgeClass(item.policy_type)}>
-                            {POLICY_TYPE_LABELS[item.policy_type]}
-                          </Badge>
                         </TableCell>
                         <TableCell>{item.policy_count.toLocaleString('ar-EG')}</TableCell>
                         <TableCell>₪{item.total_insurance_price.toLocaleString('ar-EG')}</TableCell>

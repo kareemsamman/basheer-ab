@@ -23,17 +23,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowRight, Building2, Download, TrendingUp, Wallet, FileText, Calculator } from 'lucide-react';
+import { ArrowRight, Building2, Download, TrendingUp, Wallet, FileText, Calculator, Printer, Eye, Pencil, Calendar, RotateCcw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { CalculationExplanationModal } from '@/components/reports/CalculationExplanationModal';
+import { PolicyDetailsDrawer } from '@/components/policies/PolicyDetailsDrawer';
 import { 
   POLICY_TYPE_LABELS, 
   POLICY_CHILD_LABELS, 
   getInsuranceTypeBadgeClass,
-  getInsuranceTypeLabel 
 } from '@/lib/insuranceTypes';
+import { cn } from '@/lib/utils';
 import type { Enums } from '@/integrations/supabase/types';
 
 interface PolicyDetail {
@@ -47,6 +48,7 @@ interface PolicyDetail {
   end_date: string;
   is_under_24: boolean | null;
   created_at: string;
+  cancelled: boolean | null;
   client: {
     id: string;
     full_name: string;
@@ -82,10 +84,15 @@ export default function CompanySettlementDetail() {
   const [policies, setPolicies] = useState<PolicyDetail[]>([]);
   
   // Calculation modal
-  const [selectedPolicy, setSelectedPolicy] = useState<PolicyDetail | null>(null);
+  const [selectedPolicyForCalc, setSelectedPolicyForCalc] = useState<PolicyDetail | null>(null);
   const [calculationModalOpen, setCalculationModalOpen] = useState(false);
   
-  // Filters
+  // Policy details drawer
+  const [selectedPolicyId, setSelectedPolicyId] = useState<string | null>(null);
+  const [detailsDrawerOpen, setDetailsDrawerOpen] = useState(false);
+  
+  // Filters - default to all time
+  const [showAllTime, setShowAllTime] = useState(true);
   const [startDate, setStartDate] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
@@ -96,6 +103,7 @@ export default function CompanySettlementDetail() {
     return lastDay.toISOString().split('T')[0];
   });
   const [selectedPolicyType, setSelectedPolicyType] = useState<string>('all');
+  const [includeCancelled, setIncludeCancelled] = useState(false);
 
   // Filtered data
   const filteredPolicies = useMemo(() => {
@@ -103,9 +111,12 @@ export default function CompanySettlementDetail() {
       if (selectedPolicyType !== 'all' && policy.policy_type_parent !== selectedPolicyType) {
         return false;
       }
+      if (!includeCancelled && policy.cancelled) {
+        return false;
+      }
       return true;
     });
-  }, [policies, selectedPolicyType]);
+  }, [policies, selectedPolicyType, includeCancelled]);
 
   // Summary totals
   const summary = useMemo(() => {
@@ -124,7 +135,7 @@ export default function CompanySettlementDetail() {
     if (companyId) {
       fetchCompanyAndPolicies();
     }
-  }, [companyId, startDate, endDate]);
+  }, [companyId, startDate, endDate, showAllTime]);
 
   const fetchCompanyAndPolicies = async () => {
     if (!companyId) return;
@@ -141,8 +152,8 @@ export default function CompanySettlementDetail() {
       if (companyError) throw companyError;
       setCompany(companyData);
 
-      // Fetch policies with relations
-      const { data: policiesData, error: policiesError } = await supabase
+      // Build query
+      let query = supabase
         .from('policies')
         .select(`
           id,
@@ -155,6 +166,7 @@ export default function CompanySettlementDetail() {
           end_date,
           is_under_24,
           created_at,
+          cancelled,
           created_by_admin_id,
           clients!inner (
             id,
@@ -174,11 +186,16 @@ export default function CompanySettlementDetail() {
           )
         `)
         .eq('company_id', companyId)
-        .is('deleted_at', null)
-        .eq('cancelled', false)
-        .gte('start_date', startDate)
-        .lte('start_date', endDate)
-        .order('created_at', { ascending: false });
+        .is('deleted_at', null);
+
+      // Apply date filter only if not showing all time
+      if (!showAllTime) {
+        query = query
+          .gte('start_date', startDate)
+          .lte('start_date', endDate);
+      }
+
+      const { data: policiesData, error: policiesError } = await query.order('created_at', { ascending: false });
 
       if (policiesError) throw policiesError;
 
@@ -193,6 +210,7 @@ export default function CompanySettlementDetail() {
         end_date: p.end_date,
         is_under_24: p.is_under_24,
         created_at: p.created_at,
+        cancelled: p.cancelled,
         client: p.clients ? { id: p.clients.id, full_name: p.clients.full_name } : null,
         car: p.cars ? {
           id: p.cars.id,
@@ -244,6 +262,12 @@ export default function CompanySettlementDetail() {
     return carType ? labels[carType] || carType : '-';
   };
 
+  const handleResetFilters = () => {
+    setShowAllTime(true);
+    setSelectedPolicyType('all');
+    setIncludeCancelled(false);
+  };
+
   const exportToCSV = () => {
     const headers = [
       'رقم الوثيقة',
@@ -280,14 +304,50 @@ export default function CompanySettlementDetail() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `company-settlement-detail-${company?.name_ar || company?.name}-${startDate}-${endDate}.csv`;
+    link.download = `company-settlement-detail-${company?.name_ar || company?.name}-${showAllTime ? 'all-time' : `${startDate}-${endDate}`}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   const handleExplainCalculation = (policy: PolicyDetail) => {
-    setSelectedPolicy(policy);
+    setSelectedPolicyForCalc(policy);
     setCalculationModalOpen(true);
+  };
+
+  const handleViewPolicy = (policyId: string) => {
+    setSelectedPolicyId(policyId);
+    setDetailsDrawerOpen(true);
+  };
+
+  const handleEditPolicy = (policyId: string) => {
+    // Open details drawer which has edit functionality
+    setSelectedPolicyId(policyId);
+    setDetailsDrawerOpen(true);
+  };
+
+  const handlePolicyUpdated = () => {
+    fetchCompanyAndPolicies();
+  };
+
+  // Format the current filter description
+  const getFilterDescription = () => {
+    const parts: string[] = [];
+    
+    if (showAllTime) {
+      parts.push('كل الفترات');
+    } else {
+      parts.push(`من ${formatDate(startDate)} إلى ${formatDate(endDate)}`);
+    }
+
+    if (!includeCancelled) {
+      parts.push('بدون الملغية');
+    }
+
+    return parts.join(' • ');
   };
 
   if (!isAdmin) {
@@ -315,27 +375,30 @@ export default function CompanySettlementDetail() {
         }}
       />
 
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-6 print:p-0">
         {/* Back button */}
         <Button
           variant="ghost"
           onClick={() => navigate('/reports/company-settlement')}
-          className="mb-2"
+          className="mb-2 print:hidden"
         >
           <ArrowRight className="h-4 w-4 ml-2" />
           العودة للتقرير الرئيسي
         </Button>
 
         {/* Filters */}
-        <Card>
+        <Card className="print:hidden">
           <CardContent className="pt-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
               <div className="space-y-2">
                 <Label>من تاريخ</Label>
                 <Input
                   type="date"
                   value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    setShowAllTime(false);
+                  }}
                   dir="ltr"
                 />
               </div>
@@ -345,7 +408,10 @@ export default function CompanySettlementDetail() {
                 <Input
                   type="date"
                   value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    setShowAllTime(false);
+                  }}
                   dir="ltr"
                 />
               </div>
@@ -367,15 +433,47 @@ export default function CompanySettlementDetail() {
                 </Select>
               </div>
 
-              <div className="flex items-end">
-                <Button variant="outline" onClick={exportToCSV} className="w-full">
+              <div className="space-y-2">
+                <Label>الملغية</Label>
+                <Select 
+                  value={includeCancelled ? 'include' : 'exclude'} 
+                  onValueChange={(v) => setIncludeCancelled(v === 'include')}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent align="end">
+                    <SelectItem value="exclude">استبعاد الملغية</SelectItem>
+                    <SelectItem value="include">تضمين الملغية</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-end gap-2">
+                <Button variant="outline" onClick={exportToCSV} className="flex-1">
                   <Download className="h-4 w-4 ml-2" />
-                  تصدير CSV
+                  CSV
+                </Button>
+                <Button variant="outline" onClick={handlePrint}>
+                  <Printer className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="flex items-end">
+                <Button variant="ghost" onClick={handleResetFilters} className="w-full">
+                  <RotateCcw className="h-4 w-4 ml-2" />
+                  كل الفترات
                 </Button>
               </div>
             </div>
           </CardContent>
         </Card>
+
+        {/* Print Header */}
+        <div className="hidden print:block text-center mb-6">
+          <h1 className="text-2xl font-bold">تفاصيل تسوية {company?.name_ar || company?.name}</h1>
+          <p className="text-muted-foreground">{getFilterDescription()}</p>
+        </div>
 
         {/* Summary Cards */}
         <div className="grid gap-4 md:grid-cols-4">
@@ -386,7 +484,7 @@ export default function CompanySettlementDetail() {
                   <p className="text-sm font-medium text-muted-foreground">عدد الوثائق</p>
                   <p className="text-2xl font-bold">{summary.totalPolicies.toLocaleString('ar-EG')}</p>
                 </div>
-                <div className="rounded-xl bg-primary/10 p-3">
+                <div className="rounded-xl bg-primary/10 p-3 print:hidden">
                   <FileText className="h-6 w-6 text-primary" />
                 </div>
               </div>
@@ -400,7 +498,7 @@ export default function CompanySettlementDetail() {
                   <p className="text-sm font-medium text-muted-foreground">إجمالي المحصل</p>
                   <p className="text-2xl font-bold">₪{summary.totalInsurancePrice.toLocaleString('ar-EG')}</p>
                 </div>
-                <div className="rounded-xl bg-blue-500/10 p-3">
+                <div className="rounded-xl bg-blue-500/10 p-3 print:hidden">
                   <Wallet className="h-6 w-6 text-blue-500" />
                 </div>
               </div>
@@ -414,7 +512,7 @@ export default function CompanySettlementDetail() {
                   <p className="text-sm font-medium text-muted-foreground">المستحق للشركة</p>
                   <p className="text-2xl font-bold text-destructive">₪{summary.totalCompanyPayment.toLocaleString('ar-EG')}</p>
                 </div>
-                <div className="rounded-xl bg-destructive/10 p-3">
+                <div className="rounded-xl bg-destructive/10 p-3 print:hidden">
                   <Building2 className="h-6 w-6 text-destructive" />
                 </div>
               </div>
@@ -428,7 +526,7 @@ export default function CompanySettlementDetail() {
                   <p className="text-sm font-medium text-muted-foreground">إجمالي الربح</p>
                   <p className="text-2xl font-bold text-success">₪{summary.totalProfit.toLocaleString('ar-EG')}</p>
                 </div>
-                <div className="rounded-xl bg-success/10 p-3">
+                <div className="rounded-xl bg-success/10 p-3 print:hidden">
                   <TrendingUp className="h-6 w-6 text-success" />
                 </div>
               </div>
@@ -438,57 +536,56 @@ export default function CompanySettlementDetail() {
 
         {/* Policies Table */}
         <Card>
-          <CardHeader>
-            <CardTitle>الوثائق</CardTitle>
+          <CardHeader className="print:pb-2">
+            <CardTitle>الوثائق ({filteredPolicies.length})</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="rounded-lg border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-right">رقم الوثيقة</TableHead>
                     <TableHead className="text-right">العميل</TableHead>
                     <TableHead className="text-right">السيارة</TableHead>
-                    <TableHead className="text-right">نوع السيارة</TableHead>
                     <TableHead className="text-right">نوع التأمين</TableHead>
                     <TableHead className="text-right">تاريخ البداية</TableHead>
-                    <TableHead className="text-right">تاريخ النهاية</TableHead>
                     <TableHead className="text-right">سعر التأمين</TableHead>
                     <TableHead className="text-right">المستحق للشركة</TableHead>
                     <TableHead className="text-right">الربح</TableHead>
-                    <TableHead className="text-right">أنشئ بواسطة</TableHead>
-                    <TableHead className="text-right">شرح الحسبة</TableHead>
+                    <TableHead className="text-right print:hidden">إجراءات</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     Array.from({ length: 10 }).map((_, i) => (
                       <TableRow key={i}>
-                        {Array.from({ length: 13 }).map((_, j) => (
+                        {Array.from({ length: 8 }).map((_, j) => (
                           <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
                         ))}
                       </TableRow>
                     ))
                   ) : filteredPolicies.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                         لا توجد وثائق للفترة المحددة
                       </TableCell>
                     </TableRow>
                   ) : (
                     filteredPolicies.map((policy) => (
-                      <TableRow key={policy.id}>
-                        <TableCell className="font-mono text-xs">
-                          {policy.id.substring(0, 8)}...
-                        </TableCell>
+                      <TableRow 
+                        key={policy.id}
+                        className={cn(
+                          "transition-colors",
+                          policy.cancelled && "opacity-50 bg-muted/30"
+                        )}
+                      >
                         <TableCell className="font-medium">
                           {policy.client?.full_name || '-'}
+                          {policy.cancelled && (
+                            <Badge variant="destructive" className="mr-2 text-xs">ملغية</Badge>
+                          )}
                         </TableCell>
                         <TableCell className="font-mono" dir="ltr">
                           {policy.car?.car_number || '-'}
-                        </TableCell>
-                        <TableCell>
-                          {getCarTypeLabel(policy.car?.car_type || null)}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={getInsuranceTypeBadgeClass(policy.policy_type_parent)}>
@@ -496,7 +593,6 @@ export default function CompanySettlementDetail() {
                           </Badge>
                         </TableCell>
                         <TableCell>{formatDate(policy.start_date)}</TableCell>
-                        <TableCell>{formatDate(policy.end_date)}</TableCell>
                         <TableCell className="font-mono">
                           ₪{Number(policy.insurance_price).toLocaleString('ar-EG')}
                         </TableCell>
@@ -506,18 +602,33 @@ export default function CompanySettlementDetail() {
                         <TableCell className="font-mono text-success">
                           ₪{Number(policy.profit || 0).toLocaleString('ar-EG')}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {policy.creator?.full_name || policy.creator?.email || '-'}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleExplainCalculation(policy)}
-                          >
-                            <Calculator className="h-4 w-4 ml-1" />
-                            شرح
-                          </Button>
+                        <TableCell className="print:hidden">
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleViewPolicy(policy.id)}
+                              title="عرض التفاصيل"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditPolicy(policy.id)}
+                              title="تعديل"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleExplainCalculation(policy)}
+                              title="شرح الحسبة"
+                            >
+                              <Calculator className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
@@ -533,8 +644,16 @@ export default function CompanySettlementDetail() {
       <CalculationExplanationModal
         open={calculationModalOpen}
         onOpenChange={setCalculationModalOpen}
-        policy={selectedPolicy}
+        policy={selectedPolicyForCalc}
         company={company}
+      />
+
+      {/* Policy Details Drawer */}
+      <PolicyDetailsDrawer
+        open={detailsDrawerOpen}
+        onOpenChange={setDetailsDrawerOpen}
+        policyId={selectedPolicyId}
+        onUpdated={handlePolicyUpdated}
       />
     </MainLayout>
   );
