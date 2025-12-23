@@ -132,6 +132,11 @@ export default function CompanySettlementDetail() {
   }, [filteredPolicies]);
 
   useEffect(() => {
+    // Scroll to top when page loads
+    window.scrollTo(0, 0);
+  }, []);
+
+  useEffect(() => {
     if (companyId) {
       fetchCompanyAndPolicies();
     }

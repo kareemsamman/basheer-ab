@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -23,12 +24,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Building2, Download, Wallet, FileText, ChevronLeft, Calendar, RotateCcw, AlertCircle, Printer } from 'lucide-react';
+import { Building2, Download, Wallet, FileText, ChevronLeft, Calendar, RotateCcw, AlertCircle, Printer, AlertTriangle, Eye, Pencil } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
-import { POLICY_TYPE_LABELS } from '@/lib/insuranceTypes';
+import { POLICY_TYPE_LABELS, getInsuranceTypeBadgeClass, POLICY_CHILD_LABELS } from '@/lib/insuranceTypes';
+import { PolicyDetailsDrawer } from '@/components/policies/PolicyDetailsDrawer';
 import type { Tables, Enums } from '@/integrations/supabase/types';
 
 type Broker = Tables<'brokers'>;
@@ -48,6 +50,17 @@ interface CompanyOption {
   company_name_ar: string | null;
 }
 
+interface PolicyWithoutCompany {
+  id: string;
+  policy_type_parent: Enums<'policy_type_parent'>;
+  policy_type_child: Enums<'policy_type_child'> | null;
+  insurance_price: number;
+  start_date: string;
+  cancelled: boolean | null;
+  client_name: string | null;
+  car_number: string | null;
+}
+
 export default function CompanySettlement() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -56,6 +69,15 @@ export default function CompanySettlement() {
   const [data, setData] = useState<CompanySettlementData[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [filteredCompanies, setFilteredCompanies] = useState<CompanyOption[]>([]);
+  
+  // Policies without company
+  const [policiesWithoutCompany, setPoliciesWithoutCompany] = useState<PolicyWithoutCompany[]>([]);
+  const [loadingNoCompany, setLoadingNoCompany] = useState(false);
+  const [activeTab, setActiveTab] = useState('with-company');
+  
+  // Policy details drawer
+  const [selectedPolicyId, setSelectedPolicyId] = useState<string | null>(null);
+  const [detailsDrawerOpen, setDetailsDrawerOpen] = useState(false);
   
   // Filters - default to all time
   const [showAllTime, setShowAllTime] = useState(true);
@@ -77,6 +99,7 @@ export default function CompanySettlement() {
 
   useEffect(() => {
     fetchBrokers();
+    fetchPoliciesWithoutCompany();
   }, []);
 
   useEffect(() => {
@@ -98,6 +121,47 @@ export default function CompanySettlement() {
       setBrokers(brokersData || []);
     } catch (error) {
       console.error('Error fetching brokers:', error);
+    }
+  };
+
+  const fetchPoliciesWithoutCompany = async () => {
+    setLoadingNoCompany(true);
+    try {
+      const { data: policies, error } = await supabase
+        .from('policies')
+        .select(`
+          id,
+          policy_type_parent,
+          policy_type_child,
+          insurance_price,
+          start_date,
+          cancelled,
+          clients (full_name),
+          cars (car_number)
+        `)
+        .is('company_id', null)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(500);
+
+      if (error) throw error;
+
+      const mapped: PolicyWithoutCompany[] = (policies || []).map((p: any) => ({
+        id: p.id,
+        policy_type_parent: p.policy_type_parent,
+        policy_type_child: p.policy_type_child,
+        insurance_price: p.insurance_price,
+        start_date: p.start_date,
+        cancelled: p.cancelled,
+        client_name: p.clients?.full_name || null,
+        car_number: p.cars?.car_number || null,
+      }));
+
+      setPoliciesWithoutCompany(mapped);
+    } catch (error) {
+      console.error('Error fetching policies without company:', error);
+    } finally {
+      setLoadingNoCompany(false);
     }
   };
 
@@ -230,6 +294,27 @@ export default function CompanySettlement() {
     window.print();
   };
 
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('ar-EG');
+  };
+
+  const getInsuranceTypeLabelLocal = (policy: PolicyWithoutCompany) => {
+    if (policy.policy_type_parent === 'THIRD_FULL' && policy.policy_type_child) {
+      return POLICY_CHILD_LABELS[policy.policy_type_child] || policy.policy_type_child;
+    }
+    return POLICY_TYPE_LABELS[policy.policy_type_parent];
+  };
+
+  const handleViewPolicy = (policyId: string) => {
+    setSelectedPolicyId(policyId);
+    setDetailsDrawerOpen(true);
+  };
+
+  const handlePolicyUpdated = () => {
+    fetchSettlementData();
+    fetchPoliciesWithoutCompany();
+  };
+
   // Format the current filter description
   const getFilterDescription = () => {
     const parts: string[] = [];
@@ -271,242 +356,402 @@ export default function CompanySettlement() {
       />
 
       <div className="p-6 space-y-6 print:p-0">
-        {/* Filter Status Banner */}
-        <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border print:hidden">
-          <div className="flex items-center gap-2 text-sm">
-            <AlertCircle className="h-4 w-4 text-muted-foreground" />
-            <span className="text-muted-foreground">النتائج المعروضة:</span>
-            <Badge variant="secondary">{getFilterDescription()}</Badge>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={handleResetFilters}>
-              <RotateCcw className="h-4 w-4 ml-2" />
-              إعادة ضبط
-            </Button>
-          </div>
-        </div>
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="print:hidden">
+          <TabsList>
+            <TabsTrigger value="with-company" className="gap-2">
+              <Building2 className="h-4 w-4" />
+              الوثائق مع شركات ({summary.totalPolicies.toLocaleString('ar-EG')})
+            </TabsTrigger>
+            <TabsTrigger value="no-company" className="gap-2">
+              <AlertTriangle className="h-4 w-4" />
+              بدون شركة ({policiesWithoutCompany.length})
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Filters */}
-        <Card className="print:hidden">
-          <CardContent className="pt-6">
-            <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-              <div className="space-y-2">
-                <Label>الشهر</Label>
-                <Input
-                  type="month"
-                  value={selectedMonth}
-                  onChange={(e) => {
-                    setSelectedMonth(e.target.value);
-                    setShowAllTime(false);
-                  }}
-                  dir="ltr"
-                />
-                {!showAllTime && (
-                  <Button 
-                    variant="link" 
-                    size="sm" 
-                    className="p-0 h-auto text-xs"
-                    onClick={() => setShowAllTime(true)}
-                  >
-                    <Calendar className="h-3 w-3 ml-1" />
-                    عرض كل الفترات
-                  </Button>
-                )}
+          <TabsContent value="with-company" className="space-y-6 mt-6">
+            {/* Filter Status Banner */}
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border">
+              <div className="flex items-center gap-2 text-sm">
+                <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                <span className="text-muted-foreground">النتائج المعروضة:</span>
+                <Badge variant="secondary">{getFilterDescription()}</Badge>
               </div>
-
-              <div className="space-y-2">
-                <Label>الوسيط</Label>
-                <Select value={selectedBroker} onValueChange={setSelectedBroker}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="جميع الوسطاء" />
-                  </SelectTrigger>
-                  <SelectContent align="end">
-                    <SelectItem value="all">جميع الوسطاء</SelectItem>
-                    {brokers.map((broker) => (
-                      <SelectItem key={broker.id} value={broker.id}>
-                        {broker.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>الشركة</Label>
-                <Select value={selectedCompany} onValueChange={setSelectedCompany}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="جميع الشركات" />
-                  </SelectTrigger>
-                  <SelectContent align="end">
-                    <SelectItem value="all">جميع الشركات ({filteredCompanies.length})</SelectItem>
-                    {filteredCompanies.map((company) => (
-                      <SelectItem key={company.company_id} value={company.company_id}>
-                        {company.company_name_ar || company.company_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>نوع الوثيقة</Label>
-                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="جميع الأنواع" />
-                  </SelectTrigger>
-                  <SelectContent align="end">
-                    <SelectItem value="all">جميع الأنواع</SelectItem>
-                    {Object.entries(POLICY_TYPE_LABELS).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>الملغية</Label>
-                <Select 
-                  value={includeCancelled ? 'include' : 'exclude'} 
-                  onValueChange={(v) => setIncludeCancelled(v === 'include')}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent align="end">
-                    <SelectItem value="exclude">استبعاد الملغية</SelectItem>
-                    <SelectItem value="include">تضمين الملغية</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex items-end gap-2">
-                <Button variant="outline" onClick={exportToCSV} className="flex-1">
-                  <Download className="h-4 w-4 ml-2" />
-                  CSV
-                </Button>
-                <Button variant="outline" onClick={handlePrint}>
-                  <Printer className="h-4 w-4" />
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={handleResetFilters}>
+                  <RotateCcw className="h-4 w-4 ml-2" />
+                  إعادة ضبط
                 </Button>
               </div>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Print Header */}
-        <div className="hidden print:block text-center mb-6">
-          <h1 className="text-2xl font-bold">تقرير تسوية الشركات</h1>
-          <p className="text-muted-foreground">{getFilterDescription()}</p>
-        </div>
-
-        {/* Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">عدد الوثائق</p>
-                  <p className="text-2xl font-bold">{summary.totalPolicies.toLocaleString('ar-EG')}</p>
-                </div>
-                <div className="rounded-xl bg-primary/10 p-3 print:hidden">
-                  <FileText className="h-6 w-6 text-primary" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">إجمالي المحصل</p>
-                  <p className="text-2xl font-bold">₪{summary.totalInsurancePrice.toLocaleString('ar-EG')}</p>
-                </div>
-                <div className="rounded-xl bg-blue-500/10 p-3 print:hidden">
-                  <Wallet className="h-6 w-6 text-blue-500" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">المستحق للشركات</p>
-                  <p className="text-2xl font-bold text-destructive">₪{summary.totalCompanyPayment.toLocaleString('ar-EG')}</p>
-                </div>
-                <div className="rounded-xl bg-destructive/10 p-3 print:hidden">
-                  <Building2 className="h-6 w-6 text-destructive" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Data Table */}
-        <Card>
-          <CardHeader className="print:pb-2">
-            <CardTitle>تفاصيل التسوية حسب الشركة</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-lg border">
-              <Table>
-                <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-right">الشركة</TableHead>
-                      <TableHead className="text-right">عدد الوثائق</TableHead>
-                      <TableHead className="text-right">إجمالي المحصل</TableHead>
-                      <TableHead className="text-right">المستحق للشركة</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                      Array.from({ length: 5 }).map((_, i) => (
-                        <TableRow key={i}>
-                          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                        </TableRow>
-                      ))
-                  ) : data.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                        لا توجد بيانات للفترة المحددة
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    data.map((item, index) => (
-                      <TableRow 
-                        key={index}
-                        onClick={() => navigate(`/reports/company-settlement/${item.company_id}`)}
-                        className={cn(
-                          "cursor-pointer transition-colors print:cursor-default",
-                          "hover:bg-secondary/50"
-                        )}
+            {/* Filters */}
+            <Card>
+              <CardContent className="pt-6">
+                <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+                  <div className="space-y-2">
+                    <Label>الشهر</Label>
+                    <Input
+                      type="month"
+                      value={selectedMonth}
+                      onChange={(e) => {
+                        setSelectedMonth(e.target.value);
+                        setShowAllTime(false);
+                      }}
+                      dir="ltr"
+                    />
+                    {!showAllTime && (
+                      <Button 
+                        variant="link" 
+                        size="sm" 
+                        className="p-0 h-auto text-xs"
+                        onClick={() => setShowAllTime(true)}
                       >
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            {item.company_name_ar || item.company_name}
-                            <ChevronLeft className="h-4 w-4 text-muted-foreground print:hidden" />
-                          </div>
-                        </TableCell>
-                        <TableCell>{item.policy_count.toLocaleString('ar-EG')}</TableCell>
-                        <TableCell>₪{item.total_insurance_price.toLocaleString('ar-EG')}</TableCell>
-                        <TableCell className="text-destructive font-medium">
-                          ₪{item.total_company_payment.toLocaleString('ar-EG')}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                        <Calendar className="h-3 w-3 ml-1" />
+                        عرض كل الفترات
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>الوسيط</Label>
+                    <Select value={selectedBroker} onValueChange={setSelectedBroker}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="جميع الوسطاء" />
+                      </SelectTrigger>
+                      <SelectContent align="end">
+                        <SelectItem value="all">جميع الوسطاء</SelectItem>
+                        {brokers.map((broker) => (
+                          <SelectItem key={broker.id} value={broker.id}>
+                            {broker.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>الشركة</Label>
+                    <Select value={selectedCompany} onValueChange={setSelectedCompany}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="جميع الشركات" />
+                      </SelectTrigger>
+                      <SelectContent align="end">
+                        <SelectItem value="all">جميع الشركات ({filteredCompanies.length})</SelectItem>
+                        {filteredCompanies.map((company) => (
+                          <SelectItem key={company.company_id} value={company.company_id}>
+                            {company.company_name_ar || company.company_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>نوع الوثيقة</Label>
+                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="جميع الأنواع" />
+                      </SelectTrigger>
+                      <SelectContent align="end">
+                        <SelectItem value="all">جميع الأنواع</SelectItem>
+                        {Object.entries(POLICY_TYPE_LABELS).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>الملغية</Label>
+                    <Select 
+                      value={includeCancelled ? 'include' : 'exclude'} 
+                      onValueChange={(v) => setIncludeCancelled(v === 'include')}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent align="end">
+                        <SelectItem value="exclude">استبعاد الملغية</SelectItem>
+                        <SelectItem value="include">تضمين الملغية</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-end gap-2">
+                    <Button variant="outline" onClick={exportToCSV} className="flex-1">
+                      <Download className="h-4 w-4 ml-2" />
+                      CSV
+                    </Button>
+                    <Button variant="outline" onClick={handlePrint}>
+                      <Printer className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Summary Cards */}
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">عدد الوثائق</p>
+                      <p className="text-2xl font-bold">{summary.totalPolicies.toLocaleString('ar-EG')}</p>
+                    </div>
+                    <div className="rounded-xl bg-primary/10 p-3">
+                      <FileText className="h-6 w-6 text-primary" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">إجمالي المحصل</p>
+                      <p className="text-2xl font-bold">₪{summary.totalInsurancePrice.toLocaleString('ar-EG')}</p>
+                    </div>
+                    <div className="rounded-xl bg-blue-500/10 p-3">
+                      <Wallet className="h-6 w-6 text-blue-500" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">المستحق للشركات</p>
+                      <p className="text-2xl font-bold text-destructive">₪{summary.totalCompanyPayment.toLocaleString('ar-EG')}</p>
+                    </div>
+                    <div className="rounded-xl bg-destructive/10 p-3">
+                      <Building2 className="h-6 w-6 text-destructive" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-          </CardContent>
-        </Card>
+
+            {/* Data Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle>تفاصيل التسوية حسب الشركة</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-right">الشركة</TableHead>
+                          <TableHead className="text-right">عدد الوثائق</TableHead>
+                          <TableHead className="text-right">إجمالي المحصل</TableHead>
+                          <TableHead className="text-right">المستحق للشركة</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {loading ? (
+                          Array.from({ length: 5 }).map((_, i) => (
+                            <TableRow key={i}>
+                              <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                              <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                              <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                              <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                            </TableRow>
+                          ))
+                      ) : data.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                            لا توجد بيانات للفترة المحددة
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        data.map((item, index) => (
+                          <TableRow 
+                            key={index}
+                            onClick={() => navigate(`/reports/company-settlement/${item.company_id}`)}
+                            className={cn(
+                              "cursor-pointer transition-colors",
+                              "hover:bg-secondary/50"
+                            )}
+                          >
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                {item.company_name_ar || item.company_name}
+                                <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+                              </div>
+                            </TableCell>
+                            <TableCell>{item.policy_count.toLocaleString('ar-EG')}</TableCell>
+                            <TableCell>₪{item.total_insurance_price.toLocaleString('ar-EG')}</TableCell>
+                            <TableCell className="text-destructive font-medium">
+                              ₪{item.total_company_payment.toLocaleString('ar-EG')}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="no-company" className="space-y-6 mt-6">
+            {/* Warning Banner */}
+            <div className="flex items-center gap-3 p-4 rounded-lg bg-warning/10 border border-warning/30">
+              <AlertTriangle className="h-5 w-5 text-warning" />
+              <div>
+                <p className="font-medium">وثائق بدون شركة تأمين</p>
+                <p className="text-sm text-muted-foreground">
+                  هذه الوثائق لم يتم تحديد شركة التأمين لها. يجب تحديث كل وثيقة وإضافة الشركة المناسبة.
+                </p>
+              </div>
+            </div>
+
+            {/* No Company Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-warning" />
+                  وثائق بدون شركة ({policiesWithoutCompany.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-right">العميل</TableHead>
+                        <TableHead className="text-right">السيارة</TableHead>
+                        <TableHead className="text-right">نوع التأمين</TableHead>
+                        <TableHead className="text-right">تاريخ البداية</TableHead>
+                        <TableHead className="text-right">السعر</TableHead>
+                        <TableHead className="text-right">الحالة</TableHead>
+                        <TableHead className="text-right">إجراءات</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {loadingNoCompany ? (
+                        Array.from({ length: 5 }).map((_, i) => (
+                          <TableRow key={i}>
+                            {Array.from({ length: 7 }).map((_, j) => (
+                              <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
+                            ))}
+                          </TableRow>
+                        ))
+                      ) : policiesWithoutCompany.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                            لا توجد وثائق بدون شركة 🎉
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        policiesWithoutCompany.map((policy) => (
+                          <TableRow key={policy.id}>
+                            <TableCell className="font-medium">
+                              {policy.client_name || '-'}
+                            </TableCell>
+                            <TableCell className="font-mono" dir="ltr">
+                              {policy.car_number || '-'}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={getInsuranceTypeBadgeClass(policy.policy_type_parent)}>
+                                {getInsuranceTypeLabelLocal(policy)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{formatDate(policy.start_date)}</TableCell>
+                            <TableCell className="font-mono">
+                              ₪{Number(policy.insurance_price).toLocaleString('ar-EG')}
+                            </TableCell>
+                            <TableCell>
+                              {policy.cancelled ? (
+                                <Badge variant="destructive">ملغية</Badge>
+                              ) : (
+                                <Badge variant="secondary">نشطة</Badge>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleViewPolicy(policy.id)}
+                                  title="عرض وتعديل"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {/* Print-only content */}
+        <div className="hidden print:block">
+          <div className="text-center mb-6">
+            <h1 className="text-2xl font-bold">تقرير تسوية الشركات</h1>
+            <p className="text-muted-foreground">{getFilterDescription()}</p>
+          </div>
+
+          {/* Summary for print */}
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="border p-4 text-center">
+              <p className="text-sm text-muted-foreground">عدد الوثائق</p>
+              <p className="text-xl font-bold">{summary.totalPolicies.toLocaleString('ar-EG')}</p>
+            </div>
+            <div className="border p-4 text-center">
+              <p className="text-sm text-muted-foreground">إجمالي المحصل</p>
+              <p className="text-xl font-bold">₪{summary.totalInsurancePrice.toLocaleString('ar-EG')}</p>
+            </div>
+            <div className="border p-4 text-center">
+              <p className="text-sm text-muted-foreground">المستحق للشركات</p>
+              <p className="text-xl font-bold">₪{summary.totalCompanyPayment.toLocaleString('ar-EG')}</p>
+            </div>
+          </div>
+
+          {/* Table for print */}
+          <table className="w-full border-collapse">
+            <thead>
+              <tr>
+                <th className="border p-2 text-right bg-muted">الشركة</th>
+                <th className="border p-2 text-right bg-muted">عدد الوثائق</th>
+                <th className="border p-2 text-right bg-muted">إجمالي المحصل</th>
+                <th className="border p-2 text-right bg-muted">المستحق للشركة</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((item, index) => (
+                <tr key={index}>
+                  <td className="border p-2">{item.company_name_ar || item.company_name}</td>
+                  <td className="border p-2">{item.policy_count.toLocaleString('ar-EG')}</td>
+                  <td className="border p-2">₪{item.total_insurance_price.toLocaleString('ar-EG')}</td>
+                  <td className="border p-2">₪{item.total_company_payment.toLocaleString('ar-EG')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      {/* Policy Details Drawer */}
+      <PolicyDetailsDrawer
+        open={detailsDrawerOpen}
+        onOpenChange={setDetailsDrawerOpen}
+        policyId={selectedPolicyId}
+        onUpdated={handlePolicyUpdated}
+      />
     </MainLayout>
   );
 }
