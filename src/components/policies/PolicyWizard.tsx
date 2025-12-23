@@ -953,6 +953,10 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
           if (policy.policy_type_parent === 'THIRD_FULL' && !policy.policy_type_child) {
             newErrors.policy_type_child = "النوع الفرعي مطلوب";
           }
+          // Broker direction required when broker is selected
+          if (policyBrokerId && policyBrokerId !== 'none' && !brokerDirection) {
+            newErrors.broker_direction = "الرجاء اختيار نوع التعامل مع الوسيط";
+          }
           break;
       }
     }
@@ -996,8 +1000,10 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
         }
         case 2:
           return !!(selectedCar || existingCar || (createNewCar && newCar.car_number && !carConflict));
-        case 3:
-          return !!(policy.policy_type_parent && policy.company_id && policy.start_date && policy.end_date && policy.insurance_price);
+        case 3: {
+          const brokerDirectionOk = !policyBrokerId || policyBrokerId === 'none' || !!brokerDirection;
+          return !!(policy.policy_type_parent && policy.company_id && policy.start_date && policy.end_date && policy.insurance_price && brokerDirectionOk);
+        }
         case 4:
           // Block if payments exceed insurance price or has unpaid visa payments
           return !paymentsExceedPrice && !hasUnpaidVisaPayment;
@@ -1378,32 +1384,8 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
           {/* Step 1: Client */}
           {currentStep === 1 && (
             <div className="space-y-4">
-              {/* Branch and Broker Selection Row */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-secondary/30 rounded-lg border">
-                {/* Branch Selection */}
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium flex items-center gap-2">
-                    <Building2 className="h-4 w-4" />
-                    الفرع
-                  </Label>
-                  <Select 
-                    value={selectedBranchId} 
-                    onValueChange={setSelectedBranchId}
-                    disabled={!isAdmin}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="اختر الفرع" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {branches.map((branch) => (
-                        <SelectItem key={branch.id} value={branch.id}>
-                          {branch.name_ar || branch.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
+              {/* Broker Selection Row */}
+              <div className="p-4 bg-secondary/30 rounded-lg border">
                 {/* Broker Selection */}
                 <div className="space-y-2">
                   <Label className="text-sm font-medium flex items-center gap-2">
@@ -1434,52 +1416,6 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
                   </Select>
                 </div>
               </div>
-
-              {/* Broker Direction - Only show when broker is selected */}
-              {policyBrokerId && policyBrokerId !== 'none' && (
-                <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
-                  <Label className="text-sm font-medium flex items-center gap-2 mb-3">
-                    <ArrowLeftRight className="h-4 w-4" />
-                    نوع التعامل مع الوسيط
-                  </Label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Card 
-                      className={cn(
-                        "p-3 cursor-pointer transition-all",
-                        brokerDirection === 'from_broker' 
-                          ? "border-primary bg-primary/10 ring-2 ring-primary/30" 
-                          : "hover:bg-secondary/50"
-                      )}
-                      onClick={() => setBrokerDirection('from_broker')}
-                    >
-                      <div className="text-center">
-                        <p className="font-medium text-sm">الوسيط يعمل لي</p>
-                        <p className="text-xs text-muted-foreground mt-1">الوسيط جلب لي هذا التأمين</p>
-                        {brokerDirection === 'from_broker' && (
-                          <Check className="h-4 w-4 text-primary mx-auto mt-2" />
-                        )}
-                      </div>
-                    </Card>
-                    <Card 
-                      className={cn(
-                        "p-3 cursor-pointer transition-all",
-                        brokerDirection === 'to_broker' 
-                          ? "border-primary bg-primary/10 ring-2 ring-primary/30" 
-                          : "hover:bg-secondary/50"
-                      )}
-                      onClick={() => setBrokerDirection('to_broker')}
-                    >
-                      <div className="text-center">
-                        <p className="font-medium text-sm">أنا أعمل للوسيط</p>
-                        <p className="text-xs text-muted-foreground mt-1">أنا عملت هذا التأمين للوسيط</p>
-                        {brokerDirection === 'to_broker' && (
-                          <Check className="h-4 w-4 text-primary mx-auto mt-2" />
-                        )}
-                      </div>
-                    </Card>
-                  </div>
-                </div>
-              )}
 
               {/* Category Selector */}
               <div className="mb-4">
@@ -2081,6 +2017,56 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
                       placeholder="ملاحظات إضافية"
                     />
                   </div>
+
+                  {/* Broker Direction - Only show when broker is selected */}
+                  {policyBrokerId && policyBrokerId !== 'none' && (
+                    <div className={cn(
+                      "p-4 rounded-lg border",
+                      errors.broker_direction ? "border-destructive bg-destructive/5" : "bg-primary/5 border-primary/20"
+                    )}>
+                      <Label className="text-sm font-medium flex items-center gap-2 mb-3">
+                        <ArrowLeftRight className="h-4 w-4" />
+                        نوع التعامل مع الوسيط *
+                      </Label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Card 
+                          className={cn(
+                            "p-3 cursor-pointer transition-all",
+                            brokerDirection === 'from_broker' 
+                              ? "border-primary bg-primary/10 ring-2 ring-primary/30" 
+                              : "hover:bg-secondary/50"
+                          )}
+                          onClick={() => setBrokerDirection('from_broker')}
+                        >
+                          <div className="text-center">
+                            <p className="font-medium text-sm">عميلي عن طريقه</p>
+                            <p className="text-xs text-muted-foreground mt-1">الوسيط جلب لي هذا العميل - لي عليه</p>
+                            {brokerDirection === 'from_broker' && (
+                              <Check className="h-4 w-4 text-primary mx-auto mt-2" />
+                            )}
+                          </div>
+                        </Card>
+                        <Card 
+                          className={cn(
+                            "p-3 cursor-pointer transition-all",
+                            brokerDirection === 'to_broker' 
+                              ? "border-primary bg-primary/10 ring-2 ring-primary/30" 
+                              : "hover:bg-secondary/50"
+                          )}
+                          onClick={() => setBrokerDirection('to_broker')}
+                        >
+                          <div className="text-center">
+                            <p className="font-medium text-sm">عملت للوسيط</p>
+                            <p className="text-xs text-muted-foreground mt-1">أنا عملت للوسيط - عليه لي</p>
+                            {brokerDirection === 'to_broker' && (
+                              <Check className="h-4 w-4 text-primary mx-auto mt-2" />
+                            )}
+                          </div>
+                        </Card>
+                      </div>
+                      <FieldError error={errors.broker_direction} />
+                    </div>
+                  )}
 
                   {/* File Upload Section - Insurance Files */}
                   <div className="space-y-3">

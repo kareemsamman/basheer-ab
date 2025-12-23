@@ -20,7 +20,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Phone,
-  Users,
   FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -238,10 +237,9 @@ export default function Brokers() {
                 <TableRow className="border-border/50 hover:bg-transparent">
                   <TableHead className="text-muted-foreground font-medium">الوسيط</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الهاتف</TableHead>
-                  <TableHead className="text-muted-foreground font-medium text-center">العملاء</TableHead>
                   <TableHead className="text-muted-foreground font-medium text-center">الوثائق</TableHead>
                   <TableHead className="text-muted-foreground font-medium">المحصل</TableHead>
-                  <TableHead className="text-muted-foreground font-medium">المتبقي</TableHead>
+                  <TableHead className="text-muted-foreground font-medium">لي عليه</TableHead>
                   <TableHead className="text-muted-foreground font-medium w-[80px]">إجراءات</TableHead>
                 </TableRow>
               </TableHeader>
@@ -252,8 +250,6 @@ export default function Brokers() {
                       <TableCell><Skeleton className="h-10 w-40" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-28" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-12 mx-auto" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-12 mx-auto" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                       <TableCell><Skeleton className="h-8 w-8" /></TableCell>
@@ -261,7 +257,7 @@ export default function Brokers() {
                   ))
                 ) : brokers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       لا توجد بيانات
                     </TableCell>
                   </TableRow>
@@ -290,9 +286,9 @@ export default function Brokers() {
                       </TableCell>
                       <TableCell>
                         {broker.phone ? (
-                          <div className="flex items-center gap-1 text-sm text-muted-foreground" dir="ltr">
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
                             <Phone className="h-3 w-3" />
-                            {broker.phone}
+                            <span className="text-left">{broker.phone}</span>
                           </div>
                         ) : (
                           "-"
@@ -300,23 +296,17 @@ export default function Brokers() {
                       </TableCell>
                       <TableCell className="text-center">
                         <div className="flex items-center justify-center gap-1 text-sm">
-                          <Users className="h-3 w-3 text-muted-foreground" />
-                          <span>{broker.client_count}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-1 text-sm">
                           <FileText className="h-3 w-3 text-muted-foreground" />
                           <span>{broker.policy_count}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-success font-medium" dir="ltr">
+                      <TableCell className="text-success font-medium">
                         {formatCurrency(broker.total_collected)}
                       </TableCell>
                       <TableCell className={cn(
                         "font-medium",
                         broker.total_remaining > 0 ? "text-destructive" : "text-muted-foreground"
-                      )} dir="ltr">
+                      )}>
                         {formatCurrency(broker.total_remaining)}
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>

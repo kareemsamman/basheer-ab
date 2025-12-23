@@ -398,7 +398,7 @@ export default function CompanySettlement() {
                         setSelectedMonth(e.target.value);
                         setShowAllTime(false);
                       }}
-                      dir="ltr"
+                      className="text-left"
                     />
                     {!showAllTime && (
                       <Button 
