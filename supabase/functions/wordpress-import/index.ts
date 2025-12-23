@@ -1048,78 +1048,165 @@ Deno.serve(async (req) => {
       });
     }
 
-// Action: Link policies without company_id to companies using JSON company_name data
-    if (action === 'linkPoliciesToCompanies') {
-      const { policyCompanyMap } = data || {};
-      console.log('Linking policies to companies using JSON data...');
-      
-      // Get all policies without company_id
-      const { data: orphanPolicies, error: fetchError } = await supabase
-        .from('policies')
-        .select('id, legacy_wp_id')
-        .is('company_id', null)
-        .is('deleted_at', null);
-      
-      if (fetchError) throw fetchError;
-      console.log(`Found ${orphanPolicies?.length || 0} policies without company`);
-      
-      // Get all companies for matching
-      const { data: companies } = await supabase
-        .from('insurance_companies')
-        .select('id, name, name_ar');
-      
-      // Build company map with both name and name_ar for flexible matching
-      const companyMap: Record<string, string> = {};
-      for (const c of companies || []) {
-        if (c.name) {
-          companyMap[c.name.toLowerCase().trim()] = c.id;
-        }
-        if (c.name_ar) {
-          companyMap[c.name_ar.toLowerCase().trim()] = c.id;
-        }
-      }
-      console.log(`Company map has ${Object.keys(companyMap).length} entries`);
-      
-      let linked = 0;
-      const notFoundSet = new Set<string>();
-      
-      for (const policy of orphanPolicies || []) {
-        // Get company_name from the provided policyCompanyMap (legacy_wp_id -> company_name)
-        const companyName = policyCompanyMap?.[policy.legacy_wp_id];
-        
-        if (companyName) {
-          const normalizedName = companyName.toLowerCase().trim();
-          const companyId = companyMap[normalizedName];
-          
-          if (companyId) {
-            const { error: updateError } = await supabase
-              .from('policies')
-              .update({ company_id: companyId })
-              .eq('id', policy.id);
-            
-            if (!updateError) {
-              linked++;
-            } else {
-              console.error(`Failed to update policy ${policy.id}:`, updateError);
-            }
-          } else {
-            notFoundSet.add(companyName);
-          }
-        }
-      }
-      
-      console.log(`Linked ${linked} policies, ${notFoundSet.size} company names not found`);
-      console.log('Not found companies:', Array.from(notFoundSet).slice(0, 10));
-      
-      return new Response(JSON.stringify({ 
-        success: true, 
-        found: orphanPolicies?.length || 0,
-        linked,
-        notFound: Array.from(notFoundSet).slice(0, 100),
-      }), {
+  // Action: Bulk assign company_id to unlinked policies (no JSON needed)
+  if (action === 'bulkAssignCompany') {
+    const { companyId, policyTypeFilter } = data || {};
+    
+    if (!companyId) {
+      return new Response(JSON.stringify({ success: false, error: 'companyId is required' }), {
+        status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    
+    console.log(`Bulk assigning company ${companyId} to unlinked policies...`);
+    
+    // Get count of policies without company_id
+    let query = supabase
+      .from('policies')
+      .select('id', { count: 'exact' })
+      .is('company_id', null)
+      .is('deleted_at', null);
+    
+    if (policyTypeFilter) {
+      query = query.eq('policy_type_parent', policyTypeFilter);
+    }
+    
+    const { data: policies, count } = await query;
+    
+    if (!policies || policies.length === 0) {
+      return new Response(JSON.stringify({ success: true, linked: 0, total: 0 }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
+    // Batch update all at once
+    const policyIds = policies.map(p => p.id);
+    let linked = 0;
+    
+    // Update in batches of 500
+    for (let i = 0; i < policyIds.length; i += 500) {
+      const batch = policyIds.slice(i, i + 500);
+      const { error } = await supabase
+        .from('policies')
+        .update({ company_id: companyId })
+        .in('id', batch);
+      
+      if (!error) {
+        linked += batch.length;
+      } else {
+        console.error(`Batch update failed:`, error);
+      }
+    }
+    
+    console.log(`Bulk assigned ${linked} policies to company ${companyId}`);
+    
+    return new Response(JSON.stringify({ 
+      success: true, 
+      linked,
+      total: count || 0,
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Action: Get unlinked policies stats
+  if (action === 'getUnlinkedPoliciesStats') {
+    const { data: stats, error } = await supabase
+      .from('policies')
+      .select('policy_type_parent')
+      .is('company_id', null)
+      .is('deleted_at', null);
+    
+    if (error) throw error;
+    
+    // Group by policy_type_parent
+    const grouped: Record<string, number> = {};
+    for (const p of stats || []) {
+      grouped[p.policy_type_parent] = (grouped[p.policy_type_parent] || 0) + 1;
+    }
+    
+    return new Response(JSON.stringify({ 
+      success: true, 
+      total: stats?.length || 0,
+      byType: grouped,
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Action: Link policies without company_id to companies using JSON company_name data
+  if (action === 'linkPoliciesToCompanies') {
+    const { policyCompanyMap } = data || {};
+    console.log('Linking policies to companies using JSON data...');
+    
+    // Get all policies without company_id
+    const { data: orphanPolicies, error: fetchError } = await supabase
+      .from('policies')
+      .select('id, legacy_wp_id')
+      .is('company_id', null)
+      .is('deleted_at', null);
+    
+    if (fetchError) throw fetchError;
+    console.log(`Found ${orphanPolicies?.length || 0} policies without company`);
+    
+    // Get all companies for matching
+    const { data: companies } = await supabase
+      .from('insurance_companies')
+      .select('id, name, name_ar');
+    
+    // Build company map with both name and name_ar for flexible matching
+    const companyMap: Record<string, string> = {};
+    for (const c of companies || []) {
+      if (c.name) {
+        companyMap[c.name.toLowerCase().trim()] = c.id;
+      }
+      if (c.name_ar) {
+        companyMap[c.name_ar.toLowerCase().trim()] = c.id;
+      }
+    }
+    console.log(`Company map has ${Object.keys(companyMap).length} entries`);
+    
+    let linked = 0;
+    const notFoundSet = new Set<string>();
+    
+    for (const policy of orphanPolicies || []) {
+      // Get company_name from the provided policyCompanyMap (legacy_wp_id -> company_name)
+      const companyName = policyCompanyMap?.[policy.legacy_wp_id];
+      
+      if (companyName) {
+        const normalizedName = companyName.toLowerCase().trim();
+        const companyId = companyMap[normalizedName];
+        
+        if (companyId) {
+          const { error: updateError } = await supabase
+            .from('policies')
+            .update({ company_id: companyId })
+            .eq('id', policy.id);
+          
+          if (!updateError) {
+            linked++;
+          } else {
+            console.error(`Failed to update policy ${policy.id}:`, updateError);
+          }
+        } else {
+          notFoundSet.add(companyName);
+        }
+      }
+    }
+    
+    console.log(`Linked ${linked} policies, ${notFoundSet.size} company names not found`);
+    console.log('Not found companies:', Array.from(notFoundSet).slice(0, 10));
+    
+    return new Response(JSON.stringify({ 
+      success: true, 
+      found: orphanPolicies?.length || 0,
+      linked,
+      notFound: Array.from(notFoundSet).slice(0, 100),
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
 
     // Action: Import media with parallel upload, persistent cursor, batched
     if (action === 'importMediaBatchParallel') {
