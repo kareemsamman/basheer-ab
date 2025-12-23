@@ -75,15 +75,20 @@
   }
 
   /* RTL: Tables default to right-aligned */
-  [dir="rtl"] table th,
-  [dir="rtl"] table td {
+  table th,
+  table td {
     text-align: right;
   }
 
   /* RTL: Action columns centered */
-  [dir="rtl"] table th.text-center,
-  [dir="rtl"] table td.text-center {
+  table th.text-center,
+  table td.text-center {
     text-align: center;
+  }
+
+  /* RTL: Ensure grids flow correctly */
+  .grid {
+    direction: rtl;
   }
 
   /* Light glass effect */

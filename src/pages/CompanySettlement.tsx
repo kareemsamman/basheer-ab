@@ -355,7 +355,7 @@ export default function CompanySettlement() {
         subtitle="ملخص المبالغ المستحقة للشركات والأرباح"
       />
 
-      <div className="p-6 space-y-6 print:p-0">
+      <div className="p-6 space-y-6 print:p-0" dir="rtl">
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="print:hidden">
           <TabsList>
@@ -388,7 +388,7 @@ export default function CompanySettlement() {
             {/* Filters */}
             <Card>
               <CardContent className="pt-6">
-                <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-6 gap-4" dir="rtl">
                   <div className="space-y-2">
                     <Label>الشهر</Label>
                     <Input
