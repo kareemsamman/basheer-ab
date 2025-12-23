@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Building2, Download, TrendingUp, Wallet, FileText, ChevronLeft } from 'lucide-react';
+import { Building2, Download, Wallet, FileText, ChevronLeft, Users } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -32,6 +32,7 @@ import { POLICY_TYPE_LABELS, getInsuranceTypeBadgeClass } from '@/lib/insuranceT
 import type { Tables, Enums } from '@/integrations/supabase/types';
 
 type Company = Tables<'insurance_companies'>;
+type Broker = Tables<'brokers'>;
 
 interface CompanySettlementData {
   company_id: string;
@@ -50,6 +51,8 @@ export default function CompanySettlement() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<CompanySettlementData[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [filteredCompanies, setFilteredCompanies] = useState<Company[]>([]);
   
   // Filters
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -58,6 +61,7 @@ export default function CompanySettlement() {
   });
   const [selectedCompany, setSelectedCompany] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedBroker, setSelectedBroker] = useState<string>('all');
   const [includeCancelled, setIncludeCancelled] = useState(false);
 
   // Summary totals
@@ -68,25 +72,81 @@ export default function CompanySettlement() {
   });
 
   useEffect(() => {
-    fetchCompanies();
+    fetchInitialData();
   }, []);
 
   useEffect(() => {
+    fetchFilteredCompanies();
+  }, [selectedMonth, selectedCategory, selectedBroker, companies]);
+
+  useEffect(() => {
     fetchSettlementData();
-  }, [selectedMonth, selectedCompany, selectedCategory, includeCancelled]);
+  }, [selectedMonth, selectedCompany, selectedCategory, selectedBroker, includeCancelled]);
 
-  const fetchCompanies = async () => {
+  const fetchInitialData = async () => {
     try {
-      const { data, error } = await supabase
-        .from('insurance_companies')
-        .select('*')
-        .or('active.is.null,active.eq.true')
-        .order('name_ar');
+      const [companiesRes, brokersRes] = await Promise.all([
+        supabase
+          .from('insurance_companies')
+          .select('*')
+          .or('active.is.null,active.eq.true')
+          .order('name_ar'),
+        supabase
+          .from('brokers')
+          .select('*')
+          .order('name')
+      ]);
 
-      if (error) throw error;
-      setCompanies(data || []);
+      if (companiesRes.error) throw companiesRes.error;
+      if (brokersRes.error) throw brokersRes.error;
+      
+      setCompanies(companiesRes.data || []);
+      setBrokers(brokersRes.data || []);
     } catch (error) {
-      console.error('Error fetching companies:', error);
+      console.error('Error fetching initial data:', error);
+    }
+  };
+
+  // Fetch companies that have policies matching current filters (for dropdown)
+  const fetchFilteredCompanies = async () => {
+    try {
+      const [year, month] = selectedMonth.split('-').map(Number);
+      const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
+      const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+
+      let query = supabase
+        .from('policies')
+        .select('company_id')
+        .is('deleted_at', null)
+        .not('company_id', 'is', null)
+        .gte('start_date', startDate)
+        .lte('start_date', endDate);
+
+      if (selectedBroker !== 'all') {
+        query = query.eq('broker_id', selectedBroker);
+      }
+
+      if (selectedCategory !== 'all') {
+        query = query.eq('policy_type_parent', selectedCategory as Enums<'policy_type_parent'>);
+      }
+
+      const { data: policies, error } = await query;
+      if (error) throw error;
+
+      // Get distinct company IDs
+      const companyIds = [...new Set(policies?.map(p => p.company_id).filter(Boolean) || [])];
+      
+      // Filter companies to only those with matching policies
+      const filtered = companies.filter(c => companyIds.includes(c.id));
+      setFilteredCompanies(filtered);
+
+      // Clear selected company if it's no longer valid
+      if (selectedCompany !== 'all' && !companyIds.includes(selectedCompany)) {
+        setSelectedCompany('all');
+      }
+    } catch (error) {
+      console.error('Error fetching filtered companies:', error);
+      setFilteredCompanies(companies);
     }
   };
 
@@ -98,7 +158,7 @@ export default function CompanySettlement() {
       const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
       const endDate = new Date(year, month, 0).toISOString().split('T')[0];
 
-      // Build query
+      // Build query - policies as base
       let query = supabase
         .from('policies')
         .select(`
@@ -108,6 +168,7 @@ export default function CompanySettlement() {
           payed_for_company,
           company_id,
           cancelled,
+          broker_id,
           insurance_companies!inner (
             id,
             name,
@@ -128,6 +189,10 @@ export default function CompanySettlement() {
 
       if (selectedCategory !== 'all') {
         query = query.eq('policy_type_parent', selectedCategory as Enums<'policy_type_parent'>);
+      }
+
+      if (selectedBroker !== 'all') {
+        query = query.eq('broker_id', selectedBroker);
       }
 
       const { data: policies, error } = await query;
@@ -232,7 +297,7 @@ export default function CompanySettlement() {
         {/* Filters */}
         <Card>
           <CardContent className="pt-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <div className="space-y-2">
                 <Label>الشهر</Label>
                 <Input
@@ -244,14 +309,31 @@ export default function CompanySettlement() {
               </div>
 
               <div className="space-y-2">
+                <Label>الوسيط</Label>
+                <Select value={selectedBroker} onValueChange={setSelectedBroker}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="جميع الوسطاء" />
+                  </SelectTrigger>
+                  <SelectContent align="end">
+                    <SelectItem value="all">جميع الوسطاء</SelectItem>
+                    {brokers.map((broker) => (
+                      <SelectItem key={broker.id} value={broker.id}>
+                        {broker.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
                 <Label>الشركة</Label>
                 <Select value={selectedCompany} onValueChange={setSelectedCompany}>
                   <SelectTrigger>
                     <SelectValue placeholder="جميع الشركات" />
                   </SelectTrigger>
                   <SelectContent align="end">
-                    <SelectItem value="all">جميع الشركات</SelectItem>
-                    {companies.map((company) => (
+                    <SelectItem value="all">جميع الشركات ({filteredCompanies.length})</SelectItem>
+                    {filteredCompanies.map((company) => (
                       <SelectItem key={company.id} value={company.id}>
                         {company.name_ar || company.name}
                       </SelectItem>
