@@ -11,10 +11,12 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Upload, Trash2, FileJson, AlertTriangle, CheckCircle2, XCircle, Loader2, Clock, Download, RefreshCw, Link2, Play } from "lucide-react";
+import { POLICY_TYPE_LABELS } from "@/lib/insuranceTypes";
 
 interface PreviewCounts {
   insuranceCompanies: number;
@@ -881,6 +883,64 @@ const WordPressImport = () => {
     }
   };
 
+  // Bulk assign company to unlinked policies (no JSON needed)
+  const [bulkCompanyId, setBulkCompanyId] = useState<string>('');
+  const [bulkPolicyType, setBulkPolicyType] = useState<string>('all');
+  const [bulkAssigning, setBulkAssigning] = useState(false);
+  const [unlinkedStats, setUnlinkedStats] = useState<{ total: number; byType: Record<string, number> } | null>(null);
+  const [companies, setCompanies] = useState<{ id: string; name: string; name_ar: string | null }[]>([]);
+
+  // Fetch companies and unlinked stats on mount
+  useEffect(() => {
+    const fetchData = async () => {
+      const { data: comps } = await supabase.from('insurance_companies').select('id, name, name_ar').eq('active', true);
+      setCompanies(comps || []);
+      
+      const { data: stats } = await supabase.functions.invoke('wordpress-import', {
+        body: { action: 'getUnlinkedPoliciesStats' }
+      });
+      if (stats) setUnlinkedStats(stats);
+    };
+    fetchData();
+  }, []);
+
+  const handleBulkAssignCompany = async () => {
+    if (!bulkCompanyId) {
+      toast({ title: "خطأ", description: "يرجى اختيار شركة التأمين", variant: "destructive" });
+      return;
+    }
+
+    setBulkAssigning(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('wordpress-import', {
+        body: { 
+          action: 'bulkAssignCompany',
+          data: { 
+            companyId: bulkCompanyId,
+            policyTypeFilter: bulkPolicyType === 'all' ? null : bulkPolicyType
+          }
+        }
+      });
+
+      if (error) throw error;
+
+      toast({ 
+        title: "تم الربط", 
+        description: `تم ربط ${data.linked} وثيقة بالشركة` 
+      });
+      
+      // Refresh stats
+      const { data: newStats } = await supabase.functions.invoke('wordpress-import', {
+        body: { action: 'getUnlinkedPoliciesStats' }
+      });
+      if (newStats) setUnlinkedStats(newStats);
+    } catch (err: any) {
+      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+    } finally {
+      setBulkAssigning(false);
+    }
+  };
+
   const handleLinkPoliciesToCompanies = async () => {
     if (!jsonData?.policies) {
       toast({ 
@@ -1237,26 +1297,88 @@ const WordPressImport = () => {
           </TabsContent>
 
           <TabsContent value="tools" className="space-y-6">
-            {/* Link Policies to Companies Tool */}
+            {/* Bulk Assign Company Tool - NO JSON NEEDED */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Link2 className="h-5 w-5" />
-                  ربط الوثائق بشركات التأمين
+                  ربط الوثائق بشركة التأمين (بدون JSON)
                 </CardTitle>
                 <CardDescription>
-                  يبحث عن الوثائق التي لها company_id = null ويحاول ربطها بالشركات الموجودة بناءً على اسم الشركة في ملف JSON
-                  <br />
-                  <strong className="text-amber-600">مطلوب:</strong> تحميل ملف JSON أولاً للحصول على أسماء الشركات من البيانات الأصلية
+                  اختر شركة التأمين وربط جميع الوثائق غير المربوطة بها
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {unlinkedStats && (
+                  <div className="p-3 bg-muted rounded-lg space-y-2">
+                    <p className="font-medium">وثائق بدون شركة: {unlinkedStats.total}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(unlinkedStats.byType).map(([type, count]) => (
+                        <Badge key={type} variant="outline">
+                          {POLICY_TYPE_LABELS[type as keyof typeof POLICY_TYPE_LABELS] || type}: {count}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>شركة التأمين</Label>
+                    <Select value={bulkCompanyId} onValueChange={setBulkCompanyId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="اختر الشركة" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {companies.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name_ar || c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>نوع الوثيقة</Label>
+                    <Select value={bulkPolicyType} onValueChange={setBulkPolicyType}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">جميع الأنواع</SelectItem>
+                        <SelectItem value="ROAD_SERVICE">خدمات الطريق</SelectItem>
+                        <SelectItem value="ELZAMI">إلزامي</SelectItem>
+                        <SelectItem value="THIRD_FULL">طرف ثالث/شامل</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <Button onClick={handleBulkAssignCompany} disabled={bulkAssigning || !bulkCompanyId}>
+                  {bulkAssigning ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : <Link2 className="h-4 w-4 ml-2" />}
+                  {bulkAssigning ? "جاري الربط..." : "ربط الوثائق"}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Link Policies using JSON (legacy method) */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileJson className="h-5 w-5" />
+                  ربط الوثائق باستخدام JSON (متقدم)
+                </CardTitle>
+                <CardDescription>
+                  يستخدم بيانات JSON للمطابقة التلقائية - مطلوب تحميل ملف JSON أولاً
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {!jsonData && (
                   <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-700 dark:text-amber-300">
-                    ⚠️ يرجى تحميل ملف JSON أولاً من تبويب "الاستيراد" للحصول على بيانات الشركات
+                    ⚠️ يرجى تحميل ملف JSON أولاً من تبويب "الاستيراد"
                   </div>
                 )}
-                <Button onClick={handleLinkPoliciesToCompanies} disabled={linkingPolicies || !jsonData}>
+                <Button onClick={handleLinkPoliciesToCompanies} disabled={linkingPolicies || !jsonData} variant="outline">
                   {linkingPolicies ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : <Link2 className="h-4 w-4 ml-2" />}
                   {linkingPolicies ? "جاري الربط..." : "بدء الربط"}
                 </Button>
