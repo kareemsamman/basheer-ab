@@ -41,7 +41,6 @@ interface CompanySettlementData {
   policy_count: number;
   total_insurance_price: number;
   total_company_payment: number;
-  total_profit: number;
 }
 
 export default function CompanySettlement() {
@@ -66,7 +65,6 @@ export default function CompanySettlement() {
     totalPolicies: 0,
     totalInsurancePrice: 0,
     totalCompanyPayment: 0,
-    totalProfit: 0,
   });
 
   useEffect(() => {
@@ -108,7 +106,6 @@ export default function CompanySettlement() {
           policy_type_parent,
           insurance_price,
           payed_for_company,
-          profit,
           company_id,
           cancelled,
           insurance_companies!inner (
@@ -148,7 +145,6 @@ export default function CompanySettlement() {
           existing.policy_count += 1;
           existing.total_insurance_price += Number(policy.insurance_price) || 0;
           existing.total_company_payment += Number(policy.payed_for_company) || 0;
-          existing.total_profit += Number(policy.profit) || 0;
         } else {
           aggregated.set(key, {
             company_id: policy.company_id,
@@ -158,7 +154,6 @@ export default function CompanySettlement() {
             policy_count: 1,
             total_insurance_price: Number(policy.insurance_price) || 0,
             total_company_payment: Number(policy.payed_for_company) || 0,
-            total_profit: Number(policy.profit) || 0,
           });
         }
       });
@@ -175,9 +170,8 @@ export default function CompanySettlement() {
           totalPolicies: acc.totalPolicies + item.policy_count,
           totalInsurancePrice: acc.totalInsurancePrice + item.total_insurance_price,
           totalCompanyPayment: acc.totalCompanyPayment + item.total_company_payment,
-          totalProfit: acc.totalProfit + item.total_profit,
         }),
-        { totalPolicies: 0, totalInsurancePrice: 0, totalCompanyPayment: 0, totalProfit: 0 }
+        { totalPolicies: 0, totalInsurancePrice: 0, totalCompanyPayment: 0 }
       );
 
       setSummary(totals);
@@ -194,14 +188,13 @@ export default function CompanySettlement() {
   };
 
   const exportToCSV = () => {
-    const headers = ['الشركة', 'نوع الوثيقة', 'عدد الوثائق', 'إجمالي المحصل', 'المستحق للشركة', 'الربح'];
+    const headers = ['الشركة', 'نوع الوثيقة', 'عدد الوثائق', 'إجمالي المحصل', 'المستحق للشركة'];
     const rows = data.map(item => [
       item.company_name_ar || item.company_name,
       POLICY_TYPE_LABELS[item.policy_type],
       item.policy_count,
       item.total_insurance_price,
       item.total_company_payment,
-      item.total_profit,
     ]);
 
     const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
@@ -295,7 +288,7 @@ export default function CompanySettlement() {
         </Card>
 
         {/* Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-3">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
@@ -337,20 +330,6 @@ export default function CompanySettlement() {
               </div>
             </CardContent>
           </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">إجمالي الربح</p>
-                  <p className="text-2xl font-bold text-success">₪{summary.totalProfit.toLocaleString('ar-EG')}</p>
-                </div>
-                <div className="rounded-xl bg-success/10 p-3">
-                  <TrendingUp className="h-6 w-6 text-success" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Data Table */}
@@ -362,27 +341,25 @@ export default function CompanySettlement() {
             <div className="rounded-lg border">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-right">الشركة</TableHead>
-                    <TableHead className="text-right">نوع الوثيقة</TableHead>
-                    <TableHead className="text-right">عدد الوثائق</TableHead>
-                    <TableHead className="text-right">إجمالي المحصل</TableHead>
-                    <TableHead className="text-right">المستحق للشركة</TableHead>
-                    <TableHead className="text-right">الربح</TableHead>
-                  </TableRow>
+                    <TableRow>
+                      <TableHead className="text-right">الشركة</TableHead>
+                      <TableHead className="text-right">نوع الوثيقة</TableHead>
+                      <TableHead className="text-right">عدد الوثائق</TableHead>
+                      <TableHead className="text-right">إجمالي المحصل</TableHead>
+                      <TableHead className="text-right">المستحق للشركة</TableHead>
+                    </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
-                    Array.from({ length: 5 }).map((_, i) => (
-                      <TableRow key={i}>
-                        <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                      </TableRow>
-                    ))
+                      Array.from({ length: 5 }).map((_, i) => (
+                        <TableRow key={i}>
+                          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                        </TableRow>
+                      ))
                   ) : data.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
@@ -416,9 +393,6 @@ export default function CompanySettlement() {
                         </TableCell>
                         <TableCell className="font-mono text-destructive">
                           ₪{item.total_company_payment.toLocaleString('ar-EG')}
-                        </TableCell>
-                        <TableCell className="font-mono text-success">
-                          ₪{item.total_profit.toLocaleString('ar-EG')}
                         </TableCell>
                       </TableRow>
                     ))

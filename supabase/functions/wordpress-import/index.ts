@@ -893,7 +893,7 @@ Deno.serve(async (req) => {
               .from('media_files')
               .select('id')
               .eq('entity_id', policyId)
-              .eq('entity_type', 'policy')
+              .in('entity_type', ['policy', 'policy_crm'])
               .ilike('original_name', `%${media.url.split('/').pop()}%`)
               .maybeSingle();
 
@@ -926,11 +926,10 @@ Deno.serve(async (req) => {
                 original_name: originalName,
                 mime_type: mimeType,
                 size: size,
-                entity_type: 'policy',
+                entity_type: 'policy_crm',
                 entity_id: policyId,
                 branch_id: BEIT_HANINA_BRANCH_ID, // Always assign to بيت حنينا
               });
-            
             if (error) {
               stats.errors.push(`Media ${originalName}: ${error.message}`);
             } else {
