@@ -49,6 +49,7 @@ export type Database = {
           created_at: string
           id: string
           image_url: string | null
+          legacy_wp_id: number | null
           name: string
           notes: string | null
           phone: string | null
@@ -58,6 +59,7 @@ export type Database = {
           created_at?: string
           id?: string
           image_url?: string | null
+          legacy_wp_id?: number | null
           name: string
           notes?: string | null
           phone?: string | null
@@ -67,6 +69,7 @@ export type Database = {
           created_at?: string
           id?: string
           image_url?: string | null
+          legacy_wp_id?: number | null
           name?: string
           notes?: string | null
           phone?: string | null
@@ -400,6 +403,7 @@ export type Database = {
             | null
           created_at: string
           id: string
+          legacy_wp_id: number | null
           name: string
           name_ar: string | null
           updated_at: string
@@ -411,6 +415,7 @@ export type Database = {
             | null
           created_at?: string
           id?: string
+          legacy_wp_id?: number | null
           name: string
           name_ar?: string | null
           updated_at?: string
@@ -422,6 +427,7 @@ export type Database = {
             | null
           created_at?: string
           id?: string
+          legacy_wp_id?: number | null
           name?: string
           name_ar?: string | null
           updated_at?: string
