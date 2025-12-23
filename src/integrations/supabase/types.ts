@@ -1096,6 +1096,45 @@ export type Database = {
           },
         ]
       }
+      policy_reminders: {
+        Row: {
+          id: string
+          policy_id: string
+          reminder_type: string
+          sent_at: string
+          sms_log_id: string | null
+        }
+        Insert: {
+          id?: string
+          policy_id: string
+          reminder_type: string
+          sent_at?: string
+          sms_log_id?: string | null
+        }
+        Update: {
+          id?: string
+          policy_id?: string
+          reminder_type?: string
+          sent_at?: string
+          sms_log_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "policy_reminders_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "policies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policy_reminders_sms_log_id_fkey"
+            columns: ["sms_log_id"]
+            isOneToOne: false
+            referencedRelation: "sms_logs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pricing_rules: {
         Row: {
           age_band: Database["public"]["Enums"]["age_band"] | null
@@ -1193,16 +1232,94 @@ export type Database = {
           },
         ]
       }
+      sms_logs: {
+        Row: {
+          branch_id: string | null
+          client_id: string | null
+          created_at: string
+          created_by: string | null
+          error_message: string | null
+          id: string
+          message: string
+          phone_number: string
+          policy_id: string | null
+          sent_at: string | null
+          sms_type: Database["public"]["Enums"]["sms_type"]
+          status: string
+        }
+        Insert: {
+          branch_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          id?: string
+          message: string
+          phone_number: string
+          policy_id?: string | null
+          sent_at?: string | null
+          sms_type?: Database["public"]["Enums"]["sms_type"]
+          status?: string
+        }
+        Update: {
+          branch_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          id?: string
+          message?: string
+          phone_number?: string
+          policy_id?: string | null
+          sent_at?: string | null
+          sms_type?: Database["public"]["Enums"]["sms_type"]
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_logs_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_logs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_logs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_logs_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "policies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sms_settings: {
         Row: {
           created_at: string
           default_ab_invoice_template_id: string | null
           default_insurance_invoice_template_id: string | null
           default_signature_template_id: string | null
+          enable_auto_reminders: boolean | null
           id: string
           invoice_sms_template: string | null
           is_enabled: boolean
+          payment_request_template: string | null
           provider: string
+          reminder_1month_template: string | null
+          reminder_1week_template: string | null
           signature_sms_template: string | null
           sms_source: string | null
           sms_token: string | null
@@ -1214,10 +1331,14 @@ export type Database = {
           default_ab_invoice_template_id?: string | null
           default_insurance_invoice_template_id?: string | null
           default_signature_template_id?: string | null
+          enable_auto_reminders?: boolean | null
           id?: string
           invoice_sms_template?: string | null
           is_enabled?: boolean
+          payment_request_template?: string | null
           provider?: string
+          reminder_1month_template?: string | null
+          reminder_1week_template?: string | null
           signature_sms_template?: string | null
           sms_source?: string | null
           sms_token?: string | null
@@ -1229,10 +1350,14 @@ export type Database = {
           default_ab_invoice_template_id?: string | null
           default_insurance_invoice_template_id?: string | null
           default_signature_template_id?: string | null
+          enable_auto_reminders?: boolean | null
           id?: string
           invoice_sms_template?: string | null
           is_enabled?: boolean
+          payment_request_template?: string | null
           provider?: string
+          reminder_1month_template?: string | null
+          reminder_1week_template?: string | null
           signature_sms_template?: string | null
           sms_source?: string | null
           sms_token?: string | null
@@ -1395,6 +1520,13 @@ export type Database = {
         | "ROAD_SERVICE_PRICE"
         | "ROAD_SERVICE_BASE"
         | "ROAD_SERVICE_EXTRA_OLD_CAR"
+      sms_type:
+        | "invoice"
+        | "signature"
+        | "reminder_1month"
+        | "reminder_1week"
+        | "manual"
+        | "payment_request"
       user_status: "pending" | "active" | "blocked"
     }
     CompositeTypes: {
@@ -1550,6 +1682,14 @@ export const Constants = {
         "ROAD_SERVICE_PRICE",
         "ROAD_SERVICE_BASE",
         "ROAD_SERVICE_EXTRA_OLD_CAR",
+      ],
+      sms_type: [
+        "invoice",
+        "signature",
+        "reminder_1month",
+        "reminder_1week",
+        "manual",
+        "payment_request",
       ],
       user_status: ["pending", "active", "blocked"],
     },

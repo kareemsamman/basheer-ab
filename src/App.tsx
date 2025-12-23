@@ -32,6 +32,8 @@ import Notifications from "./pages/Notifications";
 import WordPressImport from "./pages/WordPressImport";
 import DatabaseMigration from "./pages/DatabaseMigration";
 import NotFound from "./pages/NotFound";
+import SmsHistory from "./pages/SmsHistory";
+import DebtTracking from "./pages/DebtTracking";
 
 const queryClient = new QueryClient({
   defaultOptions: {
