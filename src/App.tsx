@@ -30,6 +30,7 @@ import PaymentFail from "./pages/PaymentFail";
 import SignaturePage from "./pages/SignaturePage";
 import Notifications from "./pages/Notifications";
 import WordPressImport from "./pages/WordPressImport";
+import DatabaseMigration from "./pages/DatabaseMigration";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -145,6 +146,11 @@ const App = () => (
               <Route path="/admin/wordpress-import" element={
                 <ProtectedRoute>
                   <WordPressImport />
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/database-migration" element={
+                <ProtectedRoute>
+                  <DatabaseMigration />
                 </ProtectedRoute>
               } />
               {/* Public payment callback routes (loaded in iframe) */}
