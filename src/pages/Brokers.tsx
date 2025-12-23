@@ -5,6 +5,9 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Table,
   TableBody,
@@ -21,6 +24,8 @@ import {
   ChevronRight,
   Phone,
   FileText,
+  CalendarIcon,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,6 +34,7 @@ import { BrokerDrawer } from "@/components/brokers/BrokerDrawer";
 import { BrokerDetails } from "@/components/brokers/BrokerDetails";
 import { RowActionsMenu } from "@/components/shared/RowActionsMenu";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
+import { format } from "date-fns";
 
 interface Broker {
   id: string;
@@ -62,6 +68,11 @@ export default function Brokers() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingBroker, setDeletingBroker] = useState<Broker | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  
+  // Date filter state
+  const [showFilters, setShowFilters] = useState(false);
+  const [startDate, setStartDate] = useState<Date | undefined>(undefined);
+  const [endDate, setEndDate] = useState<Date | undefined>(undefined);
 
   const fetchBrokers = useCallback(async () => {
     setLoading(true);
@@ -91,12 +102,21 @@ export default function Brokers() {
             .eq('broker_id', broker.id)
             .is('deleted_at', null);
 
-          // Get policies for this broker
-          const { data: policies } = await supabase
+          // Get policies for this broker with date filter
+          let policyQuery = supabase
             .from('policies')
-            .select('id, insurance_price')
+            .select('id, insurance_price, broker_direction')
             .eq('broker_id', broker.id)
             .is('deleted_at', null);
+
+          if (startDate) {
+            policyQuery = policyQuery.gte('start_date', format(startDate, 'yyyy-MM-dd'));
+          }
+          if (endDate) {
+            policyQuery = policyQuery.lte('start_date', format(endDate, 'yyyy-MM-dd'));
+          }
+
+          const { data: policies } = await policyQuery;
 
           const policyIds = policies?.map(p => p.id) || [];
           
@@ -111,14 +131,24 @@ export default function Brokers() {
             totalCollected = payments?.filter(p => !p.refused).reduce((sum, p) => sum + Number(p.amount), 0) || 0;
           }
 
-          const totalPrice = policies?.reduce((sum, p) => sum + Number(p.insurance_price), 0) || 0;
+          // Calculate broker balance based on direction
+          // to_broker or null = I made for broker (he owes me)
+          // from_broker = broker made for me (I owe him)
+          const toBrokerPolicies = policies?.filter(p => p.broker_direction === 'to_broker' || p.broker_direction === null) || [];
+          const fromBrokerPolicies = policies?.filter(p => p.broker_direction === 'from_broker') || [];
+          
+          const toBrokerTotal = toBrokerPolicies.reduce((sum, p) => sum + Number(p.insurance_price), 0);
+          const fromBrokerTotal = fromBrokerPolicies.reduce((sum, p) => sum + Number(p.insurance_price), 0);
+          
+          // Net balance: what broker owes me
+          const netBalance = toBrokerTotal - fromBrokerTotal;
 
           return {
             ...broker,
             client_count: clientCount || 0,
             policy_count: policies?.length || 0,
             total_collected: totalCollected,
-            total_remaining: totalPrice - totalCollected,
+            total_remaining: netBalance, // This is now "لي عليه" (what broker owes me)
           };
         })
       );
@@ -131,7 +161,7 @@ export default function Brokers() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchQuery, toast]);
+  }, [currentPage, searchQuery, startDate, endDate, toast]);
 
   useEffect(() => {
     fetchBrokers();
@@ -160,6 +190,11 @@ export default function Brokers() {
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS' }).format(amount);
+  };
+
+  const clearDateFilter = () => {
+    setStartDate(undefined);
+    setEndDate(undefined);
   };
 
   const totalPages = Math.ceil(totalCount / pageSize);
@@ -218,9 +253,16 @@ export default function Brokers() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm">
+            <Button 
+              variant={showFilters ? "default" : "outline"} 
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+            >
               <Filter className="ml-2 h-4 w-4" />
               فلترة
+              {(startDate || endDate) && (
+                <span className="mr-1 bg-primary-foreground text-primary rounded-full px-1.5 text-xs">!</span>
+              )}
             </Button>
             <Button variant="outline" size="sm">
               <Download className="ml-2 h-4 w-4" />
@@ -228,6 +270,60 @@ export default function Brokers() {
             </Button>
           </div>
         </div>
+
+        {/* Date Filter Panel */}
+        {showFilters && (
+          <Card className="p-4">
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="space-y-2">
+                <Label>من تاريخ</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className={cn("w-[180px] justify-start text-right", !startDate && "text-muted-foreground")}>
+                      <CalendarIcon className="ml-2 h-4 w-4" />
+                      {startDate ? format(startDate, "yyyy/MM/dd") : "اختر التاريخ"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={startDate}
+                      onSelect={setStartDate}
+                      initialFocus
+                      className="pointer-events-auto"
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div className="space-y-2">
+                <Label>إلى تاريخ</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className={cn("w-[180px] justify-start text-right", !endDate && "text-muted-foreground")}>
+                      <CalendarIcon className="ml-2 h-4 w-4" />
+                      {endDate ? format(endDate, "yyyy/MM/dd") : "اختر التاريخ"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={endDate}
+                      onSelect={setEndDate}
+                      initialFocus
+                      className="pointer-events-auto"
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              {(startDate || endDate) && (
+                <Button variant="ghost" size="sm" onClick={clearDateFilter}>
+                  <X className="h-4 w-4 ml-1" />
+                  مسح الفلتر
+                </Button>
+              )}
+            </div>
+          </Card>
+        )}
 
         {/* Table */}
         <Card className="border shadow-sm overflow-hidden">
@@ -288,7 +384,7 @@ export default function Brokers() {
                         {broker.phone ? (
                           <div className="flex items-center gap-1 text-sm text-muted-foreground">
                             <Phone className="h-3 w-3" />
-                            <span className="text-left">{broker.phone}</span>
+                            <span dir="ltr">{broker.phone}</span>
                           </div>
                         ) : (
                           "-"
@@ -305,7 +401,7 @@ export default function Brokers() {
                       </TableCell>
                       <TableCell className={cn(
                         "font-medium",
-                        broker.total_remaining > 0 ? "text-destructive" : "text-muted-foreground"
+                        broker.total_remaining > 0 ? "text-green-600" : broker.total_remaining < 0 ? "text-destructive" : "text-muted-foreground"
                       )}>
                         {formatCurrency(broker.total_remaining)}
                       </TableCell>
