@@ -32,3 +32,9 @@ verify_jwt = false
 
 [functions.wordpress-import]
 verify_jwt = false
+
+[functions.send-payment-reminders]
+verify_jwt = false
+
+[functions.send-manual-reminder]
+verify_jwt = true

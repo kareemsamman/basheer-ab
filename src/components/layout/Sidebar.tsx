@@ -23,6 +23,8 @@ import {
   MessageSquare,
   FileSignature,
   Upload,
+  DollarSign,
+  History,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
@@ -37,6 +39,7 @@ const navigation = [
   { name: "شركات التأمين", href: "/companies", icon: Building2 },
   { name: "الوسطاء", href: "/brokers", icon: Wallet },
   { name: "الشيكات", href: "/cheques", icon: CreditCard },
+  { name: "متابعة الديون", href: "/debt-tracking", icon: DollarSign },
   { name: "الوسائط", href: "/media", icon: Image },
   { name: "التنبيهات", href: "/notifications", icon: Bell },
   { name: "تقرير الشركات", href: "/reports/company-settlement", icon: BarChart3 },
@@ -49,6 +52,7 @@ const adminNav = [
   { name: "توقيعات العملاء", href: "/admin/customer-signatures", icon: FileSignature },
   { name: "إعدادات الدفع", href: "/admin/payment-settings", icon: CreditCard },
   { name: "إعدادات SMS", href: "/admin/sms-settings", icon: MessageSquare },
+  { name: "سجل الرسائل", href: "/sms-history", icon: History },
   { name: "استيراد WordPress", href: "/admin/wordpress-import", icon: Upload },
   { name: "الإعدادات", href: "/settings", icon: Settings },
 ];

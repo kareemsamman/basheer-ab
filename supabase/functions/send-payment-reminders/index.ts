@@ -45,9 +45,8 @@ Deno.serve(async (req) => {
 
     const todayStr = today.toISOString().split('T')[0];
     const in1MonthStr = in1Month.toISOString().split('T')[0];
-    const in1WeekStr = in1Week.toISOString().split('T')[0];
 
-    console.log(`Checking policies expiring around ${in1MonthStr} (1 month) and ${in1WeekStr} (1 week)`);
+    console.log(`Checking policies expiring before ${in1MonthStr}`);
 
     // Get policies that need reminders with their remaining balance
     const { data: policies, error: policiesError } = await supabase
@@ -92,7 +91,8 @@ Deno.serve(async (req) => {
 
     for (const policy of policies || []) {
       const client = policy.clients as any;
-      if (!client?.phone_number) continue;
+      const clientPhone = client?.phone_number;
+      if (!clientPhone) continue;
 
       // Calculate remaining balance
       const totalPaid = (policy.policy_payments || [])
@@ -129,11 +129,7 @@ Deno.serve(async (req) => {
 
       // Send SMS
       try {
-        const smsResult = await sendSms(
-          smsSettings,
-          client.phone_number,
-          message
-        );
+        const smsResult = await sendSms(smsSettings, clientPhone, message);
 
         const smsLogId = crypto.randomUUID();
         smsLogs.push({
@@ -141,7 +137,7 @@ Deno.serve(async (req) => {
           branch_id: policy.branch_id,
           client_id: client.id,
           policy_id: policy.id,
-          phone_number: client.phone_number,
+          phone_number: clientPhone,
           message,
           sms_type: reminderType === '1month' ? 'reminder_1month' : 'reminder_1week',
           status: smsResult.success ? 'sent' : 'failed',
@@ -179,12 +175,12 @@ Deno.serve(async (req) => {
         }
 
       } catch (smsError: any) {
-        console.error(`Failed to send SMS to ${client.phone_number}:`, smsError);
+        console.error(`Failed to send SMS to ${clientPhone}:`, smsError);
         smsLogs.push({
           branch_id: policy.branch_id,
           client_id: client.id,
           policy_id: policy.id,
-          phone_number: client.phone_number,
+          phone_number: clientPhone,
           message,
           sms_type: reminderType === '1month' ? 'reminder_1month' : 'reminder_1week',
           status: 'failed',

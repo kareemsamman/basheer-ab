@@ -79,7 +79,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!client.phone_number) {
+    const clientPhone = client.phone_number;
+    if (!clientPhone) {
       return new Response(
         JSON.stringify({ error: 'Client has no phone number' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -101,7 +102,7 @@ Deno.serve(async (req) => {
     }
 
     // Build message
-    let finalMessage = message;
+    let finalMessage = message || '';
     
     if (!finalMessage) {
       // Get policy info if policy_id provided
@@ -139,7 +140,7 @@ Deno.serve(async (req) => {
     }
 
     // Send SMS
-    const smsResult = await sendSms(smsSettings, client.phone_number!, finalMessage);
+    const smsResult = await sendSms(smsSettings, clientPhone, finalMessage);
 
     // Log the SMS
     const { error: logError } = await supabase
@@ -148,7 +149,7 @@ Deno.serve(async (req) => {
         branch_id: client.branch_id,
         client_id: client.id,
         policy_id: policy_id || null,
-        phone_number: client.phone_number,
+        phone_number: clientPhone,
         message: finalMessage,
         sms_type: sms_type || 'payment_request',
         status: smsResult.success ? 'sent' : 'failed',
@@ -172,7 +173,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         message: 'SMS sent successfully',
-        phone: client.phone_number,
+        phone: clientPhone,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
