@@ -10,10 +10,11 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, Trash2, FileJson, AlertTriangle, CheckCircle2, XCircle, Loader2, Clock, Pause, Play } from "lucide-react";
+import { Upload, Trash2, FileJson, AlertTriangle, CheckCircle2, XCircle, Loader2, Clock, Download, RefreshCw, Link2, Play } from "lucide-react";
 
 interface PreviewCounts {
   insuranceCompanies: number;
@@ -30,18 +31,37 @@ interface PreviewCounts {
 }
 
 interface ImportStats {
-  [key: string]: { inserted: number; updated: number; errors: string[] };
+  [key: string]: { inserted: number; updated: number; errors: ErrorRecord[] };
+}
+
+interface ErrorRecord {
+  entity: string;
+  identifier: string;
+  reason: string;
+  timestamp: string;
 }
 
 interface ImportStep {
   key: string;
   label: string;
-  status: 'pending' | 'running' | 'done' | 'error';
+  status: 'pending' | 'running' | 'done' | 'error' | 'skipped';
   count: number;
   processed?: number;
+  lastError?: string;
+}
+
+interface SavedProgress {
+  id: string;
+  currentStepIndex: number;
+  completedSteps: string[];
+  mappings: Record<string, Record<string, string>>;
+  stats: ImportStats;
+  mediaOffset: number;
+  totalMedia: number;
 }
 
 const BATCH_SIZE = 50;
+const STEP_KEYS = ['preserveRules', 'clear', 'companies', 'restoreRules', 'brokers', 'clients', 'cars', 'policies', 'payments', 'media', 'invoices', 'outsideCheques'];
 
 const WordPressImport = () => {
   const { isAdmin } = useAuth();
@@ -55,7 +75,6 @@ const WordPressImport = () => {
   const [resetCompanies, setResetCompanies] = useState(true);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [importing, setImporting] = useState(false);
-  const [paused, setPaused] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [importStats, setImportStats] = useState<ImportStats | null>(null);
   const [progress, setProgress] = useState(0);
@@ -63,6 +82,15 @@ const WordPressImport = () => {
   const [steps, setSteps] = useState<ImportStep[]>([]);
   const [estimatedTime, setEstimatedTime] = useState<string>("");
   const [startTime, setStartTime] = useState<Date | null>(null);
+  
+  // Resume mode state
+  const [savedProgress, setSavedProgress] = useState<SavedProgress | null>(null);
+  const [resumeMode, setResumeMode] = useState(false);
+  const [activeTab, setActiveTab] = useState("import");
+  
+  // Linking tool state
+  const [linkingPolicies, setLinkingPolicies] = useState(false);
+  const [linkingStats, setLinkingStats] = useState<{ found: number; linked: number; notFound: string[] } | null>(null);
 
   const entityLabels: Record<string, string> = {
     companies: "شركات التأمين",
@@ -78,6 +106,96 @@ const WordPressImport = () => {
     invoices: "الفواتير",
     mediaFiles: "ملفات الوسائط",
     carAccidents: "حوادث السيارات",
+  };
+
+  // Load saved progress on mount
+  useEffect(() => {
+    loadSavedProgress();
+  }, []);
+
+  const loadSavedProgress = async () => {
+    try {
+      const { data } = await supabase
+        .from('import_progress')
+        .select('*')
+        .eq('import_type', 'wordpress')
+        .in('status', ['running', 'paused'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (data && data.metadata) {
+        const metadata = data.metadata as any;
+        setSavedProgress({
+          id: data.id,
+          currentStepIndex: metadata.currentStepIndex || 0,
+          completedSteps: metadata.completedSteps || [],
+          mappings: metadata.mappings || {},
+          stats: metadata.stats || {},
+          mediaOffset: metadata.mediaOffset || 0,
+          totalMedia: metadata.totalMedia || 0,
+        });
+        setResumeMode(true);
+        toast({ title: "تم العثور على استيراد سابق", description: "يمكنك استئناف الاستيراد من حيث توقف" });
+      }
+    } catch (e) {
+      console.error('Error loading saved progress:', e);
+    }
+  };
+
+  const saveProgress = async (
+    stepIndex: number,
+    completedSteps: string[],
+    mappings: Record<string, any>,
+    stats: ImportStats,
+    mediaOffset: number,
+    totalMedia: number,
+    status: 'running' | 'paused' | 'completed' | 'failed' = 'running'
+  ) => {
+    try {
+      const progressId = savedProgress?.id;
+      const metadata = JSON.parse(JSON.stringify({
+        currentStepIndex: stepIndex,
+        completedSteps,
+        mappings,
+        stats,
+        mediaOffset,
+        totalMedia,
+      }));
+      const errorLog = JSON.parse(JSON.stringify(Object.values(stats).flatMap(s => s.errors).slice(-100)));
+
+      if (progressId) {
+        await supabase
+          .from('import_progress')
+          .update({
+            status,
+            processed_items: Object.values(stats).reduce((sum, s) => sum + s.inserted + s.updated, 0),
+            failed_items: Object.values(stats).reduce((sum, s) => sum + s.errors.length, 0),
+            metadata,
+            error_log: errorLog,
+          })
+          .eq('id', progressId);
+      } else {
+        const { data } = await supabase
+          .from('import_progress')
+          .insert([{
+            import_type: 'wordpress',
+            status,
+            total_items: totalMedia,
+            processed_items: 0,
+            metadata,
+            started_at: new Date().toISOString(),
+          }])
+          .select('id')
+          .single();
+        
+        if (data) {
+          setSavedProgress({ id: data.id, currentStepIndex: stepIndex, completedSteps, mappings, stats, mediaOffset, totalMedia });
+        }
+      }
+    } catch (e) {
+      console.error('Error saving progress:', e);
+    }
   };
 
   const extractCompaniesFromPolicies = (policies: any[]): any[] => {
@@ -249,7 +367,6 @@ const WordPressImport = () => {
   };
 
   const calculateEstimatedTime = (totalMedia: number): string => {
-    // ~2.5 seconds per media item with 10 concurrent uploads
     const seconds = (totalMedia / 10) * 2.5;
     return formatTime(seconds);
   };
@@ -266,6 +383,7 @@ const WordPressImport = () => {
     setFileName(file.name);
     setImportStats(null);
     setSteps([]);
+    setResumeMode(false);
 
     try {
       const text = await file.text();
@@ -291,16 +409,44 @@ const WordPressImport = () => {
     return chunks;
   };
 
-  const handleImport = async () => {
-    if (!jsonData) return;
+  const exportErrorsToCSV = () => {
+    if (!importStats) return;
+    
+    const allErrors: ErrorRecord[] = Object.values(importStats).flatMap(s => s.errors);
+    if (allErrors.length === 0) {
+      toast({ title: "لا توجد أخطاء", description: "لم يتم تسجيل أي أخطاء" });
+      return;
+    }
+
+    const headers = ['الكيان', 'المعرف', 'السبب', 'الوقت'];
+    const rows = allErrors.map(err => [
+      err.entity,
+      err.identifier,
+      err.reason.replace(/,/g, ';'),
+      err.timestamp,
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `import-errors-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    
+    toast({ title: "تم التصدير", description: `تم تصدير ${allErrors.length} خطأ` });
+  };
+
+  const handleImport = async (isResume = false) => {
+    if (!jsonData && !isResume) return;
 
     setImporting(true);
     setProgress(0);
-    setImportStats(null);
     setStartTime(new Date());
-    setPaused(false);
 
-    const stats: ImportStats = {
+    // Initialize or restore stats
+    const stats: ImportStats = isResume && savedProgress?.stats ? { ...savedProgress.stats } : {
       companies: { inserted: 0, updated: 0, errors: [] },
       brokers: { inserted: 0, updated: 0, errors: [] },
       clients: { inserted: 0, updated: 0, errors: [] },
@@ -312,242 +458,424 @@ const WordPressImport = () => {
       outsideCheques: { inserted: 0, updated: 0, errors: [] },
     };
 
+    const completedSteps: string[] = isResume && savedProgress?.completedSteps ? [...savedProgress.completedSteps] : [];
+    let mappings = isResume && savedProgress?.mappings ? { ...savedProgress.mappings } : { companies: {}, brokers: {}, clients: {}, cars: {}, policies: {} };
+    let mediaOffset = isResume && savedProgress?.mediaOffset ? savedProgress.mediaOffset : 0;
+
     const initialSteps: ImportStep[] = [
-      { key: 'preserveRules', label: 'حفظ قواعد التسعير', status: 'pending', count: 0 },
-      { key: 'clear', label: 'تنظيف البيانات', status: 'pending', count: 0 },
-      { key: 'companies', label: 'شركات التأمين', status: 'pending', count: 0 },
-      { key: 'restoreRules', label: 'استعادة قواعد التسعير', status: 'pending', count: 0 },
-      { key: 'brokers', label: 'الوسطاء', status: 'pending', count: 0 },
-      { key: 'clients', label: 'العملاء', status: 'pending', count: 0 },
-      { key: 'cars', label: 'السيارات', status: 'pending', count: 0 },
-      { key: 'policies', label: 'الوثائق', status: 'pending', count: 0 },
-      { key: 'payments', label: 'المدفوعات', status: 'pending', count: 0 },
-      { key: 'media', label: 'ملفات الوسائط (CDN)', status: 'pending', count: 0 },
-      { key: 'invoices', label: 'فواتير PDF', status: 'pending', count: 0 },
-      { key: 'outsideCheques', label: 'الشيكات الخارجية', status: 'pending', count: 0 },
+      { key: 'preserveRules', label: 'حفظ قواعد التسعير', status: completedSteps.includes('preserveRules') ? 'done' : 'pending', count: 0 },
+      { key: 'clear', label: 'تنظيف البيانات', status: completedSteps.includes('clear') ? 'done' : 'pending', count: 0 },
+      { key: 'companies', label: 'شركات التأمين', status: completedSteps.includes('companies') ? 'done' : 'pending', count: 0 },
+      { key: 'restoreRules', label: 'استعادة قواعد التسعير', status: completedSteps.includes('restoreRules') ? 'done' : 'pending', count: 0 },
+      { key: 'brokers', label: 'الوسطاء', status: completedSteps.includes('brokers') ? 'done' : 'pending', count: 0 },
+      { key: 'clients', label: 'العملاء', status: completedSteps.includes('clients') ? 'done' : 'pending', count: 0 },
+      { key: 'cars', label: 'السيارات', status: completedSteps.includes('cars') ? 'done' : 'pending', count: 0 },
+      { key: 'policies', label: 'الوثائق', status: completedSteps.includes('policies') ? 'done' : 'pending', count: 0 },
+      { key: 'payments', label: 'المدفوعات', status: completedSteps.includes('payments') ? 'done' : 'pending', count: 0 },
+      { key: 'media', label: 'ملفات الوسائط (CDN)', status: completedSteps.includes('media') ? 'done' : 'pending', count: 0 },
+      { key: 'invoices', label: 'فواتير PDF', status: completedSteps.includes('invoices') ? 'done' : 'pending', count: 0 },
+      { key: 'outsideCheques', label: 'الشيكات الخارجية', status: completedSteps.includes('outsideCheques') ? 'done' : 'pending', count: 0 },
     ];
     setSteps(initialSteps);
 
-    const updateStep = (key: string, status: ImportStep['status'], count?: number, processed?: number) => {
-      setSteps(prev => prev.map(s => s.key === key ? { ...s, status, count: count ?? s.count, processed: processed ?? s.processed } : s));
+    const updateStep = (key: string, status: ImportStep['status'], count?: number, processed?: number, lastError?: string) => {
+      setSteps(prev => prev.map(s => s.key === key ? { ...s, status, count: count ?? s.count, processed: processed ?? s.processed, lastError } : s));
       setCurrentStep(key);
+    };
+
+    const addError = (entityType: string, identifier: string, reason: string) => {
+      const errorRecord: ErrorRecord = {
+        entity: entityLabels[entityType] || entityType,
+        identifier,
+        reason,
+        timestamp: new Date().toISOString(),
+      };
+      stats[entityType]?.errors.push(errorRecord);
+      return errorRecord;
     };
 
     try {
       let preservedRules: Record<string, any[]> = {};
+      const media = extractMedia(jsonData?.policies || []);
+      const totalMedia = media.length;
 
       // Step 1: Preserve pricing rules if resetting companies
-      if (resetCompanies) {
-        updateStep('preserveRules', 'running');
-        const { data: rulesResult } = await supabase.functions.invoke('wordpress-import', {
-          body: { action: 'preservePricingRules' }
-        });
-        preservedRules = rulesResult?.preservedRules || {};
-        updateStep('preserveRules', 'done', rulesResult?.count || 0);
-      } else {
-        updateStep('preserveRules', 'done');
+      if (!completedSteps.includes('preserveRules')) {
+        if (resetCompanies && !isResume) {
+          updateStep('preserveRules', 'running');
+          const { data: rulesResult } = await supabase.functions.invoke('wordpress-import', {
+            body: { action: 'preservePricingRules' }
+          });
+          preservedRules = rulesResult?.preservedRules || {};
+          updateStep('preserveRules', 'done', rulesResult?.count || 0);
+        } else {
+          updateStep('preserveRules', 'skipped');
+        }
+        completedSteps.push('preserveRules');
+        await saveProgress(0, completedSteps, mappings, stats, mediaOffset, totalMedia);
       }
       setProgress(3);
 
       // Step 2: Clear data
-      if (clearBeforeImport) {
-        updateStep('clear', 'running');
-        
-        if (resetCompanies) {
-          await supabase.functions.invoke('wordpress-import', {
-            body: { action: 'deleteCompanies' }
+      if (!completedSteps.includes('clear')) {
+        if (clearBeforeImport && !isResume) {
+          updateStep('clear', 'running');
+          
+          if (resetCompanies) {
+            await supabase.functions.invoke('wordpress-import', {
+              body: { action: 'deleteCompanies' }
+            });
+          }
+          
+          const { error } = await supabase.functions.invoke('wordpress-import', {
+            body: { action: 'clear' }
           });
+          if (error) throw error;
+          updateStep('clear', 'done');
+        } else {
+          updateStep('clear', 'skipped');
         }
-        
-        const { error } = await supabase.functions.invoke('wordpress-import', {
-          body: { action: 'clear' }
-        });
-        if (error) throw error;
-        updateStep('clear', 'done');
-      } else {
-        updateStep('clear', 'done');
+        completedSteps.push('clear');
+        await saveProgress(1, completedSteps, mappings, stats, mediaOffset, totalMedia);
       }
       setProgress(6);
 
       // Step 3: Get existing mappings
-      const { data: mappingsResult } = await supabase.functions.invoke('wordpress-import', {
-        body: { action: 'getMappings' }
-      });
-      let mappings = mappingsResult?.mappings || { companies: {}, brokers: {}, clients: {}, cars: {}, policies: {} };
+      if (!isResume || Object.keys(mappings.companies || {}).length === 0) {
+        const { data: mappingsResult } = await supabase.functions.invoke('wordpress-import', {
+          body: { action: 'getMappings' }
+        });
+        mappings = mappingsResult?.mappings || { companies: {}, brokers: {}, clients: {}, cars: {}, policies: {} };
+      }
 
       // Step 4: Import companies
-      const companies = extractCompaniesFromPolicies(jsonData.policies || []);
-      updateStep('companies', 'running', companies.length);
-      for (const batch of chunkArray(companies, BATCH_SIZE)) {
-        const { data: result } = await supabase.functions.invoke('wordpress-import', {
-          body: { action: 'importBatch', entityType: 'companies', batch, data: { mappings } }
-        });
-        if (result) {
-          stats.companies.inserted += result.stats.inserted;
-          stats.companies.updated += result.stats.updated;
-          stats.companies.errors.push(...result.stats.errors);
-          mappings.companies = { ...mappings.companies, ...result.newMappings };
+      if (!completedSteps.includes('companies')) {
+        const companies = extractCompaniesFromPolicies(jsonData?.policies || []);
+        updateStep('companies', 'running', companies.length);
+        for (const batch of chunkArray(companies, BATCH_SIZE)) {
+          const { data: result, error } = await supabase.functions.invoke('wordpress-import', {
+            body: { action: 'importBatch', entityType: 'companies', batch, data: { mappings } }
+          });
+          if (error) {
+            addError('companies', 'batch', error.message);
+            updateStep('companies', 'error', companies.length, 0, error.message);
+            throw error;
+          }
+          if (result) {
+            stats.companies.inserted += result.stats.inserted;
+            stats.companies.updated += result.stats.updated;
+            result.stats.errors.forEach((e: string) => addError('companies', 'unknown', e));
+            mappings.companies = { ...mappings.companies, ...result.newMappings };
+          }
         }
+        updateStep('companies', 'done', companies.length);
+        completedSteps.push('companies');
+        await saveProgress(2, completedSteps, mappings, stats, mediaOffset, totalMedia);
       }
-      updateStep('companies', 'done', companies.length);
       setProgress(10);
 
       // Step 5: Restore pricing rules
-      if (resetCompanies && Object.keys(preservedRules).length > 0) {
-        updateStep('restoreRules', 'running');
-        const { data: restoreResult } = await supabase.functions.invoke('wordpress-import', {
-          body: { action: 'restorePricingRules', data: { preservedRules } }
-        });
-        updateStep('restoreRules', 'done', restoreResult?.restored || 0);
-      } else {
-        updateStep('restoreRules', 'done');
+      if (!completedSteps.includes('restoreRules')) {
+        if (resetCompanies && Object.keys(preservedRules).length > 0 && !isResume) {
+          updateStep('restoreRules', 'running');
+          const { data: restoreResult } = await supabase.functions.invoke('wordpress-import', {
+            body: { action: 'restorePricingRules', data: { preservedRules } }
+          });
+          updateStep('restoreRules', 'done', restoreResult?.restored || 0);
+        } else {
+          updateStep('restoreRules', 'skipped');
+        }
+        completedSteps.push('restoreRules');
+        await saveProgress(3, completedSteps, mappings, stats, mediaOffset, totalMedia);
       }
       setProgress(12);
 
       // Step 6: Import brokers
-      const brokers = jsonData.brokers || [];
-      updateStep('brokers', 'running', brokers.length);
-      for (const batch of chunkArray(brokers, BATCH_SIZE)) {
-        const { data: result } = await supabase.functions.invoke('wordpress-import', {
-          body: { action: 'importBatch', entityType: 'brokers', batch, data: { mappings } }
-        });
-        if (result) {
-          stats.brokers.inserted += result.stats.inserted;
-          stats.brokers.updated += result.stats.updated;
-          stats.brokers.errors.push(...result.stats.errors);
-          mappings.brokers = { ...mappings.brokers, ...result.newMappings };
+      if (!completedSteps.includes('brokers')) {
+        const brokers = jsonData?.brokers || [];
+        updateStep('brokers', 'running', brokers.length);
+        for (const batch of chunkArray(brokers, BATCH_SIZE)) {
+          const { data: result, error } = await supabase.functions.invoke('wordpress-import', {
+            body: { action: 'importBatch', entityType: 'brokers', batch, data: { mappings } }
+          });
+          if (error) {
+            addError('brokers', 'batch', error.message);
+          }
+          if (result) {
+            stats.brokers.inserted += result.stats.inserted;
+            stats.brokers.updated += result.stats.updated;
+            result.stats.errors.forEach((e: string) => addError('brokers', 'unknown', e));
+            mappings.brokers = { ...mappings.brokers, ...result.newMappings };
+          }
         }
+        updateStep('brokers', 'done', brokers.length);
+        completedSteps.push('brokers');
+        await saveProgress(4, completedSteps, mappings, stats, mediaOffset, totalMedia);
       }
-      updateStep('brokers', 'done', brokers.length);
       setProgress(18);
 
       // Step 7: Import clients
-      const clients = jsonData.clients || [];
-      updateStep('clients', 'running', clients.length);
-      for (const batch of chunkArray(clients, BATCH_SIZE)) {
-        const { data: result } = await supabase.functions.invoke('wordpress-import', {
-          body: { action: 'importBatch', entityType: 'clients', batch, data: { mappings } }
-        });
-        if (result) {
-          stats.clients.inserted += result.stats.inserted;
-          stats.clients.updated += result.stats.updated;
-          stats.clients.errors.push(...result.stats.errors);
-          mappings.clients = { ...mappings.clients, ...result.newMappings };
+      if (!completedSteps.includes('clients')) {
+        const clients = jsonData?.clients || [];
+        updateStep('clients', 'running', clients.length);
+        for (const batch of chunkArray(clients, BATCH_SIZE)) {
+          const { data: result, error } = await supabase.functions.invoke('wordpress-import', {
+            body: { action: 'importBatch', entityType: 'clients', batch, data: { mappings } }
+          });
+          if (error) {
+            addError('clients', 'batch', error.message);
+          }
+          if (result) {
+            stats.clients.inserted += result.stats.inserted;
+            stats.clients.updated += result.stats.updated;
+            result.stats.errors.forEach((e: string) => addError('clients', 'unknown', e));
+            mappings.clients = { ...mappings.clients, ...result.newMappings };
+          }
         }
+        updateStep('clients', 'done', clients.length);
+        completedSteps.push('clients');
+        await saveProgress(5, completedSteps, mappings, stats, mediaOffset, totalMedia);
       }
-      updateStep('clients', 'done', clients.length);
       setProgress(30);
 
       // Step 8: Import cars
-      const cars = extractCarsFromPolicies(jsonData.policies || []);
-      updateStep('cars', 'running', cars.length);
-      for (const batch of chunkArray(cars, BATCH_SIZE)) {
-        const { data: result } = await supabase.functions.invoke('wordpress-import', {
-          body: { action: 'importBatch', entityType: 'cars', batch, data: { mappings } }
-        });
-        if (result) {
-          stats.cars.inserted += result.stats.inserted;
-          stats.cars.updated += result.stats.updated;
-          stats.cars.errors.push(...result.stats.errors);
-          mappings.cars = { ...mappings.cars, ...result.newMappings };
+      if (!completedSteps.includes('cars')) {
+        const cars = extractCarsFromPolicies(jsonData?.policies || []);
+        updateStep('cars', 'running', cars.length);
+        for (const batch of chunkArray(cars, BATCH_SIZE)) {
+          const { data: result, error } = await supabase.functions.invoke('wordpress-import', {
+            body: { action: 'importBatch', entityType: 'cars', batch, data: { mappings } }
+          });
+          if (error) {
+            addError('cars', 'batch', error.message);
+          }
+          if (result) {
+            stats.cars.inserted += result.stats.inserted;
+            stats.cars.updated += result.stats.updated;
+            result.stats.errors.forEach((e: string) => addError('cars', 'unknown', e));
+            mappings.cars = { ...mappings.cars, ...result.newMappings };
+          }
         }
+        updateStep('cars', 'done', cars.length);
+        completedSteps.push('cars');
+        await saveProgress(6, completedSteps, mappings, stats, mediaOffset, totalMedia);
       }
-      updateStep('cars', 'done', cars.length);
       setProgress(40);
 
       // Step 9: Import policies
-      const policies = extractPolicies(jsonData.policies || []);
-      updateStep('policies', 'running', policies.length);
-      for (const batch of chunkArray(policies, BATCH_SIZE)) {
-        const { data: result } = await supabase.functions.invoke('wordpress-import', {
-          body: { action: 'importBatch', entityType: 'policies', batch, data: { mappings } }
-        });
-        if (result) {
-          stats.policies.inserted += result.stats.inserted;
-          stats.policies.updated += result.stats.updated;
-          stats.policies.errors.push(...result.stats.errors);
-          mappings.policies = { ...mappings.policies, ...result.newMappings };
+      if (!completedSteps.includes('policies')) {
+        const policies = extractPolicies(jsonData?.policies || []);
+        updateStep('policies', 'running', policies.length);
+        for (const batch of chunkArray(policies, BATCH_SIZE)) {
+          const { data: result, error } = await supabase.functions.invoke('wordpress-import', {
+            body: { action: 'importBatch', entityType: 'policies', batch, data: { mappings } }
+          });
+          if (error) {
+            addError('policies', 'batch', error.message);
+          }
+          if (result) {
+            stats.policies.inserted += result.stats.inserted;
+            stats.policies.updated += result.stats.updated;
+            result.stats.errors.forEach((e: string) => addError('policies', 'unknown', e));
+            mappings.policies = { ...mappings.policies, ...result.newMappings };
+          }
         }
+        updateStep('policies', 'done', policies.length);
+        completedSteps.push('policies');
+        await saveProgress(7, completedSteps, mappings, stats, mediaOffset, totalMedia);
       }
-      updateStep('policies', 'done', policies.length);
       setProgress(55);
 
       // Step 10: Import payments
-      const payments = extractPayments(jsonData.policies || []);
-      updateStep('payments', 'running', payments.length);
-      for (const batch of chunkArray(payments, BATCH_SIZE)) {
-        const { data: result } = await supabase.functions.invoke('wordpress-import', {
-          body: { action: 'importBatch', entityType: 'payments', batch, data: { mappings } }
-        });
-        if (result) {
-          stats.payments.inserted += result.stats.inserted;
-          stats.payments.updated += result.stats.updated;
-          stats.payments.errors.push(...result.stats.errors);
+      if (!completedSteps.includes('payments')) {
+        const payments = extractPayments(jsonData?.policies || []);
+        updateStep('payments', 'running', payments.length);
+        for (const batch of chunkArray(payments, BATCH_SIZE)) {
+          const { data: result, error } = await supabase.functions.invoke('wordpress-import', {
+            body: { action: 'importBatch', entityType: 'payments', batch, data: { mappings } }
+          });
+          if (error) {
+            addError('payments', 'batch', error.message);
+          }
+          if (result) {
+            stats.payments.inserted += result.stats.inserted;
+            stats.payments.updated += result.stats.updated;
+            result.stats.errors.forEach((e: string) => addError('payments', 'unknown', e));
+          }
         }
+        updateStep('payments', 'done', payments.length);
+        completedSteps.push('payments');
+        await saveProgress(8, completedSteps, mappings, stats, mediaOffset, totalMedia);
       }
-      updateStep('payments', 'done', payments.length);
       setProgress(65);
 
-      // Step 11: Import media with progress tracking
-      const media = extractMedia(jsonData.policies || []);
-      updateStep('media', 'running', media.length);
-      let mediaProcessed = 0;
-      for (const batch of chunkArray(media, BATCH_SIZE)) {
-        const { data: result } = await supabase.functions.invoke('wordpress-import', {
-          body: { action: 'importBatch', entityType: 'media', batch, data: { mappings } }
-        });
-        if (result) {
-          stats.media.inserted += result.stats.inserted;
-          stats.media.updated += result.stats.updated;
-          stats.media.errors.push(...result.stats.errors);
+      // Step 11: Import media with resume support
+      if (!completedSteps.includes('media')) {
+        updateStep('media', 'running', totalMedia, mediaOffset);
+        
+        // Process media from offset
+        const remainingMedia = media.slice(mediaOffset);
+        const mediaBatches = chunkArray(remainingMedia, BATCH_SIZE);
+        
+        for (let batchIndex = 0; batchIndex < mediaBatches.length; batchIndex++) {
+          const batch = mediaBatches[batchIndex];
+          const { data: result, error } = await supabase.functions.invoke('wordpress-import', {
+            body: { action: 'importBatch', entityType: 'media', batch, data: { mappings } }
+          });
+          
+          if (error) {
+            const lastUrl = batch[batch.length - 1]?.url || 'unknown';
+            addError('media', lastUrl, error.message);
+            updateStep('media', 'error', totalMedia, mediaOffset + (batchIndex * BATCH_SIZE), `فشل عند: ${lastUrl}`);
+            // Save progress so we can resume
+            await saveProgress(9, completedSteps, mappings, stats, mediaOffset + (batchIndex * BATCH_SIZE), totalMedia, 'paused');
+            throw new Error(`توقف رفع الوسائط عند الملف ${mediaOffset + (batchIndex * BATCH_SIZE) + 1}: ${error.message}`);
+          }
+          
+          if (result) {
+            stats.media.inserted += result.stats.inserted;
+            stats.media.updated += result.stats.updated;
+            result.stats.errors.forEach((e: string) => {
+              const urlMatch = e.match(/Media\s+(.+?):/);
+              addError('media', urlMatch?.[1] || 'unknown', e);
+            });
+          }
+          
+          mediaOffset = mediaOffset + ((batchIndex + 1) * BATCH_SIZE);
+          updateStep('media', 'running', totalMedia, Math.min(mediaOffset, totalMedia));
+          setProgress(65 + Math.round((Math.min(mediaOffset, totalMedia) / totalMedia) * 20));
+          
+          // Save progress periodically
+          if (batchIndex % 5 === 0) {
+            await saveProgress(9, completedSteps, mappings, stats, Math.min(mediaOffset, totalMedia), totalMedia);
+          }
         }
-        mediaProcessed += batch.length;
-        updateStep('media', 'running', media.length, mediaProcessed);
-        setProgress(65 + Math.round((mediaProcessed / media.length) * 20));
+        
+        updateStep('media', 'done', totalMedia, totalMedia);
+        completedSteps.push('media');
+        await saveProgress(9, completedSteps, mappings, stats, totalMedia, totalMedia);
       }
-      updateStep('media', 'done', media.length, media.length);
       setProgress(85);
 
       // Step 12: Import invoices
-      const invoices = extractInvoices(jsonData.policies || []);
-      updateStep('invoices', 'running', invoices.length);
-      for (const batch of chunkArray(invoices, BATCH_SIZE)) {
-        const { data: result } = await supabase.functions.invoke('wordpress-import', {
-          body: { action: 'importBatch', entityType: 'invoices', batch, data: { mappings } }
-        });
-        if (result) {
-          stats.invoices.inserted += result.stats.inserted;
-          stats.invoices.updated += result.stats.updated;
-          stats.invoices.errors.push(...result.stats.errors);
+      if (!completedSteps.includes('invoices')) {
+        const invoices = extractInvoices(jsonData?.policies || []);
+        updateStep('invoices', 'running', invoices.length);
+        for (const batch of chunkArray(invoices, BATCH_SIZE)) {
+          const { data: result, error } = await supabase.functions.invoke('wordpress-import', {
+            body: { action: 'importBatch', entityType: 'invoices', batch, data: { mappings } }
+          });
+          if (error) {
+            addError('invoices', 'batch', error.message);
+          }
+          if (result) {
+            stats.invoices.inserted += result.stats.inserted;
+            stats.invoices.updated += result.stats.updated;
+            result.stats.errors.forEach((e: string) => addError('invoices', 'unknown', e));
+          }
         }
+        updateStep('invoices', 'done', invoices.length);
+        completedSteps.push('invoices');
+        await saveProgress(10, completedSteps, mappings, stats, mediaOffset, totalMedia);
       }
-      updateStep('invoices', 'done', invoices.length);
       setProgress(94);
 
       // Step 13: Import outside cheques
-      const outsideCheques = jsonData.outside_cheques || [];
-      updateStep('outsideCheques', 'running', outsideCheques.length);
-      for (const batch of chunkArray(outsideCheques, BATCH_SIZE)) {
-        const { data: result } = await supabase.functions.invoke('wordpress-import', {
-          body: { action: 'importBatch', entityType: 'outsideCheques', batch, data: { mappings } }
-        });
-        if (result) {
-          stats.outsideCheques.inserted += result.stats.inserted;
-          stats.outsideCheques.updated += result.stats.updated;
-          stats.outsideCheques.errors.push(...result.stats.errors);
+      if (!completedSteps.includes('outsideCheques')) {
+        const outsideCheques = jsonData?.outside_cheques || [];
+        updateStep('outsideCheques', 'running', outsideCheques.length);
+        for (const batch of chunkArray(outsideCheques, BATCH_SIZE)) {
+          const { data: result, error } = await supabase.functions.invoke('wordpress-import', {
+            body: { action: 'importBatch', entityType: 'outsideCheques', batch, data: { mappings } }
+          });
+          if (error) {
+            addError('outsideCheques', 'batch', error.message);
+          }
+          if (result) {
+            stats.outsideCheques.inserted += result.stats.inserted;
+            stats.outsideCheques.updated += result.stats.updated;
+            result.stats.errors.forEach((e: string) => addError('outsideCheques', 'unknown', e));
+          }
         }
+        updateStep('outsideCheques', 'done', outsideCheques.length);
+        completedSteps.push('outsideCheques');
       }
-      updateStep('outsideCheques', 'done', outsideCheques.length);
       setProgress(100);
+
+      // Mark complete
+      await saveProgress(11, completedSteps, mappings, stats, mediaOffset, totalMedia, 'completed');
+      setSavedProgress(null);
+      setResumeMode(false);
 
       setImportStats(stats);
       setCurrentStep("");
-      toast({ title: "تم الاستيراد بنجاح", description: "تم استيراد البيانات وتعيينها لفرع بيت حنينا" });
+      
+      const totalErrors = Object.values(stats).reduce((sum, s) => sum + s.errors.length, 0);
+      if (totalErrors > 0) {
+        toast({ 
+          title: "تم الاستيراد مع أخطاء", 
+          description: `${totalErrors} خطأ - راجع السجل أدناه`,
+          variant: "destructive"
+        });
+      } else {
+        toast({ title: "تم الاستيراد بنجاح", description: "تم استيراد جميع البيانات" });
+      }
     } catch (err: any) {
       toast({ title: "خطأ في الاستيراد", description: err.message, variant: "destructive" });
       updateStep(currentStep, 'error');
+      setImportStats(stats);
+      
+      // Save for resume
+      const totalMediaCount = preview?.mediaFiles || 0;
+      await saveProgress(
+        STEP_KEYS.indexOf(currentStep),
+        completedSteps,
+        mappings,
+        stats,
+        mediaOffset,
+        totalMediaCount,
+        'paused'
+      );
+      setSavedProgress({
+        id: savedProgress?.id || '',
+        currentStepIndex: STEP_KEYS.indexOf(currentStep),
+        completedSteps,
+        mappings,
+        stats,
+        mediaOffset,
+        totalMedia: totalMediaCount,
+      });
+      setResumeMode(true);
     } finally {
       setImporting(false);
+    }
+  };
+
+  const handleLinkPoliciesToCompanies = async () => {
+    setLinkingPolicies(true);
+    setLinkingStats(null);
+    
+    try {
+      const { data: result, error } = await supabase.functions.invoke('wordpress-import', {
+        body: { action: 'linkPoliciesToCompanies' }
+      });
+      
+      if (error) throw error;
+      
+      setLinkingStats({
+        found: result.found || 0,
+        linked: result.linked || 0,
+        notFound: result.notFound || [],
+      });
+      
+      toast({ 
+        title: "تم الربط", 
+        description: `تم ربط ${result.linked} وثيقة من أصل ${result.found}` 
+      });
+    } catch (err: any) {
+      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+    } finally {
+      setLinkingPolicies(false);
     }
   };
 
@@ -570,6 +898,18 @@ const WordPressImport = () => {
     }
   };
 
+  const handleCancelResume = async () => {
+    if (savedProgress?.id) {
+      await supabase
+        .from('import_progress')
+        .update({ status: 'cancelled' })
+        .eq('id', savedProgress.id);
+    }
+    setSavedProgress(null);
+    setResumeMode(false);
+    toast({ title: "تم إلغاء الاستئناف" });
+  };
+
   if (!isAdmin) {
     return (
       <MainLayout>
@@ -588,221 +928,354 @@ const WordPressImport = () => {
           <p className="text-muted-foreground">استيراد البيانات من نظام WordPress القديم - جميع البيانات ستُعيّن لفرع بيت حنينا</p>
         </div>
 
-        {/* File Upload */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileJson className="h-5 w-5" />
-              تحميل ملف JSON
-            </CardTitle>
-            <CardDescription>قم بتحميل ملف التصدير من WordPress</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-            <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="w-full">
-              <Upload className="h-4 w-4 ml-2" />
-              {fileName || "اختر ملف JSON"}
-            </Button>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="import">الاستيراد</TabsTrigger>
+            <TabsTrigger value="tools">أدوات الإصلاح</TabsTrigger>
+            <TabsTrigger value="errors">سجل الأخطاء</TabsTrigger>
+          </TabsList>
 
-            {preview && (
-              <>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-4">
-                  {Object.entries(preview).map(([key, count]) => (
-                    <div key={key} className="flex justify-between items-center p-2 bg-muted rounded">
-                      <span className="text-sm">{entityLabels[key]}</span>
-                      <Badge variant="secondary">{count}</Badge>
-                    </div>
-                  ))}
-                </div>
-                
-                {preview.mediaFiles > 0 && (
-                  <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-lg">
-                    <Clock className="h-4 w-4 text-primary" />
-                    <span className="text-sm">
-                      الوقت المتوقع لرفع {preview.mediaFiles} ملف: <strong>{estimatedTime}</strong>
-                    </span>
-                  </div>
-                )}
-              </>
+          <TabsContent value="import" className="space-y-6">
+            {/* Resume Mode Alert */}
+            {resumeMode && savedProgress && (
+              <Card className="border-primary bg-primary/5">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-primary">
+                    <RefreshCw className="h-5 w-5" />
+                    استئناف الاستيراد السابق
+                  </CardTitle>
+                  <CardDescription>
+                    توقف الاستيراد في الخطوة: <strong>{STEP_KEYS[savedProgress.currentStepIndex]}</strong>
+                    {savedProgress.mediaOffset > 0 && ` (الوسائط: ${savedProgress.mediaOffset}/${savedProgress.totalMedia})`}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex gap-2">
+                  <Button onClick={() => handleImport(true)} disabled={importing || !jsonData}>
+                    <Play className="h-4 w-4 ml-2" />
+                    استئناف
+                  </Button>
+                  <Button variant="outline" onClick={handleCancelResume}>
+                    إلغاء والبدء من جديد
+                  </Button>
+                </CardContent>
+              </Card>
             )}
-          </CardContent>
-        </Card>
 
-        {/* Import Options */}
-        {jsonData && (
-          <Card>
-            <CardHeader>
-              <CardTitle>خيارات الاستيراد</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="clear"
-                    checked={clearBeforeImport}
-                    onCheckedChange={(v) => setClearBeforeImport(v === true)}
-                  />
-                  <Label htmlFor="clear" className="flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-destructive" />
-                    حذف جميع البيانات قبل الاستيراد
-                  </Label>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="resetCompanies"
-                    checked={resetCompanies}
-                    onCheckedChange={(v) => setResetCompanies(v === true)}
-                  />
-                  <Label htmlFor="resetCompanies" className="flex items-center gap-2">
-                    إعادة تعيين شركات التأمين (مع الحفاظ على قواعد التسعير)
-                  </Label>
-                </div>
-              </div>
+            {/* File Upload */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileJson className="h-5 w-5" />
+                  تحميل ملف JSON
+                </CardTitle>
+                <CardDescription>قم بتحميل ملف التصدير من WordPress</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="w-full">
+                  <Upload className="h-4 w-4 ml-2" />
+                  {fileName || "اختر ملف JSON"}
+                </Button>
 
-              {importing && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Progress value={progress} className="flex-1 ml-4" />
-                    <span className="text-sm font-medium">{progress}%</span>
-                  </div>
-                  {startTime && (
-                    <p className="text-xs text-muted-foreground text-center">
-                      بدأ: {startTime.toLocaleTimeString('ar-EG')}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* Import Steps Progress */}
-              {steps.length > 0 && (
-                <div className="space-y-2 border rounded-lg p-4 max-h-80 overflow-y-auto">
-                  {steps.map((step) => (
-                    <div key={step.key} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        {step.status === 'pending' && <div className="w-4 h-4 rounded-full border-2 border-muted" />}
-                        {step.status === 'running' && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
-                        {step.status === 'done' && <CheckCircle2 className="w-4 h-4 text-green-500" />}
-                        {step.status === 'error' && <XCircle className="w-4 h-4 text-destructive" />}
-                        <span className={step.status === 'running' ? 'font-medium text-primary' : ''}>{step.label}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {step.processed !== undefined && step.count > 0 && step.status === 'running' && (
-                          <span className="text-xs text-muted-foreground">{step.processed}/{step.count}</span>
-                        )}
-                        {step.count > 0 && <Badge variant="outline">{step.count}</Badge>}
-                      </div>
+                {preview && (
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-4">
+                      {Object.entries(preview).map(([key, count]) => (
+                        <div key={key} className="flex justify-between items-center p-2 bg-muted rounded">
+                          <span className="text-sm">{entityLabels[key]}</span>
+                          <Badge variant="secondary">{count}</Badge>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
+                    
+                    {preview.mediaFiles > 0 && (
+                      <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-lg">
+                        <Clock className="h-4 w-4 text-primary" />
+                        <span className="text-sm">
+                          الوقت المتوقع لرفع {preview.mediaFiles} ملف: <strong>{estimatedTime}</strong>
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
 
-              <Button onClick={handleImport} disabled={importing} className="w-full">
-                {importing ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : <Upload className="h-4 w-4 ml-2" />}
-                {importing ? "جاري الاستيراد..." : "بدء الاستيراد"}
-              </Button>
-            </CardContent>
-          </Card>
-        )}
+            {/* Import Options */}
+            {jsonData && !resumeMode && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>خيارات الاستيراد</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="clear"
+                        checked={clearBeforeImport}
+                        onCheckedChange={(v) => setClearBeforeImport(v === true)}
+                      />
+                      <Label htmlFor="clear" className="flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-destructive" />
+                        حذف جميع البيانات قبل الاستيراد
+                      </Label>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="resetCompanies"
+                        checked={resetCompanies}
+                        onCheckedChange={(v) => setResetCompanies(v === true)}
+                      />
+                      <Label htmlFor="resetCompanies" className="flex items-center gap-2">
+                        إعادة تعيين شركات التأمين (مع الحفاظ على قواعد التسعير)
+                      </Label>
+                    </div>
+                  </div>
 
-        {/* Import Results */}
-        {importStats && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-green-500" />
-                نتائج الاستيراد
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {Object.entries(importStats).map(([key, stats]) => (
-                  <div key={key} className="flex items-center justify-between p-2 border rounded">
-                    <span>{entityLabels[key]}</span>
-                    <div className="flex gap-2">
-                      <Badge variant="default">{stats.inserted} جديد</Badge>
-                      <Badge variant="secondary">{stats.updated} محدث</Badge>
-                      {stats.errors.length > 0 && (
-                        <Badge variant="destructive">{stats.errors.length} أخطاء</Badge>
+                  <Button onClick={() => handleImport(false)} disabled={importing} className="w-full">
+                    {importing ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : <Upload className="h-4 w-4 ml-2" />}
+                    {importing ? "جاري الاستيراد..." : "بدء الاستيراد"}
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Import Progress */}
+            {(importing || steps.length > 0) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>تقدم الاستيراد</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {importing && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Progress value={progress} className="flex-1 ml-4" />
+                        <span className="text-sm font-medium">{progress}%</span>
+                      </div>
+                      {startTime && (
+                        <p className="text-xs text-muted-foreground text-center">
+                          بدأ: {startTime.toLocaleTimeString('ar-EG')}
+                        </p>
                       )}
                     </div>
-                  </div>
-                ))}
-              </div>
+                  )}
 
-              {Object.values(importStats).some(s => s.errors.length > 0) && (
-                <div className="mt-4">
-                  <Separator className="my-4" />
-                  <h4 className="font-semibold mb-2 flex items-center gap-2">
-                    <XCircle className="h-4 w-4 text-destructive" />
-                    الأخطاء
-                  </h4>
-                  <ScrollArea className="h-40 border rounded p-2">
-                    {Object.entries(importStats).map(([key, stats]) =>
-                      stats.errors.map((err, i) => (
-                        <p key={`${key}-${i}`} className="text-sm text-destructive">{err}</p>
-                      ))
+                  <div className="space-y-2 border rounded-lg p-4 max-h-80 overflow-y-auto">
+                    {steps.map((step) => (
+                      <div key={step.key} className="space-y-1">
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2">
+                            {step.status === 'pending' && <div className="w-4 h-4 rounded-full border-2 border-muted" />}
+                            {step.status === 'running' && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
+                            {step.status === 'done' && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                            {step.status === 'error' && <XCircle className="w-4 h-4 text-destructive" />}
+                            {step.status === 'skipped' && <div className="w-4 h-4 rounded-full bg-muted" />}
+                            <span className={step.status === 'running' ? 'font-medium text-primary' : step.status === 'skipped' ? 'text-muted-foreground' : ''}>{step.label}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {step.processed !== undefined && step.count > 0 && step.status === 'running' && (
+                              <span className="text-xs text-muted-foreground">{step.processed}/{step.count}</span>
+                            )}
+                            {step.count > 0 && <Badge variant="outline">{step.count}</Badge>}
+                          </div>
+                        </div>
+                        {step.lastError && (
+                          <p className="text-xs text-destructive mr-6 truncate" title={step.lastError}>
+                            ⚠️ {step.lastError}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Import Results */}
+            {importStats && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-green-500" />
+                      نتائج الاستيراد
+                    </span>
+                    {Object.values(importStats).some(s => s.errors.length > 0) && (
+                      <Button variant="outline" size="sm" onClick={exportErrorsToCSV}>
+                        <Download className="h-4 w-4 ml-2" />
+                        تصدير الأخطاء CSV
+                      </Button>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {Object.entries(importStats).map(([key, stats]) => (
+                      <div key={key} className="flex items-center justify-between p-2 border rounded">
+                        <span>{entityLabels[key]}</span>
+                        <div className="flex gap-2">
+                          <Badge variant="default">{stats.inserted} جديد</Badge>
+                          <Badge variant="secondary">{stats.updated} محدث</Badge>
+                          {stats.errors.length > 0 && (
+                            <Badge variant="destructive">{stats.errors.length} أخطاء</Badge>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Clear All Data */}
+            <Card className="border-destructive">
+              <CardHeader>
+                <CardTitle className="text-destructive flex items-center gap-2">
+                  <Trash2 className="h-5 w-5" />
+                  حذف جميع البيانات
+                </CardTitle>
+                <CardDescription>
+                  سيتم حذف: العملاء، السيارات، الوثائق، المدفوعات، الفواتير، الوسائط، الحوادث، الوسطاء
+                  <br />
+                  <strong>لن يتم حذف:</strong> شركات التأمين، قواعد التسعير، الفروع، المستخدمين
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive">
+                      <Trash2 className="h-4 w-4 ml-2" />
+                      حذف جميع البيانات
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        هذا الإجراء لا يمكن التراجع عنه. اكتب "DELETE ALL" للتأكيد.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <Input
+                      value={deleteConfirmText}
+                      onChange={(e) => setDeleteConfirmText(e.target.value)}
+                      placeholder="DELETE ALL"
+                    />
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleClearAll}
+                        disabled={deleteConfirmText !== "DELETE ALL" || clearing}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        {clearing ? "جاري الحذف..." : "حذف"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="tools" className="space-y-6">
+            {/* Link Policies to Companies Tool */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Link2 className="h-5 w-5" />
+                  ربط الوثائق بشركات التأمين
+                </CardTitle>
+                <CardDescription>
+                  يبحث عن الوثائق التي لها company_id = null ويحاول ربطها بالشركات الموجودة بناءً على اسم الشركة في البيانات
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Button onClick={handleLinkPoliciesToCompanies} disabled={linkingPolicies}>
+                  {linkingPolicies ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : <Link2 className="h-4 w-4 ml-2" />}
+                  {linkingPolicies ? "جاري الربط..." : "بدء الربط"}
+                </Button>
+
+                {linkingStats && (
+                  <div className="space-y-3 p-4 border rounded-lg">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">وثائق بدون شركة</p>
+                        <p className="text-2xl font-bold">{linkingStats.found}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">تم ربطها</p>
+                        <p className="text-2xl font-bold text-green-500">{linkingStats.linked}</p>
+                      </div>
+                    </div>
+                    
+                    {linkingStats.notFound.length > 0 && (
+                      <div>
+                        <p className="text-sm font-medium mb-2">شركات غير موجودة ({linkingStats.notFound.length}):</p>
+                        <ScrollArea className="h-32 border rounded p-2">
+                          {linkingStats.notFound.map((name, i) => (
+                            <p key={i} className="text-sm text-muted-foreground">{name}</p>
+                          ))}
+                        </ScrollArea>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="errors" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <XCircle className="h-5 w-5 text-destructive" />
+                    سجل الأخطاء
+                  </span>
+                  {importStats && Object.values(importStats).some(s => s.errors.length > 0) && (
+                    <Button variant="outline" size="sm" onClick={exportErrorsToCSV}>
+                      <Download className="h-4 w-4 ml-2" />
+                      تصدير CSV
+                    </Button>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {importStats ? (
+                  <ScrollArea className="h-96 border rounded p-4">
+                    {Object.values(importStats).every(s => s.errors.length === 0) ? (
+                      <p className="text-center text-muted-foreground py-8">لا توجد أخطاء مسجلة</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {Object.entries(importStats).map(([key, stats]) =>
+                          stats.errors.map((err, i) => (
+                            <div key={`${key}-${i}`} className="p-2 border rounded text-sm">
+                              <div className="flex items-center justify-between">
+                                <Badge variant="outline">{err.entity}</Badge>
+                                <span className="text-xs text-muted-foreground">{new Date(err.timestamp).toLocaleTimeString('ar-EG')}</span>
+                              </div>
+                              <p className="mt-1"><strong>المعرف:</strong> {err.identifier}</p>
+                              <p className="text-destructive">{err.reason}</p>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     )}
                   </ScrollArea>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Clear All Data */}
-        <Card className="border-destructive">
-          <CardHeader>
-            <CardTitle className="text-destructive flex items-center gap-2">
-              <Trash2 className="h-5 w-5" />
-              حذف جميع البيانات
-            </CardTitle>
-            <CardDescription>
-              سيتم حذف: العملاء، السيارات، الوثائق، المدفوعات، الفواتير، الوسائط، الحوادث، الوسطاء
-              <br />
-              <strong>لن يتم حذف:</strong> شركات التأمين، قواعد التسعير، الفروع، المستخدمين
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive">
-                  <Trash2 className="h-4 w-4 ml-2" />
-                  حذف جميع البيانات
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    هذا الإجراء لا يمكن التراجع عنه. اكتب "DELETE ALL" للتأكيد.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <Input
-                  value={deleteConfirmText}
-                  onChange={(e) => setDeleteConfirmText(e.target.value)}
-                  placeholder="DELETE ALL"
-                />
-                <AlertDialogFooter>
-                  <AlertDialogCancel>إلغاء</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={handleClearAll}
-                    disabled={deleteConfirmText !== "DELETE ALL" || clearing}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  >
-                    {clearing ? "جاري الحذف..." : "حذف"}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </CardContent>
-        </Card>
+                ) : (
+                  <p className="text-center text-muted-foreground py-8">قم بتشغيل الاستيراد أولاً لمشاهدة الأخطاء</p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </MainLayout>
   );

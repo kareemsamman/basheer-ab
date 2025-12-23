@@ -1049,6 +1049,81 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Action: Link policies without company_id to companies based on notes/legacy data
+    if (action === 'linkPoliciesToCompanies') {
+      console.log('Linking policies to companies...');
+      
+      // Get all policies without company_id
+      const { data: orphanPolicies, error: fetchError } = await supabase
+        .from('policies')
+        .select('id, legacy_wp_id, notes')
+        .is('company_id', null)
+        .is('deleted_at', null);
+      
+      if (fetchError) throw fetchError;
+      
+      // Get all companies for matching
+      const { data: companies } = await supabase
+        .from('insurance_companies')
+        .select('id, name, name_ar');
+      
+      const companyMap: Record<string, string> = {};
+      for (const c of companies || []) {
+        if (c.name) companyMap[c.name.toLowerCase()] = c.id;
+        if (c.name_ar) companyMap[c.name_ar.toLowerCase()] = c.id;
+      }
+      
+      let linked = 0;
+      const notFoundSet = new Set<string>();
+      
+      for (const policy of orphanPolicies || []) {
+        // Try to extract company name from notes
+        let companyName: string | null = null;
+        
+        if (policy.notes) {
+          // Look for patterns like "Company: xyz" or "شركة: xyz"
+          const patterns = [
+            /Company:\s*([^\n,]+)/i,
+            /شركة:\s*([^\n,]+)/i,
+            /Insurance:\s*([^\n,]+)/i,
+            /تأمين:\s*([^\n,]+)/i,
+          ];
+          
+          for (const pattern of patterns) {
+            const match = policy.notes.match(pattern);
+            if (match) {
+              companyName = match[1].trim();
+              break;
+            }
+          }
+        }
+        
+        if (companyName) {
+          const companyId = companyMap[companyName.toLowerCase()];
+          if (companyId) {
+            await supabase
+              .from('policies')
+              .update({ company_id: companyId })
+              .eq('id', policy.id);
+            linked++;
+          } else {
+            notFoundSet.add(companyName);
+          }
+        }
+      }
+      
+      console.log(`Linked ${linked} policies, ${notFoundSet.size} company names not found`);
+      
+      return new Response(JSON.stringify({ 
+        success: true, 
+        found: orphanPolicies?.length || 0,
+        linked,
+        notFound: Array.from(notFoundSet).slice(0, 50),
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     return new Response(JSON.stringify({ error: 'Invalid action' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
