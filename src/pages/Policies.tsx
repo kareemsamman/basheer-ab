@@ -31,6 +31,7 @@ import { PolicyEditDrawer } from "@/components/policies/PolicyEditDrawer";
 import { PolicyFilters, PolicyFilterValues } from "@/components/policies/PolicyFilters";
 import { RowActionsMenu } from "@/components/shared/RowActionsMenu";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
+import { ExpiryBadge } from "@/components/shared/ExpiryBadge";
 import { recalculatePolicyProfit } from "@/lib/pricingCalculator";
 
 interface PolicyRecord {
@@ -410,6 +411,7 @@ export default function Policies() {
                   <TableHead className="text-muted-foreground font-medium">الربح</TableHead>
                   <TableHead className="text-muted-foreground font-medium">أنشئ بواسطة</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الفرع</TableHead>
+                  <TableHead className="text-muted-foreground font-medium">انتهاء</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الحالة</TableHead>
                   <TableHead className="text-muted-foreground font-medium w-[80px]">إجراءات</TableHead>
                 </TableRow>
@@ -487,6 +489,9 @@ export default function Policies() {
                           ) : (
                             <span className="text-muted-foreground text-sm">-</span>
                           )}
+                        </TableCell>
+                        <TableCell>
+                          <ExpiryBadge endDate={policy.end_date} cancelled={policy.cancelled} />
                         </TableCell>
                         <TableCell>
                           <Badge variant={status.variant}>
