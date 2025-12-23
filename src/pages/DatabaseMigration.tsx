@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Download, Upload, Database, FileJson, FileCode, Image, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import { Download, Upload, Database, FileJson, FileCode, Image, AlertTriangle, CheckCircle2, Loader2, Wifi, WifiOff, Server } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -33,12 +33,24 @@ const TABLES_TO_EXPORT = [
   'login_attempts'
 ];
 
+interface ConnectionStatus {
+  connected: boolean;
+  projectUrl: string;
+  projectId: string;
+  tablesCount: number;
+  policiesCount: number;
+  clientsCount: number;
+  mediaCount: number;
+}
+
 export default function DatabaseMigration() {
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentTable, setCurrentTable] = useState("");
   const [exportedData, setExportedData] = useState<Record<string, any[]> | null>(null);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
 
   const exportAllData = async () => {
     setExporting(true);
@@ -183,6 +195,58 @@ export default function DatabaseMigration() {
     }
   };
 
+  const testConnection = async () => {
+    setTestingConnection(true);
+    try {
+      // Get project URL from environment
+      const projectUrl = import.meta.env.VITE_SUPABASE_URL || '';
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || projectUrl.replace('https://', '').replace('.supabase.co', '');
+      
+      // Test connection by counting records
+      const [policiesResult, clientsResult, mediaResult] = await Promise.all([
+        supabase.from('policies').select('id', { count: 'exact', head: true }),
+        supabase.from('clients').select('id', { count: 'exact', head: true }),
+        supabase.from('media_files').select('id', { count: 'exact', head: true }).is('deleted_at', null)
+      ]);
+
+      const status: ConnectionStatus = {
+        connected: !policiesResult.error,
+        projectUrl,
+        projectId,
+        tablesCount: TABLES_TO_EXPORT.length,
+        policiesCount: policiesResult.count || 0,
+        clientsCount: clientsResult.count || 0,
+        mediaCount: mediaResult.count || 0
+      };
+
+      setConnectionStatus(status);
+      
+      if (status.connected) {
+        toast.success("الاتصال بقاعدة البيانات ناجح");
+      } else {
+        toast.error("فشل الاتصال بقاعدة البيانات");
+      }
+    } catch (error: any) {
+      setConnectionStatus({
+        connected: false,
+        projectUrl: '',
+        projectId: '',
+        tablesCount: 0,
+        policiesCount: 0,
+        clientsCount: 0,
+        mediaCount: 0
+      });
+      toast.error("خطأ في اختبار الاتصال: " + error.message);
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  // Test connection on mount
+  useEffect(() => {
+    testConnection();
+  }, []);
+
   return (
     <MainLayout>
       <div className="space-y-6" dir="rtl">
@@ -193,6 +257,73 @@ export default function DatabaseMigration() {
           </p>
         </div>
 
+        {/* Connection Status Card */}
+        <Card className={connectionStatus?.connected ? "border-green-500/50 bg-green-500/5" : "border-destructive/50 bg-destructive/5"}>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {connectionStatus?.connected ? (
+                  <Wifi className="h-5 w-5 text-green-500" />
+                ) : (
+                  <WifiOff className="h-5 w-5 text-destructive" />
+                )}
+                حالة الاتصال
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={testConnection}
+                disabled={testingConnection}
+              >
+                {testingConnection ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "إعادة الاختبار"
+                )}
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {connectionStatus ? (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="flex items-center gap-2">
+                  <Server className="h-4 w-4 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">معرف المشروع</div>
+                    <div className="font-mono text-sm">{connectionStatus.projectId || 'غير معروف'}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Database className="h-4 w-4 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">عدد الوثائق</div>
+                    <div className="font-bold text-lg">{connectionStatus.policiesCount.toLocaleString()}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Database className="h-4 w-4 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">عدد العملاء</div>
+                    <div className="font-bold text-lg">{connectionStatus.clientsCount.toLocaleString()}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Image className="h-4 w-4 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">عدد الوسائط</div>
+                    <div className="font-bold text-lg">{connectionStatus.mediaCount.toLocaleString()}</div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                جاري اختبار الاتصال...
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>تحذير مهم</AlertTitle>
@@ -201,12 +332,87 @@ export default function DatabaseMigration() {
           </AlertDescription>
         </Alert>
 
-        <Tabs defaultValue="export" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+        <Tabs defaultValue="connection" className="w-full">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="connection">حالة الاتصال</TabsTrigger>
             <TabsTrigger value="export">تصدير البيانات</TabsTrigger>
             <TabsTrigger value="import">استيراد البيانات</TabsTrigger>
             <TabsTrigger value="guide">دليل النقل</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="connection" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Server className="h-5 w-5" />
+                    معلومات Supabase الحالي
+                  </CardTitle>
+                  <CardDescription>
+                    معلومات المشروع المتصل حالياً
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">رابط المشروع</div>
+                    <code className="text-xs bg-muted px-2 py-1 rounded block break-all">
+                      {connectionStatus?.projectUrl || 'جاري التحميل...'}
+                    </code>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">معرف المشروع</div>
+                    <code className="text-xs bg-muted px-2 py-1 rounded block">
+                      {connectionStatus?.projectId || 'جاري التحميل...'}
+                    </code>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">عدد الجداول</div>
+                    <code className="text-xs bg-muted px-2 py-1 rounded block">
+                      {TABLES_TO_EXPORT.length} جدول
+                    </code>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileCode className="h-5 w-5" />
+                    ملفات الإعداد
+                  </CardTitle>
+                  <CardDescription>
+                    تحميل الملفات اللازمة للنقل
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Button
+                    onClick={() => window.open('/setup-supabase.sh', '_blank')}
+                    variant="outline"
+                    className="w-full justify-start"
+                  >
+                    <Download className="ml-2 h-4 w-4" />
+                    تحميل سكربت الإعداد (setup-supabase.sh)
+                  </Button>
+                  <Button
+                    onClick={downloadMigrationSQL}
+                    variant="outline"
+                    className="w-full justify-start"
+                  >
+                    <Download className="ml-2 h-4 w-4" />
+                    تحميل SQL Schema (migration.sql)
+                  </Button>
+                  <Button
+                    onClick={downloadMigrationGuide}
+                    variant="outline"
+                    className="w-full justify-start"
+                  >
+                    <Download className="ml-2 h-4 w-4" />
+                    تحميل دليل النقل (migration-guide.md)
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
 
           <TabsContent value="export" className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
