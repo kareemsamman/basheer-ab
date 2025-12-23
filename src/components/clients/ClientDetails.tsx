@@ -49,6 +49,8 @@ import { PolicyDetailsDrawer } from '@/components/policies/PolicyDetailsDrawer';
 import { PolicyWizard } from '@/components/policies/PolicyWizard';
 import { ClientDrawer } from '@/components/clients/ClientDrawer';
 import { ClientSignatureSection } from '@/components/clients/ClientSignatureSection';
+import { ExpiryBadge } from '@/components/shared/ExpiryBadge';
+import { DebtIndicator } from '@/components/shared/DebtIndicator';
 import { cn } from '@/lib/utils';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { useBranches } from '@/hooks/useBranches';
@@ -641,12 +643,17 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
             <div className="h-12 w-12 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
               <AlertCircle className="h-6 w-6 text-destructive" />
             </div>
-            <div>
+            <div className="flex-1">
               <p className="text-xs text-muted-foreground">إجمالي المتبقي</p>
               <p className={cn("text-xl font-bold", paymentSummary.total_remaining > 0 ? "text-destructive" : "text-success")}>
                 ₪{paymentSummary.total_remaining.toLocaleString()}
               </p>
             </div>
+            <DebtIndicator 
+              totalOwed={paymentSummary.total_paid + paymentSummary.total_remaining} 
+              totalPaid={paymentSummary.total_paid} 
+              showAmount={false}
+            />
           </Card>
           
           <Card className="p-4 flex items-center gap-4">
@@ -893,6 +900,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                       <TableHead className="text-right">تاريخ الانتهاء</TableHead>
                       <TableHead className="text-right">السعر</TableHead>
                       <TableHead className="text-right">أنشئ بواسطة</TableHead>
+                      <TableHead className="text-right">انتهاء</TableHead>
                       <TableHead className="text-right">الحالة</TableHead>
                       <TableHead className="text-center w-[60px]">عرض</TableHead>
                     </TableRow>
@@ -918,6 +926,9 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                           <TableCell className="font-semibold">₪{policy.insurance_price.toLocaleString()}</TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {policy.creator?.full_name || policy.creator?.email || '-'}
+                          </TableCell>
+                          <TableCell>
+                            <ExpiryBadge endDate={policy.end_date} cancelled={policy.cancelled} />
                           </TableCell>
                           <TableCell>
                             <Badge variant={status.variant}>{status.label}</Badge>

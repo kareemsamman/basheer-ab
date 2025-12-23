@@ -24,7 +24,10 @@ interface SmsSettings {
   is_enabled: boolean;
   invoice_sms_template?: string | null;
   signature_sms_template?: string | null;
-  // Signature page branding from invoice_templates default_signature_template_id
+  reminder_1month_template?: string | null;
+  reminder_1week_template?: string | null;
+  payment_request_template?: string | null;
+  enable_auto_reminders?: boolean;
 }
 
 interface SignaturePageSettings {
@@ -51,6 +54,10 @@ export default function SmsSettings() {
     is_enabled: false,
     invoice_sms_template: null,
     signature_sms_template: null,
+    reminder_1month_template: null,
+    reminder_1week_template: null,
+    payment_request_template: null,
+    enable_auto_reminders: false,
   });
 
   const [signaturePageSettings, setSignaturePageSettings] = useState<SignaturePageSettings>({
@@ -86,6 +93,10 @@ export default function SmsSettings() {
           is_enabled: data.is_enabled || false,
           invoice_sms_template: data.invoice_sms_template ?? null,
           signature_sms_template: data.signature_sms_template ?? null,
+          reminder_1month_template: data.reminder_1month_template ?? null,
+          reminder_1week_template: data.reminder_1week_template ?? null,
+          payment_request_template: data.payment_request_template ?? null,
+          enable_auto_reminders: data.enable_auto_reminders ?? false,
         });
 
         // Load signature template settings
@@ -121,6 +132,10 @@ export default function SmsSettings() {
             is_enabled: settings.is_enabled,
             invoice_sms_template: settings.invoice_sms_template ?? null,
             signature_sms_template: settings.signature_sms_template ?? null,
+            reminder_1month_template: settings.reminder_1month_template ?? null,
+            reminder_1week_template: settings.reminder_1week_template ?? null,
+            payment_request_template: settings.payment_request_template ?? null,
+            enable_auto_reminders: settings.enable_auto_reminders ?? false,
           })
           .eq("id", settings.id);
 
@@ -137,6 +152,10 @@ export default function SmsSettings() {
             is_enabled: settings.is_enabled,
             invoice_sms_template: settings.invoice_sms_template ?? null,
             signature_sms_template: settings.signature_sms_template ?? null,
+            reminder_1month_template: settings.reminder_1month_template ?? null,
+            reminder_1week_template: settings.reminder_1week_template ?? null,
+            payment_request_template: settings.payment_request_template ?? null,
+            enable_auto_reminders: settings.enable_auto_reminders ?? false,
           })
           .select()
           .single();
@@ -417,6 +436,22 @@ export default function SmsSettings() {
                     </p>
                   </div>
 
+                  {/* Auto Reminders Toggle */}
+                  <div className="flex items-center justify-between p-4 rounded-lg border bg-amber-500/10 border-amber-500/20">
+                    <div className="space-y-0.5">
+                      <Label className="font-medium">تفعيل التذكيرات التلقائية</Label>
+                      <p className="text-sm text-muted-foreground">
+                        إرسال تذكيرات تلقائية قبل انتهاء الوثيقة (شهر وأسبوع)
+                      </p>
+                    </div>
+                    <Switch
+                      checked={settings.enable_auto_reminders || false}
+                      onCheckedChange={(checked) =>
+                        setSettings((prev) => ({ ...prev, enable_auto_reminders: checked }))
+                      }
+                    />
+                  </div>
+
                   {/* Templates */}
                   <div className="space-y-2">
                     <Label htmlFor="signature_sms_template">نص رسالة التوقيع</Label>
@@ -427,7 +462,7 @@ export default function SmsSettings() {
                         setSettings((prev) => ({ ...prev, signature_sms_template: e.target.value }))
                       }
                       placeholder="مرحباً {{client_name}}، يرجى التوقيع على الرابط التالي: {{signature_url}}"
-                      className="min-h-[110px]"
+                      className="min-h-[100px]"
                     />
                     <p className="text-xs text-muted-foreground">
                       المتغيرات المتاحة: {"{{client_name}}"} ، {"{{signature_url}}"}
@@ -443,10 +478,58 @@ export default function SmsSettings() {
                         setSettings((prev) => ({ ...prev, invoice_sms_template: e.target.value }))
                       }
                       placeholder="مرحباً {{client_name}}، وثيقة التأمين جاهزة. البوليصة: {{policy_url}} فاتورة AB: {{ab_invoice_url}}"
-                      className="min-h-[110px]"
+                      className="min-h-[100px]"
                     />
                     <p className="text-xs text-muted-foreground">
-                      المتغيرات المتاحة: {"{{client_name}}"} ، {"{{policy_number}}"} ، {"{{policy_url}}"} (رابط ملف البوليصة) ، {"{{ab_invoice_url}}"} (رابط فاتورة AB)
+                      المتغيرات المتاحة: {"{{client_name}}"} ، {"{{policy_number}}"} ، {"{{policy_url}}"} ، {"{{ab_invoice_url}}"}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="reminder_1month_template">نص تذكير قبل شهر</Label>
+                    <Textarea
+                      id="reminder_1month_template"
+                      value={settings.reminder_1month_template || ""}
+                      onChange={(e) =>
+                        setSettings((prev) => ({ ...prev, reminder_1month_template: e.target.value }))
+                      }
+                      placeholder="مرحباً {{client_name}}، تنتهي وثيقة التأمين رقم {{policy_number}} خلال شهر. المبلغ المتبقي: {{remaining_amount}} شيكل."
+                      className="min-h-[100px]"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      المتغيرات: {"{{client_name}}"} ، {"{{policy_number}}"} ، {"{{remaining_amount}}"} ، {"{{end_date}}"}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="reminder_1week_template">نص تذكير قبل أسبوع</Label>
+                    <Textarea
+                      id="reminder_1week_template"
+                      value={settings.reminder_1week_template || ""}
+                      onChange={(e) =>
+                        setSettings((prev) => ({ ...prev, reminder_1week_template: e.target.value }))
+                      }
+                      placeholder="مرحباً {{client_name}}، تنتهي وثيقة التأمين رقم {{policy_number}} خلال أسبوع. المبلغ المتبقي: {{remaining_amount}} شيكل."
+                      className="min-h-[100px]"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      المتغيرات: {"{{client_name}}"} ، {"{{policy_number}}"} ، {"{{remaining_amount}}"} ، {"{{end_date}}"}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="payment_request_template">نص طلب الدفع اليدوي</Label>
+                    <Textarea
+                      id="payment_request_template"
+                      value={settings.payment_request_template || ""}
+                      onChange={(e) =>
+                        setSettings((prev) => ({ ...prev, payment_request_template: e.target.value }))
+                      }
+                      placeholder="مرحباً {{client_name}}، لديك مبلغ متبقي {{remaining_amount}} شيكل على وثيقة التأمين رقم {{policy_number}}."
+                      className="min-h-[100px]"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      المتغيرات: {"{{client_name}}"} ، {"{{policy_number}}"} ، {"{{remaining_amount}}"} ، {"{{end_date}}"}
                     </p>
                   </div>
 
