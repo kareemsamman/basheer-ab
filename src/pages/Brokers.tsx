@@ -46,7 +46,6 @@ interface BrokerWithStats extends Broker {
   policy_count: number;
   total_collected: number;
   total_remaining: number;
-  total_profit: number;
 }
 
 export default function Brokers() {
@@ -93,10 +92,10 @@ export default function Brokers() {
             .eq('broker_id', broker.id)
             .is('deleted_at', null);
 
-          // Get policies for this broker's clients
+          // Get policies for this broker
           const { data: policies } = await supabase
             .from('policies')
-            .select('id, insurance_price, profit')
+            .select('id, insurance_price')
             .eq('broker_id', broker.id)
             .is('deleted_at', null);
 
@@ -114,7 +113,6 @@ export default function Brokers() {
           }
 
           const totalPrice = policies?.reduce((sum, p) => sum + Number(p.insurance_price), 0) || 0;
-          const totalProfit = policies?.reduce((sum, p) => sum + Number(p.profit || 0), 0) || 0;
 
           return {
             ...broker,
@@ -122,7 +120,6 @@ export default function Brokers() {
             policy_count: policies?.length || 0,
             total_collected: totalCollected,
             total_remaining: totalPrice - totalCollected,
-            total_profit: totalProfit,
           };
         })
       );
@@ -245,7 +242,6 @@ export default function Brokers() {
                   <TableHead className="text-muted-foreground font-medium text-center">الوثائق</TableHead>
                   <TableHead className="text-muted-foreground font-medium">المحصل</TableHead>
                   <TableHead className="text-muted-foreground font-medium">المتبقي</TableHead>
-                  <TableHead className="text-muted-foreground font-medium">الربح</TableHead>
                   <TableHead className="text-muted-foreground font-medium w-[80px]">إجراءات</TableHead>
                 </TableRow>
               </TableHeader>
@@ -322,9 +318,6 @@ export default function Brokers() {
                         broker.total_remaining > 0 ? "text-destructive" : "text-muted-foreground"
                       )} dir="ltr">
                         {formatCurrency(broker.total_remaining)}
-                      </TableCell>
-                      <TableCell className="text-primary font-medium" dir="ltr">
-                        {formatCurrency(broker.total_profit)}
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <RowActionsMenu

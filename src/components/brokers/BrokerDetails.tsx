@@ -79,7 +79,6 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
   const [stats, setStats] = useState({
     totalCollected: 0,
     totalRemaining: 0,
-    totalProfit: 0,
     // Balance tracking
     fromBrokerTotal: 0,   // ما عليه لي (الوسيط يعمل لي)
     toBrokerTotal: 0,     // ما عليي له (أنا أعمل للوسيط)
@@ -139,11 +138,6 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
         (sum, p) => sum + Number(p.insurance_price),
         0
       );
-      const totalProfit = formattedPolicies.reduce(
-        (sum, p) => sum + Number(p.profit || 0),
-        0
-      );
-
       // Calculate broker balance by direction
       const fromBrokerPolicies = formattedPolicies.filter(
         (p) => p.broker_direction === 'from_broker'
@@ -164,7 +158,6 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
       setStats({
         totalCollected,
         totalRemaining: totalPrice - totalCollected,
-        totalProfit,
         fromBrokerTotal,
         toBrokerTotal,
       });
@@ -273,21 +266,6 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                  <TrendingUp className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">الربح</p>
-                  <p className="text-2xl font-bold text-primary">
-                    <span dir="ltr">{formatCurrency(stats.totalProfit)}</span>
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
           {/* Balance: From Broker (he owes me) */}
           <Card className="border-green-200 dark:border-green-800">
             <CardContent className="pt-6">
@@ -335,67 +313,13 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
         )}
 
         {/* Tabs */}
-        <Tabs defaultValue="clients" className="space-y-4">
+        <Tabs defaultValue="policies" className="space-y-4">
           <TabsList>
-            <TabsTrigger value="clients" className="gap-2">
-              <Users className="h-4 w-4" />
-              العملاء ({clients.length})
-            </TabsTrigger>
             <TabsTrigger value="policies" className="gap-2">
               <FileText className="h-4 w-4" />
               الوثائق ({policies.length})
             </TabsTrigger>
           </TabsList>
-
-          <TabsContent value="clients">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-base">عملاء الوسيط</CardTitle>
-                <Button size="sm" onClick={() => setClientDrawerOpen(true)}>
-                  <UserPlus className="h-4 w-4 ml-2" />
-                  إضافة عميل
-                </Button>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="space-y-2">
-                    {[1, 2, 3].map((i) => (
-                      <Skeleton key={i} className="h-12 w-full" />
-                    ))}
-                  </div>
-                ) : clients.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">
-                    لا يوجد عملاء تحت هذا الوسيط
-                  </p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>العميل</TableHead>
-                        <TableHead>رقم الهوية</TableHead>
-                        <TableHead>الهاتف</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {clients.map((client) => (
-                        <TableRow key={client.id}>
-                          <TableCell className="font-medium">
-                            {client.full_name}
-                          </TableCell>
-                          <TableCell className="font-mono text-sm" dir="ltr">
-                            {client.id_number}
-                          </TableCell>
-                          <TableCell dir="ltr">
-                            {client.phone_number || "-"}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
 
           <TabsContent value="policies">
             <Card>
@@ -421,7 +345,6 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
                         <TableHead>السيارة</TableHead>
                         <TableHead>النوع</TableHead>
                         <TableHead>السعر</TableHead>
-                        <TableHead>الربح</TableHead>
                         <TableHead>الصلاحية</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -442,9 +365,6 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
                           </TableCell>
                           <TableCell dir="ltr">
                             {formatCurrency(policy.insurance_price)}
-                          </TableCell>
-                          <TableCell className="text-primary" dir="ltr">
-                            {formatCurrency(policy.profit)}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {formatDate(policy.start_date)} - {formatDate(policy.end_date)}
