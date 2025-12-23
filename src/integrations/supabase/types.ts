@@ -353,6 +353,54 @@ export type Database = {
           },
         ]
       }
+      import_progress: {
+        Row: {
+          created_at: string
+          error_log: Json | null
+          estimated_finish_at: string | null
+          failed_items: number
+          id: string
+          import_type: string
+          last_processed_id: string | null
+          metadata: Json | null
+          processed_items: number
+          started_at: string | null
+          status: string
+          total_items: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          error_log?: Json | null
+          estimated_finish_at?: string | null
+          failed_items?: number
+          id?: string
+          import_type: string
+          last_processed_id?: string | null
+          metadata?: Json | null
+          processed_items?: number
+          started_at?: string | null
+          status?: string
+          total_items?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          error_log?: Json | null
+          estimated_finish_at?: string | null
+          failed_items?: number
+          id?: string
+          import_type?: string
+          last_processed_id?: string | null
+          metadata?: Json | null
+          processed_items?: number
+          started_at?: string | null
+          status?: string
+          total_items?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       insurance_categories: {
         Row: {
           created_at: string

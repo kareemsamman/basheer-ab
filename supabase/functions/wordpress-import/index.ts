@@ -5,6 +5,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Branch ID for بيت حنينا
+const BEIT_HANINA_BRANCH_ID = '146727e4-170a-4f65-b3f8-679a9beb3016';
+
 // Date conversion: d-m-Y to YYYY-MM-DD
 function convertDate(dateStr: string | null | undefined): string | null {
   if (!dateStr) return null;
@@ -65,11 +68,10 @@ function mapCarType(wpType: string | null | undefined): string {
   return mapping[wpType.toLowerCase()] || 'car';
 }
 
-// Payment type mapping - enhanced to handle multiple formats
+// Payment type mapping
 function mapPaymentType(wpType: string | null | undefined, notes?: string | null): string {
   if (!wpType && !notes) return 'cash';
   
-  // Check notes for "Payment Way:" pattern
   if (notes) {
     const match = notes.match(/Payment Way:\s*(\w+)/i);
     if (match) {
@@ -99,18 +101,6 @@ function mapPaymentType(wpType: string | null | undefined, notes?: string | null
   return mapping[typeStr] || 'cash';
 }
 
-// Map parent term name to category
-function mapCategoryFromParentTerm(termName: string | null | undefined): string | null {
-  if (!termName) return null;
-  const mapping: Record<string, string> = {
-    'الزامي': 'ELZAMI',
-    'ثالث/شامل': 'THIRD_FULL',
-    'خدمات الطريق': 'ROAD_SERVICE',
-    'اعفاء رسوم حادث': 'ACCIDENT_FEE_EXEMPTION',
-  };
-  return mapping[termName] || null;
-}
-
 // Upload file from URL to Bunny CDN
 async function uploadToBunnyCDN(
   fileUrl: string, 
@@ -120,11 +110,8 @@ async function uploadToBunnyCDN(
   try {
     console.log(`Downloading file from: ${fileUrl}`);
     
-    // Download the file
     const response = await fetch(fileUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; WordPress-Import/1.0)'
-      }
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WordPress-Import/1.0)' }
     });
     
     if (!response.ok) {
@@ -135,7 +122,6 @@ async function uploadToBunnyCDN(
     const fileBuffer = await response.arrayBuffer();
     const size = fileBuffer.byteLength;
     
-    // Determine MIME type from URL
     const urlLower = fileUrl.toLowerCase();
     let mimeType = 'application/octet-stream';
     if (urlLower.endsWith('.pdf')) mimeType = 'application/pdf';
@@ -144,12 +130,10 @@ async function uploadToBunnyCDN(
     else if (urlLower.endsWith('.webp')) mimeType = 'image/webp';
     else if (urlLower.endsWith('.gif')) mimeType = 'image/gif';
     
-    // Extract filename from URL
     const urlParts = fileUrl.split('/');
     let originalName = urlParts[urlParts.length - 1] || 'file';
     originalName = decodeURIComponent(originalName.split('?')[0]);
     
-    // Generate organized path
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -158,7 +142,6 @@ async function uploadToBunnyCDN(
     const ext = originalName.split('.').pop()?.toLowerCase() || 'bin';
     const storagePath = `wp-import/${year}/${month}/${timestamp}_${randomId}.${ext}`;
     
-    // Upload to Bunny Storage
     const bunnyUploadUrl = `https://storage.bunnycdn.com/${BUNNY_STORAGE_ZONE}/${storagePath}`;
     
     const uploadResponse = await fetch(bunnyUploadUrl, {
@@ -186,6 +169,110 @@ async function uploadToBunnyCDN(
   }
 }
 
+// Parallel upload with concurrency limit
+async function uploadMediaParallel(
+  mediaItems: any[],
+  supabase: any,
+  mappings: any,
+  BUNNY_API_KEY: string,
+  BUNNY_STORAGE_ZONE: string,
+  progressId: string,
+  concurrency: number = 10
+): Promise<{ inserted: number; failed: number; errors: string[] }> {
+  const results = { inserted: 0, failed: 0, errors: [] as string[] };
+  
+  for (let i = 0; i < mediaItems.length; i += concurrency) {
+    const batch = mediaItems.slice(i, i + concurrency);
+    
+    const promises = batch.map(async (media) => {
+      try {
+        const policyId = media.policy_legacy_wp_id ? mappings.policies?.[media.policy_legacy_wp_id] : null;
+        if (!policyId || !media.url) {
+          return { success: false, error: 'Missing policy or URL' };
+        }
+
+        // Check if already exists
+        const { data: existingMedia } = await supabase
+          .from('media_files')
+          .select('id')
+          .eq('entity_id', policyId)
+          .eq('entity_type', 'policy')
+          .ilike('original_name', `%${media.url.split('/').pop()}%`)
+          .maybeSingle();
+
+        if (existingMedia) {
+          return { success: true, skipped: true };
+        }
+
+        const originalName = decodeURIComponent(media.url.split('/').pop() || 'file');
+        let cdnUrl = media.url;
+        let storagePath = media.url;
+        let mimeType = media.url.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg';
+        let size = 0;
+
+        // Upload to Bunny CDN
+        const uploadResult = await uploadToBunnyCDN(media.url, BUNNY_API_KEY, BUNNY_STORAGE_ZONE);
+        if (uploadResult) {
+          cdnUrl = uploadResult.cdnUrl;
+          storagePath = uploadResult.storagePath;
+          mimeType = uploadResult.mimeType;
+          size = uploadResult.size;
+        }
+
+        const { error } = await supabase
+          .from('media_files')
+          .insert({
+            cdn_url: cdnUrl,
+            storage_path: storagePath,
+            original_name: originalName,
+            mime_type: mimeType,
+            size: size,
+            entity_type: 'policy',
+            entity_id: policyId,
+            branch_id: BEIT_HANINA_BRANCH_ID,
+          });
+
+        if (error) {
+          return { success: false, error: `${originalName}: ${error.message}` };
+        }
+        return { success: true };
+      } catch (e: any) {
+        return { success: false, error: e.message };
+      }
+    });
+
+    const batchResults = await Promise.all(promises);
+    
+    for (const result of batchResults) {
+      if (result.success) {
+        if (!result.skipped) results.inserted++;
+      } else {
+        results.failed++;
+        if (result.error) results.errors.push(result.error);
+      }
+    }
+
+    // Update progress
+    const processed = Math.min(i + concurrency, mediaItems.length);
+    const avgTimePerItem = 2.5; // seconds
+    const remainingItems = mediaItems.length - processed;
+    const estimatedSecondsRemaining = (remainingItems / concurrency) * avgTimePerItem;
+    const estimatedFinish = new Date(Date.now() + estimatedSecondsRemaining * 1000);
+
+    await supabase
+      .from('import_progress')
+      .update({
+        processed_items: processed,
+        failed_items: results.failed,
+        estimated_finish_at: estimatedFinish.toISOString(),
+        error_log: results.errors.slice(-50), // Keep last 50 errors
+      })
+      .eq('id', progressId);
+  }
+
+  return results;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -199,9 +286,112 @@ Deno.serve(async (req) => {
     const BUNNY_API_KEY = Deno.env.get('BUNNY_API_KEY');
     const BUNNY_STORAGE_ZONE = Deno.env.get('BUNNY_STORAGE_ZONE');
 
-    const { action, data, entityType, batch } = await req.json();
+    const { action, data, entityType, batch, progressId } = await req.json();
 
-    // Action: Clear all data
+    // Action: Preserve pricing rules before company deletion
+    if (action === 'preservePricingRules') {
+      console.log('Preserving pricing rules with company names...');
+      
+      // Get all pricing rules with company names
+      const { data: rules, error } = await supabase
+        .from('pricing_rules')
+        .select(`
+          *,
+          insurance_companies!inner(name, name_ar)
+        `);
+
+      if (error) throw error;
+
+      // Map rules by company name (lowercase for matching)
+      const preservedRules: Record<string, any[]> = {};
+      for (const rule of rules || []) {
+        const companyName = (rule.insurance_companies?.name || '').toLowerCase();
+        const companyNameAr = (rule.insurance_companies?.name_ar || '').toLowerCase();
+        
+        if (companyName) {
+          if (!preservedRules[companyName]) preservedRules[companyName] = [];
+          preservedRules[companyName].push({
+            ...rule,
+            insurance_companies: undefined,
+            company_id: undefined,
+            id: undefined,
+          });
+        }
+        if (companyNameAr && companyNameAr !== companyName) {
+          if (!preservedRules[companyNameAr]) preservedRules[companyNameAr] = [];
+          preservedRules[companyNameAr].push({
+            ...rule,
+            insurance_companies: undefined,
+            company_id: undefined,
+            id: undefined,
+          });
+        }
+      }
+
+      console.log(`Preserved ${rules?.length || 0} pricing rules from ${Object.keys(preservedRules).length} companies`);
+
+      return new Response(JSON.stringify({ success: true, preservedRules, count: rules?.length || 0 }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Action: Delete all insurance companies (but preserve rules separately)
+    if (action === 'deleteCompanies') {
+      console.log('Deleting all insurance companies...');
+      
+      // First delete pricing rules (they'll be restored)
+      await supabase.from('pricing_rules').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      
+      // Then delete companies
+      const { error } = await supabase.from('insurance_companies').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      
+      if (error) throw error;
+
+      return new Response(JSON.stringify({ success: true, message: 'All insurance companies deleted' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Action: Restore pricing rules to new companies
+    if (action === 'restorePricingRules') {
+      const { preservedRules } = data;
+      console.log('Restoring pricing rules to new companies...');
+
+      // Get all new companies
+      const { data: companies } = await supabase.from('insurance_companies').select('id, name, name_ar');
+      
+      const companyMap: Record<string, string> = {};
+      for (const c of companies || []) {
+        if (c.name) companyMap[c.name.toLowerCase()] = c.id;
+        if (c.name_ar) companyMap[c.name_ar.toLowerCase()] = c.id;
+      }
+
+      let restored = 0;
+      let notFound = 0;
+
+      for (const [companyName, rules] of Object.entries(preservedRules || {})) {
+        const companyId = companyMap[companyName.toLowerCase()];
+        if (companyId && Array.isArray(rules)) {
+          for (const rule of rules) {
+            const { error } = await supabase.from('pricing_rules').insert({
+              ...rule,
+              company_id: companyId,
+            });
+            if (!error) restored++;
+          }
+        } else {
+          notFound++;
+        }
+      }
+
+      console.log(`Restored ${restored} pricing rules, ${notFound} companies not found`);
+
+      return new Response(JSON.stringify({ success: true, restored, notFound }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Action: Clear all data (except companies and pricing rules)
     if (action === 'clear') {
       console.log('Clearing all data...');
       await supabase.from('invoices').delete().neq('id', '00000000-0000-0000-0000-000000000000');
@@ -220,7 +410,59 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Action: Get existing mappings (for reference during batch imports)
+    // Action: Create import progress record
+    if (action === 'createProgress') {
+      const { importType, totalItems, metadata } = data;
+      
+      const { data: progress, error } = await supabase
+        .from('import_progress')
+        .insert({
+          import_type: importType,
+          total_items: totalItems,
+          status: 'running',
+          started_at: new Date().toISOString(),
+          metadata: metadata || {},
+        })
+        .select('id')
+        .single();
+
+      if (error) throw error;
+
+      return new Response(JSON.stringify({ success: true, progressId: progress.id }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Action: Get import progress
+    if (action === 'getProgress') {
+      const { data: progress, error } = await supabase
+        .from('import_progress')
+        .select('*')
+        .eq('id', progressId)
+        .single();
+
+      if (error) throw error;
+
+      return new Response(JSON.stringify({ success: true, progress }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Action: Update progress status
+    if (action === 'updateProgressStatus') {
+      const { status } = data;
+      
+      await supabase
+        .from('import_progress')
+        .update({ status })
+        .eq('id', progressId);
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Action: Get existing mappings
     if (action === 'getMappings') {
       const [companiesRes, brokersRes, clientsRes, carsRes, policiesRes] = await Promise.all([
         supabase.from('insurance_companies').select('id, name'),
@@ -239,6 +481,45 @@ Deno.serve(async (req) => {
       };
 
       return new Response(JSON.stringify({ success: true, mappings }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Action: Import media with parallel upload
+    if (action === 'importMediaParallel') {
+      const { mediaItems, mappings } = data;
+      
+      if (!BUNNY_API_KEY || !BUNNY_STORAGE_ZONE) {
+        return new Response(JSON.stringify({ 
+          success: false, 
+          error: 'Bunny CDN not configured' 
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const results = await uploadMediaParallel(
+        mediaItems,
+        supabase,
+        mappings,
+        BUNNY_API_KEY,
+        BUNNY_STORAGE_ZONE,
+        progressId,
+        10 // 10 concurrent uploads
+      );
+
+      // Mark complete
+      await supabase
+        .from('import_progress')
+        .update({
+          status: 'completed',
+          processed_items: mediaItems.length,
+          failed_items: results.failed,
+        })
+        .eq('id', progressId);
+
+      return new Response(JSON.stringify({ success: true, ...results }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -355,6 +636,7 @@ Deno.serve(async (req) => {
               notes: client.notes || null,
               less_than_24: client.less_than_24 === true,
               broker_id: brokerId,
+              branch_id: BEIT_HANINA_BRANCH_ID, // Always assign to بيت حنينا
             };
 
             if (existing) {
@@ -409,6 +691,7 @@ Deno.serve(async (req) => {
               license_type: car.license_type || null,
               last_license: convertDate(car.last_license),
               license_expiry: convertDate(car.license_finish),
+              branch_id: BEIT_HANINA_BRANCH_ID, // Always assign to بيت حنينا
             };
 
             if (existing) {
@@ -466,7 +749,6 @@ Deno.serve(async (req) => {
               .is('deleted_at', null)
               .maybeSingle();
 
-            // Extract notes - remove "Payment Way:" from notes if present
             let notes = policy.notes || null;
             if (notes) {
               notes = notes.replace(/Payment Way:\s*\w+/gi, '').trim() || null;
@@ -492,6 +774,7 @@ Deno.serve(async (req) => {
               transferred_car_number: policy.transferred_car_number || null,
               notes: notes,
               calc_status: policy.calc_status || 'done',
+              branch_id: BEIT_HANINA_BRANCH_ID, // Always assign to بيت حنينا
             };
 
             if (existing) {
@@ -521,9 +804,7 @@ Deno.serve(async (req) => {
         for (const payment of batch || []) {
           try {
             const policyId = payment.policy_legacy_wp_id ? mappings.policies?.[payment.policy_legacy_wp_id] : null;
-            if (!policyId) {
-              continue; // Skip if policy not found
-            }
+            if (!policyId) continue;
 
             const paymentDate = convertDate(payment.date);
             if (!paymentDate) continue;
@@ -539,7 +820,6 @@ Deno.serve(async (req) => {
               .eq('amount', amount)
               .maybeSingle();
 
-            // Enhanced payment type extraction
             const paymentType = mapPaymentType(payment.payment_type, payment.policy_notes) as any;
 
             if (!existingPayment) {
@@ -553,6 +833,7 @@ Deno.serve(async (req) => {
                   cheque_number: payment.check_number || null,
                   cheque_image_url: payment.check_image_url || null,
                   refused: payment.refused_status === 'refused',
+                  branch_id: BEIT_HANINA_BRANCH_ID, // Always assign to بيت حنينا
                 });
               if (error) {
                 stats.errors.push(`Payment: ${error.message}`);
@@ -560,7 +841,6 @@ Deno.serve(async (req) => {
                 stats.inserted++;
               }
             } else {
-              // Update existing payment
               await supabase
                 .from('policy_payments')
                 .update({
@@ -588,7 +868,6 @@ Deno.serve(async (req) => {
             const policyId = media.policy_legacy_wp_id ? mappings.policies?.[media.policy_legacy_wp_id] : null;
             if (!policyId || !media.url) continue;
 
-            // Check if already imported (by original URL in notes or exact CDN url)
             const { data: existingMedia } = await supabase
               .from('media_files')
               .select('id')
@@ -608,7 +887,6 @@ Deno.serve(async (req) => {
             let size = 0;
             const originalName = decodeURIComponent(media.url.split('/').pop() || 'file');
 
-            // Upload to Bunny CDN if configured
             if (BUNNY_API_KEY && BUNNY_STORAGE_ZONE) {
               const uploadResult = await uploadToBunnyCDN(media.url, BUNNY_API_KEY, BUNNY_STORAGE_ZONE);
               if (uploadResult) {
@@ -629,6 +907,7 @@ Deno.serve(async (req) => {
                 size: size,
                 entity_type: 'policy',
                 entity_id: policyId,
+                branch_id: BEIT_HANINA_BRANCH_ID, // Always assign to بيت حنينا
               });
             
             if (error) {
@@ -655,7 +934,6 @@ Deno.serve(async (req) => {
             const pdfUrl = invoice.pdf;
             const originalName = decodeURIComponent(pdfUrl.split('/').pop() || 'invoice.pdf');
 
-            // Check if already imported
             const { data: existingMedia } = await supabase
               .from('media_files')
               .select('id')
@@ -673,7 +951,6 @@ Deno.serve(async (req) => {
             let storagePath = pdfUrl;
             let size = 0;
 
-            // Upload to Bunny CDN if configured
             if (BUNNY_API_KEY && BUNNY_STORAGE_ZONE) {
               const uploadResult = await uploadToBunnyCDN(pdfUrl, BUNNY_API_KEY, BUNNY_STORAGE_ZONE);
               if (uploadResult) {
@@ -693,6 +970,7 @@ Deno.serve(async (req) => {
                 size: size,
                 entity_type: 'invoice',
                 entity_id: policyId,
+                branch_id: BEIT_HANINA_BRANCH_ID, // Always assign to بيت حنينا
               });
             
             if (error) {
@@ -725,6 +1003,7 @@ Deno.serve(async (req) => {
               notes: cheque.notes || null,
               refused: cheque.refused === true,
               used: cheque.used === true,
+              branch_id: BEIT_HANINA_BRANCH_ID, // Always assign to بيت حنينا
             };
 
             if (existing) {
