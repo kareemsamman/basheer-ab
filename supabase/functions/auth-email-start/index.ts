@@ -37,7 +37,8 @@ async function sendEmailViaSMTP(
   smtpPassword: string,
   recipientEmail: string,
   subject: string,
-  body: string
+  textContent: string,
+  htmlContent: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     console.log(`Sending OTP email via SMTP to ${recipientEmail}`);
@@ -55,12 +56,14 @@ async function sendEmailViaSMTP(
       },
     });
 
+    // Let denomailer handle encoding automatically
+    // Provide both plain text (content) and HTML versions
     await client.send({
       from: smtpUser,
       to: recipientEmail,
       subject: subject,
-      content: body,
-      html: body.replace(/\n/g, '<br>'),
+      content: textContent,
+      html: htmlContent,
     });
 
     await client.close();
@@ -175,8 +178,34 @@ serve(async (req) => {
     // Prepare email content
     const subject = (authSettings.email_subject_template || "رمز التحقق: {code}")
       .replace("{code}", otp);
-    const body = (authSettings.email_body_template || "رمز التحقق الخاص بك هو: {code}")
-      .replace(/{code}/g, otp);
+    const bodyTemplate = authSettings.email_body_template || "رمز التحقق الخاص بك هو: {code}";
+    const textContent = bodyTemplate.replace(/{code}/g, otp);
+    
+    // Create proper HTML email with RTL support
+    const htmlContent = `
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: Arial, sans-serif; padding: 20px; direction: rtl; text-align: right;">
+  <div style="max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 30px; border-radius: 10px;">
+    <h2 style="color: #2563eb; margin-bottom: 20px;">AB Insurance CRM</h2>
+    <p style="font-size: 16px; color: #374151; margin-bottom: 20px;">${textContent.replace(/\n/g, '<br>')}</p>
+    <div style="background: #2563eb; color: white; font-size: 32px; font-weight: bold; padding: 20px; text-align: center; border-radius: 8px; letter-spacing: 8px;">
+      ${otp}
+    </div>
+    <p style="font-size: 14px; color: #6b7280; margin-top: 20px;">
+      هذا الرمز صالح لمدة 5 دقائق فقط.
+    </p>
+    <hr style="border: 1px solid #e5e7eb; margin: 20px 0;">
+    <p style="font-size: 12px; color: #9ca3af;">
+      إذا لم تطلب هذا الرمز، يرجى تجاهل هذه الرسالة.
+    </p>
+  </div>
+</body>
+</html>`;
 
     // Send email via SMTP
     const emailResult = await sendEmailViaSMTP(
@@ -187,7 +216,8 @@ serve(async (req) => {
       smtpPassword,
       normalizedEmail,
       subject,
-      body
+      textContent,
+      htmlContent
     );
 
     if (!emailResult.success) {
