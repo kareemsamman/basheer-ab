@@ -78,24 +78,48 @@ serve(async (req) => {
         },
       });
 
+      // Plain text version (important fallback for email clients)
+      const textContent = `اختبار SMTP ناجح!
+
+تم إرسال هذه الرسالة بنجاح من نظام AB Insurance CRM.
+إعدادات SMTP تعمل بشكل صحيح!
+
+---
+SMTP Host: ${smtpHost}
+SMTP Port: ${smtpPort}
+Secure: ${smtpSecure ? 'Yes (TLS)' : 'No'}`;
+
+      // HTML version with proper structure
+      const htmlContent = `
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: Arial, sans-serif; padding: 20px; direction: rtl; text-align: right; background-color: #f3f4f6;">
+  <div style="max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+    <h2 style="color: #2563eb; margin-bottom: 20px;">✅ اختبار SMTP ناجح!</h2>
+    <p style="font-size: 16px; color: #374151;">تم إرسال هذه الرسالة بنجاح من نظام <strong>AB Insurance CRM</strong>.</p>
+    <p style="font-size: 16px; color: #374151;">إعدادات SMTP تعمل بشكل صحيح!</p>
+    <hr style="border: 1px solid #e5e7eb; margin: 20px 0;">
+    <p style="color: #6b7280; font-size: 12px;">
+      SMTP Host: ${smtpHost}<br>
+      SMTP Port: ${smtpPort}<br>
+      Secure: ${smtpSecure ? 'Yes (TLS)' : 'No'}
+    </p>
+  </div>
+</body>
+</html>`;
+
+      // Let denomailer handle encoding automatically
+      // Provide subject as normal UTF-8 string, text (content), and html
       await client.send({
         from: smtpUser,
         to: testEmail,
         subject: "اختبار إعدادات SMTP - AB Insurance CRM",
-        content: "تم إرسال هذه الرسالة بنجاح من نظام AB Insurance CRM.\n\nإعدادات SMTP تعمل بشكل صحيح!",
-        html: `
-          <div dir="rtl" style="font-family: Arial, sans-serif; padding: 20px;">
-            <h2 style="color: #2563eb;">✅ اختبار SMTP ناجح!</h2>
-            <p>تم إرسال هذه الرسالة بنجاح من نظام <strong>AB Insurance CRM</strong>.</p>
-            <p>إعدادات SMTP تعمل بشكل صحيح!</p>
-            <hr style="border: 1px solid #e5e7eb; margin: 20px 0;" />
-            <p style="color: #6b7280; font-size: 12px;">
-              SMTP Host: ${smtpHost}<br>
-              SMTP Port: ${smtpPort}<br>
-              Secure: ${smtpSecure ? 'Yes (TLS)' : 'No'}
-            </p>
-          </div>
-        `,
+        content: textContent,
+        html: htmlContent,
       });
 
       await client.close();
