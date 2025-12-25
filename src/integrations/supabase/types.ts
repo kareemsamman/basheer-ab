@@ -14,6 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      auth_settings: {
+        Row: {
+          created_at: string
+          email_body_template: string | null
+          email_otp_enabled: boolean
+          email_subject_template: string | null
+          gmail_app_password: string | null
+          gmail_sender_email: string | null
+          id: string
+          sms_019_source: string | null
+          sms_019_token: string | null
+          sms_019_user: string | null
+          sms_message_template: string | null
+          sms_otp_enabled: boolean
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email_body_template?: string | null
+          email_otp_enabled?: boolean
+          email_subject_template?: string | null
+          gmail_app_password?: string | null
+          gmail_sender_email?: string | null
+          id?: string
+          sms_019_source?: string | null
+          sms_019_token?: string | null
+          sms_019_user?: string | null
+          sms_message_template?: string | null
+          sms_otp_enabled?: boolean
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email_body_template?: string | null
+          email_otp_enabled?: boolean
+          email_subject_template?: string | null
+          gmail_app_password?: string | null
+          gmail_sender_email?: string | null
+          id?: string
+          sms_019_source?: string | null
+          sms_019_token?: string | null
+          sms_019_user?: string | null
+          sms_message_template?: string | null
+          sms_otp_enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       branches: {
         Row: {
           created_at: string
@@ -632,7 +680,9 @@ export type Database = {
           created_at: string
           email: string
           id: string
+          identifier: string | null
           ip_address: string | null
+          method: string | null
           success: boolean
           user_agent: string | null
           user_id: string | null
@@ -641,7 +691,9 @@ export type Database = {
           created_at?: string
           email: string
           id?: string
+          identifier?: string | null
           ip_address?: string | null
+          method?: string | null
           success?: boolean
           user_agent?: string | null
           user_id?: string | null
@@ -650,7 +702,9 @@ export type Database = {
           created_at?: string
           email?: string
           id?: string
+          identifier?: string | null
           ip_address?: string | null
+          method?: string | null
           success?: boolean
           user_agent?: string | null
           user_id?: string | null
@@ -749,6 +803,42 @@ export type Database = {
           title?: string
           type?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      otp_codes: {
+        Row: {
+          attempts: number
+          channel: string
+          created_at: string
+          expires_at: string
+          id: string
+          identifier: string
+          max_attempts: number
+          otp_hash: string
+          used_at: string | null
+        }
+        Insert: {
+          attempts?: number
+          channel: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          identifier: string
+          max_attempts?: number
+          otp_hash: string
+          used_at?: string | null
+        }
+        Update: {
+          attempts?: number
+          channel?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          identifier?: string
+          max_attempts?: number
+          otp_hash?: string
+          used_at?: string | null
         }
         Relationships: []
       }
