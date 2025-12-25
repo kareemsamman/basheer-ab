@@ -563,10 +563,22 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                       <span dir="ltr">{client.phone_number}</span>
                     </span>
                   )}
+                  {client.phone_number_2 && (
+                    <span className="flex items-center gap-1.5 text-muted-foreground/70">
+                      <Phone className="h-3.5 w-3.5" />
+                      <span dir="ltr">{client.phone_number_2}</span>
+                    </span>
+                  )}
                   {client.file_number && (
                     <span className="flex items-center gap-1.5">
                       <FileText className="h-3.5 w-3.5" />
                       ملف: {client.file_number}
+                    </span>
+                  )}
+                  {client.birth_date && (
+                    <span className="flex items-center gap-1.5">
+                      <Calendar className="h-3.5 w-3.5" />
+                      {formatDate(client.birth_date)}
                     </span>
                   )}
                 </div>
@@ -625,9 +637,21 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
             </div>
             <div className="p-4 text-center col-span-2 md:col-span-1">
               <p className="text-xs text-muted-foreground mb-1">العمر</p>
-              <Badge variant={client.less_than_24 ? "warning" : "outline"} className="mt-1">
-                {client.less_than_24 ? 'أقل من 24' : '24+'}
-              </Badge>
+              {client.under24_type === 'additional_driver' ? (
+                <div className="space-y-1">
+                  <Badge variant="warning" className="text-xs">سائق إضافي -24</Badge>
+                  {client.under24_driver_name && (
+                    <p className="text-xs text-muted-foreground">
+                      {client.under24_driver_name}
+                      {client.under24_driver_id && <span className="font-mono mr-1">({client.under24_driver_id})</span>}
+                    </p>
+                  )}
+                </div>
+              ) : client.under24_type === 'client' || client.less_than_24 ? (
+                <Badge variant="warning" className="mt-1">أقل من 24</Badge>
+              ) : (
+                <Badge variant="outline" className="mt-1">24+</Badge>
+              )}
             </div>
           </div>
         </Card>

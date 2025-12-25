@@ -165,7 +165,9 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
     full_name: "",
     id_number: "",
     phone_number: "",
-    less_than_24: false,
+    under24_type: "none" as 'none' | 'client' | 'additional_driver',
+    under24_driver_name: "",
+    under24_driver_id: "",
     notes: "",
     broker_id: defaultBrokerId || "",
   });
@@ -278,7 +280,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
     setSelectedCategory(null);
     setCreateNewClient(false);
     setCreateNewCar(false);
-    setNewClient({ full_name: "", id_number: "", phone_number: "", less_than_24: false, notes: "", broker_id: defaultBrokerId || "" });
+    setNewClient({ full_name: "", id_number: "", phone_number: "", under24_type: "none", under24_driver_name: "", under24_driver_id: "", notes: "", broker_id: defaultBrokerId || "" });
     setNewCar({ car_number: "", manufacturer_name: "", model: "", year: "", color: "", car_type: "car", car_value: "", license_expiry: "" });
     setPolicy({ policy_type_parent: "", policy_type_child: "", company_id: "", start_date: new Date().toISOString().split('T')[0], end_date: getInitialEndDate(), insurance_price: "", cancelled: false, transferred: false, notes: "" });
     setPayments([]);
@@ -340,7 +342,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
         setClientSearch(parsed.clientSearch || "");
         setSelectedClient(parsed.selectedClient || null);
         setCreateNewClient(parsed.createNewClient || false);
-        setNewClient(parsed.newClient || { full_name: "", id_number: "", phone_number: "", less_than_24: false, notes: "", broker_id: defaultBrokerId || "" });
+        setNewClient(parsed.newClient || { full_name: "", id_number: "", phone_number: "", under24_type: "none", under24_driver_name: "", under24_driver_id: "", notes: "", broker_id: defaultBrokerId || "" });
         setSelectedCar(parsed.selectedCar || null);
         setCreateNewCar(parsed.createNewCar || false);
         setNewCar(parsed.newCar || { car_number: "", manufacturer_name: "", model: "", year: "", color: "", car_type: "car", car_value: "", license_expiry: "" });
@@ -751,7 +753,10 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
               id_number: newClient.id_number.trim(),
               file_number: fileNumData || null,
               phone_number: newClient.phone_number.trim() || null,
-              less_than_24: newClient.less_than_24,
+              under24_type: newClient.under24_type,
+              under24_driver_name: newClient.under24_type === 'additional_driver' ? newClient.under24_driver_name.trim() || null : null,
+              under24_driver_id: newClient.under24_type === 'additional_driver' ? newClient.under24_driver_id.trim() || null : null,
+              less_than_24: newClient.under24_type !== 'none',
               notes: newClient.notes.trim() || null,
               broker_id: newClient.broker_id || defaultBrokerId || null,
               branch_id: effectiveBranchId || null,
@@ -797,8 +802,8 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
           car_value: newCar.car_value ? parseFloat(newCar.car_value) : null,
           year: newCar.year ? parseInt(newCar.year) : null,
         };
-        const clientForCalc = selectedClient || { less_than_24: newClient.less_than_24 };
-        const ageBand: 'UNDER_24' | 'UP_24' = clientForCalc.less_than_24 ? 'UNDER_24' : 'UP_24';
+        const clientLess24 = selectedClient?.less_than_24 ?? (newClient.under24_type !== 'none');
+        const ageBand: 'UNDER_24' | 'UP_24' = clientLess24 ? 'UNDER_24' : 'UP_24';
         
         const profitResult = await calculatePolicyProfit({
           policyTypeParent: policy.policy_type_parent as any,
@@ -827,7 +832,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
             cancelled: policy.cancelled,
             transferred: policy.transferred,
             notes: policy.notes.trim() || null,
-            is_under_24: clientForCalc.less_than_24 || false,
+            is_under_24: clientLess24 || false,
             payed_for_company: profitResult.companyPayment,
             profit: profitResult.profit,
             branch_id: effectiveBranchId || null,
@@ -899,6 +904,13 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
             if (phone.length > 0 && !isValidPhoneNumber10(phone)) {
               newErrors.phone_number = "رقم الهاتف يجب أن يكون 10 أرقام";
             }
+            // Validate additional driver fields
+            if (newClient.under24_type === 'additional_driver') {
+              if (!newClient.under24_driver_name?.trim()) newErrors.under24_driver_name = "اسم السائق مطلوب";
+              const driverId = digitsOnly(newClient.under24_driver_id);
+              if (!driverId || driverId.length !== 9) newErrors.under24_driver_id = "رقم هوية السائق يجب أن يكون 9 أرقام";
+              else if (!isValidIsraeliId(driverId)) newErrors.under24_driver_id = "رقم هوية السائق غير صحيح";
+            }
           }
           if (!selectedClient && !createNewClient) {
             newErrors.client = "الرجاء اختيار عميل أو إنشاء عميل جديد";
@@ -926,6 +938,13 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
             const phone = digitsOnly(newClient.phone_number);
             if (phone.length > 0 && !isValidPhoneNumber10(phone)) {
               newErrors.phone_number = "رقم الهاتف يجب أن يكون 10 أرقام";
+            }
+            // Validate additional driver fields
+            if (newClient.under24_type === 'additional_driver') {
+              if (!newClient.under24_driver_name?.trim()) newErrors.under24_driver_name = "اسم السائق مطلوب";
+              const driverId = digitsOnly(newClient.under24_driver_id);
+              if (!driverId || driverId.length !== 9) newErrors.under24_driver_id = "رقم هوية السائق يجب أن يكون 9 أرقام";
+              else if (!isValidIsraeliId(driverId)) newErrors.under24_driver_id = "رقم هوية السائق غير صحيح";
             }
           }
           if (!selectedClient && !createNewClient) {
@@ -1042,7 +1061,10 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
               id_number: newClient.id_number.trim(),
               file_number: fileNumData || null,
               phone_number: newClient.phone_number.trim() || null,
-              less_than_24: newClient.less_than_24,
+              under24_type: newClient.under24_type,
+              under24_driver_name: newClient.under24_type === 'additional_driver' ? newClient.under24_driver_name.trim() || null : null,
+              under24_driver_id: newClient.under24_type === 'additional_driver' ? newClient.under24_driver_id.trim() || null : null,
+              less_than_24: newClient.under24_type !== 'none',
               notes: newClient.notes.trim() || null,
               broker_id: newClient.broker_id || defaultBrokerId || null,
               branch_id: effectiveBranchId || null,
@@ -1102,7 +1124,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
         }
 
         // Determine is_under_24
-        const isUnder24 = createNewClient ? newClient.less_than_24 : selectedClient?.less_than_24;
+        const isUnder24 = createNewClient ? (newClient.under24_type !== 'none') : selectedClient?.less_than_24;
         const ageBand = isUnder24 ? 'UNDER_24' : 'UP_24';
 
         let profitCalc = { profit: 0, companyPayment: 0 };
@@ -1658,14 +1680,61 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
                       </div>
                     </div>
                     
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        id="less_than_24"
-                        checked={newClient.less_than_24}
-                        onCheckedChange={(checked) => setNewClient({ ...newClient, less_than_24: checked as boolean })}
-                      />
-                      <Label htmlFor="less_than_24">أقل من 24 سنة</Label>
+                    {/* Under 24 Type */}
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">أقل من 24 سنة</Label>
+                      <div className="space-y-2">
+                        {[
+                          { value: 'none', label: 'لا' },
+                          { value: 'client', label: 'نعم – العميل نفسه أقل من 24' },
+                          { value: 'additional_driver', label: 'نعم – سائق إضافي (ابن/ابنة) أقل من 24' },
+                        ].map((option) => (
+                          <label 
+                            key={option.value} 
+                            className="flex items-center gap-2 cursor-pointer"
+                          >
+                            <input
+                              type="radio"
+                              name="under24_type"
+                              value={option.value}
+                              checked={newClient.under24_type === option.value}
+                              onChange={(e) => setNewClient({ ...newClient, under24_type: e.target.value as any })}
+                              className="h-4 w-4 text-primary"
+                            />
+                            <span className="text-sm">{option.label}</span>
+                          </label>
+                        ))}
+                      </div>
                     </div>
+                    
+                    {/* Additional Driver Fields - shown only when under24_type is additional_driver */}
+                    {newClient.under24_type === 'additional_driver' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 rounded-md border bg-muted/30">
+                        <div>
+                          <Label>اسم السائق الإضافي *</Label>
+                          <Input
+                            value={newClient.under24_driver_name}
+                            onChange={(e) => setNewClient({ ...newClient, under24_driver_name: e.target.value })}
+                            placeholder="أدخل اسم السائق"
+                            className={errors.under24_driver_name ? "border-destructive" : ""}
+                          />
+                          <FieldError error={errors.under24_driver_name} />
+                        </div>
+                        <div>
+                          <Label>رقم هوية السائق *</Label>
+                          <Input
+                            value={newClient.under24_driver_id}
+                            onChange={(e) => setNewClient({ ...newClient, under24_driver_id: digitsOnly(e.target.value).slice(0, 9) })}
+                            placeholder="رقم الهوية"
+                            inputMode="numeric"
+                            maxLength={9}
+                            dir="ltr"
+                            className={errors.under24_driver_id ? "border-destructive" : ""}
+                          />
+                          <FieldError error={errors.under24_driver_id} />
+                        </div>
+                      </div>
+                    )}
                     
                     <div>
                       <Label>ملاحظات</Label>
