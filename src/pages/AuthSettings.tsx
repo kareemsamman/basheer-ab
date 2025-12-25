@@ -12,14 +12,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Mail, Smartphone, Save, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { Mail, Smartphone, Save, Eye, EyeOff, AlertCircle, Send, Loader2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface AuthSettingsData {
   id: string;
   email_otp_enabled: boolean;
-  gmail_sender_email: string | null;
-  gmail_app_password: string | null;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_secure: boolean;
+  smtp_user: string;
+  smtp_password: string;
   email_subject_template: string | null;
   email_body_template: string | null;
   sms_otp_enabled: boolean;
@@ -34,14 +37,19 @@ export default function AuthSettings() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [showEmailPassword, setShowEmailPassword] = useState(false);
+  const [testingSmtp, setTestingSmtp] = useState(false);
+  const [showSmtpPassword, setShowSmtpPassword] = useState(false);
   const [showSmsToken, setShowSmsToken] = useState(false);
+  const [testEmail, setTestEmail] = useState("");
   
   const [settings, setSettings] = useState<AuthSettingsData>({
     id: "",
     email_otp_enabled: false,
-    gmail_sender_email: "",
-    gmail_app_password: "",
+    smtp_host: "smtp.hostinger.com",
+    smtp_port: 465,
+    smtp_secure: true,
+    smtp_user: "",
+    smtp_password: "",
     email_subject_template: "رمز التحقق: {code}",
     email_body_template: "رمز التحقق الخاص بك هو: {code}\n\nهذا الرمز صالح لمدة 5 دقائق.",
     sms_otp_enabled: false,
@@ -75,7 +83,11 @@ export default function AuthSettings() {
           // No settings found, create default
           const { data: newData, error: insertError } = await supabase
             .from("auth_settings")
-            .insert({})
+            .insert({
+              smtp_host: "smtp.hostinger.com",
+              smtp_port: 465,
+              smtp_secure: true,
+            })
             .select()
             .single();
           
@@ -94,8 +106,11 @@ export default function AuthSettings() {
         setSettings({
           id: data.id,
           email_otp_enabled: data.email_otp_enabled || false,
-          gmail_sender_email: data.gmail_sender_email || "",
-          gmail_app_password: data.gmail_app_password || "",
+          smtp_host: (data as any).smtp_host || "smtp.hostinger.com",
+          smtp_port: (data as any).smtp_port || 465,
+          smtp_secure: (data as any).smtp_secure !== false,
+          smtp_user: (data as any).smtp_user || "",
+          smtp_password: (data as any).smtp_password || "",
           email_subject_template: data.email_subject_template || "رمز التحقق: {code}",
           email_body_template: data.email_body_template || "رمز التحقق الخاص بك هو: {code}\n\nهذا الرمز صالح لمدة 5 دقائق.",
           sms_otp_enabled: data.sms_otp_enabled || false,
@@ -120,8 +135,11 @@ export default function AuthSettings() {
         .from("auth_settings")
         .update({
           email_otp_enabled: settings.email_otp_enabled,
-          gmail_sender_email: settings.gmail_sender_email || null,
-          gmail_app_password: settings.gmail_app_password || null,
+          smtp_host: settings.smtp_host || "smtp.hostinger.com",
+          smtp_port: settings.smtp_port || 465,
+          smtp_secure: settings.smtp_secure,
+          smtp_user: settings.smtp_user || null,
+          smtp_password: settings.smtp_password || null,
           email_subject_template: settings.email_subject_template,
           email_body_template: settings.email_body_template,
           sms_otp_enabled: settings.sms_otp_enabled,
@@ -129,7 +147,7 @@ export default function AuthSettings() {
           sms_019_token: settings.sms_019_token || null,
           sms_019_source: settings.sms_019_source || null,
           sms_message_template: settings.sms_message_template,
-        })
+        } as any)
         .eq("id", settings.id);
 
       if (error) throw error;
@@ -139,6 +157,36 @@ export default function AuthSettings() {
       toast.error("فشل في حفظ الإعدادات");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTestSmtp = async () => {
+    if (!testEmail || !testEmail.includes("@")) {
+      toast.error("يرجى إدخال بريد إلكتروني صالح للاختبار");
+      return;
+    }
+
+    // First save settings to ensure latest are used
+    await handleSave();
+
+    setTestingSmtp(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("test-smtp", {
+        body: { testEmail },
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast.success(data.message || "تم إرسال البريد الاختباري بنجاح");
+      } else {
+        toast.error(data.error || "فشل في اختبار SMTP");
+      }
+    } catch (error) {
+      console.error("Error testing SMTP:", error);
+      toast.error("فشل في اختبار SMTP");
+    } finally {
+      setTestingSmtp(false);
     }
   };
 
@@ -186,7 +234,7 @@ export default function AuthSettings() {
                   <div>
                     <CardTitle>تسجيل الدخول بالبريد الإلكتروني OTP</CardTitle>
                     <CardDescription>
-                      إرسال رمز التحقق عبر البريد الإلكتروني
+                      إرسال رمز التحقق عبر البريد الإلكتروني (Hostinger SMTP)
                     </CardDescription>
                   </div>
                   <Switch
@@ -201,42 +249,81 @@ export default function AuthSettings() {
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    يتطلب إعداد حساب Gmail مع كلمة مرور تطبيقات. 
-                    <a 
-                      href="https://support.google.com/accounts/answer/185833" 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-primary underline mr-1"
-                    >
-                      تعلم المزيد
-                    </a>
+                    استخدم بيانات SMTP من Hostinger. يمكنك الحصول عليها من لوحة تحكم Hostinger → Email → SMTP Settings
                   </AlertDescription>
                 </Alert>
 
+                {/* SMTP Server Settings */}
+                <div className="space-y-3 p-4 border rounded-lg bg-muted/30">
+                  <h4 className="font-medium text-sm">إعدادات خادم SMTP</h4>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="smtp_host">خادم SMTP</Label>
+                      <Input
+                        id="smtp_host"
+                        value={settings.smtp_host}
+                        onChange={(e) =>
+                          setSettings({ ...settings, smtp_host: e.target.value })
+                        }
+                        placeholder="smtp.hostinger.com"
+                        dir="ltr"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="smtp_port">المنفذ (Port)</Label>
+                      <Input
+                        id="smtp_port"
+                        type="number"
+                        value={settings.smtp_port}
+                        onChange={(e) =>
+                          setSettings({ ...settings, smtp_port: parseInt(e.target.value) || 465 })
+                        }
+                        placeholder="465"
+                        dir="ltr"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>TLS/SSL</Label>
+                      <div className="flex items-center gap-2 h-10">
+                        <Switch
+                          checked={settings.smtp_secure}
+                          onCheckedChange={(checked) =>
+                            setSettings({ ...settings, smtp_secure: checked })
+                          }
+                        />
+                        <span className="text-sm text-muted-foreground">
+                          {settings.smtp_secure ? "مفعل (موصى به)" : "معطل"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SMTP Credentials */}
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="gmail_sender">بريد Gmail المرسل</Label>
+                    <Label htmlFor="smtp_user">البريد الإلكتروني / اسم المستخدم</Label>
                     <Input
-                      id="gmail_sender"
+                      id="smtp_user"
                       type="email"
-                      placeholder="your-email@gmail.com"
-                      value={settings.gmail_sender_email || ""}
+                      placeholder="info@yourdomain.com"
+                      value={settings.smtp_user}
                       onChange={(e) =>
-                        setSettings({ ...settings, gmail_sender_email: e.target.value })
+                        setSettings({ ...settings, smtp_user: e.target.value })
                       }
                       dir="ltr"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="gmail_password">كلمة مرور التطبيقات</Label>
+                    <Label htmlFor="smtp_password">كلمة المرور</Label>
                     <div className="relative">
                       <Input
-                        id="gmail_password"
-                        type={showEmailPassword ? "text" : "password"}
-                        placeholder="xxxx xxxx xxxx xxxx"
-                        value={settings.gmail_app_password || ""}
+                        id="smtp_password"
+                        type={showSmtpPassword ? "text" : "password"}
+                        placeholder="كلمة مرور البريد"
+                        value={settings.smtp_password}
                         onChange={(e) =>
-                          setSettings({ ...settings, gmail_app_password: e.target.value })
+                          setSettings({ ...settings, smtp_password: e.target.value })
                         }
                         dir="ltr"
                       />
@@ -245,14 +332,46 @@ export default function AuthSettings() {
                         variant="ghost"
                         size="sm"
                         className="absolute left-0 top-0 h-full px-3"
-                        onClick={() => setShowEmailPassword(!showEmailPassword)}
+                        onClick={() => setShowSmtpPassword(!showSmtpPassword)}
                       >
-                        {showEmailPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        {showSmtpPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
                   </div>
                 </div>
 
+                {/* Test SMTP */}
+                <div className="p-4 border rounded-lg bg-muted/30 space-y-3">
+                  <h4 className="font-medium text-sm">اختبار إعدادات SMTP</h4>
+                  <div className="flex gap-2">
+                    <Input
+                      type="email"
+                      placeholder="أدخل بريد إلكتروني للاختبار"
+                      value={testEmail}
+                      onChange={(e) => setTestEmail(e.target.value)}
+                      dir="ltr"
+                      className="flex-1"
+                    />
+                    <Button 
+                      onClick={handleTestSmtp} 
+                      disabled={testingSmtp || !testEmail}
+                      variant="outline"
+                      className="gap-2"
+                    >
+                      {testingSmtp ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                      اختبار
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    سيتم إرسال بريد اختباري للتحقق من صحة إعدادات SMTP
+                  </p>
+                </div>
+
+                {/* Email Templates */}
                 <div className="space-y-2">
                   <Label htmlFor="email_subject">عنوان الرسالة</Label>
                   <Input

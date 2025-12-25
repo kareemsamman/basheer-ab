@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { crypto } from "https://deno.land/std@0.190.0/crypto/mod.ts";
+import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,65 +28,47 @@ async function hashOTP(otp: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Send email via Gmail SMTP
-async function sendEmailOTP(
-  senderEmail: string,
-  appPassword: string,
+// Send email via SMTP (Hostinger)
+async function sendEmailViaSMTP(
+  smtpHost: string,
+  smtpPort: number,
+  smtpSecure: boolean,
+  smtpUser: string,
+  smtpPassword: string,
   recipientEmail: string,
   subject: string,
   body: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // Use Resend or SMTP gateway - for now using a simple approach
-    // Gmail SMTP requires proper SMTP library, using basic approach
-    const smtpEndpoint = "https://api.smtp2go.com/v3/email/send";
+    console.log(`Sending OTP email via SMTP to ${recipientEmail}`);
+    console.log(`SMTP Host: ${smtpHost}, Port: ${smtpPort}, Secure: ${smtpSecure}`);
     
-    // Note: For production, you'd want to use a proper email service
-    // This is a simplified version - the admin should configure their email provider
-    
-    // For now, we'll use a basic email sending approach
-    // The admin needs to configure their email provider properly
-    
-    console.log(`Sending OTP email to ${recipientEmail}`);
-    console.log(`Subject: ${subject}`);
-    console.log(`Body: ${body}`);
-    
-    // Since we can't use Gmail SMTP directly in Deno without a proper SMTP library,
-    // we'll use Resend if RESEND_API_KEY is configured, otherwise log for testing
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    
-    if (resendApiKey) {
-      const response = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${resendApiKey}`,
-          "Content-Type": "application/json",
+    const client = new SMTPClient({
+      connection: {
+        hostname: smtpHost,
+        port: smtpPort,
+        tls: smtpSecure,
+        auth: {
+          username: smtpUser,
+          password: smtpPassword,
         },
-        body: JSON.stringify({
-          from: senderEmail || "onboarding@resend.dev",
-          to: [recipientEmail],
-          subject: subject,
-          text: body,
-        }),
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Resend error:", errorText);
-        return { success: false, error: "Failed to send email" };
-      }
-      
-      return { success: true };
-    }
-    
-    // If no email provider configured, still return success for testing
-    // In production, this should fail
-    console.warn("No email provider configured. OTP:", body);
+      },
+    });
+
+    await client.send({
+      from: smtpUser,
+      to: recipientEmail,
+      subject: subject,
+      content: body,
+      html: body.replace(/\n/g, '<br>'),
+    });
+
+    await client.close();
+    console.log("Email sent successfully via SMTP");
     return { success: true };
-    
   } catch (error: unknown) {
-    console.error("Email sending error:", error);
-    return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+    console.error("SMTP email sending error:", error);
+    return { success: false, error: error instanceof Error ? error.message : "Unknown SMTP error" };
   }
 }
 
@@ -152,6 +135,20 @@ serve(async (req) => {
       );
     }
 
+    // Check SMTP configuration
+    const smtpHost = authSettings.smtp_host || "smtp.hostinger.com";
+    const smtpPort = authSettings.smtp_port || 465;
+    const smtpSecure = authSettings.smtp_secure !== false;
+    const smtpUser = authSettings.smtp_user;
+    const smtpPassword = authSettings.smtp_password;
+
+    if (!smtpUser || !smtpPassword) {
+      return new Response(
+        JSON.stringify({ success: false, error: "SMTP غير مكتمل. يرجى إعداد بيانات SMTP في إعدادات المصادقة." }),
+        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
     // Generate OTP
     const otp = generateOTP();
     const otpHash = await hashOTP(otp);
@@ -181,18 +178,22 @@ serve(async (req) => {
     const body = (authSettings.email_body_template || "رمز التحقق الخاص بك هو: {code}")
       .replace(/{code}/g, otp);
 
-    // Send email
-    const emailResult = await sendEmailOTP(
-      authSettings.gmail_sender_email,
-      authSettings.gmail_app_password,
+    // Send email via SMTP
+    const emailResult = await sendEmailViaSMTP(
+      smtpHost,
+      smtpPort,
+      smtpSecure,
+      smtpUser,
+      smtpPassword,
       normalizedEmail,
       subject,
       body
     );
 
     if (!emailResult.success) {
+      console.error("Email send failed:", emailResult.error);
       return new Response(
-        JSON.stringify({ success: false, error: "فشل في إرسال البريد الإلكتروني" }),
+        JSON.stringify({ success: false, error: `فشل في إرسال البريد الإلكتروني: ${emailResult.error}` }),
         { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }

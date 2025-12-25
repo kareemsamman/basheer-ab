@@ -69,6 +69,9 @@ interface PolicyDetails {
     id_number: string;
     less_than_24: boolean | null;
     signature_url: string | null;
+    under24_type?: 'none' | 'client' | 'additional_driver' | null;
+    under24_driver_name?: string | null;
+    under24_driver_id?: string | null;
   };
   cars: {
     id: string;

@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.auth-sms-verify]
 verify_jwt = false
+
+[functions.test-smtp]
+verify_jwt = false

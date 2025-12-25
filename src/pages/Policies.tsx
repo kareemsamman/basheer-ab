@@ -58,6 +58,9 @@ interface PolicyRecord {
     id: string;
     full_name: string;
     less_than_24: boolean | null;
+    under24_type?: 'none' | 'client' | 'additional_driver' | null;
+    under24_driver_name?: string | null;
+    under24_driver_id?: string | null;
   };
   cars?: {
     id: string;
@@ -141,7 +144,7 @@ export default function Policies() {
         .from('policies')
         .select(`
           *,
-          clients(id, full_name, less_than_24),
+          clients(id, full_name, less_than_24, under24_type, under24_driver_name, under24_driver_id),
           cars(id, car_number, car_type, car_value, year),
           insurance_companies(id, name, name_ar),
           created_by:profiles!policies_created_by_admin_id_fkey(full_name, email),

@@ -28,6 +28,11 @@ export type Database = {
           sms_019_user: string | null
           sms_message_template: string | null
           sms_otp_enabled: boolean
+          smtp_host: string | null
+          smtp_password: string | null
+          smtp_port: number | null
+          smtp_secure: boolean | null
+          smtp_user: string | null
           updated_at: string
         }
         Insert: {
@@ -43,6 +48,11 @@ export type Database = {
           sms_019_user?: string | null
           sms_message_template?: string | null
           sms_otp_enabled?: boolean
+          smtp_host?: string | null
+          smtp_password?: string | null
+          smtp_port?: number | null
+          smtp_secure?: boolean | null
+          smtp_user?: string | null
           updated_at?: string
         }
         Update: {
@@ -58,6 +68,11 @@ export type Database = {
           sms_019_user?: string | null
           sms_message_template?: string | null
           sms_otp_enabled?: boolean
+          smtp_host?: string | null
+          smtp_password?: string | null
+          smtp_port?: number | null
+          smtp_secure?: boolean | null
+          smtp_user?: string | null
           updated_at?: string
         }
         Relationships: []

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
@@ -34,6 +35,9 @@ interface PolicyEditDrawerProps {
       id: string;
       full_name: string;
       less_than_24: boolean | null;
+      under24_type?: 'none' | 'client' | 'additional_driver' | null;
+      under24_driver_name?: string | null;
+      under24_driver_id?: string | null;
     };
     cars: {
       id: string;
@@ -92,6 +96,9 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
     is_under_24: policy.is_under_24 || false,
     notes: policy.notes || "",
     broker_id: policy.broker_id ?? NO_BROKER,
+    under24_type: (policy.clients?.under24_type || 'none') as 'none' | 'client' | 'additional_driver',
+    under24_driver_name: policy.clients?.under24_driver_name || "",
+    under24_driver_id: policy.clients?.under24_driver_id || "",
   });
 
   useEffect(() => {
@@ -111,6 +118,9 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
         is_under_24: policy.is_under_24 || false,
         notes: policy.notes || "",
         broker_id: policy.broker_id ?? NO_BROKER,
+        under24_type: (policy.clients?.under24_type || 'none') as 'none' | 'client' | 'additional_driver',
+        under24_driver_name: policy.clients?.under24_driver_name || "",
+        under24_driver_id: policy.clients?.under24_driver_id || "",
       });
     }
   }, [open, policy]);
@@ -141,6 +151,18 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
   };
 
   const handleSave = async () => {
+    // Validate additional driver fields if selected
+    if (formData.under24_type === 'additional_driver') {
+      if (!formData.under24_driver_name?.trim() || !formData.under24_driver_id?.trim()) {
+        toast({ 
+          title: "خطأ", 
+          description: "يجب إدخال اسم السائق ورقم هويته", 
+          variant: "destructive" 
+        });
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const insurancePrice = parseFloat(formData.insurance_price) || 0;
@@ -149,7 +171,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
       let profit = 0;
 
       if (formData.policy_type_parent !== 'ELZAMI') {
-        const ageBand: Enums<'age_band'> = (formData.is_under_24 || policy.clients?.less_than_24) ? 'UNDER_24' : 'UP_24';
+        const ageBand: Enums<'age_band'> = formData.under24_type !== 'none' ? 'UNDER_24' : 'UP_24';
         const result = await calculatePolicyProfit({
           policyTypeParent: formData.policy_type_parent as Enums<'policy_type_parent'>,
           policyTypeChild: (formData.policy_type_child || null) as Enums<'policy_type_child'> | null,
@@ -163,6 +185,18 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
         companyPayment = result.companyPayment;
         profit = result.profit;
       }
+
+      // Update client's under24 fields
+      await supabase
+        .from('clients')
+        .update({
+          under24_type: formData.under24_type,
+          under24_driver_name: formData.under24_type === 'additional_driver' ? formData.under24_driver_name : null,
+          under24_driver_id: formData.under24_type === 'additional_driver' ? formData.under24_driver_id : null,
+          less_than_24: formData.under24_type !== 'none',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', policy.clients.id);
 
       const { error } = await supabase
         .from('policies')
@@ -178,7 +212,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
           cancelled: formData.cancelled,
           transferred: formData.transferred,
           transferred_car_number: formData.transferred ? formData.transferred_car_number : null,
-          is_under_24: formData.is_under_24,
+          is_under_24: formData.under24_type !== 'none',
           notes: formData.notes || null,
           broker_id: formData.broker_id === NO_BROKER ? null : formData.broker_id,
           updated_at: new Date().toISOString(),
@@ -342,16 +376,57 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
               />
             </div>
 
+            {/* Under-24 Type Selection */}
+            <div className="space-y-2 p-3 bg-muted/30 rounded-lg">
+              <Label className="text-right block text-sm font-medium">أقل من 24 سنة</Label>
+              <RadioGroup
+                value={formData.under24_type}
+                onValueChange={(v: 'none' | 'client' | 'additional_driver') => 
+                  setFormData(f => ({ ...f, under24_type: v, is_under_24: v !== 'none' }))
+                }
+                className="flex flex-col gap-2"
+              >
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="none" id="under24_none" />
+                  <Label htmlFor="under24_none" className="cursor-pointer text-sm">لا</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="client" id="under24_client" />
+                  <Label htmlFor="under24_client" className="cursor-pointer text-sm">نعم – العميل نفسه أقل من 24</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="additional_driver" id="under24_driver" />
+                  <Label htmlFor="under24_driver" className="cursor-pointer text-sm">نعم – سائق إضافي (ابن/ابنة) أقل من 24</Label>
+                </div>
+              </RadioGroup>
+
+              {formData.under24_type === 'additional_driver' && (
+                <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t">
+                  <div className="space-y-1">
+                    <Label className="text-right block text-xs">اسم السائق *</Label>
+                    <Input
+                      value={formData.under24_driver_name}
+                      onChange={(e) => setFormData(f => ({ ...f, under24_driver_name: e.target.value }))}
+                      placeholder="الاسم الكامل"
+                      className="h-8 text-right"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-right block text-xs">رقم هوية السائق *</Label>
+                    <Input
+                      value={formData.under24_driver_id}
+                      onChange={(e) => setFormData(f => ({ ...f, under24_driver_id: e.target.value }))}
+                      placeholder="رقم الهوية"
+                      dir="ltr"
+                      className="h-8 text-left"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Status Checkboxes - Compact */}
             <div className="flex flex-wrap gap-4 py-2 px-3 bg-muted/30 rounded-lg">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="is_under_24"
-                  checked={formData.is_under_24}
-                  onCheckedChange={(c) => setFormData(f => ({ ...f, is_under_24: !!c }))}
-                />
-                <Label htmlFor="is_under_24" className="cursor-pointer text-sm">أقل من 24</Label>
-              </div>
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="cancelled"
