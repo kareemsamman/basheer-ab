@@ -260,6 +260,7 @@ export type Database = {
       }
       clients: {
         Row: {
+          birth_date: string | null
           branch_id: string | null
           broker_id: string | null
           created_at: string
@@ -274,10 +275,15 @@ export type Database = {
           less_than_24: boolean | null
           notes: string | null
           phone_number: string | null
+          phone_number_2: string | null
           signature_url: string | null
+          under24_driver_id: string | null
+          under24_driver_name: string | null
+          under24_type: Database["public"]["Enums"]["under24_type"] | null
           updated_at: string
         }
         Insert: {
+          birth_date?: string | null
           branch_id?: string | null
           broker_id?: string | null
           created_at?: string
@@ -292,10 +298,15 @@ export type Database = {
           less_than_24?: boolean | null
           notes?: string | null
           phone_number?: string | null
+          phone_number_2?: string | null
           signature_url?: string | null
+          under24_driver_id?: string | null
+          under24_driver_name?: string | null
+          under24_type?: Database["public"]["Enums"]["under24_type"] | null
           updated_at?: string
         }
         Update: {
+          birth_date?: string | null
           branch_id?: string | null
           broker_id?: string | null
           created_at?: string
@@ -310,7 +321,11 @@ export type Database = {
           less_than_24?: boolean | null
           notes?: string | null
           phone_number?: string | null
+          phone_number_2?: string | null
           signature_url?: string | null
+          under24_driver_id?: string | null
+          under24_driver_name?: string | null
+          under24_type?: Database["public"]["Enums"]["under24_type"] | null
           updated_at?: string
         }
         Relationships: [
@@ -1617,6 +1632,7 @@ export type Database = {
         | "reminder_1week"
         | "manual"
         | "payment_request"
+      under24_type: "none" | "client" | "additional_driver"
       user_status: "pending" | "active" | "blocked"
     }
     CompositeTypes: {
@@ -1781,6 +1797,7 @@ export const Constants = {
         "manual",
         "payment_request",
       ],
+      under24_type: ["none", "client", "additional_driver"],
       user_status: ["pending", "active", "blocked"],
     },
   },

@@ -62,8 +62,13 @@ interface Client {
   id_number: string;
   file_number: string | null;
   phone_number: string | null;
+  phone_number_2: string | null;
+  birth_date: string | null;
   date_joined: string | null;
   less_than_24: boolean | null;
+  under24_type: 'none' | 'client' | 'additional_driver' | null;
+  under24_driver_name: string | null;
+  under24_driver_id: string | null;
   notes: string | null;
   image_url: string | null;
   signature_url: string | null;

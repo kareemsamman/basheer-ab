@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { format } from 'date-fns';
+import { CalendarIcon } from 'lucide-react';
 import { digitsOnly, isValidIsraeliId } from '@/lib/validation';
 import {
   Sheet,
@@ -27,12 +29,21 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Loader2, Save, Building2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/hooks/useBranches';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
+
+const UNDER24_OPTIONS = [
+  { value: 'none', label: 'لا' },
+  { value: 'client', label: 'نعم – العميل نفسه أقل من 24' },
+  { value: 'additional_driver', label: 'نعم – سائق إضافي (ابن/ابنة) أقل من 24' },
+] as const;
 
 const clientSchema = z.object({
   full_name: z.string().trim().min(2, 'الاسم مطلوب').max(120, 'الاسم طويل جداً'),
@@ -48,10 +59,46 @@ const clientSchema = z.object({
     .optional()
     .transform((v) => digitsOnly((v ?? '').trim()))
     .refine((v) => v.length === 0 || v.length === 10, 'رقم الهاتف يجب أن يكون 10 أرقام'),
+  phone_number_2: z
+    .string()
+    .optional()
+    .transform((v) => digitsOnly((v ?? '').trim()))
+    .refine((v) => v.length === 0 || v.length === 10, 'رقم الهاتف يجب أن يكون 10 أرقام'),
+  birth_date: z.date().optional().nullable(),
   notes: z.string().optional(),
-  less_than_24: z.boolean().default(false),
+  under24_type: z.enum(['none', 'client', 'additional_driver']).default('none'),
+  under24_driver_name: z.string().optional(),
+  under24_driver_id: z
+    .string()
+    .optional()
+    .transform((v) => digitsOnly((v ?? '').trim())),
   broker_id: z.string().optional(),
   branch_id: z.string().optional(),
+}).superRefine((data, ctx) => {
+  // If additional_driver is selected, require driver name and ID
+  if (data.under24_type === 'additional_driver') {
+    if (!data.under24_driver_name || data.under24_driver_name.trim().length < 2) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'اسم السائق مطلوب',
+        path: ['under24_driver_name'],
+      });
+    }
+    const driverId = data.under24_driver_id || '';
+    if (driverId.length !== 9) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'رقم هوية السائق يجب أن يكون 9 أرقام',
+        path: ['under24_driver_id'],
+      });
+    } else if (!isValidIsraeliId(driverId)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'رقم هوية السائق غير صحيح',
+        path: ['under24_driver_id'],
+      });
+    }
+  }
 });
 
 type ClientFormData = z.infer<typeof clientSchema>;
@@ -62,8 +109,13 @@ interface Client {
   id_number: string;
   file_number: string | null;
   phone_number: string | null;
+  phone_number_2: string | null;
+  birth_date: string | null;
   date_joined: string | null;
   less_than_24: boolean | null;
+  under24_type: 'none' | 'client' | 'additional_driver' | null;
+  under24_driver_name: string | null;
+  under24_driver_id: string | null;
   notes: string | null;
   image_url: string | null;
   created_at: string;
@@ -98,12 +150,19 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
       id_number: '',
       file_number: '',
       phone_number: '',
+      phone_number_2: '',
+      birth_date: null,
       notes: '',
-      less_than_24: false,
+      under24_type: 'none',
+      under24_driver_name: '',
+      under24_driver_id: '',
       broker_id: '',
       branch_id: '',
     },
   });
+
+  // Watch under24_type to conditionally show driver fields
+  const under24Type = useWatch({ control: form.control, name: 'under24_type' });
 
   // Fetch brokers
   useEffect(() => {
@@ -130,8 +189,12 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
         id_number: client?.id_number || '',
         file_number: client?.file_number || '',
         phone_number: client?.phone_number || '',
+        phone_number_2: client?.phone_number_2 || '',
+        birth_date: client?.birth_date ? new Date(client.birth_date) : null,
         notes: client?.notes || '',
-        less_than_24: client?.less_than_24 || false,
+        under24_type: client?.under24_type || (client?.less_than_24 ? 'client' : 'none'),
+        under24_driver_name: client?.under24_driver_name || '',
+        under24_driver_id: client?.under24_driver_id || '',
         broker_id: client?.broker_id || defaultBrokerId || '',
         branch_id: defaultBranch,
       });
@@ -159,8 +222,13 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
         id_number: data.id_number,
         file_number: data.file_number || null,
         phone_number: data.phone_number || null,
+        phone_number_2: data.phone_number_2 || null,
+        birth_date: data.birth_date ? format(data.birth_date, 'yyyy-MM-dd') : null,
         notes: data.notes || null,
-        less_than_24: data.less_than_24,
+        under24_type: data.under24_type,
+        under24_driver_name: data.under24_type === 'additional_driver' ? (data.under24_driver_name || null) : null,
+        under24_driver_id: data.under24_type === 'additional_driver' ? (data.under24_driver_id || null) : null,
+        less_than_24: data.under24_type !== 'none', // Keep legacy field in sync
         broker_id: data.broker_id || null,
         branch_id: newBranchId,
         ...(!isEditing ? { created_by_admin_id: createdByAdminId } : {}),
@@ -367,23 +435,142 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
               />
             )}
 
+            {/* Birth Date */}
             <FormField
               control={form.control}
-              name="less_than_24"
+              name="birth_date"
               render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-x-reverse space-y-0 rounded-md border p-4">
-                  <FormControl>
-                    <Checkbox
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                  <div className="space-y-1 leading-none">
-                    <FormLabel>أقل من 24 سنة</FormLabel>
-                  </div>
+                <FormItem className="flex flex-col">
+                  <FormLabel>تاريخ الميلاد</FormLabel>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full pl-3 text-right font-normal",
+                            !field.value && "text-muted-foreground"
+                          )}
+                        >
+                          {field.value ? (
+                            format(field.value, "yyyy-MM-dd")
+                          ) : (
+                            <span>اختر تاريخ الميلاد</span>
+                          )}
+                          <CalendarIcon className="mr-auto h-4 w-4 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={field.value || undefined}
+                        onSelect={field.onChange}
+                        disabled={(date) =>
+                          date > new Date() || date < new Date("1900-01-01")
+                        }
+                        initialFocus
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
                 </FormItem>
               )}
             />
+
+            {/* Additional Phone */}
+            <FormField
+              control={form.control}
+              name="phone_number_2"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>هاتف إضافي (اختياري)</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="أدخل رقم الهاتف الإضافي"
+                      inputMode="numeric"
+                      maxLength={10}
+                      dir="ltr"
+                      value={field.value}
+                      onChange={(e) => field.onChange(digitsOnly(e.target.value).slice(0, 10))}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Under 24 Type */}
+            <FormField
+              control={form.control}
+              name="under24_type"
+              render={({ field }) => (
+                <FormItem className="space-y-3">
+                  <FormLabel>أقل من 24 سنة</FormLabel>
+                  <FormControl>
+                    <RadioGroup
+                      onValueChange={field.onChange}
+                      value={field.value}
+                      className="flex flex-col space-y-2"
+                    >
+                      {UNDER24_OPTIONS.map((option) => (
+                        <div key={option.value} className="flex items-center space-x-2 space-x-reverse">
+                          <RadioGroupItem value={option.value} id={option.value} />
+                          <label
+                            htmlFor={option.value}
+                            className="text-sm font-normal cursor-pointer"
+                          >
+                            {option.label}
+                          </label>
+                        </div>
+                      ))}
+                    </RadioGroup>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Additional Driver Fields - shown only when under24_type is additional_driver */}
+            {under24Type === 'additional_driver' && (
+              <div className="space-y-4 p-4 rounded-md border bg-muted/30">
+                <FormField
+                  control={form.control}
+                  name="under24_driver_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>اسم السائق الإضافي *</FormLabel>
+                      <FormControl>
+                        <Input placeholder="أدخل اسم السائق" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="under24_driver_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>رقم هوية السائق *</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="أدخل رقم هوية السائق"
+                          inputMode="numeric"
+                          maxLength={9}
+                          dir="ltr"
+                          value={field.value}
+                          onChange={(e) => field.onChange(digitsOnly(e.target.value).slice(0, 9))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
 
             <FormField
               control={form.control}
