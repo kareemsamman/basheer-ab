@@ -226,11 +226,11 @@ export default function Clients() {
                   <TableHead className="text-muted-foreground font-medium">رقم الهوية</TableHead>
                   <TableHead className="text-muted-foreground font-medium">رقم الملف</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الهاتف</TableHead>
+                  <TableHead className="text-muted-foreground font-medium">هاتف 2</TableHead>
+                  <TableHead className="text-muted-foreground font-medium">تاريخ الميلاد</TableHead>
                   <TableHead className="text-muted-foreground font-medium">التوقيع</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الوسيط</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الفرع</TableHead>
-                  <TableHead className="text-muted-foreground font-medium">أنشئ بواسطة</TableHead>
-                  <TableHead className="text-muted-foreground font-medium">تاريخ الانضمام</TableHead>
                   <TableHead className="text-muted-foreground font-medium">العمر</TableHead>
                   <TableHead className="text-muted-foreground font-medium w-[80px]">إجراءات</TableHead>
                 </TableRow>
@@ -304,6 +304,18 @@ export default function Clients() {
                         )}
                       </TableCell>
                       <TableCell>
+                        {client.phone_number_2 ? (
+                          <span className="text-sm text-muted-foreground" dir="ltr">
+                            {client.phone_number_2}
+                          </span>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {client.birth_date ? formatDate(client.birth_date) : "-"}
+                      </TableCell>
+                      <TableCell>
                         {client.signature_url ? (
                           <Badge variant="success">موقّع</Badge>
                         ) : (
@@ -330,14 +342,10 @@ export default function Clients() {
                           <span className="text-muted-foreground text-sm">-</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {client.created_by?.full_name || client.created_by?.email || "-"}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {formatDate(client.date_joined)}
-                      </TableCell>
                       <TableCell>
-                        {client.less_than_24 ? (
+                        {client.under24_type === 'additional_driver' ? (
+                          <Badge variant="warning">سائق إضافي</Badge>
+                        ) : client.under24_type === 'client' || client.less_than_24 ? (
                           <Badge variant="warning">أقل من 24</Badge>
                         ) : (
                           <Badge variant="secondary">24+</Badge>
