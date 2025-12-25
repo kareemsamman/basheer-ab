@@ -56,8 +56,6 @@ async function sendEmailViaSMTP(
       },
     });
 
-    // Let denomailer handle encoding automatically
-    // Provide both plain text (content) and HTML versions
     await client.send({
       from: smtpUser,
       to: recipientEmail,
@@ -95,6 +93,28 @@ serve(async (req) => {
     }
 
     const normalizedEmail = email.toLowerCase().trim();
+
+    // IMPORTANT: Check if user exists and has access BEFORE sending OTP
+    const { data: existingProfile, error: profileError } = await supabase
+      .from("profiles")
+      .select("id, status, email")
+      .eq("email", normalizedEmail)
+      .single();
+
+    if (profileError || !existingProfile) {
+      console.log("No profile found for email:", normalizedEmail);
+      return new Response(
+        JSON.stringify({ success: false, error: "هذا البريد الإلكتروني غير مسجل في النظام. تواصل مع المدير للحصول على صلاحية الدخول." }),
+        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    if (existingProfile.status === "blocked") {
+      return new Response(
+        JSON.stringify({ success: false, error: "تم حظر هذا الحساب. تواصل مع المدير." }),
+        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
 
     // Check rate limiting - max 3 OTPs per email per 10 minutes
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -175,32 +195,45 @@ serve(async (req) => {
       );
     }
 
-    // Prepare email content
-    const subject = (authSettings.email_subject_template || "رمز التحقق: {code}")
-      .replace("{code}", otp);
-    const bodyTemplate = authSettings.email_body_template || "رمز التحقق الخاص بك هو: {code}";
-    const textContent = bodyTemplate.replace(/{code}/g, otp);
+    // Prepare email content - use proper line breaks, not \n
+    const subject = "رمز التحقق - AB Insurance CRM";
     
-    // Create proper HTML email with RTL support
-    const htmlContent = `
-<!DOCTYPE html>
+    // Plain text version with proper line breaks
+    const textContent = `رمز التحقق الخاص بك هو: ${otp}
+
+هذا الرمز صالح لمدة 5 دقائق فقط.
+
+إذا لم تطلب هذا الرمز، يرجى تجاهل هذه الرسالة.`;
+    
+    // HTML version with proper styling
+    const htmlContent = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="font-family: Arial, sans-serif; padding: 20px; direction: rtl; text-align: right;">
-  <div style="max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 30px; border-radius: 10px;">
-    <h2 style="color: #2563eb; margin-bottom: 20px;">AB Insurance CRM</h2>
-    <p style="font-size: 16px; color: #374151; margin-bottom: 20px;">${textContent.replace(/\n/g, '<br>')}</p>
-    <div style="background: #2563eb; color: white; font-size: 32px; font-weight: bold; padding: 20px; text-align: center; border-radius: 8px; letter-spacing: 8px;">
+<body style="font-family: Arial, sans-serif; padding: 20px; direction: rtl; text-align: right; background-color: #f3f4f6;">
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 40px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+    <div style="text-align: center; margin-bottom: 30px;">
+      <h1 style="color: #2563eb; margin: 0; font-size: 28px;">AB Insurance CRM</h1>
+      <p style="color: #6b7280; margin-top: 8px;">نظام إدارة التأمين</p>
+    </div>
+    
+    <p style="font-size: 18px; color: #374151; margin-bottom: 24px; text-align: center;">
+      رمز التحقق الخاص بك هو:
+    </p>
+    
+    <div style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: white; font-size: 36px; font-weight: bold; padding: 24px; text-align: center; border-radius: 12px; letter-spacing: 12px; margin-bottom: 24px;">
       ${otp}
     </div>
-    <p style="font-size: 14px; color: #6b7280; margin-top: 20px;">
-      هذا الرمز صالح لمدة 5 دقائق فقط.
+    
+    <p style="font-size: 14px; color: #6b7280; text-align: center; margin-bottom: 16px;">
+      هذا الرمز صالح لمدة <strong>5 دقائق</strong> فقط.
     </p>
-    <hr style="border: 1px solid #e5e7eb; margin: 20px 0;">
-    <p style="font-size: 12px; color: #9ca3af;">
+    
+    <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;">
+    
+    <p style="font-size: 12px; color: #9ca3af; text-align: center;">
       إذا لم تطلب هذا الرمز، يرجى تجاهل هذه الرسالة.
     </p>
   </div>
@@ -233,7 +266,7 @@ serve(async (req) => {
       email: normalizedEmail,
       identifier: normalizedEmail,
       method: "email_otp",
-      success: false, // Will be updated on verify
+      success: false,
     });
 
     return new Response(

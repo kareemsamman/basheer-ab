@@ -64,7 +64,6 @@ serve(async (req) => {
 
     // Check attempts
     if (otpRecord.attempts >= otpRecord.max_attempts) {
-      // Mark as used to prevent further attempts
       await supabase
         .from("otp_codes")
         .update({ used_at: new Date().toISOString() })
@@ -100,39 +99,23 @@ serve(async (req) => {
       .update({ used_at: new Date().toISOString() })
       .eq("id", otpRecord.id);
 
-    // Check if user exists in profiles
-    const { data: existingProfile } = await supabase
+    // User must already exist (we checked in auth-email-start)
+    // Just get the profile
+    const { data: existingProfile, error: profileError } = await supabase
       .from("profiles")
       .select("id, status, email")
       .eq("email", normalizedEmail)
       .single();
 
-    let userId: string;
-    let userStatus: string;
-
-    if (existingProfile) {
-      userId = existingProfile.id;
-      userStatus = existingProfile.status;
-    } else {
-      // Create user in Supabase Auth (this will trigger handle_new_user)
-      const tempPassword = crypto.randomUUID() + crypto.randomUUID();
-      const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
-        email: normalizedEmail,
-        password: tempPassword,
-        email_confirm: true,
-      });
-
-      if (createError || !newUser.user) {
-        console.error("User creation error:", createError);
-        return new Response(
-          JSON.stringify({ success: false, error: "فشل في إنشاء حساب المستخدم" }),
-          { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
-        );
-      }
-
-      userId = newUser.user.id;
-      userStatus = "pending";
+    if (profileError || !existingProfile) {
+      return new Response(
+        JSON.stringify({ success: false, error: "المستخدم غير موجود في النظام." }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
     }
+
+    const userId = existingProfile.id;
+    const userStatus = existingProfile.status;
 
     // Update login attempt
     await supabase
@@ -144,17 +127,21 @@ serve(async (req) => {
       .order("created_at", { ascending: false })
       .limit(1);
 
-    // Generate session token for the user
-    const { data: sessionData, error: sessionError } = await supabase.auth.admin.generateLink({
-      type: "magiclink",
-      email: normalizedEmail,
-    });
+    // Only generate session if user is active
+    let magicLinkToken = null;
+    if (userStatus === "active") {
+      const { data: sessionData, error: sessionError } = await supabase.auth.admin.generateLink({
+        type: "magiclink",
+        email: normalizedEmail,
+      });
 
-    if (sessionError) {
-      console.error("Session generation error:", sessionError);
+      if (sessionError) {
+        console.error("Session generation error:", sessionError);
+      } else {
+        magicLinkToken = sessionData?.properties?.hashed_token;
+      }
     }
 
-    // Return user info and status
     return new Response(
       JSON.stringify({
         success: true,
@@ -162,8 +149,7 @@ serve(async (req) => {
         status: userStatus,
         email: normalizedEmail,
         is_active: userStatus === "active",
-        // Include magic link token for frontend to use
-        magic_link_token: sessionData?.properties?.hashed_token,
+        magic_link_token: magicLinkToken,
       }),
       { headers: { "Content-Type": "application/json", ...corsHeaders } }
     );

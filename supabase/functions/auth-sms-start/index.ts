@@ -87,12 +87,10 @@ async function sendSmsOTP(
     const responseText = await response.text();
     console.log("019 SMS Response:", responseText);
 
-    // Check for success in response
     if (responseText.includes("<status>0</status>") || responseText.includes("OK")) {
       return { success: true };
     }
 
-    // Try to extract error
     const errorMatch = responseText.match(/<message>(.*?)<\/message>/);
     const errorMsg = errorMatch ? errorMatch[1] : "Unknown SMS error";
     
@@ -128,6 +126,29 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ success: false, error: "رقم الهاتف غير صالح" }),
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // IMPORTANT: Check if user exists and has access BEFORE sending OTP
+    // Check by phone in profiles table
+    const { data: existingProfile, error: profileError } = await supabase
+      .from("profiles")
+      .select("id, status, phone")
+      .eq("phone", normalizedPhone)
+      .single();
+
+    if (profileError || !existingProfile) {
+      console.log("No profile found for phone:", normalizedPhone);
+      return new Response(
+        JSON.stringify({ success: false, error: "رقم الهاتف هذا غير مسجل في النظام. تواصل مع المدير للحصول على صلاحية الدخول." }),
+        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    if (existingProfile.status === "blocked") {
+      return new Response(
+        JSON.stringify({ success: false, error: "تم حظر هذا الحساب. تواصل مع المدير." }),
+        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
@@ -222,7 +243,7 @@ serve(async (req) => {
 
     // Log the attempt
     await supabase.from("login_attempts").insert({
-      email: normalizedPhone, // Using email column for phone for now
+      email: normalizedPhone,
       identifier: normalizedPhone,
       method: "sms_otp",
       success: false,
