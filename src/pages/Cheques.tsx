@@ -36,6 +36,9 @@ import {
   Eye,
   AlertCircle,
   RotateCcw,
+  CheckCircle2,
+  AlertTriangle,
+  Banknote,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -89,6 +92,38 @@ export default function Cheques() {
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryIndex, setGalleryIndex] = useState(0);
+
+  // Summary stats
+  const [summaryStats, setSummaryStats] = useState({
+    returnedCount: 0,
+    returnedTotal: 0,
+    pendingCount: 0,
+    pendingTotal: 0,
+  });
+
+  // Fetch summary stats separately (not affected by filters)
+  const fetchSummaryStats = useCallback(async () => {
+    try {
+      const { data: allCheques } = await supabase
+        .from('policy_payments')
+        .select('amount, cheque_status')
+        .eq('payment_type', 'cheque');
+
+      if (allCheques) {
+        const returnedCheques = allCheques.filter(c => c.cheque_status === 'returned');
+        const pendingCheques = allCheques.filter(c => c.cheque_status === 'pending' || !c.cheque_status);
+        
+        setSummaryStats({
+          returnedCount: returnedCheques.length,
+          returnedTotal: returnedCheques.reduce((sum, c) => sum + Number(c.amount), 0),
+          pendingCount: pendingCheques.length,
+          pendingTotal: pendingCheques.reduce((sum, c) => sum + Number(c.amount), 0),
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching summary stats:', error);
+    }
+  }, []);
 
   const fetchCheques = useCallback(async () => {
     setLoading(true);
@@ -203,6 +238,10 @@ export default function Cheques() {
   }, [currentPage, statusFilter, overdueOnly, searchQuery, toast]);
 
   useEffect(() => {
+    fetchSummaryStats();
+  }, [fetchSummaryStats]);
+
+  useEffect(() => {
     fetchCheques();
   }, [fetchCheques]);
 
@@ -219,6 +258,7 @@ export default function Cheques() {
       if (error) throw error;
       toast({ title: "تم التحديث", description: "تم تحديث حالة الشيك" });
       fetchCheques();
+      fetchSummaryStats();
     } catch (error) {
       toast({ title: "خطأ", description: "فشل في تحديث الحالة", variant: "destructive" });
     }
@@ -248,6 +288,38 @@ export default function Cheques() {
       />
 
       <div className="p-6 space-y-4">
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="p-4 border-destructive/30 bg-destructive/5">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-destructive/10">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">شيكات مرتجعة</p>
+                <p className="text-xl font-bold text-destructive" dir="ltr">
+                  {formatCurrency(summaryStats.returnedTotal)}
+                </p>
+                <p className="text-xs text-muted-foreground">{summaryStats.returnedCount} شيك</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="p-4 border-amber-500/30 bg-amber-500/5">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-amber-500/10">
+                <AlertCircle className="h-5 w-5 text-amber-500" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">شيكات قيد الانتظار</p>
+                <p className="text-xl font-bold text-amber-600" dir="ltr">
+                  {formatCurrency(summaryStats.pendingTotal)}
+                </p>
+                <p className="text-xs text-muted-foreground">{summaryStats.pendingCount} شيك</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+
         {/* Toolbar */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative flex-1 max-w-md">
@@ -303,7 +375,7 @@ export default function Cheques() {
                   <TableHead className="text-muted-foreground font-medium">المبلغ</TableHead>
                   <TableHead className="text-muted-foreground font-medium">تاريخ الاستحقاق</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الحالة</TableHead>
-                  <TableHead className="text-muted-foreground font-medium w-[150px]">تغيير الحالة</TableHead>
+                  <TableHead className="text-muted-foreground font-medium w-[200px]">الإجراءات</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -401,20 +473,44 @@ export default function Cheques() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Select
-                          value={cheque.cheque_status || 'pending'}
-                          onValueChange={(v) => handleStatusChange(cheque.id, v)}
-                        >
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="pending">قيد الانتظار</SelectItem>
-                            <SelectItem value="cashed">تم صرفه</SelectItem>
-                            <SelectItem value="returned">مرتجع</SelectItem>
-                            <SelectItem value="cancelled">ملغي</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <div className="flex items-center gap-2">
+                          {cheque.cheque_status !== 'cashed' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs border-green-500/50 text-green-600 hover:bg-green-500/10"
+                              onClick={() => handleStatusChange(cheque.id, 'cashed')}
+                            >
+                              <CheckCircle2 className="h-3 w-3 ml-1" />
+                              صرف
+                            </Button>
+                          )}
+                          {cheque.cheque_status !== 'returned' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs border-destructive/50 text-destructive hover:bg-destructive/10"
+                              onClick={() => handleStatusChange(cheque.id, 'returned')}
+                            >
+                              <RotateCcw className="h-3 w-3 ml-1" />
+                              مرتجع
+                            </Button>
+                          )}
+                          <Select
+                            value={cheque.cheque_status || 'pending'}
+                            onValueChange={(v) => handleStatusChange(cheque.id, v)}
+                          >
+                            <SelectTrigger className="h-7 w-[90px] text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">قيد الانتظار</SelectItem>
+                              <SelectItem value="cashed">تم صرفه</SelectItem>
+                              <SelectItem value="returned">مرتجع</SelectItem>
+                              <SelectItem value="cancelled">ملغي</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
