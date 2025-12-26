@@ -805,8 +805,8 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
     if (roadServiceCompanies) {
       setPackageRoadServiceCompanies(roadServiceCompanies as Company[]);
       
-      // Auto-select "X Service" as default company for road service addon
-      const xService = roadServiceCompanies.find(c => c.name.toLowerCase().includes('x service') || c.name_ar?.includes('إكس سيرفيس'));
+      // Auto-select "شركة اكس" as default company for road service addon
+      const xService = roadServiceCompanies.find(c => c.name === 'شركة اكس' || c.name_ar === 'شركة اكس');
       if (xService && !packageAddons[0].company_id) {
         setPackageAddons(prev => {
           const newAddons = [...prev];

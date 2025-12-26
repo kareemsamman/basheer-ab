@@ -40,6 +40,7 @@ interface PolicyDetailsDrawerProps {
   onOpenChange: (open: boolean) => void;
   policyId: string | null;
   onUpdated?: () => void;
+  onViewRelatedPolicy?: (policyId: string) => void;
 }
 
 interface PolicyDetails {
@@ -63,6 +64,7 @@ interface PolicyDetails {
   broker_id: string | null;
   created_by_admin_id: string | null;
   group_id: string | null;
+  road_service_id: string | null;
   clients: {
     id: string;
     full_name: string;
@@ -94,6 +96,11 @@ interface PolicyDetails {
     id: string;
     name: string;
   } | null;
+  road_services?: {
+    id: string;
+    name: string;
+    name_ar: string | null;
+  } | null;
 }
 
 interface RelatedPolicy {
@@ -102,7 +109,13 @@ interface RelatedPolicy {
   policy_type_child: string | null;
   insurance_price: number;
   profit: number | null;
+  road_service_id: string | null;
   insurance_companies: {
+    id: string;
+    name: string;
+    name_ar: string | null;
+  } | null;
+  road_services: {
     id: string;
     name: string;
     name_ar: string | null;
@@ -154,7 +167,7 @@ const carTypeLabels: Record<string, string> = {
   tjeraup4: "تجاري (أكثر من 4 طن)",
 };
 
-export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }: PolicyDetailsDrawerProps) {
+export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, onViewRelatedPolicy }: PolicyDetailsDrawerProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [policy, setPolicy] = useState<PolicyDetails | null>(null);
@@ -217,7 +230,8 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
           clients!inner(id, full_name, phone_number, file_number, id_number, less_than_24, signature_url, under24_type, under24_driver_name, under24_driver_id),
           cars(id, car_number, manufacturer_name, year, car_type, car_value, model, color),
           insurance_companies(id, name, name_ar),
-          brokers(id, name)
+          brokers(id, name),
+          road_services(id, name, name_ar)
         `,
         )
         .eq("id", policyId)
@@ -230,7 +244,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
       if (policyData.group_id) {
         const { data: relatedData } = await supabase
           .from("policies")
-          .select("id, policy_type_parent, policy_type_child, insurance_price, profit, insurance_companies(id, name, name_ar)")
+          .select("id, policy_type_parent, policy_type_child, insurance_price, profit, road_service_id, insurance_companies(id, name, name_ar), road_services(id, name, name_ar)")
           .eq("group_id", policyData.group_id)
           .neq("id", policyId)
           .is("deleted_at", null);
@@ -351,6 +365,12 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
                         {policyTypeLabels[policy.policy_type_parent]}
                         {policy.policy_type_child && ` - ${policyChildLabels[policy.policy_type_child]}`}
                       </Badge>
+                      {/* Show service name for Road Service */}
+                      {policy.policy_type_parent === 'ROAD_SERVICE' && policy.road_services && (
+                        <Badge variant="outline" className="text-xs">
+                          {policy.road_services.name_ar || policy.road_services.name}
+                        </Badge>
+                      )}
                       <Badge variant={status.variant} className="gap-1">
                         <StatusIcon className="h-3 w-3" />
                         {status.label}
@@ -528,30 +548,66 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
                           <Package className="h-4 w-4" />
                           <span>الوثائق المرتبطة (باقة)</span>
                         </div>
-                        <div className="space-y-2">
-                          {relatedPolicies.map((rp) => (
-                            <div key={rp.id} className="flex items-center justify-between p-2 rounded bg-background border text-sm">
-                              <div className="flex items-center gap-2">
-                                <Badge className={cn("text-xs", policyTypeColors[rp.policy_type_parent])}>
-                                  {policyTypeLabels[rp.policy_type_parent]}
-                                </Badge>
-                                <span className="text-muted-foreground">
-                                  {rp.insurance_companies?.name_ar || rp.insurance_companies?.name || '-'}
-                                </span>
-                              </div>
-                              <div className="text-right">
-                                <p className="font-semibold">{formatCurrency(rp.insurance_price)}</p>
-                                <p className="text-xs text-success">ربح: {formatCurrency(rp.profit)}</p>
-                              </div>
-                            </div>
-                          ))}
-                          <div className="flex justify-between pt-2 border-t mt-2 font-semibold">
-                            <span>مجموع الباقة:</span>
-                            <span className="text-primary">
-                              {formatCurrency(policy.insurance_price + relatedPolicies.reduce((sum, rp) => sum + rp.insurance_price, 0))}
-                            </span>
-                          </div>
+                        <div className="overflow-hidden rounded-md border border-border/50 bg-background">
+                          <table className="w-full text-sm">
+                            <thead className="bg-muted/50">
+                              <tr>
+                                <th className="text-right py-2 px-3 font-medium text-muted-foreground">النوع</th>
+                                <th className="text-right py-2 px-3 font-medium text-muted-foreground">الخدمة</th>
+                                <th className="text-right py-2 px-3 font-medium text-muted-foreground">الشركة</th>
+                                <th className="text-left py-2 px-3 font-medium text-muted-foreground">السعر</th>
+                                <th className="text-left py-2 px-3 font-medium text-muted-foreground">الربح</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {relatedPolicies.map((rp) => (
+                                <tr 
+                                  key={rp.id} 
+                                  className="border-t border-border/30 hover:bg-muted/30 cursor-pointer transition-colors"
+                                  onClick={() => {
+                                    if (onViewRelatedPolicy) {
+                                      onOpenChange(false);
+                                      setTimeout(() => {
+                                        onViewRelatedPolicy(rp.id);
+                                      }, 150);
+                                    }
+                                  }}
+                                >
+                                  <td className="py-2 px-3">
+                                    <Badge className={cn("text-xs", policyTypeColors[rp.policy_type_parent])}>
+                                      {policyTypeLabels[rp.policy_type_parent]}
+                                    </Badge>
+                                  </td>
+                                  <td className="py-2 px-3 text-muted-foreground">
+                                    {rp.policy_type_parent === 'ROAD_SERVICE' && rp.road_services
+                                      ? (rp.road_services.name_ar || rp.road_services.name)
+                                      : rp.policy_type_parent === 'ACCIDENT_FEE_EXEMPTION'
+                                        ? 'إعفاء رسوم حادث'
+                                        : '-'}
+                                  </td>
+                                  <td className="py-2 px-3 text-muted-foreground">
+                                    {rp.insurance_companies?.name_ar || rp.insurance_companies?.name || '-'}
+                                  </td>
+                                  <td className="py-2 px-3 text-left font-semibold">
+                                    {formatCurrency(rp.insurance_price)}
+                                  </td>
+                                  <td className="py-2 px-3 text-left text-success font-medium">
+                                    {formatCurrency(rp.profit)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot className="bg-muted/30 border-t border-border/50">
+                              <tr>
+                                <td colSpan={3} className="py-2 px-3 font-semibold text-right">مجموع الباقة:</td>
+                                <td colSpan={2} className="py-2 px-3 text-left font-bold text-primary">
+                                  {formatCurrency(policy.insurance_price + relatedPolicies.reduce((sum, rp) => sum + rp.insurance_price, 0))}
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
                         </div>
+                        <p className="text-xs text-muted-foreground mt-2 text-center">اضغط على أي صف لعرض تفاصيل الوثيقة</p>
                       </Card>
                     )}
 

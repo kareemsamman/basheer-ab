@@ -233,32 +233,49 @@ export default function Policies() {
   const handleRecalculateAll = async () => {
     setRecalculating(true);
     try {
-      // Fetch all policy IDs that are not deleted
-      const { data: allPolicies, error } = await supabase
+      // First, get the total count
+      const { count: totalCount, error: countError } = await supabase
         .from('policies')
-        .select('id')
+        .select('*', { count: 'exact', head: true })
         .is('deleted_at', null);
 
-      if (error) throw error;
-      if (!allPolicies || allPolicies.length === 0) {
+      if (countError) throw countError;
+      if (!totalCount || totalCount === 0) {
         toast({ title: "لا توجد وثائق", description: "لا توجد وثائق لإعادة حسابها" });
         return;
       }
 
-      setRecalcProgress({ done: 0, total: allPolicies.length });
+      setRecalcProgress({ done: 0, total: totalCount });
+
+      // Fetch all policy IDs in batches to avoid the 1000 limit
+      const batchSize = 1000;
+      let allPolicyIds: string[] = [];
+      
+      for (let offset = 0; offset < totalCount; offset += batchSize) {
+        const { data: batchPolicies, error: batchError } = await supabase
+          .from('policies')
+          .select('id')
+          .is('deleted_at', null)
+          .range(offset, offset + batchSize - 1);
+        
+        if (batchError) throw batchError;
+        if (batchPolicies) {
+          allPolicyIds = [...allPolicyIds, ...batchPolicies.map(p => p.id)];
+        }
+      }
 
       let successCount = 0;
       let errorCount = 0;
 
-      // Process in batches of 10 for performance
-      for (let i = 0; i < allPolicies.length; i++) {
-        const result = await recalculatePolicyProfit(allPolicies[i].id);
+      // Process policies one by one
+      for (let i = 0; i < allPolicyIds.length; i++) {
+        const result = await recalculatePolicyProfit(allPolicyIds[i]);
         if (result) {
           successCount++;
         } else {
           errorCount++;
         }
-        setRecalcProgress({ done: i + 1, total: allPolicies.length });
+        setRecalcProgress({ done: i + 1, total: allPolicyIds.length });
       }
 
       toast({
@@ -566,6 +583,10 @@ export default function Policies() {
         onUpdated={() => {
           // Silent background refresh
           setTimeout(() => fetchPolicies(), 500);
+        }}
+        onViewRelatedPolicy={(policyId) => {
+          setSelectedPolicyId(policyId);
+          setDetailsOpen(true);
         }}
       />
 
