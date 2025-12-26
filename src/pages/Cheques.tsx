@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Header } from "@/components/layout/Header";
 import { Card } from "@/components/ui/card";
@@ -6,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -39,6 +41,10 @@ import {
   CheckCircle2,
   AlertTriangle,
   Banknote,
+  ExternalLink,
+  Upload,
+  Image as ImageIcon,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -79,10 +85,13 @@ const statusLabels: Record<string, { label: string; variant: "default" | "second
 
 export default function Cheques() {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [cheques, setCheques] = useState<ChequeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [customerFilter, setCustomerFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>("date");
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -92,6 +101,14 @@ export default function Cheques() {
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryIndex, setGalleryIndex] = useState(0);
+
+  // Image upload state
+  const [uploadingForChequeId, setUploadingForChequeId] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Unique customers for filter
+  const [uniqueCustomers, setUniqueCustomers] = useState<{ id: string; name: string }[]>([]);
 
   // Summary stats
   const [summaryStats, setSummaryStats] = useState({
@@ -220,12 +237,34 @@ export default function Cheques() {
       }));
 
       // Filter by search query (client name)
-      const filtered = searchQuery 
+      let filtered = searchQuery 
         ? formattedCheques.filter(c => 
             c.policy?.client?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             c.cheque_number?.includes(searchQuery)
           )
         : formattedCheques;
+
+      // Filter by customer
+      if (customerFilter !== "all") {
+        filtered = filtered.filter(c => c.policy?.client?.id === customerFilter);
+      }
+
+      // Sort cheques
+      if (sortBy === "customer") {
+        filtered.sort((a, b) => {
+          const nameA = a.policy?.client?.full_name || "";
+          const nameB = b.policy?.client?.full_name || "";
+          return nameA.localeCompare(nameB, 'ar');
+        });
+      }
+
+      // Extract unique customers for filter dropdown
+      const customers = [...new Map(
+        formattedCheques
+          .filter(c => c.policy?.client?.id && c.policy?.client?.full_name)
+          .map(c => [c.policy!.client!.id, { id: c.policy!.client!.id, name: c.policy!.client!.full_name }])
+      ).values()];
+      setUniqueCustomers(customers);
 
       setCheques(filtered);
       setTotalCount(count || 0);
@@ -235,7 +274,7 @@ export default function Cheques() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, statusFilter, overdueOnly, searchQuery, toast]);
+  }, [currentPage, statusFilter, overdueOnly, searchQuery, customerFilter, sortBy, toast]);
 
   useEffect(() => {
     fetchSummaryStats();
@@ -276,6 +315,57 @@ export default function Cheques() {
     const today = new Date();
     const chequeDate = new Date(dateStr);
     return chequeDate < today && status !== 'cashed';
+  };
+
+  const handleImageUpload = async (chequeId: string, files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    
+    setUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `cheque_${chequeId}_${Date.now()}.${fileExt}`;
+        const filePath = `payments/${fileName}`;
+
+        // Upload to Supabase storage
+        const { error: uploadError } = await supabase.storage
+          .from('media')
+          .upload(filePath, file);
+
+        if (uploadError) {
+          // Try creating bucket if doesn't exist
+          if (uploadError.message.includes('not found')) {
+            await supabase.storage.createBucket('media', { public: true });
+            await supabase.storage.from('media').upload(filePath, file);
+          } else {
+            throw uploadError;
+          }
+        }
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(filePath);
+
+        // Save to payment_images table
+        const { error: insertError } = await supabase
+          .from('payment_images')
+          .insert({
+            payment_id: chequeId,
+            image_url: publicUrl,
+            image_type: 'cheque',
+          });
+
+        if (insertError) throw insertError;
+      }
+
+      toast({ title: "تم الرفع", description: "تم رفع الصور بنجاح" });
+      fetchCheques();
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast({ title: "خطأ", description: "فشل في رفع الصور", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      setUploadingForChequeId(null);
+    }
   };
 
   const totalPages = Math.ceil(totalCount / pageSize);
@@ -335,6 +425,17 @@ export default function Cheques() {
             />
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <Select value={customerFilter} onValueChange={(v) => { setCustomerFilter(v); setCurrentPage(1); }}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="العميل" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">جميع العملاء</SelectItem>
+                {uniqueCustomers.map(c => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1); }}>
               <SelectTrigger className="w-[150px]">
                 <SelectValue placeholder="الحالة" />
@@ -345,6 +446,15 @@ export default function Cheques() {
                 <SelectItem value="cashed">تم صرفه</SelectItem>
                 <SelectItem value="returned">مرتجع</SelectItem>
                 <SelectItem value="cancelled">ملغي</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={sortBy} onValueChange={(v) => { setSortBy(v); setCurrentPage(1); }}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="ترتيب حسب" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="date">التاريخ</SelectItem>
+                <SelectItem value="customer">العميل</SelectItem>
               </SelectContent>
             </Select>
             <Button 
@@ -362,20 +472,34 @@ export default function Cheques() {
           </div>
         </div>
 
+        {/* Hidden file input for image upload */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          className="hidden"
+          accept="image/*"
+          multiple
+          onChange={(e) => {
+            if (uploadingForChequeId) {
+              handleImageUpload(uploadingForChequeId, e.target.files);
+            }
+          }}
+        />
+
         {/* Table */}
         <Card className="border shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="border-border/50 hover:bg-transparent">
-                  <TableHead className="text-muted-foreground font-medium w-[80px]">الصورة</TableHead>
+                  <TableHead className="text-muted-foreground font-medium w-[100px]">الصورة</TableHead>
                   <TableHead className="text-muted-foreground font-medium">العميل</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الوسيط</TableHead>
                   <TableHead className="text-muted-foreground font-medium">رقم الشيك</TableHead>
                   <TableHead className="text-muted-foreground font-medium">المبلغ</TableHead>
                   <TableHead className="text-muted-foreground font-medium">تاريخ الاستحقاق</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الحالة</TableHead>
-                  <TableHead className="text-muted-foreground font-medium w-[200px]">الإجراءات</TableHead>
+                  <TableHead className="text-muted-foreground font-medium w-[250px]">الإجراءات</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -415,40 +539,58 @@ export default function Cheques() {
                             ...(cheque.images?.map(i => i.image_url) || [])
                           ].filter(Boolean);
                           
-                          if (allImages.length === 0) {
-                            return (
-                              <div className="h-12 w-16 bg-muted rounded flex items-center justify-center text-xs text-muted-foreground">
-                                لا صورة
-                              </div>
-                            );
-                          }
-                          
                           return (
-                            <button
-                              onClick={() => {
-                                setGalleryImages(allImages as string[]);
-                                setGalleryIndex(0);
-                                setGalleryOpen(true);
-                              }}
-                              className="relative group"
-                            >
-                              <img
-                                src={allImages[0]!}
-                                alt="صورة الشيك"
-                                className="h-12 w-16 object-cover rounded border"
-                              />
-                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded flex items-center justify-center gap-1">
-                                <Eye className="h-4 w-4 text-white" />
-                                {allImages.length > 1 && (
-                                  <span className="text-white text-xs font-bold">+{allImages.length - 1}</span>
-                                )}
-                              </div>
-                            </button>
+                            <div className="flex items-center gap-1">
+                              {allImages.length > 0 ? (
+                                <button
+                                  onClick={() => {
+                                    setGalleryImages(allImages as string[]);
+                                    setGalleryIndex(0);
+                                    setGalleryOpen(true);
+                                  }}
+                                  className="relative group"
+                                >
+                                  <img
+                                    src={allImages[0]!}
+                                    alt="صورة الشيك"
+                                    className="h-12 w-16 object-cover rounded border"
+                                  />
+                                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded flex items-center justify-center gap-1">
+                                    <Eye className="h-4 w-4 text-white" />
+                                    {allImages.length > 1 && (
+                                      <span className="text-white text-xs font-bold">+{allImages.length - 1}</span>
+                                    )}
+                                  </div>
+                                </button>
+                              ) : (
+                                <div className="h-12 w-16 bg-muted rounded flex items-center justify-center text-xs text-muted-foreground">
+                                  لا صورة
+                                </div>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                disabled={uploading}
+                                onClick={() => {
+                                  setUploadingForChequeId(cheque.id);
+                                  fileInputRef.current?.click();
+                                }}
+                                title="رفع صورة"
+                              >
+                                <Upload className="h-4 w-4" />
+                              </Button>
+                            </div>
                           );
                         })()}
                       </TableCell>
                       <TableCell className="font-medium">
-                        {cheque.policy?.client?.full_name || "-"}
+                        <button 
+                          className="hover:text-primary hover:underline text-right"
+                          onClick={() => setCustomerFilter(cheque.policy?.client?.id || "all")}
+                        >
+                          {cheque.policy?.client?.full_name || "-"}
+                        </button>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {cheque.broker_name || "-"}
@@ -473,7 +615,16 @@ export default function Cheques() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => navigate(`/policies?highlight=${cheque.policy_id}`)}
+                          >
+                            <ExternalLink className="h-3 w-3 ml-1" />
+                            الوثيقة
+                          </Button>
                           {cheque.cheque_status !== 'cashed' && (
                             <Button
                               variant="outline"
