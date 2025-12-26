@@ -4,9 +4,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
-import { Plus, Trash2, CreditCard, AlertCircle, Loader2 } from "lucide-react";
+import { Plus, Trash2, CreditCard, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PaymentSummaryBar } from "./PaymentSummaryBar";
 import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal";
@@ -21,7 +20,7 @@ interface Step4Props {
   remainingToPay: number;
   paymentsExceedPrice: boolean;
   errors: ValidationErrors;
-  policyId?: string; // For Tranzila payments - will be null for new policies
+  onVisaPaymentRequired: () => boolean; // Returns true if visa is required and not paid
 }
 
 export function Step4Payments({
@@ -32,10 +31,10 @@ export function Step4Payments({
   remainingToPay,
   paymentsExceedPrice,
   errors,
-  policyId,
+  onVisaPaymentRequired,
 }: Step4Props) {
   const [showTranzilaModal, setShowTranzilaModal] = useState(false);
-  const [selectedVisaPaymentId, setSelectedVisaPaymentId] = useState<string | null>(null);
+  const [selectedVisaPaymentIndex, setSelectedVisaPaymentIndex] = useState<number | null>(null);
 
   const addPayment = () => {
     setPayments([
@@ -58,30 +57,38 @@ export function Step4Payments({
     setPayments(payments.map(p => p.id === id ? { ...p, [field]: value } : p));
   };
 
-  const getPaymentTypeLabel = (type: string) => {
-    return PAYMENT_TYPES.find(t => t.value === type)?.label || type;
-  };
-
-  const handleVisaPayment = (paymentId: string) => {
-    setSelectedVisaPaymentId(paymentId);
+  const handleVisaPayClick = (index: number) => {
+    setSelectedVisaPaymentIndex(index);
     setShowTranzilaModal(true);
   };
 
   const handleVisaSuccess = () => {
-    if (selectedVisaPaymentId) {
-      // Mark the payment as paid (in real scenario, this would be handled by webhook)
-      updatePayment(selectedVisaPaymentId, 'tranzila_paid', true);
+    if (selectedVisaPaymentIndex !== null) {
+      const payment = payments[selectedVisaPaymentIndex];
+      if (payment) {
+        updatePayment(payment.id, 'tranzila_paid', true);
+      }
     }
     setShowTranzilaModal(false);
-    setSelectedVisaPaymentId(null);
+    setSelectedVisaPaymentIndex(null);
   };
 
   const handleVisaFailure = () => {
+    // On failure, remove the visa payment
+    if (selectedVisaPaymentIndex !== null) {
+      const payment = payments[selectedVisaPaymentIndex];
+      if (payment) {
+        removePayment(payment.id);
+      }
+    }
     setShowTranzilaModal(false);
-    setSelectedVisaPaymentId(null);
+    setSelectedVisaPaymentIndex(null);
   };
 
-  const selectedVisaPayment = payments.find(p => p.id === selectedVisaPaymentId);
+  const selectedVisaPayment = selectedVisaPaymentIndex !== null ? payments[selectedVisaPaymentIndex] : null;
+
+  // Check if there are unpaid visa payments
+  const hasUnpaidVisa = payments.some(p => p.payment_type === 'visa' && !p.tranzila_paid && (p.amount || 0) > 0);
 
   return (
     <div className="space-y-6">
@@ -92,6 +99,14 @@ export function Step4Payments({
         remaining={remainingToPay}
         hasError={paymentsExceedPrice}
       />
+
+      {/* Unpaid Visa Warning */}
+      {hasUnpaidVisa && (
+        <div className="flex items-center gap-2 text-amber-600 text-sm p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          <span>يجب الدفع بالفيزا قبل حفظ الوثيقة</span>
+        </div>
+      )}
 
       {/* Payments List */}
       <div className="space-y-4">
@@ -116,142 +131,111 @@ export function Step4Payments({
             <p className="text-xs text-muted-foreground mt-1">يمكنك إضافة دفعات لاحقاً</p>
           </Card>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {payments.map((payment, index) => {
               const isVisa = payment.payment_type === 'visa';
               const visaPaid = payment.tranzila_paid;
               const visaAmount = payment.amount || 0;
-              const canPayVisa = isVisa && visaAmount > 0 && !visaPaid && policyId;
               
               return (
                 <Card key={payment.id} className={cn(
-                  "p-5",
-                  payment.refused && "bg-destructive/5 border-destructive/30",
-                  visaPaid && "bg-success/5 border-success/30"
+                  "p-4",
+                  visaPaid && "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800"
                 )}>
-                  <div className="flex items-start gap-4">
-                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                      {/* Payment Type */}
-                      <div>
-                        <Label className="text-xs mb-1.5 block">نوع الدفع</Label>
-                        <Select
-                          value={payment.payment_type}
-                          onValueChange={(v) => updatePayment(payment.id, 'payment_type', v)}
-                        >
-                          <SelectTrigger className="h-10">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {PAYMENT_TYPES.map((type) => (
-                              <SelectItem key={type.value} value={type.value}>
-                                {type.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+                    {/* Payment Type */}
+                    <div>
+                      <Label className="text-xs mb-1.5 block">نوع الدفع</Label>
+                      <Select
+                        value={payment.payment_type}
+                        onValueChange={(v) => updatePayment(payment.id, 'payment_type', v)}
+                        disabled={visaPaid}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PAYMENT_TYPES.map((type) => (
+                            <SelectItem key={type.value} value={type.value}>
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                      {/* Amount */}
-                      <div>
-                        <Label className="text-xs mb-1.5 block">المبلغ (₪)</Label>
-                        <Input
-                          type="number"
-                          value={payment.amount || ''}
-                          onChange={(e) => updatePayment(payment.id, 'amount', parseFloat(e.target.value) || 0)}
-                          placeholder="0"
-                          className={cn(
-                            "h-10",
-                            paymentsExceedPrice && "border-destructive"
-                          )}
-                          max={remainingToPay + payment.amount}
-                        />
-                        {remainingToPay >= 0 && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            الحد الأقصى: ₪{(remainingToPay + payment.amount).toLocaleString()}
-                          </p>
+                    {/* Amount */}
+                    <div>
+                      <Label className="text-xs mb-1.5 block">المبلغ (₪)</Label>
+                      <Input
+                        type="number"
+                        value={payment.amount || ''}
+                        onChange={(e) => updatePayment(payment.id, 'amount', parseFloat(e.target.value) || 0)}
+                        placeholder="0"
+                        disabled={visaPaid}
+                        className={cn(
+                          "h-9",
+                          paymentsExceedPrice && "border-destructive"
                         )}
-                      </div>
+                      />
+                    </div>
 
-                      {/* Date */}
-                      <div>
-                        <Label className="text-xs mb-1.5 block">التاريخ</Label>
-                        <ArabicDatePicker
-                          value={payment.payment_date}
-                          onChange={(date) => updatePayment(payment.id, 'payment_date', date)}
-                          className="h-10"
-                        />
-                      </div>
-
-                      {/* Cheque Number (if cheque) */}
-                      {payment.payment_type === 'cheque' && (
-                        <div>
-                          <Label className="text-xs mb-1.5 block">رقم الشيك</Label>
-                          <Input
-                            value={payment.cheque_number || ''}
-                            onChange={(e) => updatePayment(payment.id, 'cheque_number', e.target.value)}
-                            placeholder="رقم الشيك"
-                            className="h-10"
-                          />
-                        </div>
-                      )}
-
-                      {/* Visa Payment Button */}
-                      {isVisa && (
-                        <div className="sm:col-span-2 lg:col-span-4">
-                          {visaPaid ? (
-                            <div className="flex items-center gap-2 text-success text-sm py-2">
-                              <CreditCard className="h-4 w-4" />
-                              <span>تم الدفع بنجاح</span>
-                            </div>
-                          ) : (
-                            <Button
-                              type="button"
-                              variant="default"
-                              onClick={() => handleVisaPayment(payment.id)}
-                              disabled={!canPayVisa || visaAmount <= 0}
-                              className="gap-2 w-full sm:w-auto"
-                            >
-                              <CreditCard className="h-4 w-4" />
-                              {policyId ? (
-                                visaAmount > 0 ? `ادفع ₪${visaAmount.toLocaleString()} بالبطاقة` : 'أدخل المبلغ أولاً'
-                              ) : (
-                                'احفظ الوثيقة أولاً للدفع بالفيزا'
-                              )}
-                            </Button>
-                          )}
-                          {!policyId && isVisa && visaAmount > 0 && (
-                            <p className="text-xs text-amber-600 mt-1">
-                              ملاحظة: سيتم حفظ الدفعة بدون تنفيذ عملية الفيزا. يمكنك الدفع لاحقاً من صفحة الوثيقة.
-                            </p>
-                          )}
-                        </div>
-                      )}
+                    {/* Date */}
+                    <div>
+                      <Label className="text-xs mb-1.5 block">التاريخ</Label>
+                      <ArabicDatePicker
+                        value={payment.payment_date}
+                        onChange={(date) => updatePayment(payment.id, 'payment_date', date)}
+                        className="h-9"
+                        disabled={visaPaid}
+                      />
                     </div>
 
                     {/* Actions */}
-                    <div className="flex flex-col items-center gap-3 pt-6">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removePayment(payment.id)}
-                        className="h-9 w-9 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                      
-                      {/* Refused Checkbox */}
-                      <div className="flex items-center gap-1.5">
-                        <Checkbox
-                          id={`refused-${payment.id}`}
-                          checked={payment.refused}
-                          onCheckedChange={(v) => updatePayment(payment.id, 'refused', !!v)}
-                          className="h-4 w-4"
+                    <div className="flex items-center gap-2">
+                      {/* Cheque Number (if cheque) */}
+                      {payment.payment_type === 'cheque' && (
+                        <Input
+                          value={payment.cheque_number || ''}
+                          onChange={(e) => updatePayment(payment.id, 'cheque_number', e.target.value)}
+                          placeholder="رقم الشيك"
+                          className="h-9 flex-1"
                         />
-                        <Label htmlFor={`refused-${payment.id}`} className="text-xs cursor-pointer">
-                          مرفوض
-                        </Label>
-                      </div>
+                      )}
+                      
+                      {/* Visa Pay Button */}
+                      {isVisa && !visaPaid && visaAmount > 0 && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => handleVisaPayClick(index)}
+                          className="gap-1.5 bg-primary hover:bg-primary/90"
+                        >
+                          <CreditCard className="h-4 w-4" />
+                          ادفع
+                        </Button>
+                      )}
+                      
+                      {/* Paid Badge */}
+                      {isVisa && visaPaid && (
+                        <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                          <CreditCard className="h-3.5 w-3.5" />
+                          تم الدفع
+                        </span>
+                      )}
+                      
+                      {/* Delete Button */}
+                      {!visaPaid && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removePayment(payment.id)}
+                          className="h-9 w-9 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </Card>
@@ -270,11 +254,13 @@ export function Step4Payments({
       </div>
 
       {/* Tranzila Payment Modal */}
-      {selectedVisaPayment && policyId && (
+      {selectedVisaPayment && (
         <TranzilaPaymentModal
           open={showTranzilaModal}
-          onOpenChange={setShowTranzilaModal}
-          policyId={policyId}
+          onOpenChange={(open) => {
+            if (!open) handleVisaFailure();
+          }}
+          policyId="temp" // Will be created after successful payment
           amount={selectedVisaPayment.amount || 0}
           paymentDate={selectedVisaPayment.payment_date}
           notes={selectedVisaPayment.notes}

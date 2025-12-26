@@ -456,40 +456,6 @@ export function Step3PolicyDetails({
         </Card>
       )}
 
-      {/* Package Mode - Only for THIRD_FULL */}
-      {policy.policy_type_parent === 'THIRD_FULL' && (
-        <Card className={cn(
-          "p-4 transition-colors",
-          packageMode ? "border-primary bg-primary/5" : "bg-secondary/30"
-        )}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Package className="h-5 w-5 text-primary" />
-              <div>
-                <Label className="text-base font-medium">وضع الباقة</Label>
-                <p className="text-sm text-muted-foreground">إضافة خدمات إضافية (خدمات الطريق، إعفاء رسوم حادث)</p>
-              </div>
-            </div>
-            <Switch
-              checked={packageMode}
-              onCheckedChange={setPackageMode}
-            />
-          </div>
-
-          {packageMode && (
-            <PackageAddonsSection
-              addons={packageAddons}
-              onAddonsChange={setPackageAddons}
-              roadServices={packageRoadServices}
-              accidentFeeServices={packageAccidentFeeServices}
-              roadServiceCompanies={packageRoadServiceCompanies}
-              accidentFeeCompanies={packageAccidentCompanies}
-              carType={getCarType() || undefined}
-            />
-          )}
-        </Card>
-      )}
-
       {/* Dates */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
@@ -514,7 +480,7 @@ export function Step3PolicyDetails({
         </div>
       </div>
 
-      {/* Price Input */}
+      {/* Price Input - BEFORE extras */}
       <div>
         <Label>السعر (₪) *</Label>
         <Input
@@ -543,7 +509,43 @@ export function Step3PolicyDetails({
         </div>
       )}
 
-      {/* Pricing Breakdown Card */}
+      {/* Package Mode - Only for THIRD_FULL - AFTER price */}
+      {policy.policy_type_parent === 'THIRD_FULL' && (
+        <Card className={cn(
+          "p-4 transition-colors",
+          packageMode ? "border-primary bg-primary/5" : "bg-secondary/30"
+        )}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Package className="h-5 w-5 text-primary" />
+              <div>
+                <Label className="text-base font-medium">إضافات الباقة</Label>
+                <p className="text-sm text-muted-foreground">خدمات الطريق، إعفاء رسوم حادث</p>
+              </div>
+            </div>
+            <Switch
+              checked={packageMode}
+              onCheckedChange={setPackageMode}
+            />
+          </div>
+
+          {packageMode && (
+            <div className="mt-4 pt-4 border-t">
+              <PackageAddonsSection
+                addons={packageAddons}
+                onAddonsChange={setPackageAddons}
+                roadServices={packageRoadServices}
+                accidentFeeServices={packageAccidentFeeServices}
+                roadServiceCompanies={packageRoadServiceCompanies}
+                accidentFeeCompanies={packageAccidentCompanies}
+                carType={getCarType() || undefined}
+              />
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Pricing Breakdown Card - AFTER extras */}
       {(pricing.basePrice > 0 || packageMode) && (
         <PricingCard
           pricing={pricing}
