@@ -169,26 +169,26 @@ export default function Companies() {
                 <TableHead className="text-right">الاسم بالعربية</TableHead>
                 <TableHead className="text-right">الاسم بالإنجليزية</TableHead>
                 <TableHead className="text-right">نوع التأمين</TableHead>
+                <TableHead className="text-right">العمولة</TableHead>
                 <TableHead className="text-right">الحالة</TableHead>
-                <TableHead className="text-right">تاريخ الإنشاء</TableHead>
                 <TableHead className="text-right">الإجراءات</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
+                Array.from({ length: 6 }).map((_, i) => (
                   <TableRow key={i}>
                     <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                     <TableCell><Skeleton className="h-6 w-16" /></TableCell>
-                    <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-8 w-24" /></TableCell>
                   </TableRow>
                 ))
               ) : companies.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+              <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     لا توجد شركات تأمين
                   </TableCell>
                 </TableRow>
@@ -213,12 +213,18 @@ export default function Companies() {
                       )}
                     </TableCell>
                     <TableCell>
+                      {company.category_parent === 'ELZAMI' ? (
+                        <span className={`font-medium ${((company as any).elzami_commission || 0) < 0 ? 'text-destructive' : 'text-success'}`}>
+                          ₪{((company as any).elzami_commission || 0).toLocaleString('ar-EG')}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
                       <Badge variant={company.active ? 'default' : 'secondary'}>
                         {company.active ? 'نشط' : 'غير نشط'}
                       </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {new Date(company.created_at).toLocaleDateString('ar-PS')}
                     </TableCell>
                     <TableCell>
                       <Button

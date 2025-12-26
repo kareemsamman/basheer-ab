@@ -43,6 +43,7 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
     name_ar: '',
     category_parent: '' as string,
     active: true,
+    elzami_commission: 0,
   });
 
   useEffect(() => {
@@ -52,6 +53,7 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
         name_ar: company.name_ar || '',
         category_parent: company.category_parent || '',
         active: company.active ?? true,
+        elzami_commission: (company as any).elzami_commission ?? 0,
       });
     } else {
       setFormData({
@@ -59,6 +61,7 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
         name_ar: '',
         category_parent: '',
         active: true,
+        elzami_commission: 0,
       });
     }
   }, [company, open]);
@@ -94,7 +97,8 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
             name_ar: formData.name_ar.trim() || null,
             category_parent: formData.category_parent as Enums<'policy_type_parent'>,
             active: formData.active,
-          })
+            elzami_commission: formData.category_parent === 'ELZAMI' ? formData.elzami_commission : 0,
+          } as any)
           .eq('id', company.id);
 
         if (error) throw error;
@@ -111,7 +115,8 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
             name_ar: formData.name_ar.trim() || null,
             category_parent: formData.category_parent as Enums<'policy_type_parent'>,
             active: formData.active,
-          });
+            elzami_commission: formData.category_parent === 'ELZAMI' ? formData.elzami_commission : 0,
+          } as any);
 
         if (error) throw error;
 
@@ -253,6 +258,31 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
                 </SelectContent>
               </Select>
             </div>
+
+            {/* ELZAMI Commission Field - Only show when type is ELZAMI */}
+            {formData.category_parent === 'ELZAMI' && (
+              <div className="space-y-2">
+                <Label htmlFor="elzami_commission" className="text-right block">
+                  العمولة (₪)
+                  <span className="text-xs text-muted-foreground mr-2">
+                    (يمكن أن تكون سالبة)
+                  </span>
+                </Label>
+                <Input
+                  id="elzami_commission"
+                  type="number"
+                  step="0.01"
+                  value={formData.elzami_commission}
+                  onChange={(e) => setFormData({ ...formData, elzami_commission: parseFloat(e.target.value) || 0 })}
+                  placeholder="0"
+                  dir="ltr"
+                  className="text-left"
+                />
+                <p className="text-xs text-muted-foreground">
+                  هذه العمولة ستُستخدم كربح لوثائق الإلزامي. سعر التأمين لن يُحتسب في الإيرادات.
+                </p>
+              </div>
+            )}
 
             <div className="flex items-center justify-between">
               <Label htmlFor="active">الشركة نشطة</Label>

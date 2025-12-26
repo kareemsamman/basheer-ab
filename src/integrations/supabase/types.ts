@@ -528,6 +528,7 @@ export type Database = {
             | Database["public"]["Enums"]["policy_type_parent"]
             | null
           created_at: string
+          elzami_commission: number | null
           id: string
           legacy_wp_id: number | null
           name: string
@@ -540,6 +541,7 @@ export type Database = {
             | Database["public"]["Enums"]["policy_type_parent"]
             | null
           created_at?: string
+          elzami_commission?: number | null
           id?: string
           legacy_wp_id?: number | null
           name: string
@@ -552,6 +554,7 @@ export type Database = {
             | Database["public"]["Enums"]["policy_type_parent"]
             | null
           created_at?: string
+          elzami_commission?: number | null
           id?: string
           legacy_wp_id?: number | null
           name?: string
