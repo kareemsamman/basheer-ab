@@ -93,27 +93,39 @@ serve(async (req) => {
       });
     }
 
-    // Get policy info if available
-    let policyInfo = null;
-    if (signatureRecord.policy_id) {
-      const { data: policy } = await supabase
-        .from("policies")
-        .select(`
-          policy_number,
-          insurance_price,
-          start_date,
-          end_date,
-          policy_type_parent,
-          company:insurance_companies(name, name_ar),
-          car:cars(car_number, manufacturer_name, model, year)
-        `)
-        .eq("id", signatureRecord.policy_id)
-        .single();
-      policyInfo = policy;
+    // Get signature template from SMS settings
+    let templateContent = {
+      logo_url: null as string | null,
+      header_html: '<h2>نموذج الموافقة على الخصوصية</h2>',
+      body_html: '<p>مرحباً.</p><p>أقرّ بأنني قرأت وفهمت سياسة الخصوصية، وأوافق على قيام <strong>AB</strong> للتأمين بجمع واستخدام ومعالجة بياناتي الشخصية للأغراض المتعلقة بخدمات التأمين والتواصل وإتمام الإجراءات اللازمة.</p><p>بالتوقيع أدناه، أؤكد صحة البيانات وأمنح موافقتي على ما ورد أعلاه.</p>',
+      footer_html: '<p>© AB للتأمين - جميع الحقوق محفوظة</p>',
+    };
+
+    const { data: smsSettings } = await supabase
+      .from("sms_settings")
+      .select("default_signature_template_id")
+      .limit(1)
+      .maybeSingle();
+
+    if (smsSettings?.default_signature_template_id) {
+      const { data: template } = await supabase
+        .from("invoice_templates")
+        .select("header_html, body_html, footer_html, logo_url")
+        .eq("id", smsSettings.default_signature_template_id)
+        .maybeSingle();
+      
+      if (template) {
+        templateContent = {
+          logo_url: template.logo_url,
+          header_html: template.header_html || templateContent.header_html,
+          body_html: template.body_html || templateContent.body_html,
+          footer_html: template.footer_html || templateContent.footer_html,
+        };
+      }
     }
 
-    // Build and return the signature page HTML
-    const html = buildSignaturePageHtml(clientName, token, signatureRecord.token_expires_at, policyInfo, supabaseUrl);
+    // Build and return the signature page HTML using template content
+    const html = buildSignaturePageHtml(clientName, token, signatureRecord.token_expires_at, templateContent, supabaseUrl);
     
     return new Response(html, {
       status: 200,
@@ -266,41 +278,26 @@ function buildSuccessHtml(clientName: string, signedAt: string | null): string {
 </html>`;
 }
 
+interface TemplateContent {
+  logo_url: string | null;
+  header_html: string;
+  body_html: string;
+  footer_html: string;
+}
+
 function buildSignaturePageHtml(
   clientName: string, 
   token: string, 
   expiresAt: string | null,
-  policyInfo: any,
+  template: TemplateContent,
   supabaseUrl: string
 ): string {
   const expiryText = expiresAt ? formatDate(expiresAt) : '';
-  
-  // Build policy details section if available
-  let policySection = '';
-  if (policyInfo) {
-    const POLICY_TYPE_LABELS: Record<string, string> = {
-      ELZAMI: 'إلزامي',
-      THIRD_FULL: 'ثالث/شامل',
-      ROAD_SERVICE: 'خدمات الطريق',
-      ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
-    };
-    
-    policySection = `
-      <div class="policy-info">
-        <h3>تفاصيل الوثيقة</h3>
-        <div class="info-grid">
-          ${policyInfo.policy_number ? `<div class="info-item"><span>رقم الوثيقة</span><strong>${policyInfo.policy_number}</strong></div>` : ''}
-          ${policyInfo.policy_type_parent ? `<div class="info-item"><span>نوع التأمين</span><strong>${POLICY_TYPE_LABELS[policyInfo.policy_type_parent] || policyInfo.policy_type_parent}</strong></div>` : ''}
-          ${policyInfo.company?.name_ar || policyInfo.company?.name ? `<div class="info-item"><span>شركة التأمين</span><strong>${policyInfo.company.name_ar || policyInfo.company.name}</strong></div>` : ''}
-          ${policyInfo.car?.car_number ? `<div class="info-item"><span>رقم السيارة</span><strong>${policyInfo.car.car_number}</strong></div>` : ''}
-          ${policyInfo.car?.manufacturer_name ? `<div class="info-item"><span>السيارة</span><strong>${policyInfo.car.manufacturer_name} ${policyInfo.car.model || ''} ${policyInfo.car.year || ''}</strong></div>` : ''}
-          ${policyInfo.insurance_price ? `<div class="info-item"><span>السعر</span><strong>₪${policyInfo.insurance_price.toLocaleString()}</strong></div>` : ''}
-          ${policyInfo.start_date ? `<div class="info-item"><span>تاريخ البداية</span><strong>${formatDate(policyInfo.start_date)}</strong></div>` : ''}
-          ${policyInfo.end_date ? `<div class="info-item"><span>تاريخ الانتهاء</span><strong>${formatDate(policyInfo.end_date)}</strong></div>` : ''}
-        </div>
-      </div>
-    `;
-  }
+
+  // Logo section if provided
+  const logoSection = template.logo_url 
+    ? `<img src="${template.logo_url}" alt="Logo" class="logo" style="max-height: 60px; margin-bottom: 15px;" />`
+    : '';
 
   return `
 <!DOCTYPE html>
@@ -309,7 +306,7 @@ function buildSignaturePageHtml(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
-  <title>توقيع العميل | BASHEER INSURANCE</title>
+  <title>توقيع العميل | AB Insurance</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -335,6 +332,12 @@ function buildSignaturePageHtml(
       padding: 30px 25px;
       text-align: center;
     }
+    .header .logo { 
+      background: white; 
+      padding: 10px; 
+      border-radius: 10px;
+      display: inline-block;
+    }
     .header h1 { 
       font-size: 28px; 
       font-weight: 800;
@@ -356,32 +359,32 @@ function buildSignaturePageHtml(
       margin-top: 5px;
     }
     .content { padding: 25px; }
-    .policy-info {
+    
+    /* Template content styling */
+    .template-content {
       background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
       border-radius: 16px;
       padding: 20px;
       margin-bottom: 25px;
     }
-    .policy-info h3 {
+    .template-content h2, .template-content h3 {
       color: #1e3a5f;
-      font-size: 16px;
+      font-size: 18px;
       font-weight: 700;
       margin-bottom: 15px;
       padding-bottom: 10px;
       border-bottom: 2px solid #e2e8f0;
     }
-    .info-grid { display: grid; gap: 10px; }
-    .info-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 12px;
-      background: white;
-      border-radius: 8px;
+    .template-content p {
+      color: #475569;
       font-size: 14px;
+      line-height: 1.8;
+      margin-bottom: 10px;
     }
-    .info-item span { color: #64748b; }
-    .info-item strong { color: #1e3a5f; }
+    .template-content strong {
+      color: #1e3a5f;
+    }
+    
     .signature-section {
       margin-bottom: 20px;
     }
@@ -483,6 +486,14 @@ function buildSignaturePageHtml(
       color: #94a3b8;
       margin-top: 20px;
     }
+    .footer {
+      text-align: center;
+      padding: 15px 25px;
+      background: #f8fafc;
+      border-top: 1px solid #e2e8f0;
+      font-size: 12px;
+      color: #64748b;
+    }
     .loading {
       display: none;
       align-items: center;
@@ -551,6 +562,7 @@ function buildSignaturePageHtml(
 <body>
   <div class="container">
     <div class="header">
+      ${logoSection}
       <h1>بشير للتأمين</h1>
       <div class="english">BASHEER INSURANCE</div>
       <div class="welcome">مرحباً بك</div>
@@ -558,7 +570,11 @@ function buildSignaturePageHtml(
     </div>
     
     <div class="content">
-      ${policySection}
+      <!-- Admin-configured template content -->
+      <div class="template-content">
+        <div class="template-header">${template.header_html}</div>
+        <div class="template-body">${template.body_html}</div>
+      </div>
       
       <div class="signature-section">
         <h3>يرجى التوقيع في المربع أدناه</h3>
@@ -572,7 +588,7 @@ function buildSignaturePageHtml(
 
       <div class="checkbox-wrapper" onclick="document.getElementById('acceptTerms').click()">
         <input type="checkbox" id="acceptTerms">
-        <label for="acceptTerms">أقرّ أنني قرأت وأوافق على جميع الشروط والأحكام المتعلقة بوثيقة التأمين</label>
+        <label for="acceptTerms">أقرّ أنني قرأت وأوافق على جميع الشروط والأحكام المذكورة أعلاه</label>
       </div>
 
       <div class="buttons">
@@ -588,6 +604,8 @@ function buildSignaturePageHtml(
 
       ${expiryText ? `<p class="expiry">ينتهي هذا الرابط في: ${expiryText}</p>` : ''}
     </div>
+    
+    <div class="footer">${template.footer_html}</div>
   </div>
 
   <div class="success-overlay" id="successOverlay">
