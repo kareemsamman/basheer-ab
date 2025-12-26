@@ -534,7 +534,12 @@ export function PolicyPaymentsSection({
                     <Badge variant="destructive">راجع</Badge>
                   )}
                   {getImageCount(payment) > 0 && (
-                    <Button variant="ghost" size="sm" className="h-7 px-2 gap-1" onClick={() => openGallery(payment)}>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-7 px-2 gap-1 border-primary/50 text-primary hover:bg-primary/10" 
+                      onClick={() => openGallery(payment)}
+                    >
                       <ImageIcon className="h-3 w-3" />
                       <span className="text-xs">{getImageCount(payment)} صور</span>
                     </Button>
