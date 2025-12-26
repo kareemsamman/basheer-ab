@@ -27,12 +27,14 @@ const DRAFT_KEY = "abcrm:policyWizardDraft:v3";
 interface UsePolicyWizardStateProps {
   open: boolean;
   defaultBrokerId?: string;
+  defaultBrokerDirection?: 'from_broker' | 'to_broker';
   preselectedClientId?: string;
 }
 
-export function usePolicyWizardState({ open, defaultBrokerId, preselectedClientId }: UsePolicyWizardStateProps) {
+export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirection, preselectedClientId }: UsePolicyWizardStateProps) {
   const { user, isAdmin, branchId: userBranchId } = useAuth();
   const { branches } = useBranches();
+  const initialBrokerDirection = defaultBrokerDirection || "";
 
   // Core wizard state
   const [currentStep, setCurrentStep] = useState(1);
@@ -112,7 +114,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, preselectedClientI
     accident_fee_service_id: "",
   });
   const [policyBrokerId, setPolicyBrokerId] = useState<string>(defaultBrokerId || "");
-  const [brokerDirection, setBrokerDirection] = useState<"from_broker" | "to_broker" | "">("");
+  const [brokerDirection, setBrokerDirection] = useState<"from_broker" | "to_broker" | "">(initialBrokerDirection);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
 
   // Road Services & Accident Fees
@@ -468,5 +470,6 @@ export function usePolicyWizardState({ open, defaultBrokerId, preselectedClientI
 
     // Auth
     user,
+    userBranchId,
   };
 }
