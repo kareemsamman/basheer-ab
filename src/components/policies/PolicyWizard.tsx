@@ -336,6 +336,17 @@ export function PolicyWizard({
       return;
     }
 
+    // Check for unpaid visa payments
+    const hasUnpaidVisa = payments.some(p => p.payment_type === 'visa' && !p.tranzila_paid && (p.amount || 0) > 0);
+    if (hasUnpaidVisa) {
+      toast({
+        title: "دفعات فيزا غير مكتملة",
+        description: "يجب الدفع بالفيزا قبل حفظ الوثيقة",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -689,7 +700,10 @@ export function PolicyWizard({
                 remainingToPay={remainingToPay}
                 paymentsExceedPrice={paymentsExceedPrice}
                 errors={errors}
-                policyId={tempPolicyId || undefined}
+                onVisaPaymentRequired={() => {
+                  // Check if there are unpaid visa payments
+                  return payments.some(p => p.payment_type === 'visa' && !p.tranzila_paid && (p.amount || 0) > 0);
+                }}
               />
             )}
           </div>
@@ -722,7 +736,7 @@ export function PolicyWizard({
                 ) : (
                   <Button
                     onClick={handleSave}
-                    disabled={saving || paymentsExceedPrice}
+                    disabled={saving || paymentsExceedPrice || payments.some(p => p.payment_type === 'visa' && !p.tranzila_paid && (p.amount || 0) > 0)}
                     className="min-w-32"
                   >
                     {saving ? (
