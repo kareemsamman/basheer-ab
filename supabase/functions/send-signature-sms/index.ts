@@ -8,7 +8,7 @@ const corsHeaders = {
 
 interface SendSignatureSmsRequest {
   client_id: string;
-  policy_id?: string;
+  policy_id?: string; // Optional, kept for backward compatibility but not used for content
 }
 
 function generateToken(length = 32): string {
@@ -22,13 +22,6 @@ function generateToken(length = 32): string {
   return result;
 }
 
-const POLICY_TYPE_LABELS: Record<string, string> = {
-  ELZAMI: 'إلزامي',
-  THIRD_FULL: 'ثالث/شامل',
-  ROAD_SERVICE: 'خدمات الطريق',
-  ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
-};
-
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
   const date = new Date(dateStr);
@@ -38,6 +31,13 @@ function formatDate(dateStr: string): string {
     day: 'numeric',
     calendar: 'gregory'
   });
+}
+
+interface TemplateContent {
+  logo_url: string | null;
+  header_html: string;
+  body_html: string;
+  footer_html: string;
 }
 
 serve(async (req) => {
@@ -131,10 +131,10 @@ serve(async (req) => {
       );
     }
 
-    // Get SMS settings
+    // Get SMS settings with template
     const { data: smsSettings, error: smsSettingsError } = await supabase
       .from("sms_settings")
-      .select("*")
+      .select("*, invoice_templates:default_signature_template_id(*)")
       .limit(1)
       .maybeSingle();
 
@@ -153,35 +153,34 @@ serve(async (req) => {
       );
     }
 
+    // Get template content from SMS settings
+    let templateContent: TemplateContent = {
+      logo_url: null,
+      header_html: '<h2>نموذج الموافقة على الخصوصية</h2>',
+      body_html: '<p>مرحباً.</p><p>أقرّ بأنني قرأت وفهمت سياسة الخصوصية، وأوافق على قيام <strong>AB</strong> للتأمين بجمع واستخدام ومعالجة بياناتي الشخصية للأغراض المتعلقة بخدمات التأمين والتواصل وإتمام الإجراءات اللازمة.</p><p>بالتوقيع أدناه، أؤكد صحة البيانات وأمنح موافقتي على ما ورد أعلاه.</p>',
+      footer_html: '<p>© AB للتأمين - جميع الحقوق محفوظة</p>',
+    };
+
+    if (smsSettings.invoice_templates) {
+      const template = smsSettings.invoice_templates as any;
+      templateContent = {
+        logo_url: template.logo_url || null,
+        header_html: template.header_html || templateContent.header_html,
+        body_html: template.body_html || templateContent.body_html,
+        footer_html: template.footer_html || templateContent.footer_html,
+      };
+    }
+
     // Generate secure token
     const signatureToken = generateToken(32);
     const tokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
 
-    // Get policy info if available
-    let policyInfo = null;
-    if (policy_id) {
-      const { data: policy } = await supabase
-        .from("policies")
-        .select(`
-          policy_number,
-          insurance_price,
-          start_date,
-          end_date,
-          policy_type_parent,
-          company:insurance_companies(name, name_ar),
-          car:cars(car_number, manufacturer_name, model, year)
-        `)
-        .eq("id", policy_id)
-        .single();
-      policyInfo = policy;
-    }
-
-    // Generate signature page HTML
+    // Generate signature page HTML using admin template (NOT policy details)
     const signatureHtml = buildSignaturePageHtml(
       client.full_name || 'عميل',
       signatureToken,
       tokenExpiresAt,
-      policyInfo,
+      templateContent,
       supabaseUrl
     );
 
@@ -219,7 +218,7 @@ serve(async (req) => {
     const signaturePageUrl = `${bunnyCdnUrl}/${storagePath}`;
     console.log(`[send-signature-sms] Signature page uploaded: ${signaturePageUrl}`);
 
-    // Create signature record with token
+    // Create signature record with token (policy_id is optional, just for reference)
     const { data: signatureRecord, error: signatureError } = await supabase
       .from("customer_signatures")
       .insert({
@@ -305,6 +304,19 @@ serve(async (req) => {
       );
     }
 
+    // Log the SMS
+    await supabase.from("sms_logs").insert({
+      phone_number: cleanPhone,
+      message: smsMessage,
+      sms_type: "signature",
+      status: "sent",
+      sent_at: new Date().toISOString(),
+      client_id: client_id,
+      policy_id: policy_id || null,
+      created_by: user.id,
+      branch_id: client.branch_id,
+    });
+
     const duration = Date.now() - startTime;
     console.log(`[send-signature-sms] Completed in ${duration}ms`);
 
@@ -334,30 +346,15 @@ function buildSignaturePageHtml(
   clientName: string, 
   token: string, 
   expiresAt: string | null,
-  policyInfo: any,
+  template: TemplateContent,
   supabaseUrl: string
 ): string {
   const expiryText = expiresAt ? formatDate(expiresAt) : '';
-  
-  // Build policy details section if available
-  let policySection = '';
-  if (policyInfo) {
-    policySection = `
-      <div class="policy-info">
-        <h3>تفاصيل الوثيقة</h3>
-        <div class="info-grid">
-          ${policyInfo.policy_number ? `<div class="info-item"><span>رقم الوثيقة</span><strong>${policyInfo.policy_number}</strong></div>` : ''}
-          ${policyInfo.policy_type_parent ? `<div class="info-item"><span>نوع التأمين</span><strong>${POLICY_TYPE_LABELS[policyInfo.policy_type_parent] || policyInfo.policy_type_parent}</strong></div>` : ''}
-          ${policyInfo.company?.name_ar || policyInfo.company?.name ? `<div class="info-item"><span>شركة التأمين</span><strong>${policyInfo.company.name_ar || policyInfo.company.name}</strong></div>` : ''}
-          ${policyInfo.car?.car_number ? `<div class="info-item"><span>رقم السيارة</span><strong>${policyInfo.car.car_number}</strong></div>` : ''}
-          ${policyInfo.car?.manufacturer_name ? `<div class="info-item"><span>السيارة</span><strong>${policyInfo.car.manufacturer_name} ${policyInfo.car.model || ''} ${policyInfo.car.year || ''}</strong></div>` : ''}
-          ${policyInfo.insurance_price ? `<div class="info-item"><span>السعر</span><strong>₪${policyInfo.insurance_price.toLocaleString()}</strong></div>` : ''}
-          ${policyInfo.start_date ? `<div class="info-item"><span>تاريخ البداية</span><strong>${formatDate(policyInfo.start_date)}</strong></div>` : ''}
-          ${policyInfo.end_date ? `<div class="info-item"><span>تاريخ الانتهاء</span><strong>${formatDate(policyInfo.end_date)}</strong></div>` : ''}
-        </div>
-      </div>
-    `;
-  }
+
+  // Logo section if provided
+  const logoSection = template.logo_url 
+    ? `<img src="${template.logo_url}" alt="Logo" class="logo" style="max-height: 60px; margin-bottom: 15px;" />`
+    : '';
 
   return `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -365,7 +362,7 @@ function buildSignaturePageHtml(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
-  <title>توقيع العميل | BASHEER INSURANCE</title>
+  <title>توقيع العميل | AB Insurance</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -391,6 +388,12 @@ function buildSignaturePageHtml(
       padding: 30px 25px;
       text-align: center;
     }
+    .header .logo { 
+      background: white; 
+      padding: 10px; 
+      border-radius: 10px;
+      display: inline-block;
+    }
     .header h1 { 
       font-size: 28px; 
       font-weight: 800;
@@ -412,32 +415,32 @@ function buildSignaturePageHtml(
       margin-top: 5px;
     }
     .content { padding: 25px; }
-    .policy-info {
+    
+    /* Template content styling */
+    .template-content {
       background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
       border-radius: 16px;
       padding: 20px;
       margin-bottom: 25px;
     }
-    .policy-info h3 {
+    .template-content h2, .template-content h3 {
       color: #1e3a5f;
-      font-size: 16px;
+      font-size: 18px;
       font-weight: 700;
       margin-bottom: 15px;
       padding-bottom: 10px;
       border-bottom: 2px solid #e2e8f0;
     }
-    .info-grid { display: grid; gap: 10px; }
-    .info-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 12px;
-      background: white;
-      border-radius: 8px;
+    .template-content p {
+      color: #475569;
       font-size: 14px;
+      line-height: 1.8;
+      margin-bottom: 10px;
     }
-    .info-item span { color: #64748b; }
-    .info-item strong { color: #1e3a5f; }
+    .template-content strong {
+      color: #1e3a5f;
+    }
+    
     .signature-section {
       margin-bottom: 20px;
     }
@@ -539,6 +542,14 @@ function buildSignaturePageHtml(
       color: #94a3b8;
       margin-top: 20px;
     }
+    .footer {
+      text-align: center;
+      padding: 15px 25px;
+      background: #f8fafc;
+      border-top: 1px solid #e2e8f0;
+      font-size: 12px;
+      color: #64748b;
+    }
     .loading {
       display: none;
       align-items: center;
@@ -607,6 +618,7 @@ function buildSignaturePageHtml(
 <body>
   <div class="container">
     <div class="header">
+      ${logoSection}
       <h1>بشير للتأمين</h1>
       <div class="english">BASHEER INSURANCE</div>
       <div class="welcome">مرحباً بك</div>
@@ -614,7 +626,11 @@ function buildSignaturePageHtml(
     </div>
     
     <div class="content">
-      ${policySection}
+      <!-- Admin-configured template content -->
+      <div class="template-content">
+        <div class="template-header">${template.header_html}</div>
+        <div class="template-body">${template.body_html}</div>
+      </div>
       
       <div class="signature-section">
         <h3>يرجى التوقيع في المربع أدناه</h3>
@@ -628,7 +644,7 @@ function buildSignaturePageHtml(
 
       <div class="checkbox-wrapper" onclick="document.getElementById('acceptTerms').click()">
         <input type="checkbox" id="acceptTerms">
-        <label for="acceptTerms">أقرّ أنني قرأت وأوافق على جميع الشروط والأحكام المتعلقة بوثيقة التأمين</label>
+        <label for="acceptTerms">أقرّ أنني قرأت وأوافق على جميع الشروط والأحكام المذكورة أعلاه</label>
       </div>
 
       <div class="buttons">
@@ -644,6 +660,8 @@ function buildSignaturePageHtml(
 
       ${expiryText ? `<p class="expiry">ينتهي هذا الرابط في: ${expiryText}</p>` : ''}
     </div>
+    
+    <div class="footer">${template.footer_html}</div>
   </div>
 
   <div class="success-overlay" id="successOverlay">
@@ -672,54 +690,9 @@ function buildSignaturePageHtml(
     
     let isDrawing = false;
     let hasDrawn = false;
-    let pageBlocked = false;
-    
-    // Check if signature is still valid on page load
-    async function checkSignatureStatus() {
-      try {
-        const response = await fetch('${supabaseUrl}/functions/v1/get-signature-info?token=${token}');
-        const data = await response.json();
-        
-        if (!response.ok || data.error) {
-          showBlockedMessage(data.error || 'رابط غير صالح');
-          return;
-        }
-        
-        if (data.already_signed) {
-          showBlockedMessage('تم التوقيع مسبقاً. شكراً لك!');
-          return;
-        }
-        
-        if (data.expired) {
-          showBlockedMessage('انتهت صلاحية هذا الرابط');
-          return;
-        }
-      } catch (e) {
-        console.error('Error checking signature status:', e);
-      }
-    }
-    
-    function showBlockedMessage(message) {
-      pageBlocked = true;
-      document.querySelector('.content').innerHTML = \`
-        <div style="text-align: center; padding: 40px 20px;">
-          <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 25px;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="white" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-          <h2 style="color: #1e3a5f; font-size: 22px; margin-bottom: 15px;">\${message}</h2>
-          <p style="color: #64748b; font-size: 15px;">يمكنك إغلاق هذه الصفحة</p>
-        </div>
-      \`;
-    }
-    
-    // Check on page load
-    checkSignatureStatus();
     
     // Set canvas size
     function resizeCanvas() {
-      if (pageBlocked) return;
       const rect = wrapper.getBoundingClientRect();
       canvas.width = rect.width;
       canvas.height = 200;
