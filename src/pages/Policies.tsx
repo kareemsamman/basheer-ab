@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Header } from "@/components/layout/Header";
 import { Card } from "@/components/ui/card";
@@ -21,6 +21,8 @@ import {
   ChevronRight,
   Plus,
   RefreshCw,
+  X,
+  Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -53,6 +55,7 @@ interface PolicyRecord {
   notes: string | null;
   broker_id: string | null;
   created_by_admin_id: string | null;
+  group_id: string | null;
   branch_id: string | null;
   clients?: {
     id: string;
@@ -136,6 +139,7 @@ export default function Policies() {
   const [deletingPolicy, setDeletingPolicy] = useState<PolicyRecord | null>(null);
   const [recalculating, setRecalculating] = useState(false);
   const [recalcProgress, setRecalcProgress] = useState({ done: 0, total: 0, startTime: 0, avgTime: 0 });
+  const cancelRecalcRef = useRef(false);
 
   const fetchPolicies = useCallback(async () => {
     setLoading(true);
@@ -148,7 +152,8 @@ export default function Policies() {
           cars(id, car_number, car_type, car_value, year),
           insurance_companies(id, name, name_ar),
           created_by:profiles!policies_created_by_admin_id_fkey(full_name, email),
-          branch:branches(id, name, name_ar)
+          branch:branches(id, name, name_ar),
+          group_id
         `, { count: 'exact' })
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
@@ -230,8 +235,14 @@ export default function Policies() {
     }
   };
 
+  const handleCancelRecalculation = () => {
+    cancelRecalcRef.current = true;
+    toast({ title: "جاري الإلغاء", description: "سيتم إيقاف إعادة الحساب بعد الوثيقة الحالية" });
+  };
+
   const handleRecalculateAll = async () => {
     setRecalculating(true);
+    cancelRecalcRef.current = false;
     const startTime = Date.now();
     try {
       // First, get the total count
@@ -270,6 +281,15 @@ export default function Policies() {
 
       // Process policies one by one
       for (let i = 0; i < allPolicyIds.length; i++) {
+        // Check for cancellation
+        if (cancelRecalcRef.current) {
+          toast({ 
+            title: "تم الإلغاء", 
+            description: `تم تحديث ${successCount} وثيقة قبل الإلغاء` 
+          });
+          break;
+        }
+
         const result = await recalculatePolicyProfit(allPolicyIds[i]);
         if (result) {
           successCount++;
@@ -288,10 +308,13 @@ export default function Policies() {
         });
       }
 
-      toast({
-        title: "تم إعادة الحساب",
-        description: `تم تحديث ${successCount} وثيقة${errorCount > 0 ? `، فشل ${errorCount}` : ''}`,
-      });
+      if (!cancelRecalcRef.current) {
+        toast({
+          title: "تم إعادة الحساب",
+          description: `تم تحديث ${successCount} وثيقة${errorCount > 0 ? `، فشل ${errorCount}` : ''}`,
+        });
+      }
+
       fetchPolicies();
     } catch (error) {
       console.error('Error recalculating:', error);
@@ -299,6 +322,7 @@ export default function Policies() {
     } finally {
       setRecalculating(false);
       setRecalcProgress({ done: 0, total: 0, startTime: 0, avgTime: 0 });
+      cancelRecalcRef.current = false;
     }
   };
 
@@ -436,6 +460,14 @@ export default function Policies() {
                     style={{ width: `${percentComplete}%` }} 
                   />
                 </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive"
+                  onClick={handleCancelRecalculation}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
             ) : (
               <Button 
@@ -517,10 +549,18 @@ export default function Policies() {
                           {policy.cars?.car_number || "-"}
                         </TableCell>
                         <TableCell>
-                          <Badge className={cn("border", policyTypeColors[policy.policy_type_parent] || "bg-secondary")}>
-                            {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
-                            {policy.policy_type_child && ` (${policyChildLabels[policy.policy_type_child] || policy.policy_type_child})`}
-                          </Badge>
+                          <div className="flex items-center gap-1">
+                            <Badge className={cn("border", policyTypeColors[policy.policy_type_parent] || "bg-secondary")}>
+                              {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
+                              {policy.policy_type_child && ` (${policyChildLabels[policy.policy_type_child] || policy.policy_type_child})`}
+                            </Badge>
+                            {policy.group_id && (
+                              <Badge variant="outline" className="gap-1 bg-gradient-to-r from-violet-500/10 to-fuchsia-500/10 text-violet-700 border-violet-500/30">
+                                <Package className="h-3 w-3" />
+                                <span className="text-[10px]">باقة</span>
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {policy.insurance_companies?.name_ar || policy.insurance_companies?.name || "-"}
