@@ -326,6 +326,15 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
   // Check if ELZAMI (no profit)
   const isElzami = policy?.policy_type_parent === "ELZAMI";
 
+  // Calculate package totals
+  const hasPackage = relatedPolicies.length > 0;
+  const packageTotalPrice = hasPackage 
+    ? (policy?.insurance_price || 0) + relatedPolicies.reduce((sum, rp) => sum + rp.insurance_price, 0)
+    : 0;
+  const packageTotalProfit = hasPackage 
+    ? (policy?.profit || 0) + relatedPolicies.reduce((sum, rp) => sum + (rp.profit || 0), 0)
+    : 0;
+
   const handleEditComplete = () => {
     fetchPolicyDetails();
     onUpdated?.();
@@ -458,11 +467,33 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                   {/* Profit - Only show if not ELZAMI */}
                   {!isElzami && (
                     <div className="bg-success/10 rounded-xl p-4 text-center border border-success/20 shadow-sm">
-                      <p className="text-xs text-muted-foreground mb-1">الربح</p>
+                      <p className="text-xs text-muted-foreground mb-1">
+                        {hasPackage ? 'ربح هذه الوثيقة' : 'الربح'}
+                      </p>
                       <p className="text-2xl font-bold text-success">{formatCurrency(policy.profit)}</p>
                     </div>
                   )}
                 </div>
+
+                {/* Package Total - Only show if part of a package */}
+                {hasPackage && !isElzami && (
+                  <div className="grid grid-cols-2 gap-4 mt-4">
+                    <div className="bg-primary/10 rounded-xl p-4 text-center border border-primary/20 shadow-sm">
+                      <div className="flex items-center justify-center gap-1.5 mb-1">
+                        <Package className="h-3.5 w-3.5 text-primary" />
+                        <p className="text-xs text-muted-foreground">مجموع الباقة</p>
+                      </div>
+                      <p className="text-xl font-bold text-primary">{formatCurrency(packageTotalPrice)}</p>
+                    </div>
+                    <div className="bg-success/15 rounded-xl p-4 text-center border border-success/30 shadow-sm">
+                      <div className="flex items-center justify-center gap-1.5 mb-1">
+                        <Package className="h-3.5 w-3.5 text-success" />
+                        <p className="text-xs text-muted-foreground">ربح الباقة</p>
+                      </div>
+                      <p className="text-xl font-bold text-success">{formatCurrency(packageTotalProfit)}</p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Payment Progress */}
                 <div className="mt-4 bg-background rounded-xl p-4 border shadow-sm">
