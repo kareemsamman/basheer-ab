@@ -306,9 +306,9 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
             {formData.category_parents.includes('ELZAMI') && (
               <div className="space-y-2">
                 <Label htmlFor="elzami_commission" className="text-right block">
-                  العمولة (₪)
-                  <span className="text-xs text-muted-foreground mr-2">
-                    (يمكن أن تكون سالبة)
+                  تكلفة الإلزامي (₪)
+                  <span className="text-xs text-destructive mr-2">
+                    (مبلغ يُخصم من AB)
                   </span>
                 </Label>
                 <Input
@@ -322,7 +322,7 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
                   className="text-left"
                 />
                 <p className="text-xs text-muted-foreground">
-                  هذه العمولة ستُستخدم كربح لوثائق الإلزامي. سعر التأمين لن يُحتسب في الإيرادات.
+                  هذا المبلغ يُدفع للشركة عند كل وثيقة إلزامي. الربح = سعر التأمين - هذا المبلغ
                 </p>
               </div>
             )}

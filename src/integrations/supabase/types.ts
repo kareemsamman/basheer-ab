@@ -1210,6 +1210,41 @@ export type Database = {
           },
         ]
       }
+      payment_images: {
+        Row: {
+          created_at: string
+          id: string
+          image_type: string
+          image_url: string
+          payment_id: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image_type?: string
+          image_url: string
+          payment_id: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image_type?: string
+          image_url?: string
+          payment_id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_images_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "policy_payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_settings: {
         Row: {
           api_password: string | null
