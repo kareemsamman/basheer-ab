@@ -724,12 +724,50 @@ export function PolicyWizard({
       // Upload files
       await uploadFiles(policyIdToUse);
 
+      // Send signature and invoice SMS to client
+      const clientPhone = selectedClient?.phone_number || newClient.phone_number;
+      const clientIdToUse = selectedClient?.id || (useTempPolicy ? null : null);
+      
+      if (clientPhone && policyIdToUse) {
+        // Send signature SMS if not already signed
+        try {
+          const { data: existingSig } = await supabase
+            .from('customer_signatures')
+            .select('id')
+            .eq('policy_id', policyIdToUse)
+            .limit(1);
+
+          if (!existingSig || existingSig.length === 0) {
+            await supabase.functions.invoke('send-signature-sms', {
+              body: { 
+                policyId: policyIdToUse, 
+                phoneNumber: clientPhone 
+              },
+            });
+          }
+        } catch (smsError) {
+          console.error('Failed to send signature SMS:', smsError);
+        }
+
+        // Send invoice SMS
+        try {
+          await supabase.functions.invoke('send-invoice-sms', {
+            body: { 
+              policyId: policyIdToUse,
+              phoneNumber: clientPhone 
+            },
+          });
+        } catch (invoiceError) {
+          console.error('Failed to send invoice SMS:', invoiceError);
+        }
+      }
+
       clearDraft();
       setTempPolicyId(null);
 
       toast({
         title: "تم الحفظ بنجاح",
-        description: "تم إنشاء الوثيقة بنجاح",
+        description: clientPhone ? "تم إنشاء الوثيقة وإرسال SMS للعميل" : "تم إنشاء الوثيقة بنجاح",
       });
 
       onComplete?.(policyIdToUse);
@@ -869,6 +907,10 @@ export function PolicyWizard({
                 existingCar={existingCar}
                 newCar={newCar}
                 createNewCar={createNewCar}
+                insuranceFiles={insuranceFiles}
+                setInsuranceFiles={setInsuranceFiles}
+                crmFiles={crmFiles}
+                setCrmFiles={setCrmFiles}
                 errors={errors}
               />
             )}
@@ -885,10 +927,6 @@ export function PolicyWizard({
                 onCreateTempPolicy={handleCreateTempPolicy}
                 onDeleteTempPolicy={handleDeleteTempPolicy}
                 tempPolicyId={tempPolicyId}
-                insuranceFiles={insuranceFiles}
-                setInsuranceFiles={setInsuranceFiles}
-                crmFiles={crmFiles}
-                setCrmFiles={setCrmFiles}
               />
             )}
           </div>

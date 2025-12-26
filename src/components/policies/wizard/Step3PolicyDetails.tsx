@@ -1,13 +1,14 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { supabase } from "@/integrations/supabase/client";
-import { AlertCircle, Package, ArrowLeftRight } from "lucide-react";
+import { AlertCircle, Package, ArrowLeftRight, ImageIcon, FolderOpen, Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PricingCard } from "./PricingCard";
 import { PackageAddonsSection } from "./PackageAddonsSection";
@@ -75,6 +76,12 @@ interface Step3Props {
   newCar: NewCarForm;
   createNewCar: boolean;
   
+  // Files
+  insuranceFiles: File[];
+  setInsuranceFiles: (files: File[]) => void;
+  crmFiles: File[];
+  setCrmFiles: (files: File[]) => void;
+  
   // Errors
   errors: ValidationErrors;
 }
@@ -114,12 +121,47 @@ export function Step3PolicyDetails({
   existingCar,
   newCar,
   createNewCar,
+  insuranceFiles,
+  setInsuranceFiles,
+  crmFiles,
+  setCrmFiles,
   errors,
 }: Step3Props) {
+  
+  const insuranceInputRef = useRef<HTMLInputElement>(null);
+  const crmInputRef = useRef<HTMLInputElement>(null);
   
   const getCarType = () => {
     if (createNewCar) return newCar.car_type;
     return selectedCar?.car_type || existingCar?.car_type || null;
+  };
+
+  // File handlers
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, type: 'insurance' | 'crm') => {
+    const files = e.target.files;
+    if (!files) return;
+    
+    const fileArray = Array.from(files);
+    if (type === 'insurance') {
+      setInsuranceFiles([...insuranceFiles, ...fileArray]);
+    } else {
+      setCrmFiles([...crmFiles, ...fileArray]);
+    }
+    e.target.value = '';
+  };
+
+  const removeFile = (index: number, type: 'insurance' | 'crm') => {
+    if (type === 'insurance') {
+      setInsuranceFiles(insuranceFiles.filter((_, i) => i !== index));
+    } else {
+      setCrmFiles(crmFiles.filter((_, i) => i !== index));
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   // Fetch companies when policy type changes
@@ -562,6 +604,123 @@ export function Step3PolicyDetails({
           placeholder="ملاحظات إضافية..."
           rows={3}
         />
+      </div>
+
+      {/* File Uploaders */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Insurance Files */}
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <ImageIcon className="h-4 w-4 text-primary" />
+              <Label className="font-semibold">ملفات التأمين</Label>
+            </div>
+            <div className="relative">
+              <input
+                ref={insuranceInputRef}
+                type="file"
+                multiple
+                accept="image/*,.pdf,video/*"
+                onChange={(e) => handleFileSelect(e, 'insurance')}
+                className="absolute inset-0 opacity-0 cursor-pointer w-full"
+              />
+              <Button type="button" size="sm" variant="outline" className="gap-1.5">
+                <Upload className="h-4 w-4" />
+                رفع ملف
+              </Button>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            فواتير وإيصالات ترسل للعميل
+          </p>
+          <div className="space-y-2 max-h-32 overflow-y-auto">
+            {insuranceFiles.length === 0 ? (
+              <div className="text-center py-4 text-muted-foreground text-sm">
+                لا توجد ملفات
+              </div>
+            ) : (
+              insuranceFiles.map((file, index) => (
+                <div key={index} className="flex items-center justify-between p-2 bg-muted/30 rounded-lg">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    {file.type.startsWith('image/') ? (
+                      <ImageIcon className="h-4 w-4 text-primary flex-shrink-0" />
+                    ) : (
+                      <FolderOpen className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    )}
+                    <span className="text-sm truncate">{file.name}</span>
+                    <span className="text-xs text-muted-foreground">({formatFileSize(file.size)})</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-destructive hover:text-destructive flex-shrink-0"
+                    onClick={() => removeFile(index, 'insurance')}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+        </Card>
+
+        {/* CRM Files */}
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <FolderOpen className="h-4 w-4 text-muted-foreground" />
+              <Label className="font-semibold">ملفات النظام</Label>
+            </div>
+            <div className="relative">
+              <input
+                ref={crmInputRef}
+                type="file"
+                multiple
+                accept="image/*,.pdf,video/*"
+                onChange={(e) => handleFileSelect(e, 'crm')}
+                className="absolute inset-0 opacity-0 cursor-pointer w-full"
+              />
+              <Button type="button" size="sm" variant="outline" className="gap-1.5">
+                <Upload className="h-4 w-4" />
+                رفع ملف
+              </Button>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            هوية، رخصة، صور سيارة - ملفات داخلية
+          </p>
+          <div className="space-y-2 max-h-32 overflow-y-auto">
+            {crmFiles.length === 0 ? (
+              <div className="text-center py-4 text-muted-foreground text-sm">
+                لا توجد ملفات
+              </div>
+            ) : (
+              crmFiles.map((file, index) => (
+                <div key={index} className="flex items-center justify-between p-2 bg-muted/30 rounded-lg">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    {file.type.startsWith('image/') ? (
+                      <ImageIcon className="h-4 w-4 text-primary flex-shrink-0" />
+                    ) : (
+                      <FolderOpen className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    )}
+                    <span className="text-sm truncate">{file.name}</span>
+                    <span className="text-xs text-muted-foreground">({formatFileSize(file.size)})</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-destructive hover:text-destructive flex-shrink-0"
+                    onClick={() => removeFile(index, 'crm')}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+        </Card>
       </div>
     </div>
   );
