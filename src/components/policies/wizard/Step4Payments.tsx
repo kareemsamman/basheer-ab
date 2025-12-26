@@ -5,10 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
-import { Plus, Trash2, CreditCard, AlertCircle, Loader2 } from "lucide-react";
+import { Plus, Trash2, CreditCard, AlertCircle, Loader2, Split } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PaymentSummaryBar } from "./PaymentSummaryBar";
 import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { PaymentLine, PricingBreakdown, ValidationErrors } from "./types";
 import { PAYMENT_TYPES } from "./types";
 
@@ -42,6 +43,8 @@ export function Step4Payments({
   const [selectedVisaPaymentIndex, setSelectedVisaPaymentIndex] = useState<number | null>(null);
   const [creatingPolicy, setCreatingPolicy] = useState(false);
   const [activePolicyIdForPayment, setActivePolicyIdForPayment] = useState<string | null>(null);
+  const [splitPopoverOpen, setSplitPopoverOpen] = useState(false);
+  const [splitCount, setSplitCount] = useState(2);
 
   const addPayment = () => {
     setPayments([
@@ -58,6 +61,37 @@ export function Step4Payments({
 
   const removePayment = (id: string) => {
     setPayments(payments.filter(p => p.id !== id));
+  };
+
+  // Split payment into equal installments
+  const handleSplitPayments = () => {
+    if (splitCount < 2 || splitCount > 12) return;
+    
+    const totalAmount = pricing.totalPrice;
+    const amountPerInstallment = Math.floor(totalAmount / splitCount);
+    const remainder = totalAmount - (amountPerInstallment * splitCount);
+    
+    const today = new Date();
+    const newPayments: PaymentLine[] = [];
+    
+    for (let i = 0; i < splitCount; i++) {
+      const paymentDate = new Date(today);
+      paymentDate.setMonth(today.getMonth() + i);
+      
+      // Add remainder to the first payment
+      const amount = i === 0 ? amountPerInstallment + remainder : amountPerInstallment;
+      
+      newPayments.push({
+        id: crypto.randomUUID(),
+        payment_type: "cash",
+        amount,
+        payment_date: paymentDate.toISOString().split('T')[0],
+        refused: false,
+      });
+    }
+    
+    setPayments(newPayments);
+    setSplitPopoverOpen(false);
   };
 
   const updatePayment = (id: string, field: string, value: any) => {
@@ -128,16 +162,63 @@ export function Step4Payments({
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <Label className="text-base font-semibold">الدفعات</Label>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={addPayment}
-            className="gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            إضافة دفعة
-          </Button>
+          <div className="flex gap-2">
+            {/* Split Payments Button */}
+            <Popover open={splitPopoverOpen} onOpenChange={setSplitPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                >
+                  <Split className="h-4 w-4" />
+                  تقسيط
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64" align="end" dir="rtl">
+                <div className="space-y-4">
+                  <h4 className="font-semibold text-sm">تقسيط المبلغ</h4>
+                  <div className="space-y-2">
+                    <Label className="text-xs">عدد الأقساط (2-12)</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        min={2}
+                        max={12}
+                        value={splitCount}
+                        onChange={(e) => setSplitCount(Math.min(12, Math.max(2, parseInt(e.target.value) || 2)))}
+                        className="h-9"
+                      />
+                      <Button 
+                        type="button" 
+                        size="sm" 
+                        onClick={handleSplitPayments}
+                        className="h-9 px-4"
+                      >
+                        تقسيم
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      سيتم تقسيم {pricing.totalPrice} ₪ إلى {splitCount} دفعات متساوية
+                    </p>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+            
+            {/* Add Payment Button */}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addPayment}
+              className="gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              إضافة دفعة
+            </Button>
+          </div>
         </div>
 
         {payments.length === 0 ? (

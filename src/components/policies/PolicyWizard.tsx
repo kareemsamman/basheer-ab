@@ -342,11 +342,16 @@ export function PolicyWizard({
 
       // Create new client if needed
       if (createNewClient && !clientId) {
+        // Generate file_number
+        const { data: fileNumData } = await supabase.rpc('generate_file_number');
+        const generatedFileNumber = fileNumData || null;
+
         const { data: newClientData, error: clientError } = await supabase
           .from('clients')
           .insert({
             full_name: newClient.full_name.trim(),
             id_number: newClient.id_number.trim(),
+            file_number: generatedFileNumber,
             phone_number: newClient.phone_number || null,
             phone_number_2: newClient.phone_number_2 || null,
             birth_date: newClient.birth_date || null,
@@ -527,11 +532,16 @@ export function PolicyWizard({
         let carId = selectedCar?.id;
         
         if (createNewClient && !clientId) {
+          // Generate file_number for new client
+          const { data: fileNumData } = await supabase.rpc('generate_file_number');
+          const generatedFileNumber = fileNumData || null;
+
           const { data: newClientData, error: clientError } = await supabase
             .from('clients')
             .insert({
               full_name: newClient.full_name.trim(),
               id_number: newClient.id_number.trim(),
+              file_number: generatedFileNumber,
               phone_number: newClient.phone_number || null,
               phone_number_2: newClient.phone_number_2 || null,
               birth_date: newClient.birth_date || null,
@@ -547,21 +557,6 @@ export function PolicyWizard({
 
           if (clientError) throw clientError;
           clientId = newClientData.id;
-
-          // Send signature SMS to new client
-          if (newClient.phone_number) {
-            const { data: existingSig } = await supabase
-              .from('customer_signatures')
-              .select('id')
-              .eq('client_id', clientId)
-              .limit(1);
-
-            if (!existingSig || existingSig.length === 0) {
-              await supabase.functions.invoke('send-signature-sms', {
-                body: { clientId, phoneNumber: newClient.phone_number },
-              });
-            }
-          }
         }
 
         if (!clientId) throw new Error('Client ID is required');
@@ -726,20 +721,33 @@ export function PolicyWizard({
 
       // Send signature and invoice SMS to client
       const clientPhone = selectedClient?.phone_number || newClient.phone_number;
-      const clientIdToUse = selectedClient?.id || (useTempPolicy ? null : null);
       
-      if (clientPhone && policyIdToUse) {
-        // Send signature SMS if not already signed
+      // Get the actual client ID (could be from temp policy creation or normal flow)
+      let finalClientId = selectedClient?.id;
+      if (!finalClientId && policyIdToUse) {
+        // Fetch client_id from the policy we just created
+        const { data: policyData } = await supabase
+          .from('policies')
+          .select('client_id')
+          .eq('id', policyIdToUse)
+          .single();
+        finalClientId = policyData?.client_id;
+      }
+      
+      if (clientPhone && policyIdToUse && finalClientId) {
+        // Send signature SMS if customer has NEVER signed before (check by client_id, not policy_id)
         try {
           const { data: existingSig } = await supabase
             .from('customer_signatures')
             .select('id')
-            .eq('policy_id', policyIdToUse)
+            .eq('client_id', finalClientId)
             .limit(1);
 
+          // If client has never signed, send signature SMS
           if (!existingSig || existingSig.length === 0) {
             await supabase.functions.invoke('send-signature-sms', {
               body: { 
+                clientId: finalClientId,
                 policyId: policyIdToUse, 
                 phoneNumber: clientPhone 
               },
