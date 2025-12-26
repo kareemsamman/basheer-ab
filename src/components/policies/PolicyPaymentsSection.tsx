@@ -9,11 +9,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Pencil, Trash2, CreditCard, Loader2, ImageIcon, X, AlertCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, CreditCard, Loader2, ImageIcon, X, AlertCircle, Upload, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal";
 import type { Enums } from "@/integrations/supabase/types";
+
+interface PaymentImage {
+  id: string;
+  image_url: string;
+  image_type: string;
+}
 
 interface Payment {
   id: string;
@@ -22,8 +28,10 @@ interface Payment {
   payment_date: string;
   cheque_number: string | null;
   cheque_image_url: string | null;
+  cheque_status: string | null;
   refused: boolean | null;
   notes: string | null;
+  images?: PaymentImage[];
 }
 
 interface PolicyPaymentsSectionProps {
@@ -49,6 +57,12 @@ const PAYMENT_TYPES = [
   { value: "transfer", label: "تحويل" },
 ];
 
+const chequeStatusLabels: Record<string, { label: string; variant: "default" | "secondary" | "destructive" }> = {
+  pending: { label: "قيد الانتظار", variant: "secondary" },
+  cashed: { label: "تم صرفه", variant: "default" },
+  returned: { label: "مرتجع", variant: "destructive" },
+};
+
 export function PolicyPaymentsSection({ 
   policyId, 
   payments, 
@@ -64,7 +78,6 @@ export function PolicyPaymentsSection({
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [tranzilaEnabled, setTranzilaEnabled] = useState(false);
   const [tranzilaModalOpen, setTranzilaModalOpen] = useState(false);
@@ -73,6 +86,14 @@ export function PolicyPaymentsSection({
     date: string;
     notes: string;
   } | null>(null);
+
+  // Image handling states
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const [pendingImages, setPendingImages] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const [galleryImages, setGalleryImages] = useState<string[]>([]);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryIndex, setGalleryIndex] = useState(0);
 
   const [formData, setFormData] = useState({
     amount: "",
@@ -108,7 +129,6 @@ export function PolicyPaymentsSection({
   useEffect(() => {
     if (autoOpenAdd) {
       setAddDialogOpen(true);
-      // Pre-fill with remaining amount
       setFormData(f => ({ ...f, amount: remaining > 0 ? remaining.toString() : "" }));
       onAutoOpenHandled?.();
     }
@@ -124,16 +144,81 @@ export function PolicyPaymentsSection({
       notes: "",
     });
     setValidationError(null);
+    // Clear images
+    previewUrls.forEach(url => URL.revokeObjectURL(url));
+    setPendingImages([]);
+    setPreviewUrls([]);
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    
+    const validFiles = files.filter(file => {
+      if (!file.type.startsWith('image/')) {
+        toast({ title: "خطأ", description: "يرجى اختيار صور فقط", variant: "destructive" });
+        return false;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        toast({ title: "خطأ", description: "حجم الصورة يجب أن يكون أقل من 10MB", variant: "destructive" });
+        return false;
+      }
+      return true;
+    });
+
+    setPendingImages(prev => [...prev, ...validFiles]);
+    validFiles.forEach(file => {
+      const url = URL.createObjectURL(file);
+      setPreviewUrls(prev => [...prev, url]);
+    });
+  };
+
+  const removeImage = (index: number) => {
+    URL.revokeObjectURL(previewUrls[index]);
+    setPendingImages(prev => prev.filter((_, i) => i !== index));
+    setPreviewUrls(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const uploadImages = async (paymentId: string): Promise<void> => {
+    if (pendingImages.length === 0) return;
+    
+    setUploadingImages(true);
+    try {
+      for (let i = 0; i < pendingImages.length; i++) {
+        const file = pendingImages[i];
+        const uploadFormData = new FormData();
+        uploadFormData.append('file', file);
+        uploadFormData.append('entity_type', 'payment');
+        uploadFormData.append('entity_id', paymentId);
+        
+        const { data, error } = await supabase.functions.invoke('upload-media', {
+          body: uploadFormData,
+        });
+        
+        if (error) throw error;
+        
+        const imageType = i === 0 ? 'front' : i === 1 ? 'back' : 'receipt';
+        await supabase.from('payment_images').insert({
+          payment_id: paymentId,
+          image_url: data.url,
+          image_type: imageType,
+          sort_order: i,
+        });
+      }
+    } catch (error) {
+      console.error('Error uploading images:', error);
+      toast({ title: "تحذير", description: "تم حفظ الدفعة لكن فشل رفع بعض الصور", variant: "destructive" });
+    } finally {
+      setUploadingImages(false);
+    }
   };
 
   const validatePayment = (amount: number, isEdit: boolean = false, currentPaymentId?: string): boolean => {
-    // If refused, no validation needed for total
     if (formData.refused) {
       setValidationError(null);
       return true;
     }
 
-    // Calculate what the new total would be
     let otherPaymentsTotal = payments
       .filter(p => !p.refused && (isEdit ? p.id !== currentPaymentId : true))
       .reduce((sum, p) => sum + p.amount, 0);
@@ -167,17 +252,17 @@ export function PolicyPaymentsSection({
       return;
     }
 
-    if (!validatePayment(amount)) {
+    if (!validatePayment(amount)) return;
+
+    // Validate cheque number
+    if (formData.payment_type === 'cheque' && !formData.cheque_number.trim()) {
+      toast({ title: "خطأ", description: "الرجاء إدخال رقم الشيك", variant: "destructive" });
       return;
     }
 
-    // If Visa and Tranzila enabled, use Tranzila flow
+    // Tranzila flow for Visa
     if (formData.payment_type === 'visa' && tranzilaEnabled) {
-      setPendingTranzilaPayment({
-        amount,
-        date: formData.payment_date,
-        notes: formData.notes,
-      });
+      setPendingTranzilaPayment({ amount, date: formData.payment_date, notes: formData.notes });
       setAddDialogOpen(false);
       setTranzilaModalOpen(true);
       return;
@@ -185,7 +270,7 @@ export function PolicyPaymentsSection({
 
     setSaving(true);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('policy_payments')
         .insert({
           policy_id: policyId,
@@ -193,11 +278,19 @@ export function PolicyPaymentsSection({
           payment_type: formData.payment_type as Enums<'payment_type'>,
           payment_date: formData.payment_date,
           cheque_number: formData.payment_type === 'cheque' ? formData.cheque_number : null,
+          cheque_status: formData.payment_type === 'cheque' ? 'pending' : null,
           refused: formData.refused,
           notes: formData.notes || null,
-        });
+        })
+        .select('id')
+        .single();
 
       if (error) throw error;
+
+      // Upload images if any
+      if (pendingImages.length > 0 && data) {
+        await uploadImages(data.id);
+      }
 
       toast({ title: "تمت الإضافة", description: "تمت إضافة الدفعة بنجاح" });
       setAddDialogOpen(false);
@@ -205,13 +298,8 @@ export function PolicyPaymentsSection({
       onPaymentsChange();
     } catch (error: any) {
       console.error('Error adding payment:', error);
-      const errorMessage = error.message || '';
-      if (errorMessage.includes('Payment total exceeds')) {
-        toast({ 
-          title: "خطأ في الدفعة", 
-          description: "مجموع الدفعات يتجاوز سعر التأمين. الرجاء تعديل المبلغ.", 
-          variant: "destructive" 
-        });
+      if (error.message?.includes('Payment total exceeds')) {
+        toast({ title: "خطأ في الدفعة", description: "مجموع الدفعات يتجاوز سعر التأمين.", variant: "destructive" });
       } else {
         toast({ title: "خطأ", description: "فشل في إضافة الدفعة", variant: "destructive" });
       }
@@ -238,7 +326,10 @@ export function PolicyPaymentsSection({
       return;
     }
 
-    if (!validatePayment(amount, true, selectedPayment.id)) {
+    if (!validatePayment(amount, true, selectedPayment.id)) return;
+
+    if (formData.payment_type === 'cheque' && !formData.cheque_number.trim()) {
+      toast({ title: "خطأ", description: "الرجاء إدخال رقم الشيك", variant: "destructive" });
       return;
     }
 
@@ -258,6 +349,11 @@ export function PolicyPaymentsSection({
 
       if (error) throw error;
 
+      // Upload new images if any
+      if (pendingImages.length > 0) {
+        await uploadImages(selectedPayment.id);
+      }
+
       toast({ title: "تم التحديث", description: "تم تحديث الدفعة بنجاح" });
       setEditDialogOpen(false);
       setSelectedPayment(null);
@@ -265,13 +361,8 @@ export function PolicyPaymentsSection({
       onPaymentsChange();
     } catch (error: any) {
       console.error('Error updating payment:', error);
-      const errorMessage = error.message || '';
-      if (errorMessage.includes('Payment total exceeds')) {
-        toast({ 
-          title: "خطأ في الدفعة", 
-          description: "مجموع الدفعات يتجاوز سعر التأمين. الرجاء تعديل المبلغ.", 
-          variant: "destructive" 
-        });
+      if (error.message?.includes('Payment total exceeds')) {
+        toast({ title: "خطأ في الدفعة", description: "مجموع الدفعات يتجاوز سعر التأمين.", variant: "destructive" });
       } else {
         toast({ title: "خطأ", description: "فشل في تحديث الدفعة", variant: "destructive" });
       }
@@ -315,16 +406,65 @@ export function PolicyPaymentsSection({
       notes: payment.notes || "",
     });
     setValidationError(null);
+    setPendingImages([]);
+    setPreviewUrls([]);
     setEditDialogOpen(true);
   };
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('ar-EG');
+  const openGallery = (payment: Payment) => {
+    const imgs: string[] = [];
+    if (payment.cheque_image_url) imgs.push(payment.cheque_image_url);
+    if (payment.images) {
+      payment.images.forEach(img => {
+        if (!imgs.includes(img.image_url)) imgs.push(img.image_url);
+      });
+    }
+    if (imgs.length > 0) {
+      setGalleryImages(imgs);
+      setGalleryIndex(0);
+      setGalleryOpen(true);
+    }
   };
 
-  const formatCurrency = (amount: number) => {
-    return `₪${amount.toLocaleString('ar-EG')}`;
+  const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('ar-EG');
+  const formatCurrency = (amount: number) => `₪${amount.toLocaleString('ar-EG')}`;
+
+  const getImageCount = (payment: Payment) => {
+    let count = payment.cheque_image_url ? 1 : 0;
+    count += payment.images?.length || 0;
+    return count;
   };
+
+  const renderImageUpload = () => (
+    <div className="space-y-2">
+      <Label>
+        {formData.payment_type === 'cheque' ? 'صور الشيك (أمامي/خلفي)' : 'صور إيصال التحويل'}
+      </Label>
+      <div className="flex flex-wrap gap-2">
+        {previewUrls.map((url, index) => (
+          <div key={index} className="relative group">
+            <img src={url} alt="" className="h-16 w-20 object-cover rounded border" />
+            <button
+              type="button"
+              onClick={() => removeImage(index)}
+              className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ))}
+        <label className="h-16 w-20 border-2 border-dashed rounded flex items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
+          <input type="file" accept="image/*" multiple onChange={handleImageSelect} className="hidden" />
+          <Upload className="h-5 w-5 text-muted-foreground" />
+        </label>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {formData.payment_type === 'cheque' 
+          ? 'يمكنك إضافة صورة الوجه الأمامي والخلفي للشيك' 
+          : 'يمكنك إضافة صور إيصالات التحويل'}
+      </p>
+    </div>
+  );
 
   return (
     <>
@@ -336,10 +476,7 @@ export function PolicyPaymentsSection({
           </div>
           <Button size="sm" variant="outline" onClick={() => {
             resetForm();
-            // Pre-fill with remaining amount if there's any
-            if (remaining > 0) {
-              setFormData(f => ({ ...f, amount: remaining.toString() }));
-            }
+            if (remaining > 0) setFormData(f => ({ ...f, amount: remaining.toString() }));
             setAddDialogOpen(true);
           }}>
             <Plus className="h-4 w-4 ml-1" />
@@ -374,39 +511,37 @@ export function PolicyPaymentsSection({
                 key={payment.id}
                 className={cn(
                   "flex items-center justify-between p-3 rounded-lg border",
-                  payment.refused ? "bg-destructive/5 border-destructive/20" : "bg-muted/30"
+                  payment.refused || payment.cheque_status === 'returned' 
+                    ? "bg-destructive/5 border-destructive/20" 
+                    : "bg-muted/30"
                 )}
               >
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3 flex-wrap">
                   <div>
                     <p className="font-bold">{formatCurrency(payment.amount)}</p>
                     <p className="text-xs text-muted-foreground">{formatDate(payment.payment_date)}</p>
                   </div>
                   <Badge variant="secondary">{paymentTypeLabels[payment.payment_type]}</Badge>
                   {payment.cheque_number && (
-                    <span className="text-xs text-muted-foreground">#{payment.cheque_number}</span>
+                    <span className="text-xs text-muted-foreground font-mono">#{payment.cheque_number}</span>
+                  )}
+                  {payment.payment_type === 'cheque' && payment.cheque_status && (
+                    <Badge variant={chequeStatusLabels[payment.cheque_status]?.variant || 'secondary'}>
+                      {chequeStatusLabels[payment.cheque_status]?.label || payment.cheque_status}
+                    </Badge>
                   )}
                   {payment.refused && (
                     <Badge variant="destructive">راجع</Badge>
                   )}
-                  {payment.cheque_image_url && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => setImagePreview(payment.cheque_image_url)}
-                    >
-                      <ImageIcon className="h-4 w-4" />
+                  {getImageCount(payment) > 0 && (
+                    <Button variant="ghost" size="sm" className="h-7 px-2 gap-1" onClick={() => openGallery(payment)}>
+                      <ImageIcon className="h-3 w-3" />
+                      <span className="text-xs">{getImageCount(payment)} صور</span>
                     </Button>
                   )}
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => openEditDialog(payment)}
-                  >
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(payment)}>
                     <Pencil className="h-4 w-4" />
                   </Button>
                   <Button
@@ -428,10 +563,7 @@ export function PolicyPaymentsSection({
       </Card>
 
       {/* Add Payment Dialog */}
-      <Dialog open={addDialogOpen} onOpenChange={(open) => {
-        setAddDialogOpen(open);
-        if (!open) resetForm();
-      }}>
+      <Dialog open={addDialogOpen} onOpenChange={(open) => { setAddDialogOpen(open); if (!open) resetForm(); }}>
         <DialogContent className="sm:max-w-md" dir="rtl">
           <DialogHeader>
             <DialogTitle>إضافة دفعة جديدة</DialogTitle>
@@ -453,44 +585,37 @@ export function PolicyPaymentsSection({
                 </div>
               )}
               {remaining > 0 && !validationError && (
-                <p className="text-xs text-muted-foreground">المتبقي من سعر التأمين: {formatCurrency(remaining)}</p>
+                <p className="text-xs text-muted-foreground">المتبقي: {formatCurrency(remaining)}</p>
               )}
             </div>
             <div className="space-y-2">
               <Label>طريقة الدفع</Label>
-              <Select
-                value={formData.payment_type}
-                onValueChange={(v) => setFormData(f => ({ ...f, payment_type: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+              <Select value={formData.payment_type} onValueChange={(v) => setFormData(f => ({ ...f, payment_type: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {PAYMENT_TYPES.map(type => (
-                    <SelectItem key={type.value} value={type.value}>
-                      {type.label}
-                    </SelectItem>
+                    <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label>تاريخ الدفع</Label>
-              <ArabicDatePicker
-                value={formData.payment_date}
-                onChange={(v) => setFormData(f => ({ ...f, payment_date: v }))}
-              />
+              <ArabicDatePicker value={formData.payment_date} onChange={(v) => setFormData(f => ({ ...f, payment_date: v }))} />
             </div>
             {formData.payment_type === 'cheque' && (
               <div className="space-y-2">
-                <Label>رقم الشيك</Label>
+                <Label>رقم الشيك *</Label>
                 <Input
                   value={formData.cheque_number}
-                  onChange={(e) => setFormData(f => ({ ...f, cheque_number: e.target.value }))}
+                  onChange={(e) => setFormData(f => ({ ...f, cheque_number: e.target.value.replace(/[^0-9]/g, '') }))}
                   dir="ltr"
+                  placeholder="أدخل رقم الشيك"
+                  className="font-mono"
                 />
               </div>
             )}
+            {(formData.payment_type === 'cheque' || formData.payment_type === 'transfer') && renderImageUpload()}
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -498,10 +623,8 @@ export function PolicyPaymentsSection({
                 checked={formData.refused}
                 onChange={(e) => {
                   setFormData(f => ({ ...f, refused: e.target.checked }));
-                  // Re-validate when refused changes
-                  if (e.target.checked) {
-                    setValidationError(null);
-                  } else {
+                  if (e.target.checked) setValidationError(null);
+                  else {
                     const amount = parseFloat(formData.amount) || 0;
                     if (amount > 0) validatePayment(amount);
                   }
@@ -513,22 +636,16 @@ export function PolicyPaymentsSection({
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setAddDialogOpen(false)}>إلغاء</Button>
-            <Button onClick={handleAdd} disabled={saving || !!validationError}>
-              {saving && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
-              إضافة
+            <Button onClick={handleAdd} disabled={saving || uploadingImages || !!validationError}>
+              {(saving || uploadingImages) && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
+              {uploadingImages ? 'جاري رفع الصور...' : 'إضافة'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Edit Payment Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={(open) => {
-        setEditDialogOpen(open);
-        if (!open) {
-          resetForm();
-          setSelectedPayment(null);
-        }
-      }}>
+      <Dialog open={editDialogOpen} onOpenChange={(open) => { setEditDialogOpen(open); if (!open) { resetForm(); setSelectedPayment(null); } }}>
         <DialogContent className="sm:max-w-md" dir="rtl">
           <DialogHeader>
             <DialogTitle>تعديل الدفعة</DialogTitle>
@@ -552,37 +669,48 @@ export function PolicyPaymentsSection({
             </div>
             <div className="space-y-2">
               <Label>طريقة الدفع</Label>
-              <Select
-                value={formData.payment_type}
-                onValueChange={(v) => setFormData(f => ({ ...f, payment_type: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+              <Select value={formData.payment_type} onValueChange={(v) => setFormData(f => ({ ...f, payment_type: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {PAYMENT_TYPES.map(type => (
-                    <SelectItem key={type.value} value={type.value}>
-                      {type.label}
-                    </SelectItem>
+                    <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label>تاريخ الدفع</Label>
-              <ArabicDatePicker
-                value={formData.payment_date}
-                onChange={(v) => setFormData(f => ({ ...f, payment_date: v }))}
-              />
+              <ArabicDatePicker value={formData.payment_date} onChange={(v) => setFormData(f => ({ ...f, payment_date: v }))} />
             </div>
             {formData.payment_type === 'cheque' && (
               <div className="space-y-2">
-                <Label>رقم الشيك</Label>
+                <Label>رقم الشيك *</Label>
                 <Input
                   value={formData.cheque_number}
-                  onChange={(e) => setFormData(f => ({ ...f, cheque_number: e.target.value }))}
+                  onChange={(e) => setFormData(f => ({ ...f, cheque_number: e.target.value.replace(/[^0-9]/g, '') }))}
                   dir="ltr"
+                  className="font-mono"
                 />
+              </div>
+            )}
+            {/* Show existing images */}
+            {selectedPayment && getImageCount(selectedPayment) > 0 && (
+              <div className="space-y-2">
+                <Label>الصور الحالية</Label>
+                <div className="flex flex-wrap gap-2">
+                  {selectedPayment.cheque_image_url && (
+                    <img src={selectedPayment.cheque_image_url} alt="" className="h-12 w-16 object-cover rounded border" />
+                  )}
+                  {selectedPayment.images?.map((img, i) => (
+                    <img key={i} src={img.image_url} alt="" className="h-12 w-16 object-cover rounded border" />
+                  ))}
+                </div>
+              </div>
+            )}
+            {(formData.payment_type === 'cheque' || formData.payment_type === 'transfer') && (
+              <div className="space-y-2">
+                <Label>إضافة صور جديدة</Label>
+                {renderImageUpload()}
               </div>
             )}
             <div className="flex items-center gap-2">
@@ -592,9 +720,8 @@ export function PolicyPaymentsSection({
                 checked={formData.refused}
                 onChange={(e) => {
                   setFormData(f => ({ ...f, refused: e.target.checked }));
-                  if (e.target.checked) {
-                    setValidationError(null);
-                  } else {
+                  if (e.target.checked) setValidationError(null);
+                  else {
                     const amount = parseFloat(formData.amount) || 0;
                     if (amount > 0) validatePayment(amount, true, selectedPayment?.id);
                   }
@@ -606,8 +733,8 @@ export function PolicyPaymentsSection({
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>إلغاء</Button>
-            <Button onClick={handleEdit} disabled={saving || !!validationError}>
-              {saving && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
+            <Button onClick={handleEdit} disabled={saving || uploadingImages || !!validationError}>
+              {(saving || uploadingImages) && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
               حفظ
             </Button>
           </DialogFooter>
@@ -624,29 +751,43 @@ export function PolicyPaymentsSection({
         loading={deleting}
       />
 
-      {/* Image Preview Dialog */}
-      {imagePreview && (
-        <Dialog open={!!imagePreview} onOpenChange={() => setImagePreview(null)}>
-          <DialogContent className="sm:max-w-2xl p-2">
-            <DialogHeader className="sr-only">
-              <DialogTitle>معاينة صورة الشيك</DialogTitle>
-            </DialogHeader>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-2 left-2 z-10"
-              onClick={() => setImagePreview(null)}
-            >
+      {/* Image Gallery Dialog */}
+      <Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
+        <DialogContent className="sm:max-w-3xl p-2">
+          <DialogHeader className="sr-only">
+            <DialogTitle>معاينة الصور</DialogTitle>
+          </DialogHeader>
+          <div className="relative">
+            <Button variant="ghost" size="icon" className="absolute top-2 left-2 z-10" onClick={() => setGalleryOpen(false)}>
               <X className="h-4 w-4" />
             </Button>
-            <img
-              src={imagePreview}
-              alt="صورة الشيك"
-              className="w-full h-auto rounded-lg"
-            />
-          </DialogContent>
-        </Dialog>
-      )}
+            {galleryImages.length > 0 && (
+              <img src={galleryImages[galleryIndex]} alt="" className="w-full h-auto max-h-[70vh] object-contain rounded-lg" />
+            )}
+            {galleryImages.length > 1 && (
+              <div className="flex items-center justify-center gap-4 mt-4">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setGalleryIndex(i => (i > 0 ? i - 1 : galleryImages.length - 1))}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  {galleryIndex + 1} / {galleryImages.length}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setGalleryIndex(i => (i < galleryImages.length - 1 ? i + 1 : 0))}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Tranzila Payment Modal */}
       {pendingTranzilaPayment && (

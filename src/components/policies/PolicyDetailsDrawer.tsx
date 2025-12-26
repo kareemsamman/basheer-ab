@@ -129,6 +129,7 @@ interface Payment {
   payment_date: string;
   cheque_number: string | null;
   cheque_image_url: string | null;
+  cheque_status: string | null;
   refused: boolean | null;
   notes: string | null;
 }
