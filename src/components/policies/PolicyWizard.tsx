@@ -303,8 +303,13 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
   const [crmFiles, setCrmFiles] = useState<File[]>([]); // ملفات النظام - هوية، صور سيارة
   const [uploadingFiles, setUploadingFiles] = useState(false);
 
-  // Payment validation computed values
-  const insurancePrice = parseFloat(policy.insurance_price) || 0;
+  // Payment validation computed values - includes package total
+  const baseInsurancePrice = parseFloat(policy.insurance_price) || 0;
+  const roadServiceAddonPrice = packageMode && packageAddons[0].enabled ? parseFloat(packageAddons[0].insurance_price) || 0 : 0;
+  const accidentFeeAddonPrice = packageMode && packageAddons[1].enabled ? parseFloat(packageAddons[1].insurance_price) || 0 : 0;
+  const totalPackagePrice = baseInsurancePrice + roadServiceAddonPrice + accidentFeeAddonPrice;
+  // For payment validation, use total package price when in package mode
+  const insurancePrice = packageMode ? totalPackagePrice : baseInsurancePrice;
   const totalPaidPayments = payments.filter(p => !p.refused).reduce((sum, p) => sum + (p.amount || 0), 0);
   const remainingToPay = insurancePrice - totalPaidPayments;
   const paymentsExceedPrice = totalPaidPayments > insurancePrice && insurancePrice > 0;
@@ -698,8 +703,9 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
       .eq('active', true)
       .order('name');
     
-    // Filter by category_parent array contains if policy type is selected
-    if (policyType) {
+    // For ACCIDENT_FEE_EXEMPTION: show ALL companies (not filtered)
+    // For other types: filter by category_parent array
+    if (policyType && policyType !== 'ACCIDENT_FEE_EXEMPTION') {
       query = query.contains('category_parent', [policyType]);
     }
     
@@ -798,14 +804,23 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
     
     if (roadServiceCompanies) {
       setPackageRoadServiceCompanies(roadServiceCompanies as Company[]);
+      
+      // Auto-select "X Service" as default company for road service addon
+      const xService = roadServiceCompanies.find(c => c.name.toLowerCase().includes('x service') || c.name_ar?.includes('إكس سيرفيس'));
+      if (xService && !packageAddons[0].company_id) {
+        setPackageAddons(prev => {
+          const newAddons = [...prev];
+          newAddons[0] = { ...newAddons[0], company_id: xService.id };
+          return newAddons;
+        });
+      }
     }
 
-    // Fetch ACCIDENT_FEE_EXEMPTION companies (those that have THIRD_FULL can also have ACCIDENT_FEE_EXEMPTION)
+    // For ACCIDENT_FEE_EXEMPTION: fetch ALL active companies (not filtered by category)
     const { data: accidentCompanies } = await supabase
       .from('insurance_companies')
       .select('id, name, name_ar, category_parent, elzami_commission')
       .eq('active', true)
-      .contains('category_parent', ['ACCIDENT_FEE_EXEMPTION'])
       .order('name');
     
     if (accidentCompanies) {
@@ -1470,6 +1485,11 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
           // Accident Fee Exemption add-on
           if (packageAddons[1].enabled && packageAddons[1].company_id) {
             const afePrice = parseFloat(packageAddons[1].insurance_price) || 0;
+            // Fetch company cost for profit calculation
+            let companyCost = 0;
+            if (packageAddons[1].accident_fee_service_id) {
+              companyCost = await fetchAccidentFeePrice(packageAddons[1].accident_fee_service_id, packageAddons[1].company_id);
+            }
             
             await supabase.from('policies').insert({
               created_by_admin_id: user?.id || null,
@@ -1481,8 +1501,9 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
               end_date: policy.end_date,
               insurance_price: afePrice,
               is_under_24: isUnder24 || false,
-              profit: afePrice, // Full price as profit for now
-              payed_for_company: 0,
+              profit: afePrice - companyCost,
+              payed_for_company: companyCost,
+              company_cost_snapshot: companyCost,
               branch_id: effectiveBranchId || null,
               group_id: groupId,
             });
@@ -2538,6 +2559,28 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
                             {packageAddons[1].enabled && (
                               <div className="space-y-3">
                                 <div>
+                                  <Label className="text-sm">نوع الإعفاء</Label>
+                                  <Select
+                                    value={packageAddons[1].accident_fee_service_id || ''}
+                                    onValueChange={(v) => {
+                                      const newAddons = [...packageAddons];
+                                      newAddons[1] = { ...newAddons[1], accident_fee_service_id: v };
+                                      setPackageAddons(newAddons);
+                                    }}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="اختر نوع الإعفاء" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {packageAccidentFeeServices.map(afs => (
+                                        <SelectItem key={afs.id} value={afs.id}>
+                                          {afs.name_ar || afs.name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
                                   <Label className="text-sm">الشركة</Label>
                                   <Select
                                     value={packageAddons[1].company_id || ''}
@@ -2931,9 +2974,37 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
                   )}
                   <div>
                     <span className="text-muted-foreground">سعر التأمين:</span>
-                    <p className="font-bold text-primary text-lg">₪ {policy.insurance_price ? parseFloat(policy.insurance_price).toLocaleString() : '0'}</p>
+                    <p className="font-bold text-primary text-lg">₪ {baseInsurancePrice.toLocaleString()}</p>
                   </div>
                 </div>
+                
+                {/* Package Breakdown in Summary */}
+                {packageMode && (packageAddons[0].enabled || packageAddons[1].enabled) && (
+                  <div className="mt-3 pt-3 border-t space-y-2">
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>سعر الوثيقة الأساسية:</span>
+                        <span>₪{baseInsurancePrice.toLocaleString()}</span>
+                      </div>
+                      {packageAddons[0].enabled && roadServiceAddonPrice > 0 && (
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>خدمات الطريق:</span>
+                          <span>₪{roadServiceAddonPrice.toLocaleString()}</span>
+                        </div>
+                      )}
+                      {packageAddons[1].enabled && accidentFeeAddonPrice > 0 && (
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>إعفاء رسوم حادث:</span>
+                          <span>₪{accidentFeeAddonPrice.toLocaleString()}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between font-semibold text-primary pt-1 border-t">
+                        <span>المجموع:</span>
+                        <span>₪{totalPackagePrice.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </Card>
 
               {/* Payment Summary - shows when there are payments */}

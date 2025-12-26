@@ -27,6 +27,7 @@ import {
   AlertTriangle,
   Send,
   Loader2,
+  Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PolicyEditDrawer } from "./PolicyEditDrawer";
@@ -61,6 +62,7 @@ interface PolicyDetails {
   updated_at: string;
   broker_id: string | null;
   created_by_admin_id: string | null;
+  group_id: string | null;
   clients: {
     id: string;
     full_name: string;
@@ -91,6 +93,19 @@ interface PolicyDetails {
   brokers?: {
     id: string;
     name: string;
+  } | null;
+}
+
+interface RelatedPolicy {
+  id: string;
+  policy_type_parent: string;
+  policy_type_child: string | null;
+  insurance_price: number;
+  profit: number | null;
+  insurance_companies: {
+    id: string;
+    name: string;
+    name_ar: string | null;
   } | null;
 }
 
@@ -149,6 +164,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
   const [showQuickPayment, setShowQuickPayment] = useState(false);
   const [creatorName, setCreatorName] = useState<string | null>(null);
   const [sendingSignatureSms, setSendingSignatureSms] = useState(false);
+  const [relatedPolicies, setRelatedPolicies] = useState<RelatedPolicy[]>([]);
 
   const handleSendSignatureSms = async () => {
     if (!policy || !policy.clients.phone_number) {
@@ -209,6 +225,22 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
 
       if (policyError) throw policyError;
       setPolicy(policyData as PolicyDetails);
+
+      // Fetch related policies if part of a group
+      if (policyData.group_id) {
+        const { data: relatedData } = await supabase
+          .from("policies")
+          .select("id, policy_type_parent, policy_type_child, insurance_price, profit, insurance_companies(id, name, name_ar)")
+          .eq("group_id", policyData.group_id)
+          .neq("id", policyId)
+          .is("deleted_at", null);
+        
+        if (relatedData) {
+          setRelatedPolicies(relatedData as RelatedPolicy[]);
+        }
+      } else {
+        setRelatedPolicies([]);
+      }
 
       // Fetch creator name via safe directory function
       if (policyData.created_by_admin_id) {
@@ -488,6 +520,40 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated }:
                         <p className="text-lg font-bold">{policy.brokers.name}</p>
                       </Card>
                     ) : null}
+
+                    {/* Package / Related Policies */}
+                    {relatedPolicies.length > 0 && (
+                      <Card className="p-4 border-primary/30 bg-primary/5">
+                        <div className="flex items-center gap-2 text-primary font-semibold mb-3">
+                          <Package className="h-4 w-4" />
+                          <span>الوثائق المرتبطة (باقة)</span>
+                        </div>
+                        <div className="space-y-2">
+                          {relatedPolicies.map((rp) => (
+                            <div key={rp.id} className="flex items-center justify-between p-2 rounded bg-background border text-sm">
+                              <div className="flex items-center gap-2">
+                                <Badge className={cn("text-xs", policyTypeColors[rp.policy_type_parent])}>
+                                  {policyTypeLabels[rp.policy_type_parent]}
+                                </Badge>
+                                <span className="text-muted-foreground">
+                                  {rp.insurance_companies?.name_ar || rp.insurance_companies?.name || '-'}
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-semibold">{formatCurrency(rp.insurance_price)}</p>
+                                <p className="text-xs text-success">ربح: {formatCurrency(rp.profit)}</p>
+                              </div>
+                            </div>
+                          ))}
+                          <div className="flex justify-between pt-2 border-t mt-2 font-semibold">
+                            <span>مجموع الباقة:</span>
+                            <span className="text-primary">
+                              {formatCurrency(policy.insurance_price + relatedPolicies.reduce((sum, rp) => sum + rp.insurance_price, 0))}
+                            </span>
+                          </div>
+                        </div>
+                      </Card>
+                    )}
 
                     {/* Period */}
                     <Card className="p-4">
