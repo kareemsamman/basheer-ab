@@ -297,21 +297,187 @@ export function PolicyWizard({
     for (const file of allFiles) {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('entity_type', 'policy');
+      formData.append('entity_type', insuranceFiles.includes(file) ? 'policy_insurance' : 'policy_crm');
       formData.append('entity_id', policyId);
       if (effectiveBranchId) {
         formData.append('branch_id', effectiveBranchId);
       }
 
-      const { error } = await supabase.functions.invoke('upload-media', {
-        body: formData,
-      });
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-media`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session?.access_token}`,
+          },
+          body: formData,
+        }
+      );
 
-      if (error) {
-        console.error('File upload error:', error);
+      if (!response.ok) {
+        console.error('File upload error');
       }
     }
   };
+
+  // Create a temporary policy for Tranzila payment (returns UUID)
+  const handleCreateTempPolicy = useCallback(async (): Promise<string | null> => {
+    try {
+      // Validate first
+      for (let i = 1; i <= steps.length - 1; i++) {
+        if (!validateStep(i)) {
+          goToStep(i);
+          toast({
+            title: "خطأ في البيانات",
+            description: "يرجى التحقق من جميع الحقول المطلوبة",
+            variant: "destructive",
+          });
+          return null;
+        }
+      }
+
+      let clientId = selectedClient?.id;
+      let carId = selectedCar?.id;
+
+      // Create new client if needed
+      if (createNewClient && !clientId) {
+        const { data: newClientData, error: clientError } = await supabase
+          .from('clients')
+          .insert({
+            full_name: newClient.full_name.trim(),
+            id_number: newClient.id_number.trim(),
+            phone_number: newClient.phone_number || null,
+            phone_number_2: newClient.phone_number_2 || null,
+            birth_date: newClient.birth_date || null,
+            under24_type: newClient.under24_type || 'none',
+            under24_driver_name: newClient.under24_driver_name || null,
+            under24_driver_id: newClient.under24_driver_id || null,
+            notes: newClient.notes || null,
+            branch_id: effectiveBranchId || null,
+            created_by_admin_id: user?.id || null,
+          })
+          .select()
+          .single();
+
+        if (clientError) throw clientError;
+        clientId = newClientData.id;
+      }
+
+      if (!clientId) throw new Error('Client ID is required');
+
+      // Create new car if needed
+      if (!isLightMode && createNewCar && !carId) {
+        const carType = (newCar.car_type || 'car') as CarType;
+        
+        const { data: newCarData, error: carError } = await supabase
+          .from('cars')
+          .insert({
+            car_number: newCar.car_number.trim(),
+            manufacturer_name: newCar.manufacturer_name || null,
+            model: newCar.model || null,
+            year: newCar.year ? parseInt(newCar.year) : null,
+            color: newCar.color || null,
+            car_type: carType,
+            car_value: newCar.car_value ? parseFloat(newCar.car_value) : null,
+            license_expiry: newCar.license_expiry || null,
+            client_id: clientId,
+            branch_id: effectiveBranchId || null,
+            created_by_admin_id: user?.id || null,
+          })
+          .select()
+          .single();
+
+        if (carError) throw carError;
+        carId = newCarData.id;
+      }
+
+      // Calculate profit
+      const isUnder24 = selectedClient?.under24_type === 'client' || 
+                        selectedClient?.under24_type === 'additional_driver' ||
+                        newClient.under24_type === 'client' ||
+                        newClient.under24_type === 'additional_driver';
+
+      const policyTypeParentValue = (selectedCategory?.slug || policy.policy_type_parent) as PolicyTypeParent;
+      const policyTypeChildValue = (policy.policy_type_child || null) as PolicyTypeChild | null;
+      const carTypeValue = (selectedCar?.car_type || newCar.car_type || 'car') as CarType;
+      const ageBandValue = isUnder24 ? 'UNDER_24' as const : 'UP_24' as const;
+
+      const profitData = await calculatePolicyProfit({
+        policyTypeParent: policyTypeParentValue,
+        policyTypeChild: policyTypeChildValue,
+        companyId: policy.company_id,
+        carType: carTypeValue,
+        ageBand: ageBandValue,
+        carValue: selectedCar?.car_value || (newCar.car_value ? parseFloat(newCar.car_value) : null),
+        carYear: selectedCar?.year || (newCar.year ? parseInt(newCar.year) : null),
+        insurancePrice: pricing.totalPrice,
+      });
+
+      const policyTypeParent = (selectedCategory?.slug || policy.policy_type_parent) as PolicyTypeParent;
+      const policyTypeChild = policy.policy_type_child ? policy.policy_type_child as PolicyTypeChild : null;
+      const brokerDir = brokerDirection ? brokerDirection as "from_broker" | "to_broker" : null;
+
+      // Create policy
+      const { data: newPolicy, error: policyError } = await supabase
+        .from('policies')
+        .insert({
+          client_id: clientId,
+          car_id: carId || null,
+          category_id: selectedCategory?.id || null,
+          policy_type_parent: policyTypeParent,
+          policy_type_child: policyTypeChild,
+          company_id: policy.company_id || null,
+          start_date: policy.start_date,
+          end_date: policy.end_date,
+          insurance_price: pricing.totalPrice,
+          profit: profitData.profit,
+          payed_for_company: profitData.companyPayment,
+          company_cost_snapshot: profitData.companyPayment,
+          is_under_24: isUnder24,
+          broker_id: policyBrokerId || null,
+          broker_direction: brokerDir,
+          road_service_id: policy.road_service_id || null,
+          notes: policy.notes || null,
+          branch_id: effectiveBranchId || null,
+          created_by_admin_id: user?.id || null,
+        })
+        .select()
+        .single();
+
+      if (policyError) throw policyError;
+
+      setTempPolicyId(newPolicy.id);
+      return newPolicy.id;
+    } catch (error) {
+      console.error('Error creating temp policy:', error);
+      toast({
+        title: "خطأ",
+        description: "فشل في إنشاء الوثيقة المؤقتة",
+        variant: "destructive",
+      });
+      return null;
+    }
+  }, [
+    steps, validateStep, goToStep, toast, selectedClient, selectedCar, createNewClient,
+    newClient, effectiveBranchId, user, isLightMode, createNewCar, newCar, selectedCategory,
+    policy, pricing, policyBrokerId, brokerDirection,
+  ]);
+
+  // Delete temporary policy on payment failure
+  const handleDeleteTempPolicy = useCallback(async (policyId: string): Promise<void> => {
+    try {
+      // Soft delete the policy
+      await supabase
+        .from('policies')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', policyId);
+      
+      setTempPolicyId(null);
+    } catch (error) {
+      console.error('Error deleting temp policy:', error);
+    }
+  }, []);
 
   // Save policy
   const handleSave = async () => {
@@ -347,211 +513,226 @@ export function PolicyWizard({
       return;
     }
 
-    // Note: Tranzila requires an existing policy UUID to create a payment record.
-    // Visa payments are therefore collected here but executed after the policy is saved.
+    // If tempPolicyId exists (policy was created for Tranzila), use it instead of creating new
+    const useTempPolicy = !!tempPolicyId;
 
     setSaving(true);
 
     try {
-      let clientId = selectedClient?.id;
-      let carId = selectedCar?.id;
-      if (createNewClient && !clientId) {
-        const { data: newClientData, error: clientError } = await supabase
-          .from('clients')
+      let policyIdToUse = tempPolicyId;
+
+      if (!useTempPolicy) {
+        // Create new policy (normal flow without Tranzila)
+        let clientId = selectedClient?.id;
+        let carId = selectedCar?.id;
+        
+        if (createNewClient && !clientId) {
+          const { data: newClientData, error: clientError } = await supabase
+            .from('clients')
+            .insert({
+              full_name: newClient.full_name.trim(),
+              id_number: newClient.id_number.trim(),
+              phone_number: newClient.phone_number || null,
+              phone_number_2: newClient.phone_number_2 || null,
+              birth_date: newClient.birth_date || null,
+              under24_type: newClient.under24_type || 'none',
+              under24_driver_name: newClient.under24_driver_name || null,
+              under24_driver_id: newClient.under24_driver_id || null,
+              notes: newClient.notes || null,
+              branch_id: effectiveBranchId || null,
+              created_by_admin_id: user?.id || null,
+            })
+            .select()
+            .single();
+
+          if (clientError) throw clientError;
+          clientId = newClientData.id;
+
+          // Send signature SMS to new client
+          if (newClient.phone_number) {
+            const { data: existingSig } = await supabase
+              .from('customer_signatures')
+              .select('id')
+              .eq('client_id', clientId)
+              .limit(1);
+
+            if (!existingSig || existingSig.length === 0) {
+              await supabase.functions.invoke('send-signature-sms', {
+                body: { clientId, phoneNumber: newClient.phone_number },
+              });
+            }
+          }
+        }
+
+        if (!clientId) throw new Error('Client ID is required');
+
+        // Create new car if needed (for FULL mode)
+        if (!isLightMode && createNewCar && !carId) {
+          const carType = (newCar.car_type || 'car') as CarType;
+          
+          const { data: newCarData, error: carError } = await supabase
+            .from('cars')
+            .insert({
+              car_number: newCar.car_number.trim(),
+              manufacturer_name: newCar.manufacturer_name || null,
+              model: newCar.model || null,
+              year: newCar.year ? parseInt(newCar.year) : null,
+              color: newCar.color || null,
+              car_type: carType,
+              car_value: newCar.car_value ? parseFloat(newCar.car_value) : null,
+              license_expiry: newCar.license_expiry || null,
+              client_id: clientId,
+              branch_id: effectiveBranchId || null,
+              created_by_admin_id: user?.id || null,
+            })
+            .select()
+            .single();
+
+          if (carError) throw carError;
+          carId = newCarData.id;
+        }
+
+        // Calculate profit based on category
+        const isUnder24 = selectedClient?.under24_type === 'client' || 
+                          selectedClient?.under24_type === 'additional_driver' ||
+                          newClient.under24_type === 'client' ||
+                          newClient.under24_type === 'additional_driver';
+
+        const policyTypeParentValue = (selectedCategory?.slug || policy.policy_type_parent) as PolicyTypeParent;
+        const policyTypeChildValue = (policy.policy_type_child || null) as PolicyTypeChild | null;
+        const carTypeValue = (selectedCar?.car_type || newCar.car_type || 'car') as CarType;
+        const ageBandValue = isUnder24 ? 'UNDER_24' as const : 'UP_24' as const;
+
+        const profitData = await calculatePolicyProfit({
+          policyTypeParent: policyTypeParentValue,
+          policyTypeChild: policyTypeChildValue,
+          companyId: policy.company_id,
+          carType: carTypeValue,
+          ageBand: ageBandValue,
+          carValue: selectedCar?.car_value || (newCar.car_value ? parseFloat(newCar.car_value) : null),
+          carYear: selectedCar?.year || (newCar.year ? parseInt(newCar.year) : null),
+          insurancePrice: pricing.totalPrice,
+        });
+
+        // Create policy
+        const policyTypeParent = (selectedCategory?.slug || policy.policy_type_parent) as PolicyTypeParent;
+        const policyTypeChild = policy.policy_type_child ? policy.policy_type_child as PolicyTypeChild : null;
+        const brokerDir = brokerDirection || null;
+
+        let groupId: string | null = null;
+
+        // Create policy group if package mode is enabled
+        if (packageMode && (packageAddons[0].enabled || packageAddons[1].enabled)) {
+          const { data: groupData, error: groupError } = await supabase
+            .from('policy_groups')
+            .insert({
+              client_id: clientId,
+              car_id: carId || null,
+              name: `باقة - ${new Date().toLocaleDateString('ar-EG')}`,
+            })
+            .select()
+            .single();
+
+          if (groupError) throw groupError;
+          groupId = groupData.id;
+        }
+
+        const { data: newPolicy, error: policyError } = await supabase
+          .from('policies')
           .insert({
-            full_name: newClient.full_name.trim(),
-            id_number: newClient.id_number.trim(),
-            phone_number: newClient.phone_number || null,
-            phone_number_2: newClient.phone_number_2 || null,
-            birth_date: newClient.birth_date || null,
-            under24_type: newClient.under24_type || 'none',
-            under24_driver_name: newClient.under24_driver_name || null,
-            under24_driver_id: newClient.under24_driver_id || null,
-            notes: newClient.notes || null,
+            client_id: clientId,
+            car_id: carId || null,
+            category_id: selectedCategory?.id || null,
+            policy_type_parent: policyTypeParent,
+            policy_type_child: policyTypeChild,
+            company_id: policy.company_id || null,
+            start_date: policy.start_date,
+            end_date: policy.end_date,
+            insurance_price: pricing.totalPrice,
+            profit: profitData.profit,
+            payed_for_company: profitData.companyPayment,
+            company_cost_snapshot: profitData.companyPayment,
+            is_under_24: isUnder24,
+            broker_id: policyBrokerId || null,
+            broker_direction: brokerDir,
+            road_service_id: policy.road_service_id || null,
+            notes: policy.notes || null,
             branch_id: effectiveBranchId || null,
             created_by_admin_id: user?.id || null,
+            group_id: groupId,
           })
           .select()
           .single();
 
-        if (clientError) throw clientError;
-        clientId = newClientData.id;
+        if (policyError) throw policyError;
+        policyIdToUse = newPolicy.id;
 
-        // Send signature SMS to new client
-        if (newClient.phone_number) {
-          const { data: existingSig } = await supabase
-            .from('customer_signatures')
-            .select('id')
-            .eq('client_id', clientId)
-            .limit(1);
+        // Create add-on policies if in package mode
+        if (packageMode && groupId) {
+          for (const addon of packageAddons) {
+            if (!addon.enabled) continue;
 
-          if (!existingSig || existingSig.length === 0) {
-            await supabase.functions.invoke('send-signature-sms', {
-              body: { clientId, phoneNumber: newClient.phone_number },
+            const addonTypeParent = (addon.type === 'road_service' ? 'ROAD_SERVICE' : 'ACCIDENT_FEE_EXEMPTION') as PolicyTypeParent;
+
+            await supabase.from('policies').insert({
+              client_id: clientId,
+              car_id: carId || null,
+              category_id: null,
+              policy_type_parent: addonTypeParent,
+              policy_type_child: null,
+              company_id: addon.company_id || null,
+              start_date: policy.start_date,
+              end_date: policy.end_date,
+              insurance_price: parseFloat(addon.insurance_price) || 0,
+              road_service_id: addon.road_service_id || null,
+              group_id: groupId,
+              notes: 'إضافة ضمن باقة',
+              branch_id: effectiveBranchId || null,
+              created_by_admin_id: user?.id || null,
             });
           }
         }
       }
 
-      if (!clientId) throw new Error('Client ID is required');
+      if (!policyIdToUse) throw new Error('Policy ID is required');
 
-      // Create new car if needed (for FULL mode)
-      if (!isLightMode && createNewCar && !carId) {
-        const carType = (newCar.car_type || 'car') as CarType;
-        
-        const { data: newCarData, error: carError } = await supabase
-          .from('cars')
-          .insert({
-            car_number: newCar.car_number.trim(),
-            manufacturer_name: newCar.manufacturer_name || null,
-            model: newCar.model || null,
-            year: newCar.year ? parseInt(newCar.year) : null,
-            color: newCar.color || null,
-            car_type: carType,
-            car_value: newCar.car_value ? parseFloat(newCar.car_value) : null,
-            license_expiry: newCar.license_expiry || null,
-            client_id: clientId,
+      // Create payments (skip visa payments that were already created by Tranzila)
+      const nonVisaPayments = payments.filter(p => p.payment_type !== 'visa' || !p.tranzila_paid);
+      if (nonVisaPayments.length > 0) {
+        const paymentInserts = nonVisaPayments
+          .filter(p => p.payment_type !== 'visa') // Skip visa - already handled by Tranzila
+          .map(p => ({
+            policy_id: policyIdToUse,
+            payment_type: p.payment_type as PaymentType,
+            amount: p.amount,
+            payment_date: p.payment_date,
+            cheque_number: p.cheque_number || null,
+            refused: p.refused || false,
             branch_id: effectiveBranchId || null,
             created_by_admin_id: user?.id || null,
-          })
-          .select()
-          .single();
+          }));
 
-        if (carError) throw carError;
-        carId = newCarData.id;
-      }
+        if (paymentInserts.length > 0) {
+          const { error: paymentsError } = await supabase
+            .from('policy_payments')
+            .insert(paymentInserts);
 
-      // Calculate profit based on category
-      const isUnder24 = selectedClient?.under24_type === 'client' || 
-                        selectedClient?.under24_type === 'additional_driver' ||
-                        newClient.under24_type === 'client' ||
-                        newClient.under24_type === 'additional_driver';
-
-      const policyTypeParentValue = (selectedCategory?.slug || policy.policy_type_parent) as PolicyTypeParent;
-      const policyTypeChildValue = (policy.policy_type_child || null) as PolicyTypeChild | null;
-      const carTypeValue = (selectedCar?.car_type || newCar.car_type || 'car') as CarType;
-      const ageBandValue = isUnder24 ? 'UNDER_24' as const : 'UP_24' as const;
-
-      const profitData = await calculatePolicyProfit({
-        policyTypeParent: policyTypeParentValue,
-        policyTypeChild: policyTypeChildValue,
-        companyId: policy.company_id,
-        carType: carTypeValue,
-        ageBand: ageBandValue,
-        carValue: selectedCar?.car_value || (newCar.car_value ? parseFloat(newCar.car_value) : null),
-        carYear: selectedCar?.year || (newCar.year ? parseInt(newCar.year) : null),
-        insurancePrice: pricing.totalPrice,
-      });
-
-      // Create policy
-      const policyTypeParent = (selectedCategory?.slug || policy.policy_type_parent) as PolicyTypeParent;
-      const policyTypeChild = policy.policy_type_child ? policy.policy_type_child as PolicyTypeChild : null;
-      const brokerDir = brokerDirection || null;
-
-      let groupId: string | null = null;
-
-      // Create policy group if package mode is enabled
-      if (packageMode && (packageAddons[0].enabled || packageAddons[1].enabled)) {
-        const { data: groupData, error: groupError } = await supabase
-          .from('policy_groups')
-          .insert({
-            client_id: clientId,
-            car_id: carId || null,
-            name: `باقة - ${new Date().toLocaleDateString('ar-EG')}`,
-          })
-          .select()
-          .single();
-
-        if (groupError) throw groupError;
-        groupId = groupData.id;
-      }
-
-      const { data: newPolicy, error: policyError } = await supabase
-        .from('policies')
-        .insert({
-          client_id: clientId,
-          car_id: carId || null,
-          category_id: selectedCategory?.id || null,
-          policy_type_parent: policyTypeParent,
-          policy_type_child: policyTypeChild,
-          company_id: policy.company_id || null,
-          start_date: policy.start_date,
-          end_date: policy.end_date,
-          insurance_price: pricing.totalPrice,
-          profit: profitData.profit,
-          payed_for_company: profitData.companyPayment,
-          company_cost_snapshot: profitData.companyPayment,
-          is_under_24: isUnder24,
-          broker_id: policyBrokerId || null,
-          broker_direction: brokerDir,
-          road_service_id: policy.road_service_id || null,
-          notes: policy.notes || null,
-          branch_id: effectiveBranchId || null,
-          created_by_admin_id: user?.id || null,
-          group_id: groupId,
-        })
-        .select()
-        .single();
-
-      if (policyError) throw policyError;
-
-      // Create add-on policies if in package mode
-      if (packageMode && groupId) {
-        for (const addon of packageAddons) {
-          if (!addon.enabled) continue;
-
-          const addonTypeParent = (addon.type === 'road_service' ? 'ROAD_SERVICE' : 'ACCIDENT_FEE_EXEMPTION') as PolicyTypeParent;
-
-          await supabase.from('policies').insert({
-            client_id: clientId,
-            car_id: carId || null,
-            category_id: null,
-            policy_type_parent: addonTypeParent,
-            policy_type_child: null,
-            company_id: addon.company_id || null,
-            start_date: policy.start_date,
-            end_date: policy.end_date,
-            insurance_price: parseFloat(addon.insurance_price) || 0,
-            road_service_id: addon.road_service_id || null,
-            group_id: groupId,
-            notes: 'إضافة ضمن باقة',
-            branch_id: effectiveBranchId || null,
-            created_by_admin_id: user?.id || null,
-          });
+          if (paymentsError) throw paymentsError;
         }
       }
 
-      // Create payments
-      if (payments.length > 0) {
-        const paymentInserts = payments.map(p => ({
-          policy_id: newPolicy.id,
-          payment_type: p.payment_type as PaymentType,
-          amount: p.amount,
-          payment_date: p.payment_date,
-          cheque_number: p.cheque_number || null,
-          refused: p.refused || false,
-          branch_id: effectiveBranchId || null,
-          created_by_admin_id: user?.id || null,
-        }));
-
-        const { error: paymentsError } = await supabase
-          .from('policy_payments')
-          .insert(paymentInserts);
-
-        if (paymentsError) throw paymentsError;
-      }
-
       // Upload files
-      await uploadFiles(newPolicy.id);
+      await uploadFiles(policyIdToUse);
 
       clearDraft();
+      setTempPolicyId(null);
 
       toast({
         title: "تم الحفظ بنجاح",
         description: "تم إنشاء الوثيقة بنجاح",
       });
 
-      onComplete?.(newPolicy.id);
+      onComplete?.(policyIdToUse);
       onSaved?.();
       onOpenChange(false);
       resetForm();
@@ -701,7 +882,13 @@ export function PolicyWizard({
                 remainingToPay={remainingToPay}
                 paymentsExceedPrice={paymentsExceedPrice}
                 errors={errors}
-                policyId={tempPolicyId || undefined}
+                onCreateTempPolicy={handleCreateTempPolicy}
+                onDeleteTempPolicy={handleDeleteTempPolicy}
+                tempPolicyId={tempPolicyId}
+                insuranceFiles={insuranceFiles}
+                setInsuranceFiles={setInsuranceFiles}
+                crmFiles={crmFiles}
+                setCrmFiles={setCrmFiles}
               />
             )}
           </div>
