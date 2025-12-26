@@ -53,3 +53,6 @@ verify_jwt = false
 
 [functions.test-smtp]
 verify_jwt = false
+
+[functions.check-cheque-reminders]
+verify_jwt = false

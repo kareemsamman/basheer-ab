@@ -52,6 +52,7 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { PolicyDetailsDrawer } from "@/components/policies/PolicyDetailsDrawer";
 
 interface PaymentImage {
   id: string;
@@ -152,6 +153,11 @@ export default function Cheques() {
 
   // Active tab
   const [activeTab, setActiveTab] = useState("list");
+
+  // Policy details drawer
+  const [policyDrawerOpen, setPolicyDrawerOpen] = useState(false);
+  const [selectedPolicyId, setSelectedPolicyId] = useState<string | null>(null);
+
 
   // Fetch summary stats separately (not affected by filters)
   const fetchSummaryStats = useCallback(async () => {
@@ -336,6 +342,33 @@ export default function Cheques() {
 
       if (error) throw error;
       toast({ title: "تم التحديث", description: "تم تحديث حالة الشيك" });
+      
+      // Auto SMS on returned cheque
+      if (newStatus === 'returned') {
+        const cheque = cheques.find(c => c.id === chequeId);
+        if (cheque?.policy?.client?.phone_number) {
+          const clientName = cheque.policy.client.full_name || "العميل";
+          const chequeNum = cheque.cheque_number || "";
+          const autoMessage = `مرحباً ${clientName}، نود إعلامك بأن الشيك رقم ${chequeNum} بمبلغ ${formatCurrency(cheque.amount)} قد تم إرجاعه. يرجى التواصل معنا لتسوية الأمر.`;
+          
+          try {
+            await supabase.functions.invoke('send-sms', {
+              body: {
+                phone: cheque.policy.client.phone_number,
+                message: autoMessage,
+                clientId: cheque.policy.client.id,
+                policyId: cheque.policy_id,
+                smsType: 'manual',
+              }
+            });
+            toast({ title: "تم إرسال SMS", description: "تم إرسال إشعار للعميل بالشيك المرتجع" });
+          } catch (smsError) {
+            console.error('Failed to send auto SMS:', smsError);
+            // Don't fail the status change if SMS fails
+          }
+        }
+      }
+      
       fetchCheques();
       fetchSummaryStats();
     } catch (error) {
@@ -839,7 +872,15 @@ export default function Cheques() {
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1 flex-wrap">
-                              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => navigate(`/policies?highlight=${cheque.policy_id}`)}>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="h-7 text-xs" 
+                                onClick={() => {
+                                  setSelectedPolicyId(cheque.policy_id);
+                                  setPolicyDrawerOpen(true);
+                                }}
+                              >
                                 <ExternalLink className="h-3 w-3 ml-1" />
                                 الوثيقة
                               </Button>
@@ -1000,6 +1041,18 @@ export default function Cheques() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Policy Details Drawer */}
+      <PolicyDetailsDrawer
+        open={policyDrawerOpen}
+        onOpenChange={setPolicyDrawerOpen}
+        policyId={selectedPolicyId}
+        onUpdated={fetchCheques}
+        onViewRelatedPolicy={(policyId) => {
+          setSelectedPolicyId(policyId);
+          setPolicyDrawerOpen(true);
+        }}
+      />
     </MainLayout>
   );
 }
