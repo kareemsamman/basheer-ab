@@ -347,13 +347,14 @@ export function PolicyWizard({
       return;
     }
 
+    // Note: Tranzila requires an existing policy UUID to create a payment record.
+    // Visa payments are therefore collected here but executed after the policy is saved.
+
     setSaving(true);
 
     try {
       let clientId = selectedClient?.id;
       let carId = selectedCar?.id;
-
-      // Create new client if needed
       if (createNewClient && !clientId) {
         const { data: newClientData, error: clientError } = await supabase
           .from('clients')
@@ -700,10 +701,7 @@ export function PolicyWizard({
                 remainingToPay={remainingToPay}
                 paymentsExceedPrice={paymentsExceedPrice}
                 errors={errors}
-                onVisaPaymentRequired={() => {
-                  // Check if there are unpaid visa payments
-                  return payments.some(p => p.payment_type === 'visa' && !p.tranzila_paid && (p.amount || 0) > 0);
-                }}
+                policyId={tempPolicyId || undefined}
               />
             )}
           </div>
