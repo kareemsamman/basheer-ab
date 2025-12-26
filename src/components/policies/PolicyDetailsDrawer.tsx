@@ -122,6 +122,12 @@ interface RelatedPolicy {
   } | null;
 }
 
+interface PaymentImage {
+  id: string;
+  image_url: string;
+  image_type: string;
+}
+
 interface Payment {
   id: string;
   amount: number;
@@ -132,6 +138,7 @@ interface Payment {
   cheque_status: string | null;
   refused: boolean | null;
   notes: string | null;
+  images?: PaymentImage[];
 }
 
 const policyTypeLabels: Record<string, string> = {
@@ -274,7 +281,26 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
         .order("payment_date", { ascending: false });
 
       if (paymentsError) throw paymentsError;
-      setPayments(paymentsData || []);
+      
+      // Fetch payment images for all payments
+      if (paymentsData && paymentsData.length > 0) {
+        const paymentIds = paymentsData.map(p => p.id);
+        const { data: imagesData } = await supabase
+          .from("payment_images")
+          .select("*")
+          .in("payment_id", paymentIds)
+          .order("sort_order", { ascending: true });
+
+        // Attach images to payments
+        const paymentsWithImages = paymentsData.map(payment => ({
+          ...payment,
+          images: imagesData?.filter(img => img.payment_id === payment.id) || []
+        }));
+        
+        setPayments(paymentsWithImages);
+      } else {
+        setPayments([]);
+      }
     } catch (error) {
       console.error("Error fetching policy details:", error);
       toast({ title: "خطأ", description: "فشل في تحميل تفاصيل الوثيقة", variant: "destructive" });
@@ -319,10 +345,15 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
   };
 
   // Payment calculations
-  const totalPaid = payments.filter((p) => !p.refused).reduce((sum, p) => sum + p.amount, 0);
+  const totalPaid = payments.filter((p) => !p.refused && p.cheque_status !== 'returned').reduce((sum, p) => sum + p.amount, 0);
   const remaining = policy ? policy.insurance_price - totalPaid : 0;
   const percentagePaid = policy ? Math.min(100, Math.round((totalPaid / policy.insurance_price) * 100)) : 0;
   const paymentStatus = remaining <= 0 ? "paid" : totalPaid > 0 ? "partial" : "unpaid";
+
+  // Returned cheques calculation
+  const returnedCheques = payments.filter((p) => p.payment_type === 'cheque' && (p.refused || p.cheque_status === 'returned'));
+  const returnedChequesTotal = returnedCheques.reduce((sum, p) => sum + p.amount, 0);
+  const hasReturnedCheques = returnedCheques.length > 0;
 
   // Check if ELZAMI (no profit)
   const isElzami = policy?.policy_type_parent === "ELZAMI";
@@ -514,6 +545,27 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                   </div>
                   <Progress value={percentagePaid} className="h-2" />
                 </div>
+
+                {/* Returned Cheques Warning */}
+                {hasReturnedCheques && (
+                  <div className="mt-4 bg-destructive/10 rounded-xl p-4 border border-destructive/20 shadow-sm">
+                    <div className="flex items-center gap-2 mb-2">
+                      <AlertTriangle className="h-4 w-4 text-destructive" />
+                      <span className="text-sm font-semibold text-destructive">شيكات مرتجعة</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-destructive/80">
+                        {returnedCheques.length} شيك مرتجع
+                      </span>
+                      <span className="text-lg font-bold text-destructive">
+                        {formatCurrency(returnedChequesTotal)}-
+                      </span>
+                    </div>
+                    <p className="text-xs text-destructive/70 mt-2">
+                      هذا المبلغ مخصوم من رصيد العميل ويجب تحصيله
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Tabs Content */}

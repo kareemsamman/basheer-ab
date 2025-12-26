@@ -85,6 +85,7 @@ export interface PaymentLine {
   refused: boolean;
   tranzila_paid?: boolean;
   tranzila_transaction_id?: string;
+  pendingImages?: boolean; // Flag to indicate images are pending upload
 }
 
 export interface ValidationErrors {

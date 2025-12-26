@@ -5,11 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
-import { Plus, Trash2, CreditCard, AlertCircle, Loader2, Split } from "lucide-react";
+import { Plus, Trash2, CreditCard, AlertCircle, Loader2, Split, Upload, X, ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PaymentSummaryBar } from "./PaymentSummaryBar";
 import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useToast } from "@/hooks/use-toast";
 import type { PaymentLine, PricingBreakdown, ValidationErrors } from "./types";
 import { PAYMENT_TYPES } from "./types";
 
@@ -27,6 +28,12 @@ interface Step4Props {
   tempPolicyId: string | null;
 }
 
+interface PendingImageData {
+  paymentId: string;
+  files: File[];
+  previewUrls: string[];
+}
+
 export function Step4Payments({
   payments,
   setPayments,
@@ -39,12 +46,82 @@ export function Step4Payments({
   onDeleteTempPolicy,
   tempPolicyId,
 }: Step4Props) {
+  const { toast } = useToast();
   const [showTranzilaModal, setShowTranzilaModal] = useState(false);
   const [selectedVisaPaymentIndex, setSelectedVisaPaymentIndex] = useState<number | null>(null);
   const [creatingPolicy, setCreatingPolicy] = useState(false);
   const [activePolicyIdForPayment, setActivePolicyIdForPayment] = useState<string | null>(null);
   const [splitPopoverOpen, setSplitPopoverOpen] = useState(false);
   const [splitCount, setSplitCount] = useState(2);
+  
+  // Image handling for cheques and transfers
+  const [paymentImages, setPaymentImages] = useState<Record<string, PendingImageData>>({});
+
+  const handleImageSelect = (paymentId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    
+    const validFiles = files.filter(file => {
+      if (!file.type.startsWith('image/')) {
+        toast({ title: "خطأ", description: "يرجى اختيار صور فقط", variant: "destructive" });
+        return false;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        toast({ title: "خطأ", description: "حجم الصورة يجب أن يكون أقل من 10MB", variant: "destructive" });
+        return false;
+      }
+      return true;
+    });
+
+    if (validFiles.length === 0) return;
+
+    const newPreviewUrls = validFiles.map(file => URL.createObjectURL(file));
+    
+    setPaymentImages(prev => {
+      const existing = prev[paymentId] || { paymentId, files: [], previewUrls: [] };
+      return {
+        ...prev,
+        [paymentId]: {
+          paymentId,
+          files: [...existing.files, ...validFiles],
+          previewUrls: [...existing.previewUrls, ...newPreviewUrls],
+        },
+      };
+    });
+
+    // Also update the payment object with pending images reference
+    updatePayment(paymentId, 'pendingImages', true);
+  };
+
+  const removeImage = (paymentId: string, index: number) => {
+    setPaymentImages(prev => {
+      const existing = prev[paymentId];
+      if (!existing) return prev;
+
+      URL.revokeObjectURL(existing.previewUrls[index]);
+      
+      const newFiles = existing.files.filter((_, i) => i !== index);
+      const newPreviews = existing.previewUrls.filter((_, i) => i !== index);
+      
+      if (newFiles.length === 0) {
+        const { [paymentId]: _, ...rest } = prev;
+        updatePayment(paymentId, 'pendingImages', false);
+        return rest;
+      }
+      
+      return {
+        ...prev,
+        [paymentId]: {
+          paymentId,
+          files: newFiles,
+          previewUrls: newPreviews,
+        },
+      };
+    });
+  };
+
+  // Expose images data for parent to use when saving
+  const getPaymentImages = () => paymentImages;
 
   const addPayment = () => {
     setPayments([
@@ -295,9 +372,10 @@ export function Step4Payments({
                       {payment.payment_type === 'cheque' && (
                         <Input
                           value={payment.cheque_number || ''}
-                          onChange={(e) => updatePayment(payment.id, 'cheque_number', e.target.value)}
+                          onChange={(e) => updatePayment(payment.id, 'cheque_number', e.target.value.replace(/[^0-9]/g, ''))}
                           placeholder="رقم الشيك"
-                          className="h-9 flex-1"
+                          className="h-9 flex-1 font-mono"
+                          dir="ltr"
                         />
                       )}
                       
@@ -341,6 +419,56 @@ export function Step4Payments({
                       )}
                     </div>
                   </div>
+                  
+                  {/* Image Upload Section for Cheque/Transfer */}
+                  {(payment.payment_type === 'cheque' || payment.payment_type === 'transfer') && !visaPaid && (
+                    <div className="mt-3 pt-3 border-t border-border/50">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1">
+                          <Label className="text-xs text-muted-foreground mb-2 block">
+                            {payment.payment_type === 'cheque' ? 'صور الشيك (أمامي/خلفي)' : 'صور إيصال التحويل'}
+                          </Label>
+                          <div className="flex flex-wrap gap-2">
+                            {/* Preview existing images */}
+                            {paymentImages[payment.id]?.previewUrls.map((url, imgIndex) => (
+                              <div key={imgIndex} className="relative group">
+                                <img 
+                                  src={url} 
+                                  alt="" 
+                                  className="h-14 w-18 object-cover rounded border"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removeImage(payment.id, imgIndex)}
+                                  className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </div>
+                            ))}
+                            {/* Upload button */}
+                            <label className="h-14 w-18 border-2 border-dashed rounded flex flex-col items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
+                              <input 
+                                type="file" 
+                                accept="image/*" 
+                                multiple 
+                                onChange={(e) => handleImageSelect(payment.id, e)} 
+                                className="hidden" 
+                              />
+                              <Upload className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-[10px] text-muted-foreground mt-0.5">إضافة</span>
+                            </label>
+                          </div>
+                          {paymentImages[payment.id]?.files.length > 0 && (
+                            <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
+                              <ImageIcon className="h-3 w-3" />
+                              {paymentImages[payment.id].files.length} صور سيتم رفعها عند الحفظ
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </Card>
               );
             })}
