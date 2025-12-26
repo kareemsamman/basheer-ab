@@ -1,0 +1,472 @@
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useBranches } from "@/hooks/useBranches";
+import { supabase } from "@/integrations/supabase/client";
+import { digitsOnly, isValidIsraeliId, isValidPhoneNumber10 } from "@/lib/validation";
+import type {
+  InsuranceCategory,
+  Client,
+  CarRecord,
+  Company,
+  Broker,
+  RoadService,
+  AccidentFeeService,
+  PackageAddon,
+  PaymentLine,
+  ValidationErrors,
+  NewClientForm,
+  NewCarForm,
+  PolicyForm,
+  WizardStep,
+  PricingBreakdown,
+} from "./types";
+import { User, Car, FileText, CreditCard, Building2 } from "lucide-react";
+
+const DRAFT_KEY = "abcrm:policyWizardDraft:v3";
+
+interface UsePolicyWizardStateProps {
+  open: boolean;
+  defaultBrokerId?: string;
+  preselectedClientId?: string;
+}
+
+export function usePolicyWizardState({ open, defaultBrokerId, preselectedClientId }: UsePolicyWizardStateProps) {
+  const { user, isAdmin, branchId: userBranchId } = useAuth();
+  const { branches } = useBranches();
+
+  // Core wizard state
+  const [currentStep, setCurrentStep] = useState(1);
+  const [errors, setErrors] = useState<ValidationErrors>({});
+  const [saving, setSaving] = useState(false);
+
+  // Branch
+  const [selectedBranchId, setSelectedBranchId] = useState<string>("");
+  const effectiveBranchId = isAdmin ? selectedBranchId : userBranchId;
+
+  // Insurance Category
+  const [categories, setCategories] = useState<InsuranceCategory[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<InsuranceCategory | null>(null);
+  const isLightMode = selectedCategory?.mode === "LIGHT";
+
+  // Client
+  const [clientSearch, setClientSearch] = useState("");
+  const [clients, setClients] = useState<Client[]>([]);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [createNewClient, setCreateNewClient] = useState(false);
+  const [newClient, setNewClient] = useState<NewClientForm>({
+    full_name: "",
+    id_number: "",
+    phone_number: "",
+    phone_number_2: "",
+    birth_date: "",
+    under24_type: "none",
+    under24_driver_name: "",
+    under24_driver_id: "",
+    notes: "",
+  });
+  const [loadingClients, setLoadingClients] = useState(false);
+  const [checkingDuplicate, setCheckingDuplicate] = useState(false);
+
+  // Car
+  const [clientCars, setClientCars] = useState<CarRecord[]>([]);
+  const [selectedCar, setSelectedCar] = useState<CarRecord | null>(null);
+  const [createNewCar, setCreateNewCar] = useState(false);
+  const [newCar, setNewCar] = useState<NewCarForm>({
+    car_number: "",
+    manufacturer_name: "",
+    model: "",
+    year: "",
+    color: "",
+    car_type: "car",
+    car_value: "",
+    license_expiry: "",
+  });
+  const [existingCar, setExistingCar] = useState<CarRecord | null>(null);
+  const [carConflict, setCarConflict] = useState<string | null>(null);
+  const [loadingCars, setLoadingCars] = useState(false);
+  const [fetchingCarData, setFetchingCarData] = useState(false);
+  const [carDataFetched, setCarDataFetched] = useState(false);
+
+  // Policy
+  const getInitialEndDate = () => {
+    const today = new Date();
+    const endDate = new Date(today);
+    endDate.setFullYear(endDate.getFullYear() + 1);
+    endDate.setDate(endDate.getDate() - 1);
+    return endDate.toISOString().split("T")[0];
+  };
+
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [policy, setPolicy] = useState<PolicyForm>({
+    policy_type_parent: "",
+    policy_type_child: "",
+    company_id: "",
+    start_date: new Date().toISOString().split("T")[0],
+    end_date: getInitialEndDate(),
+    insurance_price: "",
+    cancelled: false,
+    transferred: false,
+    notes: "",
+    road_service_id: "",
+    accident_fee_service_id: "",
+  });
+  const [policyBrokerId, setPolicyBrokerId] = useState<string>(defaultBrokerId || "");
+  const [brokerDirection, setBrokerDirection] = useState<"from_broker" | "to_broker" | "">("");
+  const [loadingCompanies, setLoadingCompanies] = useState(false);
+
+  // Road Services & Accident Fees
+  const [roadServices, setRoadServices] = useState<RoadService[]>([]);
+  const [accidentFeeServices, setAccidentFeeServices] = useState<AccidentFeeService[]>([]);
+
+  // Package mode
+  const [packageMode, setPackageMode] = useState(false);
+  const [packageAddons, setPackageAddons] = useState<PackageAddon[]>([
+    { type: "road_service", enabled: false, road_service_id: "", company_id: "", insurance_price: "" },
+    { type: "accident_fee_exemption", enabled: false, accident_fee_service_id: "", company_id: "", insurance_price: "" },
+  ]);
+  const [packageRoadServices, setPackageRoadServices] = useState<RoadService[]>([]);
+  const [packageRoadServiceCompanies, setPackageRoadServiceCompanies] = useState<Company[]>([]);
+  const [packageAccidentCompanies, setPackageAccidentCompanies] = useState<Company[]>([]);
+  const [packageAccidentFeeServices, setPackageAccidentFeeServices] = useState<AccidentFeeService[]>([]);
+
+  // Payments
+  const [payments, setPayments] = useState<PaymentLine[]>([]);
+
+  // Files
+  const [insuranceFiles, setInsuranceFiles] = useState<File[]>([]);
+  const [crmFiles, setCrmFiles] = useState<File[]>([]);
+
+  // Pricing calculation
+  const pricing: PricingBreakdown = useMemo(() => {
+    const basePrice = parseFloat(policy.insurance_price) || 0;
+    const roadServicePrice = packageMode && packageAddons[0].enabled ? parseFloat(packageAddons[0].insurance_price) || 0 : 0;
+    const accidentFeePrice = packageMode && packageAddons[1].enabled ? parseFloat(packageAddons[1].insurance_price) || 0 : 0;
+    return {
+      basePrice,
+      roadServicePrice,
+      accidentFeePrice,
+      totalPrice: basePrice + roadServicePrice + accidentFeePrice,
+    };
+  }, [policy.insurance_price, packageMode, packageAddons]);
+
+  // Payment validation
+  const totalPaidPayments = payments.filter((p) => !p.refused).reduce((sum, p) => sum + (p.amount || 0), 0);
+  const remainingToPay = pricing.totalPrice - totalPaidPayments;
+  const paymentsExceedPrice = totalPaidPayments > pricing.totalPrice && pricing.totalPrice > 0;
+
+  // Steps configuration with validation
+  const steps: WizardStep[] = useMemo(() => {
+    const step1Valid = !!(selectedClient || (createNewClient && newClient.full_name.trim() && digitsOnly(newClient.id_number).length === 9));
+    const step2Valid = isLightMode ? true : !!(selectedCar || existingCar || (createNewCar && newCar.car_number && !carConflict));
+    const step3Valid = !!(policy.company_id && policy.start_date && policy.end_date && policy.insurance_price);
+    const step4Valid = !paymentsExceedPrice;
+
+    if (isLightMode) {
+      return [
+        { id: 1, key: "branch_type_client", title: "النوع والعميل", icon: Building2, isUnlocked: true, isValid: step1Valid && !!selectedCategory },
+        { id: 2, key: "policy", title: "الوثيقة", icon: FileText, isUnlocked: step1Valid && !!selectedCategory, isValid: step3Valid },
+        { id: 3, key: "payments", title: "الدفعات", icon: CreditCard, isUnlocked: step1Valid && step3Valid, isValid: step4Valid },
+      ];
+    }
+
+    return [
+      { id: 1, key: "branch_type_client", title: "النوع والعميل", icon: Building2, isUnlocked: true, isValid: step1Valid && !!selectedCategory },
+      { id: 2, key: "car", title: "السيارة", icon: Car, isUnlocked: step1Valid && !!selectedCategory, isValid: step2Valid },
+      { id: 3, key: "policy", title: "الوثيقة", icon: FileText, isUnlocked: step1Valid && step2Valid, isValid: step3Valid },
+      { id: 4, key: "payments", title: "الدفعات", icon: CreditCard, isUnlocked: step1Valid && step2Valid && step3Valid, isValid: step4Valid },
+    ];
+  }, [
+    selectedClient, createNewClient, newClient, selectedCategory, isLightMode,
+    selectedCar, existingCar, createNewCar, newCar, carConflict,
+    policy, paymentsExceedPrice,
+  ]);
+
+  // Get current step index for the steps array
+  const currentStepData = steps.find((s) => s.id === currentStep);
+
+  // Reset functions
+  const resetCarData = useCallback(() => {
+    setSelectedCar(null);
+    setCreateNewCar(false);
+    setNewCar({
+      car_number: "",
+      manufacturer_name: "",
+      model: "",
+      year: "",
+      color: "",
+      car_type: "car",
+      car_value: "",
+      license_expiry: "",
+    });
+    setExistingCar(null);
+    setCarConflict(null);
+    setCarDataFetched(false);
+  }, []);
+
+  const resetPolicyData = useCallback(() => {
+    setPolicy({
+      policy_type_parent: selectedCategory?.mode === "FULL" ? selectedCategory.slug : "",
+      policy_type_child: "",
+      company_id: "",
+      start_date: new Date().toISOString().split("T")[0],
+      end_date: getInitialEndDate(),
+      insurance_price: "",
+      cancelled: false,
+      transferred: false,
+      notes: "",
+      road_service_id: "",
+      accident_fee_service_id: "",
+    });
+    setPolicyBrokerId(defaultBrokerId || "");
+    setBrokerDirection("");
+    setPackageMode(false);
+    setPackageAddons([
+      { type: "road_service", enabled: false, road_service_id: "", company_id: "", insurance_price: "" },
+      { type: "accident_fee_exemption", enabled: false, accident_fee_service_id: "", company_id: "", insurance_price: "" },
+    ]);
+  }, [selectedCategory, defaultBrokerId]);
+
+  const resetPayments = useCallback(() => {
+    setPayments([]);
+  }, []);
+
+  const resetForm = useCallback(() => {
+    setCurrentStep(1);
+    setSelectedClient(null);
+    setCreateNewClient(false);
+    setNewClient({
+      full_name: "",
+      id_number: "",
+      phone_number: "",
+      phone_number_2: "",
+      birth_date: "",
+      under24_type: "none",
+      under24_driver_name: "",
+      under24_driver_id: "",
+      notes: "",
+    });
+    resetCarData();
+    resetPolicyData();
+    resetPayments();
+    setInsuranceFiles([]);
+    setCrmFiles([]);
+    setErrors({});
+    setSelectedCategory(null);
+  }, [resetCarData, resetPolicyData, resetPayments]);
+
+  // Validation
+  const validateStep = useCallback((stepId: number): boolean => {
+    const newErrors: ValidationErrors = {};
+    const step = steps.find((s) => s.id === stepId);
+    if (!step) return false;
+
+    switch (step.key) {
+      case "branch_type_client":
+        if (!selectedCategory) newErrors.category = "الرجاء اختيار نوع التأمين";
+        if (!selectedClient && !createNewClient) {
+          newErrors.client = "الرجاء اختيار عميل أو إنشاء عميل جديد";
+        }
+        if (createNewClient) {
+          if (!newClient.full_name.trim()) newErrors.full_name = "الاسم مطلوب";
+          const id = digitsOnly(newClient.id_number);
+          if (!id) newErrors.id_number = "رقم الهوية مطلوب";
+          else if (id.length !== 9) newErrors.id_number = "رقم الهوية يجب أن يكون 9 أرقام";
+          else if (!isValidIsraeliId(id)) newErrors.id_number = "رقم الهوية غير صحيح";
+          const phone = digitsOnly(newClient.phone_number);
+          if (!phone) newErrors.phone_number = "رقم الهاتف مطلوب";
+          else if (!isValidPhoneNumber10(phone)) newErrors.phone_number = "رقم الهاتف يجب أن يكون 10 أرقام";
+          const phone2 = digitsOnly(newClient.phone_number_2);
+          if (phone2.length > 0 && !isValidPhoneNumber10(phone2)) {
+            newErrors.phone_number_2 = "رقم الهاتف يجب أن يكون 10 أرقام";
+          }
+          if (newClient.under24_type === "additional_driver") {
+            if (!newClient.under24_driver_name?.trim()) newErrors.under24_driver_name = "اسم السائق مطلوب";
+            const driverId = digitsOnly(newClient.under24_driver_id);
+            if (!driverId || driverId.length !== 9) newErrors.under24_driver_id = "رقم هوية السائق يجب أن يكون 9 أرقام";
+            else if (!isValidIsraeliId(driverId)) newErrors.under24_driver_id = "رقم هوية السائق غير صحيح";
+          }
+        }
+        break;
+
+      case "car":
+        if (!selectedCar && !existingCar && !createNewCar) {
+          newErrors.car = "الرجاء اختيار سيارة أو إضافة سيارة جديدة";
+        }
+        if (createNewCar) {
+          if (!newCar.car_number.trim()) newErrors.car_number = "رقم السيارة مطلوب";
+          if (carConflict) newErrors.car_number = carConflict;
+        }
+        break;
+
+      case "policy":
+        if (!policy.company_id) newErrors.company_id = "شركة التأمين مطلوبة";
+        if (!policy.start_date) newErrors.start_date = "تاريخ البداية مطلوب";
+        if (!policy.end_date) newErrors.end_date = "تاريخ النهاية مطلوب";
+        if (!policy.insurance_price) newErrors.insurance_price = "السعر مطلوب";
+        else if (parseFloat(policy.insurance_price) <= 0) newErrors.insurance_price = "السعر يجب أن يكون أكبر من صفر";
+        if (policy.policy_type_parent === "THIRD_FULL" && !policy.policy_type_child) {
+          newErrors.policy_type_child = "النوع الفرعي مطلوب";
+        }
+        if (policy.policy_type_parent === "ROAD_SERVICE" && !policy.road_service_id) {
+          newErrors.road_service_id = "الرجاء اختيار خدمة الطريق";
+        }
+        if (policyBrokerId && policyBrokerId !== "none" && !brokerDirection) {
+          newErrors.broker_direction = "الرجاء اختيار نوع التعامل مع الوسيط";
+        }
+        break;
+
+      case "payments":
+        if (paymentsExceedPrice) {
+          newErrors.payments = "مجموع الدفعات يتجاوز سعر التأمين";
+        }
+        break;
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }, [
+    steps, selectedCategory, selectedClient, createNewClient, newClient,
+    selectedCar, existingCar, createNewCar, newCar, carConflict,
+    policy, policyBrokerId, brokerDirection, paymentsExceedPrice,
+  ]);
+
+  // Navigate to step
+  const goToStep = useCallback((stepId: number) => {
+    const targetStep = steps.find((s) => s.id === stepId);
+    if (targetStep?.isUnlocked) {
+      setCurrentStep(stepId);
+    }
+  }, [steps]);
+
+  // Clear draft
+  const clearDraft = useCallback(() => {
+    try {
+      sessionStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  return {
+    // Core state
+    currentStep,
+    setCurrentStep,
+    errors,
+    setErrors,
+    saving,
+    setSaving,
+    steps,
+    currentStepData,
+    goToStep,
+
+    // Branch
+    selectedBranchId,
+    setSelectedBranchId,
+    effectiveBranchId,
+    branches,
+    isAdmin,
+
+    // Category
+    categories,
+    setCategories,
+    selectedCategory,
+    setSelectedCategory,
+    isLightMode,
+
+    // Client
+    clientSearch,
+    setClientSearch,
+    clients,
+    setClients,
+    selectedClient,
+    setSelectedClient,
+    createNewClient,
+    setCreateNewClient,
+    newClient,
+    setNewClient,
+    loadingClients,
+    setLoadingClients,
+    checkingDuplicate,
+    setCheckingDuplicate,
+
+    // Car
+    clientCars,
+    setClientCars,
+    selectedCar,
+    setSelectedCar,
+    createNewCar,
+    setCreateNewCar,
+    newCar,
+    setNewCar,
+    existingCar,
+    setExistingCar,
+    carConflict,
+    setCarConflict,
+    loadingCars,
+    setLoadingCars,
+    fetchingCarData,
+    setFetchingCarData,
+    carDataFetched,
+    setCarDataFetched,
+
+    // Policy
+    companies,
+    setCompanies,
+    brokers,
+    setBrokers,
+    policy,
+    setPolicy,
+    policyBrokerId,
+    setPolicyBrokerId,
+    brokerDirection,
+    setBrokerDirection,
+    loadingCompanies,
+    setLoadingCompanies,
+
+    // Services
+    roadServices,
+    setRoadServices,
+    accidentFeeServices,
+    setAccidentFeeServices,
+
+    // Package
+    packageMode,
+    setPackageMode,
+    packageAddons,
+    setPackageAddons,
+    packageRoadServices,
+    setPackageRoadServices,
+    packageRoadServiceCompanies,
+    setPackageRoadServiceCompanies,
+    packageAccidentCompanies,
+    setPackageAccidentCompanies,
+    packageAccidentFeeServices,
+    setPackageAccidentFeeServices,
+
+    // Payments
+    payments,
+    setPayments,
+    pricing,
+    totalPaidPayments,
+    remainingToPay,
+    paymentsExceedPrice,
+
+    // Files
+    insuranceFiles,
+    setInsuranceFiles,
+    crmFiles,
+    setCrmFiles,
+
+    // Functions
+    resetCarData,
+    resetPolicyData,
+    resetPayments,
+    resetForm,
+    validateStep,
+    clearDraft,
+
+    // Auth
+    user,
+  };
+}
