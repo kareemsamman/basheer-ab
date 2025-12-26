@@ -20,7 +20,7 @@ interface Step4Props {
   remainingToPay: number;
   paymentsExceedPrice: boolean;
   errors: ValidationErrors;
-  onVisaPaymentRequired: () => boolean; // Returns true if visa is required and not paid
+  policyId?: string; // required to open Tranzila
 }
 
 export function Step4Payments({
@@ -31,7 +31,7 @@ export function Step4Payments({
   remainingToPay,
   paymentsExceedPrice,
   errors,
-  onVisaPaymentRequired,
+  policyId,
 }: Step4Props) {
   const [showTranzilaModal, setShowTranzilaModal] = useState(false);
   const [selectedVisaPaymentIndex, setSelectedVisaPaymentIndex] = useState<number | null>(null);
@@ -58,6 +58,7 @@ export function Step4Payments({
   };
 
   const handleVisaPayClick = (index: number) => {
+    if (!policyId) return;
     setSelectedVisaPaymentIndex(index);
     setShowTranzilaModal(true);
   };
@@ -87,7 +88,6 @@ export function Step4Payments({
 
   const selectedVisaPayment = selectedVisaPaymentIndex !== null ? payments[selectedVisaPaymentIndex] : null;
 
-  // Check if there are unpaid visa payments
   const hasUnpaidVisa = payments.some(p => p.payment_type === 'visa' && !p.tranzila_paid && (p.amount || 0) > 0);
 
   return (
@@ -104,7 +104,7 @@ export function Step4Payments({
       {hasUnpaidVisa && (
         <div className="flex items-center gap-2 text-amber-600 text-sm p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
           <AlertCircle className="h-4 w-4 flex-shrink-0" />
-          <span>يجب الدفع بالفيزا قبل حفظ الوثيقة</span>
+          <span>للدفع بالفيزا: يجب حفظ الوثيقة أولاً (لإنشاء رقم UUID للوثيقة)</span>
         </div>
       )}
 
@@ -204,15 +204,16 @@ export function Step4Payments({
                       )}
                       
                       {/* Visa Pay Button */}
-                      {isVisa && !visaPaid && visaAmount > 0 && (
+                      {isVisa && !visaPaid && (
                         <Button
                           type="button"
                           size="sm"
                           onClick={() => handleVisaPayClick(index)}
+                          disabled={!policyId || visaAmount <= 0}
                           className="gap-1.5 bg-primary hover:bg-primary/90"
                         >
                           <CreditCard className="h-4 w-4" />
-                          ادفع
+                          {!policyId ? 'احفظ الوثيقة أولاً' : 'ادفع'}
                         </Button>
                       )}
                       
@@ -254,13 +255,14 @@ export function Step4Payments({
       </div>
 
       {/* Tranzila Payment Modal */}
-      {selectedVisaPayment && (
+      {selectedVisaPayment && policyId && (
         <TranzilaPaymentModal
           open={showTranzilaModal}
           onOpenChange={(open) => {
             if (!open) handleVisaFailure();
+            setShowTranzilaModal(open);
           }}
-          policyId="temp" // Will be created after successful payment
+          policyId={policyId}
           amount={selectedVisaPayment.amount || 0}
           paymentDate={selectedVisaPayment.payment_date}
           notes={selectedVisaPayment.notes}
