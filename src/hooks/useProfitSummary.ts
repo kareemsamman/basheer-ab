@@ -57,11 +57,11 @@ export function useProfitSummary() {
 
       if (error) throw error;
 
-      // Fetch ELZAMI companies with their commission
+      // Fetch ELZAMI companies with their commission (now category_parent is an array)
       const { data: elzamiCompanies, error: compError } = await supabase
         .from('insurance_companies')
         .select('id, elzami_commission')
-        .eq('category_parent', 'ELZAMI');
+        .contains('category_parent', ['ELZAMI']);
 
       if (compError) throw compError;
 

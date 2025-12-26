@@ -71,7 +71,7 @@ interface Company {
   id: string;
   name: string;
   name_ar: string | null;
-  category_parent: string | null;
+  category_parent: string[] | null;
   elzami_commission: number | null;
 }
 
@@ -669,16 +669,16 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
       .eq('active', true)
       .order('name');
     
-    // Filter by category_parent if policy type is selected
+    // Filter by category_parent array contains if policy type is selected
     if (policyType) {
-      query = query.eq('category_parent', policyType as any);
+      query = query.contains('category_parent', [policyType]);
     }
     
     const { data, error } = await query;
     
     setLoadingCompanies(false);
     if (!error && data) {
-      setCompanies(data);
+      setCompanies(data as Company[]);
       // Auto-select if only one company matches
       if (data.length === 1 && policyType) {
         setPolicy(p => ({ ...p, company_id: data[0].id }));
@@ -732,28 +732,28 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
 
   // Fetch companies for package add-ons
   const fetchPackageCompanies = async () => {
-    // Fetch ROAD_SERVICE companies
+    // Fetch ROAD_SERVICE companies (category_parent is now an array)
     const { data: roadServiceCompanies } = await supabase
       .from('insurance_companies')
       .select('id, name, name_ar, category_parent, elzami_commission')
       .eq('active', true)
-      .eq('category_parent', 'ROAD_SERVICE')
+      .contains('category_parent', ['ROAD_SERVICE'])
       .order('name');
     
     if (roadServiceCompanies) {
-      setPackageRoadServiceCompanies(roadServiceCompanies);
+      setPackageRoadServiceCompanies(roadServiceCompanies as Company[]);
     }
 
-    // Fetch ACCIDENT_FEE_EXEMPTION companies
+    // Fetch ACCIDENT_FEE_EXEMPTION companies (those that have THIRD_FULL can also have ACCIDENT_FEE_EXEMPTION)
     const { data: accidentCompanies } = await supabase
       .from('insurance_companies')
       .select('id, name, name_ar, category_parent, elzami_commission')
       .eq('active', true)
-      .eq('category_parent', 'ACCIDENT_FEE_EXEMPTION')
+      .contains('category_parent', ['ACCIDENT_FEE_EXEMPTION'])
       .order('name');
     
     if (accidentCompanies) {
-      setPackageAccidentCompanies(accidentCompanies);
+      setPackageAccidentCompanies(accidentCompanies as Company[]);
     }
 
     // Fetch road services for package
