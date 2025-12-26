@@ -735,26 +735,37 @@ export function PolicyWizard({
       }
       
       if (clientPhone && policyIdToUse && finalClientId) {
-        // Send signature SMS if customer has NEVER signed before (check by client_id, not policy_id)
+        // Send signature SMS if customer has NEVER signed before
+        // Check by client.signature_url (the edge function also checks this)
         try {
-          const { data: existingSig } = await supabase
-            .from('customer_signatures')
-            .select('id')
-            .eq('client_id', finalClientId)
-            .limit(1);
+          const { data: clientData } = await supabase
+            .from('clients')
+            .select('signature_url')
+            .eq('id', finalClientId)
+            .single();
 
-          // If client has never signed, send signature SMS
-          if (!existingSig || existingSig.length === 0) {
-            await supabase.functions.invoke('send-signature-sms', {
+          console.log('[PolicyWizard] Checking signature status for client:', finalClientId, 'signature_url:', clientData?.signature_url);
+
+          // If client has never signed (no signature_url), send signature SMS
+          if (!clientData?.signature_url) {
+            console.log('[PolicyWizard] Client has no signature, sending SMS...');
+            const { data: smsResult, error: smsError } = await supabase.functions.invoke('send-signature-sms', {
               body: { 
-                clientId: finalClientId,
-                policyId: policyIdToUse, 
-                phoneNumber: clientPhone 
+                client_id: finalClientId,  // Use snake_case to match edge function
+                policy_id: policyIdToUse   // Use snake_case to match edge function
               },
             });
+            
+            if (smsError) {
+              console.error('[PolicyWizard] Signature SMS error:', smsError);
+            } else {
+              console.log('[PolicyWizard] Signature SMS sent:', smsResult);
+            }
+          } else {
+            console.log('[PolicyWizard] Client already has signature, skipping SMS');
           }
         } catch (smsError) {
-          console.error('Failed to send signature SMS:', smsError);
+          console.error('[PolicyWizard] Failed to send signature SMS:', smsError);
         }
 
         // Send invoice SMS
