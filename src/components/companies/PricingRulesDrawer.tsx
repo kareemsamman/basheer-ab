@@ -78,7 +78,7 @@ const AGE_BAND_LABELS: Record<Enums<'age_band'>, string> = {
 const CAR_TYPE_LABELS: Record<Enums<'car_type'>, string> = {
   car: 'خصوصي',
   cargo: 'شحن',
-  small: 'صغير',
+  small: 'أوتوبس زعير',
   taxi: 'تاكسي',
   tjeradown4: 'تجاري أقل من 4 طن',
   tjeraup4: 'تجاري أكثر من 4 طن',

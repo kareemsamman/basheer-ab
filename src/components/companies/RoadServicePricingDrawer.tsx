@@ -12,7 +12,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
 
-type CarType = Database['public']['Enums']['car_type'];
 type AgeBand = Database['public']['Enums']['age_band'];
 
 interface Company {
@@ -31,7 +30,6 @@ interface RoadServicePrice {
   id: string;
   company_id: string;
   road_service_id: string;
-  car_type: CarType;
   age_band: AgeBand;
   company_cost: number;
   notes: string | null;
@@ -43,15 +41,6 @@ interface RoadServicePricingDrawerProps {
   onOpenChange: (open: boolean) => void;
   company: Company | null;
 }
-
-const CAR_TYPE_LABELS: Record<CarType, string> = {
-  car: 'خصوصي',
-  cargo: 'شحن',
-  small: 'صغير',
-  taxi: 'تكسي',
-  tjeradown4: 'تجاري أقل من 4 طن',
-  tjeraup4: 'تجاري أكثر من 4 طن',
-};
 
 const AGE_BAND_LABELS: Record<AgeBand, string> = {
   UNDER_24: 'أقل من 24',
@@ -67,7 +56,6 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
   const [showAddForm, setShowAddForm] = useState(false);
   const [newPrice, setNewPrice] = useState({
     road_service_id: '',
-    car_type: 'car' as CarType,
     age_band: 'ANY' as AgeBand,
     company_cost: 0,
   });
@@ -114,7 +102,6 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
       setShowAddForm(false);
       setNewPrice({
         road_service_id: '',
-        car_type: 'car',
         age_band: 'ANY',
         company_cost: 0,
       });
@@ -134,7 +121,7 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
         .insert({
           company_id: company.id,
           road_service_id: newPrice.road_service_id,
-          car_type: newPrice.car_type,
+          car_type: 'car', // Default value since we're not using car_type anymore
           age_band: newPrice.age_band,
           company_cost: newPrice.company_cost,
         });
@@ -145,7 +132,6 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
       setShowAddForm(false);
       setNewPrice({
         road_service_id: '',
-        car_type: 'car',
         age_band: 'ANY',
         company_cost: 0,
       });
@@ -153,7 +139,7 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
     } catch (error: any) {
       console.error('Error adding price:', error);
       if (error.code === '23505') {
-        toast.error('هذا السعر موجود بالفعل لهذه الخدمة ونوع السيارة');
+        toast.error('هذا السعر موجود بالفعل لهذه الخدمة');
       } else {
         toast.error('فشل في إضافة السعر');
       }
@@ -213,7 +199,7 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
             <div className="p-4 border rounded-lg bg-muted/50 space-y-4">
               <h3 className="font-medium">إضافة سعر جديد</h3>
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label>الخدمة</Label>
                   <Select
@@ -228,23 +214,6 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
                         <SelectItem key={s.id} value={s.id}>
                           {s.name_ar || s.name}
                         </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>نوع السيارة</Label>
-                  <Select
-                    value={newPrice.car_type}
-                    onValueChange={(v) => setNewPrice(prev => ({ ...prev, car_type: v as CarType }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(CAR_TYPE_LABELS).map(([value, label]) => (
-                        <SelectItem key={value} value={value}>{label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -301,7 +270,6 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-right">الخدمة</TableHead>
-                  <TableHead className="text-right">نوع السيارة</TableHead>
                   <TableHead className="text-right">الفئة العمرية</TableHead>
                   <TableHead className="text-right">تكلفة الشركة (₪)</TableHead>
                   <TableHead className="w-16"></TableHead>
@@ -313,14 +281,13 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
                     <TableRow key={i}>
                       <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-8" /></TableCell>
                     </TableRow>
                   ))
                 ) : prices.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                       لا توجد أسعار مضافة لهذه الشركة
                     </TableCell>
                   </TableRow>
@@ -329,11 +296,6 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
                     <TableRow key={price.id}>
                       <TableCell className="font-medium">
                         {price.road_service?.name_ar || price.road_service?.name}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">
-                          {CAR_TYPE_LABELS[price.car_type]}
-                        </Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline">

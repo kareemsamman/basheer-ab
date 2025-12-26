@@ -61,9 +61,9 @@ const RULE_TYPE_LABELS: Record<string, string> = {
 };
 
 const CAR_TYPE_LABELS: Record<string, string> = {
-  car: 'سيارة',
+  car: 'خصوصي',
   cargo: 'شحن',
-  small: 'صغيرة',
+  small: 'أوتوبس زعير',
   taxi: 'تاكسي',
   tjeradown4: 'تجاري < 4 طن',
   tjeraup4: 'تجاري > 4 طن',

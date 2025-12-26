@@ -33,7 +33,7 @@ interface RoadServiceDrawerProps {
 const CAR_TYPES: { value: CarType; label: string }[] = [
   { value: 'car', label: 'خصوصي' },
   { value: 'cargo', label: 'شحن' },
-  { value: 'small', label: 'صغير' },
+  { value: 'small', label: 'أوتوبس زعير' },
   { value: 'taxi', label: 'تكسي' },
   { value: 'tjeradown4', label: 'تجاري أقل من 4 طن' },
   { value: 'tjeraup4', label: 'تجاري أكثر من 4 طن' },

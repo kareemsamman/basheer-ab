@@ -50,7 +50,6 @@ const adminNav = [
   { name: "المستخدمون", href: "/admin/users", icon: UserCog },
   { name: "أنواع التأمين", href: "/admin/insurance-categories", icon: FileText },
   { name: "خدمات الطريق", href: "/admin/road-services", icon: Truck },
-  { name: "مجموعات الشركات", href: "/admin/company-groups", icon: Building2 },
   { name: "قوالب الفواتير", href: "/admin/invoice-templates", icon: FileText },
   { name: "توقيعات العملاء", href: "/admin/customer-signatures", icon: FileSignature },
   { name: "إعدادات الدفع", href: "/admin/payment-settings", icon: CreditCard },
