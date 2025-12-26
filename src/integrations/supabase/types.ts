@@ -367,6 +367,63 @@ export type Database = {
           },
         ]
       }
+      company_road_service_prices: {
+        Row: {
+          age_band: Database["public"]["Enums"]["age_band"]
+          car_type: Database["public"]["Enums"]["car_type"]
+          company_cost: number
+          company_id: string
+          created_at: string
+          effective_from: string | null
+          effective_to: string | null
+          id: string
+          notes: string | null
+          road_service_id: string
+          updated_at: string
+        }
+        Insert: {
+          age_band?: Database["public"]["Enums"]["age_band"]
+          car_type?: Database["public"]["Enums"]["car_type"]
+          company_cost?: number
+          company_id: string
+          created_at?: string
+          effective_from?: string | null
+          effective_to?: string | null
+          id?: string
+          notes?: string | null
+          road_service_id: string
+          updated_at?: string
+        }
+        Update: {
+          age_band?: Database["public"]["Enums"]["age_band"]
+          car_type?: Database["public"]["Enums"]["car_type"]
+          company_cost?: number
+          company_id?: string
+          created_at?: string
+          effective_from?: string | null
+          effective_to?: string | null
+          id?: string
+          notes?: string | null
+          road_service_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_road_service_prices_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_road_service_prices_road_service_id_fkey"
+            columns: ["road_service_id"]
+            isOneToOne: false
+            referencedRelation: "road_services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_signatures: {
         Row: {
           branch_id: string | null
@@ -529,6 +586,7 @@ export type Database = {
             | null
           created_at: string
           elzami_commission: number | null
+          group_id: string | null
           id: string
           legacy_wp_id: number | null
           name: string
@@ -542,6 +600,7 @@ export type Database = {
             | null
           created_at?: string
           elzami_commission?: number | null
+          group_id?: string | null
           id?: string
           legacy_wp_id?: number | null
           name: string
@@ -555,10 +614,43 @@ export type Database = {
             | null
           created_at?: string
           elzami_commission?: number | null
+          group_id?: string | null
           id?: string
           legacy_wp_id?: number | null
           name?: string
           name_ar?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insurance_companies_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_company_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      insurance_company_groups: {
+        Row: {
+          created_at: string
+          display_name: string
+          display_name_ar: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_name: string
+          display_name_ar?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          display_name_ar?: string | null
+          id?: string
           updated_at?: string
         }
         Relationships: []
@@ -979,11 +1071,13 @@ export type Database = {
           car_id: string | null
           category_id: string | null
           client_id: string
+          company_cost_snapshot: number | null
           company_id: string | null
           created_at: string
           created_by_admin_id: string | null
           deleted_at: string | null
           end_date: string
+          group_id: string | null
           id: string
           insurance_price: number
           invoices_sent_at: string | null
@@ -997,6 +1091,7 @@ export type Database = {
             | null
           policy_type_parent: Database["public"]["Enums"]["policy_type_parent"]
           profit: number | null
+          road_service_id: string | null
           start_date: string
           transferred: boolean | null
           transferred_car_number: string | null
@@ -1013,11 +1108,13 @@ export type Database = {
           car_id?: string | null
           category_id?: string | null
           client_id: string
+          company_cost_snapshot?: number | null
           company_id?: string | null
           created_at?: string
           created_by_admin_id?: string | null
           deleted_at?: string | null
           end_date: string
+          group_id?: string | null
           id?: string
           insurance_price: number
           invoices_sent_at?: string | null
@@ -1031,6 +1128,7 @@ export type Database = {
             | null
           policy_type_parent: Database["public"]["Enums"]["policy_type_parent"]
           profit?: number | null
+          road_service_id?: string | null
           start_date: string
           transferred?: boolean | null
           transferred_car_number?: string | null
@@ -1047,11 +1145,13 @@ export type Database = {
           car_id?: string | null
           category_id?: string | null
           client_id?: string
+          company_cost_snapshot?: number | null
           company_id?: string | null
           created_at?: string
           created_by_admin_id?: string | null
           deleted_at?: string | null
           end_date?: string
+          group_id?: string | null
           id?: string
           insurance_price?: number
           invoices_sent_at?: string | null
@@ -1065,6 +1165,7 @@ export type Database = {
             | null
           policy_type_parent?: Database["public"]["Enums"]["policy_type_parent"]
           profit?: number | null
+          road_service_id?: string | null
           start_date?: string
           transferred?: boolean | null
           transferred_car_number?: string | null
@@ -1118,6 +1219,62 @@ export type Database = {
             columns: ["created_by_admin_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policies_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "policy_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policies_road_service_id_fkey"
+            columns: ["road_service_id"]
+            isOneToOne: false
+            referencedRelation: "road_services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      policy_groups: {
+        Row: {
+          car_id: string | null
+          client_id: string
+          created_at: string
+          id: string
+          name: string | null
+          updated_at: string
+        }
+        Insert: {
+          car_id?: string | null
+          client_id: string
+          created_at?: string
+          id?: string
+          name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          car_id?: string | null
+          client_id?: string
+          created_at?: string
+          id?: string
+          name?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "policy_groups_car_id_fkey"
+            columns: ["car_id"]
+            isOneToOne: false
+            referencedRelation: "cars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policy_groups_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
         ]
@@ -1354,6 +1511,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      road_services: {
+        Row: {
+          active: boolean
+          allowed_car_types: Database["public"]["Enums"]["car_type"][]
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          name_ar: string | null
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          allowed_car_types?: Database["public"]["Enums"]["car_type"][]
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          name_ar?: string | null
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          allowed_car_types?: Database["public"]["Enums"]["car_type"][]
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          name_ar?: string | null
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       sms_logs: {
         Row: {

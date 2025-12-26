@@ -14,12 +14,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Search, Settings, Building2 } from 'lucide-react';
+import { Plus, Search, Settings, Building2, Truck } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { CompanyDrawer } from '@/components/companies/CompanyDrawer';
 import { PricingRulesDrawer } from '@/components/companies/PricingRulesDrawer';
+import { RoadServicePricingDrawer } from '@/components/companies/RoadServicePricingDrawer';
 import type { Tables } from '@/integrations/supabase/types';
 
 type Company = Tables<'insurance_companies'>;
@@ -42,6 +43,8 @@ export default function Companies() {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [pricingDrawerOpen, setPricingDrawerOpen] = useState(false);
   const [pricingCompany, setPricingCompany] = useState<Company | null>(null);
+  const [roadServicePricingOpen, setRoadServicePricingOpen] = useState(false);
+  const [roadServicePricingCompany, setRoadServicePricingCompany] = useState<Company | null>(null);
 
   const fetchCompanies = async () => {
     setLoading(true);
@@ -92,6 +95,11 @@ export default function Companies() {
   const handleManagePricing = (company: Company) => {
     setPricingCompany(company);
     setPricingDrawerOpen(true);
+  };
+
+  const handleManageRoadServicePricing = (company: Company) => {
+    setRoadServicePricingCompany(company);
+    setRoadServicePricingOpen(true);
   };
 
   const handleDrawerClose = () => {
@@ -227,17 +235,32 @@ export default function Companies() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleManagePricing(company);
-                        }}
-                      >
-                        <Settings className="h-4 w-4 ml-2" />
-                        التسعير
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleManagePricing(company);
+                          }}
+                        >
+                          <Settings className="h-4 w-4 ml-2" />
+                          التسعير
+                        </Button>
+                        {company.category_parent === 'ROAD_SERVICE' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleManageRoadServicePricing(company);
+                            }}
+                          >
+                            <Truck className="h-4 w-4 ml-2" />
+                            خدمات الطريق
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -260,6 +283,13 @@ export default function Companies() {
         open={pricingDrawerOpen}
         onClose={handlePricingDrawerClose}
         company={pricingCompany}
+      />
+
+      {/* Road Service Pricing Drawer */}
+      <RoadServicePricingDrawer
+        open={roadServicePricingOpen}
+        onOpenChange={setRoadServicePricingOpen}
+        company={roadServicePricingCompany}
       />
     </MainLayout>
   );
