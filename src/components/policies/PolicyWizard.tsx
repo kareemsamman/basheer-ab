@@ -11,11 +11,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useBranches } from "@/hooks/useBranches";
 import { supabase } from "@/integrations/supabase/client";
-import { Search, Plus, Check, Car, User, FileText, CreditCard, Loader2, X, AlertCircle, CheckCircle, Building2, Users, ArrowLeftRight } from "lucide-react";
+import { Search, Plus, Check, Car, User, FileText, CreditCard, Loader2, X, AlertCircle, CheckCircle, Building2, Users, ArrowLeftRight, Package } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { digitsOnly, isValidIsraeliId, isValidPhoneNumber10 } from "@/lib/validation";
 import { calculatePolicyProfit } from "@/lib/pricingCalculator";
@@ -77,6 +78,32 @@ interface Company {
 interface Broker {
   id: string;
   name: string;
+}
+
+interface RoadService {
+  id: string;
+  name: string;
+  name_ar: string | null;
+  allowed_car_types: string[];
+  active: boolean;
+}
+
+interface CompanyRoadServicePrice {
+  id: string;
+  company_id: string;
+  road_service_id: string;
+  car_type: string;
+  age_band: string;
+  company_cost: number;
+}
+
+// Package add-on interface
+interface PackageAddon {
+  type: 'road_service' | 'accident_fee_exemption';
+  enabled: boolean;
+  road_service_id?: string;
+  company_id?: string;
+  insurance_price: string;
 }
 
 interface PaymentLine {
@@ -219,8 +246,24 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
     cancelled: false,
     transferred: false,
     notes: "",
+    road_service_id: "", // For ROAD_SERVICE policy type
   });
   const [loadingCompanies, setLoadingCompanies] = useState(false);
+
+  // Road Services for ROAD_SERVICE policy type
+  const [roadServices, setRoadServices] = useState<RoadService[]>([]);
+  const [roadServicePrices, setRoadServicePrices] = useState<CompanyRoadServicePrice[]>([]);
+  const [loadingRoadServices, setLoadingRoadServices] = useState(false);
+
+  // Package mode state (for THIRD_FULL with add-ons)
+  const [packageMode, setPackageMode] = useState(false);
+  const [packageAddons, setPackageAddons] = useState<PackageAddon[]>([
+    { type: 'road_service', enabled: false, road_service_id: '', company_id: '', insurance_price: '' },
+    { type: 'accident_fee_exemption', enabled: false, company_id: '', insurance_price: '' },
+  ]);
+  const [packageRoadServices, setPackageRoadServices] = useState<RoadService[]>([]);
+  const [packageRoadServiceCompanies, setPackageRoadServiceCompanies] = useState<Company[]>([]);
+  const [packageAccidentCompanies, setPackageAccidentCompanies] = useState<Company[]>([]);
 
   // Step 4: Payments
   const [payments, setPayments] = useState<PaymentLine[]>([]);
@@ -286,7 +329,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
     setCreateNewCar(false);
     setNewClient({ full_name: "", id_number: "", phone_number: "", under24_type: "none", under24_driver_name: "", under24_driver_id: "", notes: "", broker_id: defaultBrokerId || "" });
     setNewCar({ car_number: "", manufacturer_name: "", model: "", year: "", color: "", car_type: "car", car_value: "", license_expiry: "" });
-    setPolicy({ policy_type_parent: "", policy_type_child: "", company_id: "", start_date: new Date().toISOString().split('T')[0], end_date: getInitialEndDate(), insurance_price: "", cancelled: false, transferred: false, notes: "" });
+    setPolicy({ policy_type_parent: "", policy_type_child: "", company_id: "", start_date: new Date().toISOString().split('T')[0], end_date: getInitialEndDate(), insurance_price: "", cancelled: false, transferred: false, notes: "", road_service_id: "" });
     setPayments([]);
     setInsuranceFiles([]);
     setCrmFiles([]);
@@ -296,6 +339,11 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
     setErrors({});
     setPolicyBrokerId(defaultBrokerId || '');
     setBrokerDirection(defaultBrokerDirection || '');
+    setPackageMode(false);
+    setPackageAddons([
+      { type: 'road_service', enabled: false, road_service_id: '', company_id: '', insurance_price: '' },
+      { type: 'accident_fee_exemption', enabled: false, company_id: '', insurance_price: '' },
+    ]);
   };
 
   // Fetch insurance categories
@@ -351,8 +399,13 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
         setCreateNewCar(parsed.createNewCar || false);
         setNewCar(parsed.newCar || { car_number: "", manufacturer_name: "", model: "", year: "", color: "", car_type: "car", car_value: "", license_expiry: "" });
         setCarDataFetched(parsed.carDataFetched || false);
-        setPolicy(parsed.policy || { policy_type_parent: "", policy_type_child: "", company_id: "", start_date: new Date().toISOString().split('T')[0], end_date: "", insurance_price: "", cancelled: false, transferred: false, notes: "" });
+        setPolicy(parsed.policy || { policy_type_parent: "", policy_type_child: "", company_id: "", start_date: new Date().toISOString().split('T')[0], end_date: "", insurance_price: "", cancelled: false, transferred: false, notes: "", road_service_id: "" });
         setPayments(parsed.payments || []);
+        setPackageMode(parsed.packageMode || false);
+        setPackageAddons(parsed.packageAddons || [
+          { type: 'road_service', enabled: false, road_service_id: '', company_id: '', insurance_price: '' },
+          { type: 'accident_fee_exemption', enabled: false, company_id: '', insurance_price: '' },
+        ]);
       } else {
         resetForm();
       }
@@ -473,6 +526,8 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
       carDataFetched,
       policy,
       payments,
+      packageMode,
+      packageAddons,
     };
     const t = window.setTimeout(() => {
       try {
@@ -480,7 +535,22 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
       } catch {}
     }, 250);
     return () => window.clearTimeout(t);
-  }, [open, currentStep, clientSearch, selectedClient, createNewClient, newClient, selectedCar, createNewCar, newCar, carDataFetched, policy, payments]);
+  }, [open, currentStep, clientSearch, selectedClient, createNewClient, newClient, selectedCar, createNewCar, newCar, carDataFetched, policy, payments, packageMode, packageAddons]);
+
+  // Fetch road services when ROAD_SERVICE policy type is selected
+  useEffect(() => {
+    if (policy.policy_type_parent === 'ROAD_SERVICE') {
+      const carType = createNewCar ? newCar.car_type : (selectedCar?.car_type || existingCar?.car_type);
+      fetchRoadServices(carType || undefined);
+    }
+  }, [policy.policy_type_parent, selectedCar, existingCar, newCar.car_type, createNewCar]);
+
+  // Fetch package companies when THIRD_FULL is selected and package mode is on
+  useEffect(() => {
+    if (policy.policy_type_parent === 'THIRD_FULL' && packageMode) {
+      fetchPackageCompanies();
+    }
+  }, [policy.policy_type_parent, packageMode]);
 
   // Check for duplicate client by id_number
   useEffect(() => {
@@ -624,6 +694,77 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
     
     if (data) {
       setBrokers(data);
+    }
+  };
+
+  // Fetch road services for ROAD_SERVICE policy type
+  const fetchRoadServices = async (carType?: string) => {
+    setLoadingRoadServices(true);
+    const { data } = await supabase
+      .from('road_services')
+      .select('*')
+      .eq('active', true)
+      .order('sort_order');
+    
+    setLoadingRoadServices(false);
+    if (data) {
+      // Filter by car type if provided
+      const filtered = carType 
+        ? data.filter((rs: any) => rs.allowed_car_types?.includes(carType))
+        : data;
+      setRoadServices(filtered as RoadService[]);
+    }
+  };
+
+  // Fetch road service prices for a specific service and company
+  const fetchRoadServicePrice = async (roadServiceId: string, companyId: string, carType: string, ageBand: string) => {
+    const { data } = await supabase
+      .from('company_road_service_prices')
+      .select('*')
+      .eq('road_service_id', roadServiceId)
+      .eq('company_id', companyId)
+      .eq('car_type', carType as any)
+      .eq('age_band', ageBand as any)
+      .maybeSingle();
+    
+    return data?.company_cost || 0;
+  };
+
+  // Fetch companies for package add-ons
+  const fetchPackageCompanies = async () => {
+    // Fetch ROAD_SERVICE companies
+    const { data: roadServiceCompanies } = await supabase
+      .from('insurance_companies')
+      .select('id, name, name_ar, category_parent, elzami_commission')
+      .eq('active', true)
+      .eq('category_parent', 'ROAD_SERVICE')
+      .order('name');
+    
+    if (roadServiceCompanies) {
+      setPackageRoadServiceCompanies(roadServiceCompanies);
+    }
+
+    // Fetch ACCIDENT_FEE_EXEMPTION companies
+    const { data: accidentCompanies } = await supabase
+      .from('insurance_companies')
+      .select('id, name, name_ar, category_parent, elzami_commission')
+      .eq('active', true)
+      .eq('category_parent', 'ACCIDENT_FEE_EXEMPTION')
+      .order('name');
+    
+    if (accidentCompanies) {
+      setPackageAccidentCompanies(accidentCompanies);
+    }
+
+    // Fetch road services for package
+    const { data: services } = await supabase
+      .from('road_services')
+      .select('*')
+      .eq('active', true)
+      .order('sort_order');
+    
+    if (services) {
+      setPackageRoadServices(services as RoadService[]);
     }
   };
 
@@ -976,6 +1117,10 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
           if (policy.policy_type_parent === 'THIRD_FULL' && !policy.policy_type_child) {
             newErrors.policy_type_child = "النوع الفرعي مطلوب";
           }
+          // Road service required for ROAD_SERVICE policy type
+          if (policy.policy_type_parent === 'ROAD_SERVICE' && !policy.road_service_id) {
+            newErrors.road_service_id = "الرجاء اختيار خدمة الطريق";
+          }
           // Broker direction required when broker is selected
           if (policyBrokerId && policyBrokerId !== 'none' && !brokerDirection) {
             newErrors.broker_direction = "الرجاء اختيار نوع التعامل مع الوسيط";
@@ -1173,7 +1318,24 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
           ? (selectedCategory?.slug || 'OTHER') 
           : policy.policy_type_parent;
 
-        // Create policy
+        // Create policy group if package mode is enabled with add-ons
+        let groupId: string | null = null;
+        if (packageMode && (packageAddons[0].enabled || packageAddons[1].enabled)) {
+          const { data: groupData, error: groupError } = await supabase
+            .from('policy_groups')
+            .insert({
+              client_id: clientId,
+              car_id: carId || null,
+              name: `باقة - ${new Date().toLocaleDateString('ar-SA')}`,
+            })
+            .select()
+            .single();
+          
+          if (groupError) throw groupError;
+          groupId = groupData.id;
+        }
+
+        // Create main policy
         const { data: policyData, error: policyError } = await supabase
           .from('policies')
 .insert({
@@ -1196,12 +1358,69 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
             broker_direction: brokerDirection && policyBrokerId && policyBrokerId !== 'none' ? brokerDirection as any : null,
             category_id: selectedCategory?.id || null,
             branch_id: effectiveBranchId || null,
+            group_id: groupId,
+            road_service_id: policy.policy_type_parent === 'ROAD_SERVICE' ? policy.road_service_id : null,
           })
           .select()
           .single();
 
         if (policyError) throw policyError;
         policyId = policyData.id;
+
+        // Create add-on policies if package mode is enabled
+        if (groupId) {
+          const carType = (createNewCar ? newCar.car_type : (selectedCar?.car_type || existingCar?.car_type)) || 'car';
+          
+          // Road Service add-on
+          if (packageAddons[0].enabled && packageAddons[0].road_service_id && packageAddons[0].company_id) {
+            const rsPrice = parseFloat(packageAddons[0].insurance_price) || 0;
+            const companyCost = await fetchRoadServicePrice(
+              packageAddons[0].road_service_id,
+              packageAddons[0].company_id,
+              carType,
+              ageBand
+            );
+            
+            await supabase.from('policies').insert({
+              created_by_admin_id: user?.id || null,
+              client_id: clientId,
+              car_id: carId || null,
+              company_id: packageAddons[0].company_id,
+              policy_type_parent: 'ROAD_SERVICE' as any,
+              start_date: policy.start_date,
+              end_date: policy.end_date,
+              insurance_price: rsPrice,
+              is_under_24: isUnder24 || false,
+              profit: rsPrice - companyCost,
+              payed_for_company: companyCost,
+              company_cost_snapshot: companyCost,
+              branch_id: effectiveBranchId || null,
+              group_id: groupId,
+              road_service_id: packageAddons[0].road_service_id,
+            });
+          }
+          
+          // Accident Fee Exemption add-on
+          if (packageAddons[1].enabled && packageAddons[1].company_id) {
+            const afePrice = parseFloat(packageAddons[1].insurance_price) || 0;
+            
+            await supabase.from('policies').insert({
+              created_by_admin_id: user?.id || null,
+              client_id: clientId,
+              car_id: carId || null,
+              company_id: packageAddons[1].company_id,
+              policy_type_parent: 'ACCIDENT_FEE_EXEMPTION' as any,
+              start_date: policy.start_date,
+              end_date: policy.end_date,
+              insurance_price: afePrice,
+              is_under_24: isUnder24 || false,
+              profit: afePrice, // Full price as profit for now
+              payed_for_company: 0,
+              branch_id: effectiveBranchId || null,
+              group_id: groupId,
+            });
+          }
+        }
       }
 
       // Create payments that haven't been paid via Tranzila
@@ -2021,6 +2240,42 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
                       )}
                     </div>
                   )}
+
+                  {/* Road Service Dropdown - Only for ROAD_SERVICE policy type */}
+                  {!isLightMode && policy.policy_type_parent === 'ROAD_SERVICE' && (
+                    <div>
+                      <Label>خدمة الطريق *</Label>
+                      <Select
+                        value={policy.road_service_id}
+                        onValueChange={(v) => setPolicy({ ...policy, road_service_id: v })}
+                      >
+                        <SelectTrigger className={errors.road_service_id ? "border-destructive" : ""}>
+                          <SelectValue placeholder="اختر خدمة الطريق" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {loadingRoadServices ? (
+                            <div className="p-2 text-center text-sm text-muted-foreground">جاري التحميل...</div>
+                          ) : roadServices.length === 0 ? (
+                            <div className="p-2 text-center text-sm text-muted-foreground">
+                              لا توجد خدمات لنوع السيارة المحدد
+                            </div>
+                          ) : (
+                            roadServices.map(rs => (
+                              <SelectItem key={rs.id} value={rs.id}>
+                                {rs.name_ar || rs.name}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <FieldError error={errors.road_service_id} />
+                      {roadServices.length === 0 && !loadingRoadServices && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          تأكد من اختيار نوع السيارة الصحيح في الخطوة السابقة
+                        </p>
+                      )}
+                    </div>
+                  )}
                   
                   {/* Show selected category for LIGHT mode */}
                   {isLightMode && selectedCategory && (
@@ -2059,6 +2314,204 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
                       </Select>
                       <FieldError error={errors.company_id} />
                     </div>
+                  )}
+
+                  {/* Package Mode Toggle - Only for THIRD_FULL */}
+                  {!isLightMode && policy.policy_type_parent === 'THIRD_FULL' && (
+                    <Card className={cn(
+                      "p-4 transition-colors",
+                      packageMode ? "border-primary bg-primary/5" : "bg-secondary/30"
+                    )}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Package className="h-5 w-5 text-primary" />
+                          <div>
+                            <Label className="text-base font-medium">وضع الباقة</Label>
+                            <p className="text-sm text-muted-foreground">إضافة خدمات إضافية (خدمات الطريق، إعفاء رسوم حادث)</p>
+                          </div>
+                        </div>
+                        <Switch
+                          checked={packageMode}
+                          onCheckedChange={setPackageMode}
+                        />
+                      </div>
+
+                      {/* Package Add-ons */}
+                      {packageMode && (
+                        <div className="mt-4 space-y-4 pt-4 border-t">
+                          {/* Road Service Add-on */}
+                          <div className={cn(
+                            "p-3 rounded-lg border",
+                            packageAddons[0].enabled ? "border-primary bg-primary/5" : "bg-background"
+                          )}>
+                            <div className="flex items-center justify-between mb-3">
+                              <Label className="font-medium">خدمات الطريق</Label>
+                              <Switch
+                                checked={packageAddons[0].enabled}
+                                onCheckedChange={(checked) => {
+                                  const newAddons = [...packageAddons];
+                                  newAddons[0] = { ...newAddons[0], enabled: checked };
+                                  setPackageAddons(newAddons);
+                                }}
+                              />
+                            </div>
+                            {packageAddons[0].enabled && (
+                              <div className="space-y-3">
+                                <div>
+                                  <Label className="text-sm">الخدمة</Label>
+                                  <Select
+                                    value={packageAddons[0].road_service_id || ''}
+                                    onValueChange={(v) => {
+                                      const newAddons = [...packageAddons];
+                                      newAddons[0] = { ...newAddons[0], road_service_id: v };
+                                      setPackageAddons(newAddons);
+                                    }}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="اختر الخدمة" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {packageRoadServices
+                                        .filter(rs => {
+                                          const carType = createNewCar ? newCar.car_type : (selectedCar?.car_type || existingCar?.car_type);
+                                          return !carType || rs.allowed_car_types?.includes(carType);
+                                        })
+                                        .map(rs => (
+                                          <SelectItem key={rs.id} value={rs.id}>
+                                            {rs.name_ar || rs.name}
+                                          </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label className="text-sm">الشركة</Label>
+                                  <Select
+                                    value={packageAddons[0].company_id || ''}
+                                    onValueChange={(v) => {
+                                      const newAddons = [...packageAddons];
+                                      newAddons[0] = { ...newAddons[0], company_id: v };
+                                      setPackageAddons(newAddons);
+                                    }}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="اختر الشركة" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {packageRoadServiceCompanies.map(c => (
+                                        <SelectItem key={c.id} value={c.id}>{c.name_ar || c.name}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label className="text-sm">السعر (₪)</Label>
+                                  <Input
+                                    type="number"
+                                    value={packageAddons[0].insurance_price}
+                                    onChange={(e) => {
+                                      const newAddons = [...packageAddons];
+                                      newAddons[0] = { ...newAddons[0], insurance_price: e.target.value };
+                                      setPackageAddons(newAddons);
+                                    }}
+                                    placeholder="أدخل سعر خدمة الطريق"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Accident Fee Exemption Add-on */}
+                          <div className={cn(
+                            "p-3 rounded-lg border",
+                            packageAddons[1].enabled ? "border-primary bg-primary/5" : "bg-background"
+                          )}>
+                            <div className="flex items-center justify-between mb-3">
+                              <Label className="font-medium">إعفاء رسوم حادث</Label>
+                              <Switch
+                                checked={packageAddons[1].enabled}
+                                onCheckedChange={(checked) => {
+                                  const newAddons = [...packageAddons];
+                                  newAddons[1] = { ...newAddons[1], enabled: checked };
+                                  setPackageAddons(newAddons);
+                                }}
+                              />
+                            </div>
+                            {packageAddons[1].enabled && (
+                              <div className="space-y-3">
+                                <div>
+                                  <Label className="text-sm">الشركة</Label>
+                                  <Select
+                                    value={packageAddons[1].company_id || ''}
+                                    onValueChange={(v) => {
+                                      const newAddons = [...packageAddons];
+                                      newAddons[1] = { ...newAddons[1], company_id: v };
+                                      setPackageAddons(newAddons);
+                                    }}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="اختر الشركة" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {packageAccidentCompanies.map(c => (
+                                        <SelectItem key={c.id} value={c.id}>{c.name_ar || c.name}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label className="text-sm">السعر (₪)</Label>
+                                  <Input
+                                    type="number"
+                                    value={packageAddons[1].insurance_price}
+                                    onChange={(e) => {
+                                      const newAddons = [...packageAddons];
+                                      newAddons[1] = { ...newAddons[1], insurance_price: e.target.value };
+                                      setPackageAddons(newAddons);
+                                    }}
+                                    placeholder="أدخل سعر إعفاء الحادث"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Package Total Summary */}
+                          {(packageAddons[0].enabled || packageAddons[1].enabled) && (
+                            <Card className="p-3 bg-muted/50">
+                              <div className="space-y-2 text-sm">
+                                <div className="flex justify-between">
+                                  <span>سعر الوثيقة الأساسية:</span>
+                                  <span className="font-medium">₪{parseFloat(policy.insurance_price) || 0}</span>
+                                </div>
+                                {packageAddons[0].enabled && packageAddons[0].insurance_price && (
+                                  <div className="flex justify-between">
+                                    <span>خدمات الطريق:</span>
+                                    <span className="font-medium">₪{parseFloat(packageAddons[0].insurance_price) || 0}</span>
+                                  </div>
+                                )}
+                                {packageAddons[1].enabled && packageAddons[1].insurance_price && (
+                                  <div className="flex justify-between">
+                                    <span>إعفاء رسوم حادث:</span>
+                                    <span className="font-medium">₪{parseFloat(packageAddons[1].insurance_price) || 0}</span>
+                                  </div>
+                                )}
+                                <div className="flex justify-between pt-2 border-t font-semibold">
+                                  <span>المجموع:</span>
+                                  <span className="text-primary">
+                                    ₪{(
+                                      (parseFloat(policy.insurance_price) || 0) +
+                                      (packageAddons[0].enabled ? parseFloat(packageAddons[0].insurance_price) || 0 : 0) +
+                                      (packageAddons[1].enabled ? parseFloat(packageAddons[1].insurance_price) || 0 : 0)
+                                    ).toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+                            </Card>
+                          )}
+                        </div>
+                      )}
+                    </Card>
                   )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
