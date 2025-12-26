@@ -80,6 +80,7 @@ export interface PaymentLine {
   amount: number;
   payment_date: string;
   cheque_number?: string;
+  notes?: string;
   refused: boolean;
   tranzila_paid?: boolean;
   tranzila_transaction_id?: string;

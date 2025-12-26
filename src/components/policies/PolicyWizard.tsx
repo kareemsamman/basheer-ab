@@ -416,14 +416,14 @@ export function PolicyWizard({
                         newClient.under24_type === 'additional_driver';
 
       const profitData = await calculatePolicyProfit({
-        policyTypeParent: (selectedCategory?.slug || policy.policy_type_parent) as string,
-        policyTypeChild: policy.policy_type_child || null,
+        policyTypeParent: (selectedCategory?.slug || policy.policy_type_parent) as PolicyTypeParent,
+        policyTypeChild: (policy.policy_type_child || null) as PolicyTypeChild | null,
         companyId: policy.company_id,
-        carType: (selectedCar?.car_type || newCar.car_type || 'car') as string,
+        carType: (selectedCar?.car_type || newCar.car_type || 'car') as Database["public"]["Enums"]["car_type"],
+        ageBand: isUnder24 ? 'UNDER_24' : 'UP_24',
         carValue: selectedCar?.car_value || (newCar.car_value ? parseFloat(newCar.car_value) : null),
         carYear: selectedCar?.year || (newCar.year ? parseInt(newCar.year) : null),
         insurancePrice: pricing.totalPrice,
-        isUnder24,
       });
 
       // Create policy
@@ -559,7 +559,7 @@ export function PolicyWizard({
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" dir="rtl">
+        <DialogContent className="max-w-5xl w-[95vw] max-h-[95vh] overflow-hidden flex flex-col" dir="rtl">
           <DialogHeader className="flex-shrink-0 pb-4 border-b">
             <DialogTitle className="text-xl font-bold flex items-center gap-2">
               إضافة وثيقة جديدة
@@ -684,6 +684,7 @@ export function PolicyWizard({
                 remainingToPay={remainingToPay}
                 paymentsExceedPrice={paymentsExceedPrice}
                 errors={errors}
+                policyId={tempPolicyId || undefined}
               />
             )}
           </div>

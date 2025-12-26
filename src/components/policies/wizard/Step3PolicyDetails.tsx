@@ -507,14 +507,9 @@ export function Step3PolicyDetails({
           <ArabicDatePicker
             value={policy.end_date}
             onChange={(date) => setPolicy({ ...policy, end_date: date })}
-            min={getEndDateRange().min}
-            max={getEndDateRange().max}
             placeholder="اختر تاريخ النهاية"
             className={errors.end_date ? "border-destructive" : ""}
           />
-          <p className="text-xs text-muted-foreground mt-1">
-            يمكن تعديل ±3 أيام من التاريخ التلقائي
-          </p>
           <FieldError error={errors.end_date} />
         </div>
       </div>
