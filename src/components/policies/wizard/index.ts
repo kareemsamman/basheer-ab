@@ -8,3 +8,7 @@ export * from './CreateClientForm';
 export * from './ResetWarningDialog';
 export * from './PackageAddonsSection';
 export * from './usePolicyWizardState';
+export * from './Step1BranchTypeClient';
+export * from './Step2Car';
+export * from './Step3PolicyDetails';
+export * from './Step4Payments';
