@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -18,9 +18,9 @@ import { Trash2, Loader2 } from 'lucide-react';
 import type { Tables, Enums } from '@/integrations/supabase/types';
 
 type Company = Tables<'insurance_companies'>;
-type CompanyGroup = Tables<'insurance_company_groups'>;
+type PolicyTypeParent = Enums<'policy_type_parent'>;
 
-const POLICY_TYPES = [
+const POLICY_TYPES: { value: PolicyTypeParent; label: string }[] = [
   { value: "ELZAMI", label: "إلزامي" },
   { value: "THIRD_FULL", label: "ثالث/شامل" },
   { value: "ROAD_SERVICE", label: "خدمات الطريق" },
@@ -39,51 +39,42 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [groups, setGroups] = useState<CompanyGroup[]>([]);
   const [formData, setFormData] = useState({
     name: '',
     name_ar: '',
-    category_parent: '' as string,
+    category_parents: [] as PolicyTypeParent[],
     active: true,
     elzami_commission: 0,
-    group_id: '' as string,
   });
-
-  useEffect(() => {
-    if (open) {
-      fetchGroups();
-    }
-  }, [open]);
-
-  const fetchGroups = async () => {
-    const { data } = await supabase
-      .from('insurance_company_groups')
-      .select('*')
-      .order('display_name');
-    if (data) setGroups(data);
-  };
 
   useEffect(() => {
     if (company) {
       setFormData({
         name: company.name,
         name_ar: company.name_ar || '',
-        category_parent: company.category_parent || '',
+        category_parents: company.category_parent || [],
         active: company.active ?? true,
-        elzami_commission: (company as any).elzami_commission ?? 0,
-        group_id: company.group_id || '',
+        elzami_commission: company.elzami_commission ?? 0,
       });
     } else {
       setFormData({
         name: '',
         name_ar: '',
-        category_parent: '',
+        category_parents: [],
         active: true,
         elzami_commission: 0,
-        group_id: '',
       });
     }
   }, [company, open]);
+
+  const handleTypeToggle = (type: PolicyTypeParent, checked: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      category_parents: checked 
+        ? [...prev.category_parents, type]
+        : prev.category_parents.filter(t => t !== type)
+    }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,10 +88,10 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
       return;
     }
 
-    if (!formData.category_parent) {
+    if (formData.category_parents.length === 0) {
       toast({
         title: 'خطأ',
-        description: 'الرجاء اختيار نوع التأمين',
+        description: 'الرجاء اختيار نوع تأمين واحد على الأقل',
         variant: 'destructive',
       });
       return;
@@ -114,11 +105,10 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
           .update({
             name: formData.name.trim(),
             name_ar: formData.name_ar.trim() || null,
-            category_parent: formData.category_parent as Enums<'policy_type_parent'>,
+            category_parent: formData.category_parents,
             active: formData.active,
-            elzami_commission: formData.category_parent === 'ELZAMI' ? formData.elzami_commission : 0,
-            group_id: formData.group_id || null,
-          } as any)
+            elzami_commission: formData.category_parents.includes('ELZAMI') ? formData.elzami_commission : 0,
+          })
           .eq('id', company.id);
 
         if (error) throw error;
@@ -133,11 +123,10 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
           .insert({
             name: formData.name.trim(),
             name_ar: formData.name_ar.trim() || null,
-            category_parent: formData.category_parent as Enums<'policy_type_parent'>,
+            category_parent: formData.category_parents,
             active: formData.active,
-            elzami_commission: formData.category_parent === 'ELZAMI' ? formData.elzami_commission : 0,
-            group_id: formData.group_id || null,
-          } as any);
+            elzami_commission: formData.category_parents.includes('ELZAMI') ? formData.elzami_commission : 0,
+          });
 
         if (error) throw error;
 
@@ -263,49 +252,32 @@ export function CompanyDrawer({ open, onClose, company, onSuccess }: CompanyDraw
               />
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-right block">نوع التأمين *</Label>
-              <Select
-                value={formData.category_parent}
-                onValueChange={(v) => setFormData({ ...formData, category_parent: v })}
-              >
-                <SelectTrigger className="text-right">
-                  <SelectValue placeholder="اختر نوع التأمين" />
-                </SelectTrigger>
-                <SelectContent>
-                  {POLICY_TYPES.map(type => (
-                    <SelectItem key={type.value} value={type.value} className="text-right">{type.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Company Group Selector */}
-            <div className="space-y-2">
-              <Label className="text-right block">مجموعة الشركة</Label>
-              <Select
-                value={formData.group_id || "__none__"}
-                onValueChange={(v) => setFormData({ ...formData, group_id: v === "__none__" ? '' : v })}
-              >
-                <SelectTrigger className="text-right">
-                  <SelectValue placeholder="اختر المجموعة (اختياري)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">بدون مجموعة</SelectItem>
-                  {groups.map(group => (
-                    <SelectItem key={group.id} value={group.id} className="text-right">
-                      {group.display_name_ar || group.display_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-3">
+              <Label className="text-right block">أنواع التأمين *</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {POLICY_TYPES.map(type => (
+                  <div key={type.value} className="flex items-center gap-2">
+                    <Checkbox
+                      id={`type-${type.value}`}
+                      checked={formData.category_parents.includes(type.value)}
+                      onCheckedChange={(checked) => handleTypeToggle(type.value, checked as boolean)}
+                    />
+                    <Label 
+                      htmlFor={`type-${type.value}`} 
+                      className="text-sm cursor-pointer"
+                    >
+                      {type.label}
+                    </Label>
+                  </div>
+                ))}
+              </div>
               <p className="text-xs text-muted-foreground">
-                المجموعة تسمح بتجميع الشركات تحت علامة تجارية واحدة في التقارير
+                يمكنك اختيار أكثر من نوع تأمين للشركة الواحدة
               </p>
             </div>
 
-            {/* ELZAMI Commission Field - Only show when type is ELZAMI */}
-            {formData.category_parent === 'ELZAMI' && (
+            {/* ELZAMI Commission Field - Only show when type includes ELZAMI */}
+            {formData.category_parents.includes('ELZAMI') && (
               <div className="space-y-2">
                 <Label htmlFor="elzami_commission" className="text-right block">
                   العمولة (₪)

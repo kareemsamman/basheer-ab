@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      accident_fee_services: {
+        Row: {
+          active: boolean
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          name_ar: string | null
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          name_ar?: string | null
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          name_ar?: string | null
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       auth_settings: {
         Row: {
           created_at: string
@@ -367,6 +400,57 @@ export type Database = {
           },
         ]
       }
+      company_accident_fee_prices: {
+        Row: {
+          accident_fee_service_id: string
+          company_cost: number
+          company_id: string
+          created_at: string
+          effective_from: string | null
+          effective_to: string | null
+          id: string
+          notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          accident_fee_service_id: string
+          company_cost?: number
+          company_id: string
+          created_at?: string
+          effective_from?: string | null
+          effective_to?: string | null
+          id?: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          accident_fee_service_id?: string
+          company_cost?: number
+          company_id?: string
+          created_at?: string
+          effective_from?: string | null
+          effective_to?: string | null
+          id?: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_accident_fee_prices_accident_fee_service_id_fkey"
+            columns: ["accident_fee_service_id"]
+            isOneToOne: false
+            referencedRelation: "accident_fee_services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_accident_fee_prices_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       company_road_service_prices: {
         Row: {
           age_band: Database["public"]["Enums"]["age_band"]
@@ -582,11 +666,10 @@ export type Database = {
         Row: {
           active: boolean | null
           category_parent:
-            | Database["public"]["Enums"]["policy_type_parent"]
+            | Database["public"]["Enums"]["policy_type_parent"][]
             | null
           created_at: string
           elzami_commission: number | null
-          group_id: string | null
           id: string
           legacy_wp_id: number | null
           name: string
@@ -596,11 +679,10 @@ export type Database = {
         Insert: {
           active?: boolean | null
           category_parent?:
-            | Database["public"]["Enums"]["policy_type_parent"]
+            | Database["public"]["Enums"]["policy_type_parent"][]
             | null
           created_at?: string
           elzami_commission?: number | null
-          group_id?: string | null
           id?: string
           legacy_wp_id?: number | null
           name: string
@@ -610,26 +692,17 @@ export type Database = {
         Update: {
           active?: boolean | null
           category_parent?:
-            | Database["public"]["Enums"]["policy_type_parent"]
+            | Database["public"]["Enums"]["policy_type_parent"][]
             | null
           created_at?: string
           elzami_commission?: number | null
-          group_id?: string | null
           id?: string
           legacy_wp_id?: number | null
           name?: string
           name_ar?: string | null
           updated_at?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "insurance_companies_group_id_fkey"
-            columns: ["group_id"]
-            isOneToOne: false
-            referencedRelation: "insurance_company_groups"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       insurance_company_groups: {
         Row: {

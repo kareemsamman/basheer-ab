@@ -58,8 +58,9 @@ export default function Companies() {
         query = query.or(`name.ilike.%${searchQuery}%,name_ar.ilike.%${searchQuery}%`);
       }
 
+      // Filter by category_parent array contains
       if (typeFilter && typeFilter !== 'all') {
-        query = query.eq('category_parent', typeFilter as any);
+        query = query.contains('category_parent', [typeFilter]);
       }
 
       const { data, error } = await query;
@@ -212,18 +213,22 @@ export default function Companies() {
                     </TableCell>
                     <TableCell>{company.name}</TableCell>
                     <TableCell>
-                      {company.category_parent ? (
-                        <Badge variant="outline">
-                          {POLICY_TYPES.find(t => t.value === company.category_parent)?.label || company.category_parent}
-                        </Badge>
+                      {company.category_parent && company.category_parent.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {company.category_parent.map((type) => (
+                            <Badge key={type} variant="outline" className="text-xs">
+                              {POLICY_TYPES.find(t => t.value === type)?.label || type}
+                            </Badge>
+                          ))}
+                        </div>
                       ) : (
                         <span className="text-muted-foreground text-sm">غير محدد</span>
                       )}
                     </TableCell>
                     <TableCell>
-                      {company.category_parent === 'ELZAMI' ? (
-                        <span className={`font-medium ${((company as any).elzami_commission || 0) < 0 ? 'text-destructive' : 'text-success'}`}>
-                          ₪{((company as any).elzami_commission || 0).toLocaleString('ar-EG')}
+                      {company.category_parent?.includes('ELZAMI') ? (
+                        <span className={`font-medium ${(company.elzami_commission || 0) < 0 ? 'text-destructive' : 'text-success'}`}>
+                          ₪{(company.elzami_commission || 0).toLocaleString('ar-EG')}
                         </span>
                       ) : (
                         <span className="text-muted-foreground text-sm">-</span>
@@ -247,7 +252,7 @@ export default function Companies() {
                           <Settings className="h-4 w-4 ml-2" />
                           التسعير
                         </Button>
-                        {company.category_parent === 'ROAD_SERVICE' && (
+                        {company.category_parent?.includes('ROAD_SERVICE') && (
                           <Button
                             variant="outline"
                             size="sm"

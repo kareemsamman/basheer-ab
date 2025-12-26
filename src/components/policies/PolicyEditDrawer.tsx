@@ -59,7 +59,7 @@ interface Company {
   id: string;
   name: string;
   name_ar: string | null;
-  category_parent: string | null;
+  category_parent: string[] | null;
   elzami_commission: number | null;
 }
 
@@ -156,13 +156,14 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
       .eq('active', true)
       .order('name');
     
+    // Filter by category_parent array contains
     if (policyType) {
-      query = query.eq('category_parent', policyType as any);
+      query = query.contains('category_parent', [policyType]);
     }
     
     const { data } = await query;
     setLoadingCompanies(false);
-    if (data) setCompanies(data);
+    if (data) setCompanies(data as Company[]);
   };
 
   const fetchBrokers = async () => {
