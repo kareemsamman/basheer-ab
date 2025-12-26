@@ -79,10 +79,11 @@ serve(async (req) => {
     // Upload signature to Bunny CDN
     const bunnyApiKey = Deno.env.get("BUNNY_API_KEY");
     const bunnyStorageZone = Deno.env.get("BUNNY_STORAGE_ZONE");
-    const bunnyCdnUrl = Deno.env.get("BUNNY_CDN_URL");
+    // Hardcode CDN URL as the secret was misconfigured
+    const bunnyCdnUrl = 'https://basheer-ab.b-cdn.net';
 
-    if (!bunnyApiKey || !bunnyStorageZone || !bunnyCdnUrl) {
-      console.error("[submit-signature] Missing Bunny CDN configuration");
+    if (!bunnyApiKey || !bunnyStorageZone) {
+      console.error("[submit-signature] Missing Bunny configuration");
       return new Response(
         JSON.stringify({ error: "Storage configuration error" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
