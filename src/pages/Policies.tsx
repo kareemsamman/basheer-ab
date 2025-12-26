@@ -135,7 +135,7 @@ export default function Policies() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingPolicy, setDeletingPolicy] = useState<PolicyRecord | null>(null);
   const [recalculating, setRecalculating] = useState(false);
-  const [recalcProgress, setRecalcProgress] = useState({ done: 0, total: 0 });
+  const [recalcProgress, setRecalcProgress] = useState({ done: 0, total: 0, startTime: 0, avgTime: 0 });
 
   const fetchPolicies = useCallback(async () => {
     setLoading(true);
@@ -232,6 +232,7 @@ export default function Policies() {
 
   const handleRecalculateAll = async () => {
     setRecalculating(true);
+    const startTime = Date.now();
     try {
       // First, get the total count
       const { count: totalCount, error: countError } = await supabase
@@ -245,7 +246,7 @@ export default function Policies() {
         return;
       }
 
-      setRecalcProgress({ done: 0, total: totalCount });
+      setRecalcProgress({ done: 0, total: totalCount, startTime, avgTime: 0 });
 
       // Fetch all policy IDs in batches to avoid the 1000 limit
       const batchSize = 1000;
@@ -275,7 +276,16 @@ export default function Policies() {
         } else {
           errorCount++;
         }
-        setRecalcProgress({ done: i + 1, total: allPolicyIds.length });
+        
+        // Calculate average time and update progress
+        const elapsed = Date.now() - startTime;
+        const avgTime = elapsed / (i + 1);
+        setRecalcProgress({ 
+          done: i + 1, 
+          total: allPolicyIds.length, 
+          startTime, 
+          avgTime 
+        });
       }
 
       toast({
@@ -288,7 +298,7 @@ export default function Policies() {
       toast({ title: "خطأ", description: "فشل في إعادة حساب الأرباح", variant: "destructive" });
     } finally {
       setRecalculating(false);
-      setRecalcProgress({ done: 0, total: 0 });
+      setRecalcProgress({ done: 0, total: 0, startTime: 0, avgTime: 0 });
     }
   };
 
@@ -305,6 +315,22 @@ export default function Policies() {
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('ar-EG');
   };
+
+  // Format time remaining for recalculation
+  const formatTimeRemaining = () => {
+    if (!recalcProgress.avgTime || recalcProgress.done === 0) return '';
+    const remaining = recalcProgress.total - recalcProgress.done;
+    const msRemaining = remaining * recalcProgress.avgTime;
+    const seconds = Math.ceil(msRemaining / 1000);
+    if (seconds < 60) return `${seconds} ث`;
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${minutes}:${secs.toString().padStart(2, '0')} د`;
+  };
+
+  const percentComplete = recalcProgress.total > 0 
+    ? Math.round((recalcProgress.done / recalcProgress.total) * 100) 
+    : 0;
 
   const getStatus = (policy: PolicyRecord) => {
     if (policy.cancelled) return { label: "ملغاة", variant: "secondary" as const };
@@ -392,23 +418,36 @@ export default function Policies() {
               filters={filters} 
               onFiltersChange={(f) => { setFilters(f); setCurrentPage(1); }} 
             />
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={handleRecalculateAll}
-              disabled={recalculating}
-            >
-              <RefreshCw className={cn("ml-1 md:ml-2 h-4 w-4", recalculating && "animate-spin")} />
-              <span className="hidden sm:inline">
-                {recalculating 
-                  ? `إعادة حساب... (${recalcProgress.done}/${recalcProgress.total})`
-                  : "إعادة حساب الأرباح"
-                }
-              </span>
-              <span className="sm:hidden">
-                {recalculating ? `${recalcProgress.done}/${recalcProgress.total}` : "حساب"}
-              </span>
-            </Button>
+            {recalculating ? (
+              <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 rounded-lg border">
+                <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+                <div className="flex flex-col text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{percentComplete}%</span>
+                    <span className="text-muted-foreground">({recalcProgress.done}/{recalcProgress.total})</span>
+                  </div>
+                  {formatTimeRemaining() && (
+                    <span className="text-muted-foreground">متبقي: {formatTimeRemaining()}</span>
+                  )}
+                </div>
+                <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-primary transition-all duration-300" 
+                    style={{ width: `${percentComplete}%` }} 
+                  />
+                </div>
+              </div>
+            ) : (
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={handleRecalculateAll}
+              >
+                <RefreshCw className="ml-1 md:ml-2 h-4 w-4" />
+                <span className="hidden sm:inline">إعادة حساب الأرباح</span>
+                <span className="sm:hidden">حساب</span>
+              </Button>
+            )}
             <Button variant="outline" size="sm">
               <Download className="ml-1 md:ml-2 h-4 w-4" />
               <span className="hidden sm:inline">تصدير</span>
