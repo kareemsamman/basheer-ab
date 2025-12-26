@@ -41,8 +41,12 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [saving, setSaving] = useState(false);
 
-  // Branch
-  const [selectedBranchId, setSelectedBranchId] = useState<string>("");
+  // Branch - default to Beit Hanina for admin
+  const BEIT_HANINA_ID = "146727e4-170a-4f65-b3f8-679a9beb3016";
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(() => {
+    // Default to Beit Hanina for admin if it exists in branches
+    return isAdmin ? BEIT_HANINA_ID : "";
+  });
   const effectiveBranchId = isAdmin ? selectedBranchId : userBranchId;
 
   // Insurance Category
