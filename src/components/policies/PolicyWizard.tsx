@@ -97,11 +97,26 @@ interface CompanyRoadServicePrice {
   company_cost: number;
 }
 
+interface AccidentFeeService {
+  id: string;
+  name: string;
+  name_ar: string | null;
+  active: boolean;
+}
+
+interface CompanyAccidentFeePrice {
+  id: string;
+  company_id: string;
+  accident_fee_service_id: string;
+  company_cost: number;
+}
+
 // Package add-on interface
 interface PackageAddon {
   type: 'road_service' | 'accident_fee_exemption';
   enabled: boolean;
   road_service_id?: string;
+  accident_fee_service_id?: string;
   company_id?: string;
   insurance_price: string;
 }
@@ -247,6 +262,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
     transferred: false,
     notes: "",
     road_service_id: "", // For ROAD_SERVICE policy type
+    accident_fee_service_id: "", // For ACCIDENT_FEE_EXEMPTION policy type
   });
   const [loadingCompanies, setLoadingCompanies] = useState(false);
 
@@ -255,15 +271,21 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
   const [roadServicePrices, setRoadServicePrices] = useState<CompanyRoadServicePrice[]>([]);
   const [loadingRoadServices, setLoadingRoadServices] = useState(false);
 
+  // Accident Fee Services for ACCIDENT_FEE_EXEMPTION policy type
+  const [accidentFeeServices, setAccidentFeeServices] = useState<AccidentFeeService[]>([]);
+  const [accidentFeePrices, setAccidentFeePrices] = useState<CompanyAccidentFeePrice[]>([]);
+  const [loadingAccidentFeeServices, setLoadingAccidentFeeServices] = useState(false);
+
   // Package mode state (for THIRD_FULL with add-ons)
   const [packageMode, setPackageMode] = useState(false);
   const [packageAddons, setPackageAddons] = useState<PackageAddon[]>([
     { type: 'road_service', enabled: false, road_service_id: '', company_id: '', insurance_price: '' },
-    { type: 'accident_fee_exemption', enabled: false, company_id: '', insurance_price: '' },
+    { type: 'accident_fee_exemption', enabled: false, accident_fee_service_id: '', company_id: '', insurance_price: '' },
   ]);
   const [packageRoadServices, setPackageRoadServices] = useState<RoadService[]>([]);
   const [packageRoadServiceCompanies, setPackageRoadServiceCompanies] = useState<Company[]>([]);
   const [packageAccidentCompanies, setPackageAccidentCompanies] = useState<Company[]>([]);
+  const [packageAccidentFeeServices, setPackageAccidentFeeServices] = useState<AccidentFeeService[]>([]);
 
   // Step 4: Payments
   const [payments, setPayments] = useState<PaymentLine[]>([]);
@@ -329,7 +351,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
     setCreateNewCar(false);
     setNewClient({ full_name: "", id_number: "", phone_number: "", under24_type: "none", under24_driver_name: "", under24_driver_id: "", notes: "", broker_id: defaultBrokerId || "" });
     setNewCar({ car_number: "", manufacturer_name: "", model: "", year: "", color: "", car_type: "car", car_value: "", license_expiry: "" });
-    setPolicy({ policy_type_parent: "", policy_type_child: "", company_id: "", start_date: new Date().toISOString().split('T')[0], end_date: getInitialEndDate(), insurance_price: "", cancelled: false, transferred: false, notes: "", road_service_id: "" });
+    setPolicy({ policy_type_parent: "", policy_type_child: "", company_id: "", start_date: new Date().toISOString().split('T')[0], end_date: getInitialEndDate(), insurance_price: "", cancelled: false, transferred: false, notes: "", road_service_id: "", accident_fee_service_id: "" });
     setPayments([]);
     setInsuranceFiles([]);
     setCrmFiles([]);
@@ -342,7 +364,7 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
     setPackageMode(false);
     setPackageAddons([
       { type: 'road_service', enabled: false, road_service_id: '', company_id: '', insurance_price: '' },
-      { type: 'accident_fee_exemption', enabled: false, company_id: '', insurance_price: '' },
+      { type: 'accident_fee_exemption', enabled: false, accident_fee_service_id: '', company_id: '', insurance_price: '' },
     ]);
   };
 
@@ -545,6 +567,13 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
     }
   }, [policy.policy_type_parent, selectedCar, existingCar, newCar.car_type, createNewCar]);
 
+  // Fetch accident fee services when ACCIDENT_FEE_EXEMPTION policy type is selected
+  useEffect(() => {
+    if (policy.policy_type_parent === 'ACCIDENT_FEE_EXEMPTION') {
+      fetchAccidentFeeServices();
+    }
+  }, [policy.policy_type_parent]);
+
   // Fetch package companies when THIRD_FULL is selected and package mode is on
   useEffect(() => {
     if (policy.policy_type_parent === 'THIRD_FULL' && packageMode) {
@@ -730,6 +759,33 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
     return data?.company_cost || 0;
   };
 
+  // Fetch accident fee services for ACCIDENT_FEE_EXEMPTION policy type
+  const fetchAccidentFeeServices = async () => {
+    setLoadingAccidentFeeServices(true);
+    const { data } = await supabase
+      .from('accident_fee_services')
+      .select('*')
+      .eq('active', true)
+      .order('sort_order');
+    
+    setLoadingAccidentFeeServices(false);
+    if (data) {
+      setAccidentFeeServices(data as AccidentFeeService[]);
+    }
+  };
+
+  // Fetch accident fee service price for a specific service and company
+  const fetchAccidentFeePrice = async (accidentFeeServiceId: string, companyId: string) => {
+    const { data } = await supabase
+      .from('company_accident_fee_prices')
+      .select('*')
+      .eq('accident_fee_service_id', accidentFeeServiceId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    
+    return data?.company_cost || 0;
+  };
+
   // Fetch companies for package add-ons
   const fetchPackageCompanies = async () => {
     // Fetch ROAD_SERVICE companies (category_parent is now an array)
@@ -765,6 +821,17 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
     
     if (services) {
       setPackageRoadServices(services as RoadService[]);
+    }
+
+    // Fetch accident fee services for package
+    const { data: accidentServices } = await supabase
+      .from('accident_fee_services')
+      .select('*')
+      .eq('active', true)
+      .order('sort_order');
+    
+    if (accidentServices) {
+      setPackageAccidentFeeServices(accidentServices as AccidentFeeService[]);
     }
   };
 
@@ -2274,6 +2341,37 @@ export function PolicyWizard({ open, onOpenChange, onComplete, onSaved, defaultB
                           تأكد من اختيار نوع السيارة الصحيح في الخطوة السابقة
                         </p>
                       )}
+                    </div>
+                  )}
+
+                  {/* Accident Fee Service Dropdown - Only for ACCIDENT_FEE_EXEMPTION policy type */}
+                  {!isLightMode && policy.policy_type_parent === 'ACCIDENT_FEE_EXEMPTION' && (
+                    <div>
+                      <Label>خدمة إعفاء الحادث *</Label>
+                      <Select
+                        value={policy.accident_fee_service_id}
+                        onValueChange={(v) => setPolicy({ ...policy, accident_fee_service_id: v })}
+                      >
+                        <SelectTrigger className={errors.accident_fee_service_id ? "border-destructive" : ""}>
+                          <SelectValue placeholder="اختر نوع الإعفاء" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {loadingAccidentFeeServices ? (
+                            <div className="p-2 text-center text-sm text-muted-foreground">جاري التحميل...</div>
+                          ) : accidentFeeServices.length === 0 ? (
+                            <div className="p-2 text-center text-sm text-muted-foreground">
+                              لا توجد خدمات إعفاء
+                            </div>
+                          ) : (
+                            accidentFeeServices.map(afs => (
+                              <SelectItem key={afs.id} value={afs.id}>
+                                {afs.name_ar || afs.name}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <FieldError error={errors.accident_fee_service_id} />
                     </div>
                   )}
                   

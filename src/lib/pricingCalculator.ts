@@ -11,6 +11,7 @@ interface CalculateProfitParams {
   carYear: number | null;
   insurancePrice: number;
   roadServiceId?: string | null; // For ROAD_SERVICE policies
+  accidentFeeServiceId?: string | null; // For ACCIDENT_FEE_EXEMPTION policies
 }
 
 interface ProfitResult {
@@ -184,8 +185,28 @@ export async function calculatePolicyProfit(params: CalculateProfitParams): Prom
       }
     }
 
-    // ACCIDENT_FEE_EXEMPTION
+    // ACCIDENT_FEE_EXEMPTION - fetch from company_accident_fee_prices table
     if (policyTypeParent === 'ACCIDENT_FEE_EXEMPTION') {
+      const { accidentFeeServiceId } = params;
+      
+      if (accidentFeeServiceId) {
+        const { data: accidentFeePrice } = await supabase
+          .from('company_accident_fee_prices')
+          .select('company_cost')
+          .eq('company_id', companyId)
+          .eq('accident_fee_service_id', accidentFeeServiceId)
+          .maybeSingle();
+
+        if (accidentFeePrice) {
+          const companyPayment = accidentFeePrice.company_cost || 0;
+          return { companyPayment, profit: insurancePrice - companyPayment };
+        }
+        
+        // No pricing found = full profit
+        return { companyPayment: 0, profit: insurancePrice };
+      }
+      
+      // Fallback to old pricing_rules logic for backward compatibility
       const fixedPrice = getRuleValue('THIRD_PRICE', false, false);
       // If no rule, full profit
       if (fixedPrice === 0) {
