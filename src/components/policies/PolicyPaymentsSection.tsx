@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Pencil, Trash2, CreditCard, Loader2, ImageIcon, X, AlertCircle, Upload, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, CreditCard, Loader2, ImageIcon, X, AlertCircle, Upload, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal";
@@ -731,7 +731,39 @@ export function PolicyPaymentsSection({
               <Label htmlFor="refused-edit" className="cursor-pointer">راجع (مرفوض)</Label>
             </div>
           </div>
-          <DialogFooter className="gap-2">
+          <DialogFooter className="gap-2 flex-wrap">
+            {/* Mark as Returned button - only for cheques */}
+            {selectedPayment?.payment_type === 'cheque' && selectedPayment?.cheque_status !== 'returned' && (
+              <Button 
+                variant="destructive" 
+                onClick={async () => {
+                  if (!selectedPayment) return;
+                  setSaving(true);
+                  try {
+                    const { error } = await supabase
+                      .from('policy_payments')
+                      .update({ cheque_status: 'returned', refused: true })
+                      .eq('id', selectedPayment.id);
+                    if (error) throw error;
+                    toast({ title: "تم التحديث", description: "تم تحديد الشيك كمرتجع" });
+                    setEditDialogOpen(false);
+                    setSelectedPayment(null);
+                    resetForm();
+                    onPaymentsChange();
+                  } catch (error) {
+                    toast({ title: "خطأ", description: "فشل في تحديث الحالة", variant: "destructive" });
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                disabled={saving}
+                className="gap-2"
+              >
+                <RotateCcw className="h-4 w-4" />
+                تحديد كمرتجع
+              </Button>
+            )}
+            <div className="flex-1" />
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>إلغاء</Button>
             <Button onClick={handleEdit} disabled={saving || uploadingImages || !!validationError}>
               {(saving || uploadingImages) && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}

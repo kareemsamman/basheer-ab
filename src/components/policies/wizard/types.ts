@@ -75,6 +75,11 @@ export interface PackageAddon {
   insurance_price: string;
 }
 
+export interface PendingPaymentImages {
+  paymentId: string;
+  files: File[];
+}
+
 export interface PaymentLine {
   id: string;
   payment_type: string;
@@ -85,7 +90,7 @@ export interface PaymentLine {
   refused: boolean;
   tranzila_paid?: boolean;
   tranzila_transaction_id?: string;
-  pendingImages?: boolean; // Flag to indicate images are pending upload
+  pendingImages?: File[]; // Store actual files for upload
 }
 
 export interface ValidationErrors {

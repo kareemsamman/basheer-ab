@@ -35,10 +35,17 @@ import {
   ChevronRight,
   Eye,
   AlertCircle,
+  RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+
+interface PaymentImage {
+  id: string;
+  image_url: string;
+  image_type: string;
+}
 
 interface ChequeRecord {
   id: string;
@@ -57,6 +64,7 @@ interface ChequeRecord {
     car: { car_number: string } | null;
   } | null;
   broker_name?: string;
+  images?: PaymentImage[];
 }
 
 const statusLabels: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -78,6 +86,9 @@ export default function Cheques() {
   const pageSize = 25;
 
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [galleryImages, setGalleryImages] = useState<string[]>([]);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryIndex, setGalleryIndex] = useState(0);
 
   const fetchCheques = useCallback(async () => {
     setLoading(true);
@@ -112,6 +123,24 @@ export default function Cheques() {
       const { data, error, count } = await query;
 
       if (error) throw error;
+
+      // Get payment IDs to fetch images
+      const paymentIds = (data || []).map((c: any) => c.id);
+      
+      // Fetch payment images for all cheques
+      let imagesMap: Record<string, PaymentImage[]> = {};
+      if (paymentIds.length > 0) {
+        const { data: images } = await supabase
+          .from('payment_images')
+          .select('id, payment_id, image_url, image_type')
+          .in('payment_id', paymentIds);
+        
+        imagesMap = (images || []).reduce((acc, img) => {
+          if (!acc[img.payment_id]) acc[img.payment_id] = [];
+          acc[img.payment_id].push({ id: img.id, image_url: img.image_url, image_type: img.image_type });
+          return acc;
+        }, {} as Record<string, PaymentImage[]>);
+      }
 
       // Get broker names for cheques with broker_id
       const brokerIds = [...new Set(
@@ -152,6 +181,7 @@ export default function Cheques() {
         broker_name: c.policies?.clients?.broker_id 
           ? brokerMap[c.policies.clients.broker_id] 
           : undefined,
+        images: imagesMap[c.id] || [],
       }));
 
       // Filter by search query (client name)
@@ -307,25 +337,43 @@ export default function Cheques() {
                       style={{ animationDelay: `${index * 30}ms` }}
                     >
                       <TableCell>
-                        {cheque.cheque_image_url ? (
-                          <button
-                            onClick={() => setPreviewImage(cheque.cheque_image_url)}
-                            className="relative group"
-                          >
-                            <img
-                              src={cheque.cheque_image_url}
-                              alt="صورة الشيك"
-                              className="h-12 w-16 object-cover rounded border"
-                            />
-                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded flex items-center justify-center">
-                              <Eye className="h-4 w-4 text-white" />
-                            </div>
-                          </button>
-                        ) : (
-                          <div className="h-12 w-16 bg-muted rounded flex items-center justify-center text-xs text-muted-foreground">
-                            لا صورة
-                          </div>
-                        )}
+                        {(() => {
+                          const allImages = [
+                            cheque.cheque_image_url,
+                            ...(cheque.images?.map(i => i.image_url) || [])
+                          ].filter(Boolean);
+                          
+                          if (allImages.length === 0) {
+                            return (
+                              <div className="h-12 w-16 bg-muted rounded flex items-center justify-center text-xs text-muted-foreground">
+                                لا صورة
+                              </div>
+                            );
+                          }
+                          
+                          return (
+                            <button
+                              onClick={() => {
+                                setGalleryImages(allImages as string[]);
+                                setGalleryIndex(0);
+                                setGalleryOpen(true);
+                              }}
+                              className="relative group"
+                            >
+                              <img
+                                src={allImages[0]!}
+                                alt="صورة الشيك"
+                                className="h-12 w-16 object-cover rounded border"
+                              />
+                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded flex items-center justify-center gap-1">
+                                <Eye className="h-4 w-4 text-white" />
+                                {allImages.length > 1 && (
+                                  <span className="text-white text-xs font-bold">+{allImages.length - 1}</span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell className="font-medium">
                         {cheque.policy?.client?.full_name || "-"}
@@ -405,19 +453,44 @@ export default function Cheques() {
         </Card>
       </div>
 
-      {/* Image Preview Dialog */}
-      <Dialog open={!!previewImage} onOpenChange={() => setPreviewImage(null)}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>صورة الشيك</DialogTitle>
+      {/* Image Gallery Dialog */}
+      <Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
+        <DialogContent className="sm:max-w-3xl p-2">
+          <DialogHeader className="sr-only">
+            <DialogTitle>صور الشيك</DialogTitle>
           </DialogHeader>
-          {previewImage && (
-            <img
-              src={previewImage}
-              alt="صورة الشيك"
-              className="w-full h-auto rounded-lg"
-            />
-          )}
+          <div className="relative">
+            {galleryImages[galleryIndex] && (
+              <img
+                src={galleryImages[galleryIndex]}
+                alt={`صورة ${galleryIndex + 1}`}
+                className="w-full h-auto max-h-[70vh] object-contain rounded-lg"
+              />
+            )}
+            {galleryImages.length > 1 && (
+              <>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="absolute left-2 top-1/2 -translate-y-1/2"
+                  onClick={() => setGalleryIndex((i) => (i + 1) % galleryImages.length)}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="absolute right-2 top-1/2 -translate-y-1/2"
+                  onClick={() => setGalleryIndex((i) => (i - 1 + galleryImages.length) % galleryImages.length)}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/50 text-white text-xs px-2 py-1 rounded">
+                  {galleryIndex + 1} / {galleryImages.length}
+                </div>
+              </>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </MainLayout>

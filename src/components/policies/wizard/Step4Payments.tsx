@@ -28,10 +28,8 @@ interface Step4Props {
   tempPolicyId: string | null;
 }
 
-interface PendingImageData {
-  paymentId: string;
-  files: File[];
-  previewUrls: string[];
+interface PreviewUrls {
+  [paymentId: string]: string[];
 }
 
 export function Step4Payments({
@@ -54,8 +52,8 @@ export function Step4Payments({
   const [splitPopoverOpen, setSplitPopoverOpen] = useState(false);
   const [splitCount, setSplitCount] = useState(2);
   
-  // Image handling for cheques and transfers
-  const [paymentImages, setPaymentImages] = useState<Record<string, PendingImageData>>({});
+  // Preview URLs for payment images (separate from files stored in payment objects)
+  const [previewUrls, setPreviewUrls] = useState<PreviewUrls>({});
 
   const handleImageSelect = (paymentId: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -75,53 +73,47 @@ export function Step4Payments({
 
     if (validFiles.length === 0) return;
 
+    // Create preview URLs
     const newPreviewUrls = validFiles.map(file => URL.createObjectURL(file));
+    setPreviewUrls(prev => ({
+      ...prev,
+      [paymentId]: [...(prev[paymentId] || []), ...newPreviewUrls],
+    }));
     
-    setPaymentImages(prev => {
-      const existing = prev[paymentId] || { paymentId, files: [], previewUrls: [] };
-      return {
-        ...prev,
-        [paymentId]: {
-          paymentId,
-          files: [...existing.files, ...validFiles],
-          previewUrls: [...existing.previewUrls, ...newPreviewUrls],
-        },
-      };
-    });
-
-    // Also update the payment object with pending images reference
-    updatePayment(paymentId, 'pendingImages', true);
+    // Store files in payment object for later upload
+    const payment = payments.find(p => p.id === paymentId);
+    if (payment) {
+      const existingFiles = payment.pendingImages || [];
+      updatePayment(paymentId, 'pendingImages', [...existingFiles, ...validFiles]);
+    }
   };
 
   const removeImage = (paymentId: string, index: number) => {
-    setPaymentImages(prev => {
-      const existing = prev[paymentId];
-      if (!existing) return prev;
-
-      URL.revokeObjectURL(existing.previewUrls[index]);
-      
-      const newFiles = existing.files.filter((_, i) => i !== index);
-      const newPreviews = existing.previewUrls.filter((_, i) => i !== index);
-      
-      if (newFiles.length === 0) {
+    // Revoke preview URL
+    const urls = previewUrls[paymentId] || [];
+    if (urls[index]) {
+      URL.revokeObjectURL(urls[index]);
+    }
+    
+    // Update preview URLs
+    setPreviewUrls(prev => {
+      const newUrls = (prev[paymentId] || []).filter((_, i) => i !== index);
+      if (newUrls.length === 0) {
         const { [paymentId]: _, ...rest } = prev;
-        updatePayment(paymentId, 'pendingImages', false);
         return rest;
       }
-      
-      return {
-        ...prev,
-        [paymentId]: {
-          paymentId,
-          files: newFiles,
-          previewUrls: newPreviews,
-        },
-      };
+      return { ...prev, [paymentId]: newUrls };
     });
+    
+    // Update payment files
+    const payment = payments.find(p => p.id === paymentId);
+    if (payment && payment.pendingImages) {
+      const newFiles = payment.pendingImages.filter((_, i) => i !== index);
+      updatePayment(paymentId, 'pendingImages', newFiles.length > 0 ? newFiles : undefined);
+    }
   };
 
-  // Expose images data for parent to use when saving
-  const getPaymentImages = () => paymentImages;
+  const getPreviewUrls = (paymentId: string) => previewUrls[paymentId] || [];
 
   const addPayment = () => {
     setPayments([
@@ -430,7 +422,7 @@ export function Step4Payments({
                           </Label>
                           <div className="flex flex-wrap gap-2">
                             {/* Preview existing images */}
-                            {paymentImages[payment.id]?.previewUrls.map((url, imgIndex) => (
+                            {getPreviewUrls(payment.id).map((url, imgIndex) => (
                               <div key={imgIndex} className="relative group">
                                 <img 
                                   src={url} 
@@ -459,10 +451,10 @@ export function Step4Payments({
                               <span className="text-[10px] text-muted-foreground mt-0.5">إضافة</span>
                             </label>
                           </div>
-                          {paymentImages[payment.id]?.files.length > 0 && (
+                          {payment.pendingImages && payment.pendingImages.length > 0 && (
                             <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
                               <ImageIcon className="h-3 w-3" />
-                              {paymentImages[payment.id].files.length} صور سيتم رفعها عند الحفظ
+                              {payment.pendingImages.length} صور سيتم رفعها عند الحفظ
                             </p>
                           )}
                         </div>

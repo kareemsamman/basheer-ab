@@ -711,17 +711,58 @@ export function PolicyWizard({
             amount: p.amount,
             payment_date: p.payment_date,
             cheque_number: p.cheque_number || null,
+            cheque_status: p.payment_type === 'cheque' ? 'pending' : null,
             refused: p.refused || false,
             branch_id: effectiveBranchId || null,
             created_by_admin_id: user?.id || null,
           }));
 
         if (paymentInserts.length > 0) {
-          const { error: paymentsError } = await supabase
+          const { data: insertedPayments, error: paymentsError } = await supabase
             .from('policy_payments')
-            .insert(paymentInserts);
+            .insert(paymentInserts)
+            .select('id');
 
           if (paymentsError) throw paymentsError;
+
+          // Upload payment images
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.access_token && insertedPayments) {
+            for (let i = 0; i < nonVisaPayments.filter(p => p.payment_type !== 'visa').length; i++) {
+              const payment = nonVisaPayments.filter(p => p.payment_type !== 'visa')[i];
+              const insertedPayment = insertedPayments[i];
+              
+              if (payment.pendingImages && payment.pendingImages.length > 0 && insertedPayment) {
+                // Upload images in parallel
+                const uploadPromises = payment.pendingImages.map(async (file, imgIndex) => {
+                  const formData = new FormData();
+                  formData.append('file', file);
+                  formData.append('entity_type', 'payment');
+                  formData.append('entity_id', insertedPayment.id);
+                  if (effectiveBranchId) formData.append('branch_id', effectiveBranchId);
+
+                  try {
+                    const response = await fetch(
+                      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-media`,
+                      { method: 'POST', headers: { 'Authorization': `Bearer ${session.access_token}` }, body: formData }
+                    );
+                    if (response.ok) {
+                      const data = await response.json();
+                      await supabase.from('payment_images').insert({
+                        payment_id: insertedPayment.id,
+                        image_url: data.url,
+                        image_type: imgIndex === 0 ? 'front' : imgIndex === 1 ? 'back' : 'receipt',
+                        sort_order: imgIndex,
+                      });
+                    }
+                  } catch (e) {
+                    console.error('Payment image upload failed:', e);
+                  }
+                });
+                await Promise.all(uploadPromises);
+              }
+            }
+          }
         }
       }
 
