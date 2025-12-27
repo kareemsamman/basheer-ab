@@ -49,6 +49,7 @@ import { PolicyDetailsDrawer } from '@/components/policies/PolicyDetailsDrawer';
 import { PolicyWizard } from '@/components/policies/PolicyWizard';
 import { ClientDrawer } from '@/components/clients/ClientDrawer';
 import { ClientSignatureSection } from '@/components/clients/ClientSignatureSection';
+import { PolicyTreeView } from '@/components/clients/PolicyTreeView';
 import { ExpiryBadge } from '@/components/shared/ExpiryBadge';
 import { DebtIndicator } from '@/components/shared/DebtIndicator';
 import { cn } from '@/lib/utils';
@@ -102,6 +103,7 @@ interface PolicyRecord {
   insurance_price: number;
   profit: number | null;
   cancelled: boolean | null;
+  group_id: string | null;
   company: { name: string; name_ar: string | null } | null;
   car: { car_number: string } | null;
   creator: { full_name: string | null; email: string } | null;
@@ -245,7 +247,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
         .from('policies')
         .select(`
           id, policy_type_parent, policy_type_child, start_date, end_date, 
-          insurance_price, profit, cancelled,
+          insurance_price, profit, cancelled, group_id,
           company:insurance_companies(name, name_ar),
           car:cars(car_number),
           creator:profiles!policies_created_by_admin_id_fkey(full_name, email)
@@ -922,69 +924,11 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                   <Skeleton key={i} className="h-16 w-full" />
                 ))}
               </div>
-            ) : filteredPolicies.length === 0 ? (
-              <Card className="text-center py-12">
-                <FileText className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
-                <p className="text-muted-foreground">
-                  {policies.length === 0 ? 'لا توجد وثائق تأمين' : 'لا توجد نتائج مطابقة للبحث'}
-                </p>
-              </Card>
             ) : (
-              <Card className="overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead className="text-right">نوع التأمين</TableHead>
-                      <TableHead className="text-right">الشركة</TableHead>
-                      <TableHead className="text-right">السيارة</TableHead>
-                      <TableHead className="text-right">تاريخ البداية</TableHead>
-                      <TableHead className="text-right">تاريخ الانتهاء</TableHead>
-                      <TableHead className="text-right">السعر</TableHead>
-                      <TableHead className="text-right">أنشئ بواسطة</TableHead>
-                      <TableHead className="text-right">انتهاء</TableHead>
-                      <TableHead className="text-right">الحالة</TableHead>
-                      <TableHead className="text-center w-[60px]">عرض</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredPolicies.map((policy) => {
-                      const status = getPolicyStatus(policy);
-                      return (
-                        <TableRow 
-                          key={policy.id} 
-                          className="cursor-pointer hover:bg-muted/50 transition-colors"
-                          onClick={() => handlePolicyClick(policy.id)}
-                        >
-                          <TableCell>
-                            <Badge className={cn("border", policyTypeColors[policy.policy_type_parent])}>
-                              {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{policy.company?.name_ar || policy.company?.name || '-'}</TableCell>
-                          <TableCell className="font-mono">{policy.car?.car_number || '-'}</TableCell>
-                          <TableCell>{formatDate(policy.start_date)}</TableCell>
-                          <TableCell>{formatDate(policy.end_date)}</TableCell>
-                          <TableCell className="font-semibold">₪{policy.insurance_price.toLocaleString()}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {policy.creator?.full_name || policy.creator?.email || '-'}
-                          </TableCell>
-                          <TableCell>
-                            <ExpiryBadge endDate={policy.end_date} cancelled={policy.cancelled} />
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={status.variant}>{status.label}</Badge>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </Card>
+              <PolicyTreeView 
+                policies={filteredPolicies} 
+                onPolicyClick={handlePolicyClick} 
+              />
             )}
           </TabsContent>
 
