@@ -566,7 +566,13 @@ export default function Cheques() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
-        toast({ title: "خطأ", description: "يجب تسجيل الدخول أولاً", variant: "destructive" });
+        setUploading(false);
+        setUploadingForChequeId(null);
+        toast({ 
+          title: "تسجيل الدخول مطلوب", 
+          description: "يجب تسجيل الدخول أولاً لرفع الصور. يرجى تسجيل الدخول والمحاولة مرة أخرى.", 
+          variant: "destructive" 
+        });
         return;
       }
 
@@ -690,13 +696,21 @@ export default function Cheques() {
             {allImages.length > 0 ? (
               <button
                 onClick={() => {
-                  setGalleryImages(allImages);
+                  setGalleryImages(allImages.filter(url => url && url.trim()));
                   setGalleryIndex(0);
                   setGalleryOpen(true);
                 }}
                 className="relative group"
               >
-                <img src={allImages[0]} alt="صورة الشيك" className="h-10 w-14 object-cover rounded border" />
+                <img 
+                  src={allImages[0]} 
+                  alt="صورة الشيك" 
+                  className="h-10 w-14 object-cover rounded border"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                    (e.target as HTMLImageElement).parentElement!.innerHTML = '<div class="h-10 w-14 bg-muted rounded flex items-center justify-center text-[10px] text-muted-foreground">خطأ</div>';
+                  }}
+                />
                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded flex items-center justify-center gap-1">
                   <Eye className="h-3 w-3 text-white" />
                   {allImages.length > 1 && <span className="text-white text-[10px] font-bold">+{allImages.length - 1}</span>}
@@ -736,12 +750,19 @@ export default function Cheques() {
           </div>
         </TableCell>
         <TableCell>
-          <Badge variant={statusLabels[effectiveStatus]?.variant || 'secondary'}>
-            {statusLabels[effectiveStatus]?.label || effectiveStatus}
-          </Badge>
-          {effectiveStatus !== cheque.cheque_status && cheque.cheque_status === 'pending' && (
-            <Badge variant="outline" className="mr-1 text-[10px]">تلقائي</Badge>
-          )}
+          <div className="flex items-center gap-1 flex-wrap">
+            <Badge variant={statusLabels[effectiveStatus]?.variant || 'secondary'}>
+              {statusLabels[effectiveStatus]?.label || effectiveStatus}
+            </Badge>
+            {/* Show تلقائي badge if status was auto-changed (pending in DB but cashed now) */}
+            {effectiveStatus === 'cashed' && cheque.cheque_status === 'pending' && (
+              <Badge variant="outline" className="text-[10px] px-1 py-0 border-green-500/50 text-green-600">تلقائي</Badge>
+            )}
+            {/* Show يدوي badge if status was manually set to cashed */}
+            {effectiveStatus === 'cashed' && cheque.cheque_status === 'cashed' && (
+              <Badge variant="outline" className="text-[10px] px-1 py-0 border-blue-500/50 text-blue-600">يدوي</Badge>
+            )}
+          </div>
         </TableCell>
         <TableCell>
           <div className="flex items-center gap-1 flex-wrap">
@@ -779,6 +800,7 @@ export default function Cheques() {
                 </Button>
               </>
             )}
+            {/* Show صرف button if not cashed and not returned */}
             {cheque.cheque_status !== 'cashed' && cheque.cheque_status !== 'returned' && (
               <Button
                 variant="outline"
@@ -790,7 +812,8 @@ export default function Cheques() {
                 صرف
               </Button>
             )}
-            {cheque.cheque_status !== 'returned' && cheque.cheque_status !== 'cashed' && (
+            {/* Show مرتجع button if not already returned - allow even if cashed */}
+            {cheque.cheque_status !== 'returned' && (
               <Button
                 variant="outline"
                 size="sm"
@@ -1150,8 +1173,28 @@ export default function Cheques() {
             <DialogTitle>صور الشيك</DialogTitle>
           </DialogHeader>
           <div className="relative">
-            {galleryImages[galleryIndex] && (
-              <img src={galleryImages[galleryIndex]} alt={`صورة ${galleryIndex + 1}`} className="w-full h-auto max-h-[70vh] object-contain rounded-lg" />
+            {galleryImages[galleryIndex] ? (
+              <img 
+                src={galleryImages[galleryIndex]} 
+                alt={`صورة ${galleryIndex + 1}`} 
+                className="w-full h-auto max-h-[70vh] object-contain rounded-lg"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = '';
+                  (e.target as HTMLImageElement).alt = 'فشل في تحميل الصورة';
+                  (e.target as HTMLImageElement).className = 'hidden';
+                  const parent = (e.target as HTMLImageElement).parentElement;
+                  if (parent) {
+                    const fallback = document.createElement('div');
+                    fallback.className = 'w-full h-64 bg-muted rounded-lg flex items-center justify-center text-muted-foreground';
+                    fallback.textContent = 'فشل في تحميل الصورة';
+                    parent.insertBefore(fallback, e.target as HTMLImageElement);
+                  }
+                }}
+              />
+            ) : (
+              <div className="w-full h-64 bg-muted rounded-lg flex items-center justify-center text-muted-foreground">
+                لا توجد صورة
+              </div>
             )}
             {galleryImages.length > 1 && (
               <>
