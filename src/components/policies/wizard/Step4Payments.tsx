@@ -11,6 +11,7 @@ import { PaymentSummaryBar } from "./PaymentSummaryBar";
 import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
+import { sanitizeChequeNumber, CHEQUE_NUMBER_MAX_LENGTH } from "@/lib/chequeUtils";
 import type { PaymentLine, PricingBreakdown, ValidationErrors } from "./types";
 import { PAYMENT_TYPES } from "./types";
 
@@ -364,8 +365,9 @@ export function Step4Payments({
                       {payment.payment_type === 'cheque' && (
                         <Input
                           value={payment.cheque_number || ''}
-                          onChange={(e) => updatePayment(payment.id, 'cheque_number', e.target.value.replace(/[^0-9]/g, ''))}
+                          onChange={(e) => updatePayment(payment.id, 'cheque_number', sanitizeChequeNumber(e.target.value))}
                           placeholder="رقم الشيك"
+                          maxLength={CHEQUE_NUMBER_MAX_LENGTH}
                           className="h-9 flex-1 font-mono ltr-input"
                         />
                       )}

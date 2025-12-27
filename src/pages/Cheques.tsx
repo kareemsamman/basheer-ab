@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Header } from "@/components/layout/Header";
@@ -33,8 +33,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   Search,
-  Download,
   ChevronLeft,
   ChevronRight,
   Eye,
@@ -48,11 +52,15 @@ import {
   Edit,
   BarChart3,
   CheckSquare,
+  ChevronDown,
+  User,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { PolicyDetailsDrawer } from "@/components/policies/PolicyDetailsDrawer";
+import { sanitizeChequeNumber, CHEQUE_NUMBER_MAX_LENGTH, getEffectiveChequeStatus, isChequeOverdue } from "@/lib/chequeUtils";
 
 interface PaymentImage {
   id: string;
@@ -78,6 +86,16 @@ interface ChequeRecord {
   } | null;
   broker_name?: string;
   images?: PaymentImage[];
+}
+
+interface CustomerGroup {
+  customerId: string;
+  customerName: string;
+  phone: string | null;
+  cheques: ChequeRecord[];
+  totalAmount: number;
+  pendingAmount: number;
+  overdueCount: number;
 }
 
 interface MonthlyStats {
@@ -107,11 +125,11 @@ export default function Cheques() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [customerFilter, setCustomerFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<string>("date");
+  const [sortBy, setSortBy] = useState<string>("customer");
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const pageSize = 25;
+  const pageSize = 100; // Increased for tree view
 
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
   const [galleryOpen, setGalleryOpen] = useState(false);
@@ -131,6 +149,8 @@ export default function Cheques() {
     returnedTotal: 0,
     pendingCount: 0,
     pendingTotal: 0,
+    overdueCount: 0,
+    overdueTotal: 0,
   });
 
   // Monthly statistics
@@ -143,6 +163,7 @@ export default function Cheques() {
   // Edit cheque dialog
   const [editingCheque, setEditingCheque] = useState<ChequeRecord | null>(null);
   const [editChequeNumber, setEditChequeNumber] = useState("");
+  const [editChequeNumberError, setEditChequeNumberError] = useState<string | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   // SMS dialog for returned cheques
@@ -158,6 +179,45 @@ export default function Cheques() {
   const [policyDrawerOpen, setPolicyDrawerOpen] = useState(false);
   const [selectedPolicyId, setSelectedPolicyId] = useState<string | null>(null);
 
+  // Expanded customers in tree view
+  const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
+
+  // Group cheques by customer
+  const customerGroups = useMemo((): CustomerGroup[] => {
+    const groups: Record<string, CustomerGroup> = {};
+    
+    cheques.forEach(cheque => {
+      const customerId = cheque.policy?.client?.id || 'unknown';
+      const customerName = cheque.policy?.client?.full_name || 'غير معروف';
+      const phone = cheque.policy?.client?.phone_number || null;
+      
+      if (!groups[customerId]) {
+        groups[customerId] = {
+          customerId,
+          customerName,
+          phone,
+          cheques: [],
+          totalAmount: 0,
+          pendingAmount: 0,
+          overdueCount: 0,
+        };
+      }
+      
+      groups[customerId].cheques.push(cheque);
+      groups[customerId].totalAmount += cheque.amount;
+      
+      const effectiveStatus = getEffectiveChequeStatus(cheque.payment_date, cheque.cheque_status);
+      if (effectiveStatus === 'pending') {
+        groups[customerId].pendingAmount += cheque.amount;
+      }
+      if (isChequeOverdue(cheque.payment_date, cheque.cheque_status)) {
+        groups[customerId].overdueCount++;
+      }
+    });
+    
+    // Sort by customer name
+    return Object.values(groups).sort((a, b) => a.customerName.localeCompare(b.customerName, 'ar'));
+  }, [cheques]);
 
   // Fetch summary stats separately (not affected by filters)
   const fetchSummaryStats = useCallback(async () => {
@@ -170,12 +230,15 @@ export default function Cheques() {
       if (allCheques) {
         const returnedCheques = allCheques.filter(c => c.cheque_status === 'returned');
         const pendingCheques = allCheques.filter(c => c.cheque_status === 'pending' || !c.cheque_status);
+        const overdueCheques = allCheques.filter(c => isChequeOverdue(c.payment_date, c.cheque_status));
         
         setSummaryStats({
           returnedCount: returnedCheques.length,
           returnedTotal: returnedCheques.reduce((sum, c) => sum + Number(c.amount), 0),
           pendingCount: pendingCheques.length,
           pendingTotal: pendingCheques.reduce((sum, c) => sum + Number(c.amount), 0),
+          overdueCount: overdueCheques.length,
+          overdueTotal: overdueCheques.reduce((sum, c) => sum + Number(c.amount), 0),
         });
 
         // Calculate monthly stats
@@ -294,10 +357,12 @@ export default function Cheques() {
         images: imagesMap[c.id] || [],
       }));
 
+      // Search filter (includes customer name search)
       let filtered = searchQuery 
         ? formattedCheques.filter(c => 
             c.policy?.client?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            c.cheque_number?.includes(searchQuery)
+            c.cheque_number?.includes(searchQuery) ||
+            c.policy?.client?.phone_number?.includes(searchQuery)
           )
         : formattedCheques;
 
@@ -305,30 +370,28 @@ export default function Cheques() {
         filtered = filtered.filter(c => c.policy?.client?.id === customerFilter);
       }
 
-      if (sortBy === "customer") {
-        filtered.sort((a, b) => {
-          const nameA = a.policy?.client?.full_name || "";
-          const nameB = b.policy?.client?.full_name || "";
-          return nameA.localeCompare(nameB, 'ar');
-        });
-      }
-
+      // Build unique customers list
       const customers = [...new Map(
         formattedCheques
           .filter(c => c.policy?.client?.id && c.policy?.client?.full_name)
           .map(c => [c.policy!.client!.id, { id: c.policy!.client!.id, name: c.policy!.client!.full_name }])
       ).values()];
-      setUniqueCustomers(customers);
+      setUniqueCustomers(customers.sort((a, b) => a.name.localeCompare(b.name, 'ar')));
 
       setCheques(filtered);
       setTotalCount(count || 0);
+      
+      // Expand all customers by default if there are few
+      if (customers.length <= 10) {
+        setExpandedCustomers(new Set(customers.map(c => c.id)));
+      }
     } catch (error) {
       console.error('Error fetching cheques:', error);
       toast({ title: "خطأ", description: "فشل في تحميل الشيكات", variant: "destructive" });
     } finally {
       setLoading(false);
     }
-  }, [currentPage, statusFilter, overdueOnly, searchQuery, customerFilter, sortBy, toast]);
+  }, [currentPage, statusFilter, overdueOnly, searchQuery, customerFilter, toast]);
 
   useEffect(() => { fetchSummaryStats(); }, [fetchSummaryStats]);
   useEffect(() => { fetchCheques(); }, [fetchCheques]);
@@ -364,7 +427,6 @@ export default function Cheques() {
             toast({ title: "تم إرسال SMS", description: "تم إرسال إشعار للعميل بالشيك المرتجع" });
           } catch (smsError) {
             console.error('Failed to send auto SMS:', smsError);
-            // Don't fail the status change if SMS fails
           }
         }
       }
@@ -401,17 +463,34 @@ export default function Cheques() {
   const handleEditCheque = (cheque: ChequeRecord) => {
     setEditingCheque(cheque);
     setEditChequeNumber(cheque.cheque_number || "");
+    setEditChequeNumberError(null);
     setEditDialogOpen(true);
+  };
+
+  const handleEditChequeNumberChange = (value: string) => {
+    const sanitized = sanitizeChequeNumber(value);
+    setEditChequeNumber(sanitized);
+    if (!sanitized) {
+      setEditChequeNumberError("رقم الشيك مطلوب");
+    } else {
+      setEditChequeNumberError(null);
+    }
   };
 
   const saveEditedCheque = async () => {
     if (!editingCheque) return;
     
+    const sanitized = sanitizeChequeNumber(editChequeNumber);
+    if (!sanitized) {
+      setEditChequeNumberError("رقم الشيك مطلوب");
+      return;
+    }
+    
     try {
       const { error } = await supabase
         .from('policy_payments')
         .update({ 
-          cheque_number: editChequeNumber.replace(/\D/g, ''),
+          cheque_number: sanitized,
           cheque_status: 'pending',
           refused: false,
         })
@@ -479,38 +558,50 @@ export default function Cheques() {
     return date.toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' });
   };
 
-  const isOverdue = (dateStr: string, status: string | null) => {
-    const today = new Date();
-    const chequeDate = new Date(dateStr);
-    return chequeDate < today && status !== 'cashed';
-  };
-
+  // Use Bunny CDN for image upload instead of Supabase Storage
   const handleImageUpload = async (chequeId: string, files: FileList | null) => {
     if (!files || files.length === 0) return;
     
     setUploading(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        toast({ title: "خطأ", description: "يجب تسجيل الدخول أولاً", variant: "destructive" });
+        return;
+      }
+
       for (const file of Array.from(files)) {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `cheque_${chequeId}_${Date.now()}.${fileExt}`;
-        const filePath = `payments/${fileName}`;
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('entity_type', 'payment');
+        formData.append('entity_id', chequeId);
 
-        const { error: uploadError } = await supabase.storage.from('media').upload(filePath, file);
-
-        if (uploadError) {
-          if (uploadError.message.includes('not found')) {
-            await supabase.storage.createBucket('media', { public: true });
-            await supabase.storage.from('media').upload(filePath, file);
-          } else {
-            throw uploadError;
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-media`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+            body: formData,
           }
+        );
+
+        if (!response.ok) {
+          throw new Error('Upload failed');
         }
 
-        const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(filePath);
-
+        const data = await response.json();
+        
+        // Insert into payment_images table
         const { error: insertError } = await supabase
           .from('payment_images')
-          .insert({ payment_id: chequeId, image_url: publicUrl, image_type: 'cheque' });
+          .insert({ 
+            payment_id: chequeId, 
+            image_url: data.url, 
+            image_type: 'cheque',
+            sort_order: 0,
+          });
 
         if (insertError) throw insertError;
       }
@@ -544,7 +635,171 @@ export default function Cheques() {
     setSelectedCheques(newSelected);
   };
 
+  const toggleCustomerExpanded = (customerId: string) => {
+    const newExpanded = new Set(expandedCustomers);
+    if (newExpanded.has(customerId)) {
+      newExpanded.delete(customerId);
+    } else {
+      newExpanded.add(customerId);
+    }
+    setExpandedCustomers(newExpanded);
+  };
+
+  const expandAll = () => {
+    setExpandedCustomers(new Set(customerGroups.map(g => g.customerId)));
+  };
+
+  const collapseAll = () => {
+    setExpandedCustomers(new Set());
+  };
+
   const totalPages = Math.ceil(totalCount / pageSize);
+
+  const renderChequeRow = (cheque: ChequeRecord, index: number, isNested: boolean = false) => {
+    const effectiveStatus = getEffectiveChequeStatus(cheque.payment_date, cheque.cheque_status);
+    const isOverdueCheck = isChequeOverdue(cheque.payment_date, cheque.cheque_status);
+    const allImages = [
+      cheque.cheque_image_url,
+      ...(cheque.images?.map(i => i.image_url) || [])
+    ].filter(Boolean) as string[];
+    
+    return (
+      <TableRow
+        key={cheque.id}
+        className={cn(
+          "border-border/30 transition-colors",
+          isOverdueCheck && "bg-destructive/5",
+          selectedCheques.has(cheque.id) && "bg-primary/5",
+          isNested && "bg-muted/20"
+        )}
+      >
+        <TableCell className={cn(isNested && "pr-10")}>
+          <Checkbox
+            checked={selectedCheques.has(cheque.id)}
+            onCheckedChange={() => toggleSelectCheque(cheque.id)}
+          />
+        </TableCell>
+        <TableCell>
+          <div className="flex items-center gap-1">
+            {allImages.length > 0 ? (
+              <button
+                onClick={() => {
+                  setGalleryImages(allImages);
+                  setGalleryIndex(0);
+                  setGalleryOpen(true);
+                }}
+                className="relative group"
+              >
+                <img src={allImages[0]} alt="صورة الشيك" className="h-10 w-14 object-cover rounded border" />
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded flex items-center justify-center gap-1">
+                  <Eye className="h-3 w-3 text-white" />
+                  {allImages.length > 1 && <span className="text-white text-[10px] font-bold">+{allImages.length - 1}</span>}
+                </div>
+              </button>
+            ) : (
+              <div className="h-10 w-14 bg-muted rounded flex items-center justify-center text-[10px] text-muted-foreground">لا صورة</div>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              disabled={uploading && uploadingForChequeId === cheque.id}
+              onClick={() => { setUploadingForChequeId(cheque.id); fileInputRef.current?.click(); }}
+              title="رفع صورة"
+            >
+              {uploading && uploadingForChequeId === cheque.id ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Upload className="h-3 w-3" />
+              )}
+            </Button>
+          </div>
+        </TableCell>
+        <TableCell className="font-mono text-sm">
+          <bdi>{cheque.cheque_number || "-"}</bdi>
+        </TableCell>
+        <TableCell className="font-medium">
+          <bdi>{formatCurrency(cheque.amount)}</bdi>
+        </TableCell>
+        <TableCell className={cn(isOverdueCheck && "text-destructive font-medium")}>
+          <div className="flex items-center gap-1">
+            {formatDate(cheque.payment_date)}
+            {isOverdueCheck && (
+              <Badge variant="destructive" className="text-[10px] px-1 py-0">متأخر</Badge>
+            )}
+          </div>
+        </TableCell>
+        <TableCell>
+          <Badge variant={statusLabels[effectiveStatus]?.variant || 'secondary'}>
+            {statusLabels[effectiveStatus]?.label || effectiveStatus}
+          </Badge>
+          {effectiveStatus !== cheque.cheque_status && cheque.cheque_status === 'pending' && (
+            <Badge variant="outline" className="mr-1 text-[10px]">تلقائي</Badge>
+          )}
+        </TableCell>
+        <TableCell>
+          <div className="flex items-center gap-1 flex-wrap">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="h-6 text-[10px] px-2" 
+              onClick={() => {
+                setSelectedPolicyId(cheque.policy_id);
+                setPolicyDrawerOpen(true);
+              }}
+            >
+              <ExternalLink className="h-3 w-3 ml-1" />
+              الوثيقة
+            </Button>
+            {cheque.cheque_status === 'returned' && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 text-[10px] px-2"
+                  onClick={() => handleEditCheque(cheque)}
+                >
+                  <Edit className="h-3 w-3 ml-1" />
+                  تغيير الرقم
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 text-[10px] px-2 border-blue-500/50 text-blue-600 hover:bg-blue-500/10"
+                  onClick={() => openSmsDialog(cheque)}
+                >
+                  <MessageSquare className="h-3 w-3 ml-1" />
+                  SMS
+                </Button>
+              </>
+            )}
+            {cheque.cheque_status !== 'cashed' && cheque.cheque_status !== 'returned' && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 text-[10px] px-2 border-green-500/50 text-green-600 hover:bg-green-500/10"
+                onClick={() => handleStatusChange(cheque.id, 'cashed')}
+              >
+                <CheckCircle2 className="h-3 w-3 ml-1" />
+                صرف
+              </Button>
+            )}
+            {cheque.cheque_status !== 'returned' && cheque.cheque_status !== 'cashed' && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 text-[10px] px-2 border-destructive/50 text-destructive hover:bg-destructive/10"
+                onClick={() => handleStatusChange(cheque.id, 'returned')}
+              >
+                <RotateCcw className="h-3 w-3 ml-1" />
+                مرتجع
+              </Button>
+            )}
+          </div>
+        </TableCell>
+      </TableRow>
+    );
+  };
 
   return (
     <MainLayout>
@@ -552,7 +807,7 @@ export default function Cheques() {
 
       <div className="p-6 space-y-4">
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="p-4 border-destructive/30 bg-destructive/5">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-destructive/10">
@@ -573,8 +828,22 @@ export default function Cheques() {
                 <AlertCircle className="h-5 w-5 text-amber-500" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">شيكات قيد الانتظار</p>
+                <p className="text-xs text-muted-foreground">شيكات متأخرة</p>
                 <p className="text-xl font-bold text-amber-600 ltr-nums">
+                  {formatCurrency(summaryStats.overdueTotal)}
+                </p>
+                <p className="text-xs text-muted-foreground">{summaryStats.overdueCount} شيك</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="p-4 border-blue-500/30 bg-blue-500/5">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-blue-500/10">
+                <CheckSquare className="h-5 w-5 text-blue-500" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">قيد الانتظار</p>
+                <p className="text-xl font-bold text-blue-600 ltr-nums">
                   {formatCurrency(summaryStats.pendingTotal)}
                 </p>
                 <p className="text-xs text-muted-foreground">{summaryStats.pendingCount} شيك</p>
@@ -652,7 +921,7 @@ export default function Cheques() {
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="بحث بالعميل أو رقم الشيك..."
+                  placeholder="بحث بالعميل، رقم الشيك، أو رقم الهاتف..."
                   value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
                   className="pr-9"
@@ -671,7 +940,7 @@ export default function Cheques() {
                   </SelectContent>
                 </Select>
                 <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1); }}>
-                  <SelectTrigger className="w-[150px]">
+                  <SelectTrigger className="w-[130px]">
                     <SelectValue placeholder="الحالة" />
                   </SelectTrigger>
                   <SelectContent>
@@ -679,16 +948,6 @@ export default function Cheques() {
                     <SelectItem value="pending">قيد الانتظار</SelectItem>
                     <SelectItem value="cashed">تم صرفه</SelectItem>
                     <SelectItem value="returned">مرتجع</SelectItem>
-                    <SelectItem value="cancelled">ملغي</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={sortBy} onValueChange={(v) => { setSortBy(v); setCurrentPage(1); }}>
-                  <SelectTrigger className="w-[140px]">
-                    <SelectValue placeholder="ترتيب حسب" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="date">التاريخ</SelectItem>
-                    <SelectItem value="customer">العميل</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button 
@@ -696,9 +955,13 @@ export default function Cheques() {
                   size="sm"
                   onClick={() => { setOverdueOnly(!overdueOnly); setCurrentPage(1); }}
                 >
-                  <AlertCircle className="ml-2 h-4 w-4" />
+                  <AlertCircle className="ml-1 h-4 w-4" />
                   متأخرة
                 </Button>
+                <div className="flex gap-1">
+                  <Button variant="outline" size="sm" onClick={expandAll}>توسيع الكل</Button>
+                  <Button variant="outline" size="sm" onClick={collapseAll}>طي الكل</Button>
+                </div>
               </div>
             </div>
 
@@ -752,7 +1015,7 @@ export default function Cheques() {
               }}
             />
 
-            {/* Table */}
+            {/* Tree View Table */}
             <Card className="border shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
                 <Table>
@@ -764,14 +1027,12 @@ export default function Cheques() {
                           onCheckedChange={toggleSelectAll}
                         />
                       </TableHead>
-                      <TableHead className="text-muted-foreground font-medium w-[100px]">الصورة</TableHead>
-                      <TableHead className="text-muted-foreground font-medium">العميل</TableHead>
-                      <TableHead className="text-muted-foreground font-medium">الوسيط</TableHead>
+                      <TableHead className="text-muted-foreground font-medium w-[120px]">الصورة</TableHead>
                       <TableHead className="text-muted-foreground font-medium">رقم الشيك</TableHead>
                       <TableHead className="text-muted-foreground font-medium">المبلغ</TableHead>
                       <TableHead className="text-muted-foreground font-medium">تاريخ الاستحقاق</TableHead>
                       <TableHead className="text-muted-foreground font-medium">الحالة</TableHead>
-                      <TableHead className="text-muted-foreground font-medium w-[280px]">الإجراءات</TableHead>
+                      <TableHead className="text-muted-foreground font-medium w-[260px]">الإجراءات</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -779,158 +1040,77 @@ export default function Cheques() {
                       Array.from({ length: 5 }).map((_, i) => (
                         <TableRow key={i}>
                           <TableCell><Skeleton className="h-4 w-4" /></TableCell>
-                          <TableCell><Skeleton className="h-12 w-12" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                          <TableCell><Skeleton className="h-10 w-14" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                           <TableCell><Skeleton className="h-6 w-20" /></TableCell>
-                          <TableCell><Skeleton className="h-8 w-32" /></TableCell>
+                          <TableCell><Skeleton className="h-6 w-32" /></TableCell>
                         </TableRow>
                       ))
-                    ) : cheques.length === 0 ? (
+                    ) : customerGroups.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                           لا توجد شيكات
                         </TableCell>
                       </TableRow>
                     ) : (
-                      cheques.map((cheque, index) => (
-                        <TableRow
-                          key={cheque.id}
-                          className={cn(
-                            "border-border/30 transition-colors animate-fade-in",
-                            isOverdue(cheque.payment_date, cheque.cheque_status) && "bg-destructive/5",
-                            selectedCheques.has(cheque.id) && "bg-primary/5"
-                          )}
-                          style={{ animationDelay: `${index * 30}ms` }}
+                      customerGroups.map((group) => (
+                        <Collapsible 
+                          key={group.customerId} 
+                          open={expandedCustomers.has(group.customerId)}
+                          onOpenChange={() => toggleCustomerExpanded(group.customerId)}
+                          asChild
                         >
-                          <TableCell>
-                            <Checkbox
-                              checked={selectedCheques.has(cheque.id)}
-                              onCheckedChange={() => toggleSelectCheque(cheque.id)}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            {(() => {
-                              const allImages = [
-                                cheque.cheque_image_url,
-                                ...(cheque.images?.map(i => i.image_url) || [])
-                              ].filter(Boolean);
-                              
-                              return (
-                                <div className="flex items-center gap-1">
-                                  {allImages.length > 0 ? (
-                                    <button
-                                      onClick={() => {
-                                        setGalleryImages(allImages as string[]);
-                                        setGalleryIndex(0);
-                                        setGalleryOpen(true);
-                                      }}
-                                      className="relative group"
-                                    >
-                                      <img src={allImages[0]!} alt="صورة الشيك" className="h-12 w-16 object-cover rounded border" />
-                                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded flex items-center justify-center gap-1">
-                                        <Eye className="h-4 w-4 text-white" />
-                                        {allImages.length > 1 && <span className="text-white text-xs font-bold">+{allImages.length - 1}</span>}
+                          <>
+                            {/* Customer Header Row */}
+                            <TableRow className="bg-muted/50 hover:bg-muted/70 cursor-pointer border-b-2">
+                              <TableCell colSpan={7}>
+                                <CollapsibleTrigger asChild>
+                                  <div className="flex items-center justify-between w-full py-1">
+                                    <div className="flex items-center gap-3">
+                                      <ChevronDown className={cn(
+                                        "h-4 w-4 transition-transform",
+                                        !expandedCustomers.has(group.customerId) && "-rotate-90"
+                                      )} />
+                                      <User className="h-4 w-4 text-primary" />
+                                      <span className="font-semibold">{group.customerName}</span>
+                                      {group.phone && (
+                                        <span className="text-xs text-muted-foreground ltr-nums">({group.phone})</span>
+                                      )}
+                                      <Badge variant="outline" className="text-xs">
+                                        {group.cheques.length} شيك
+                                      </Badge>
+                                      {group.overdueCount > 0 && (
+                                        <Badge variant="destructive" className="text-xs">
+                                          {group.overdueCount} متأخر
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-4 text-sm">
+                                      <div>
+                                        <span className="text-muted-foreground">الإجمالي: </span>
+                                        <span className="font-bold ltr-nums">{formatCurrency(group.totalAmount)}</span>
                                       </div>
-                                    </button>
-                                  ) : (
-                                    <div className="h-12 w-16 bg-muted rounded flex items-center justify-center text-xs text-muted-foreground">لا صورة</div>
-                                  )}
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                    disabled={uploading}
-                                    onClick={() => { setUploadingForChequeId(cheque.id); fileInputRef.current?.click(); }}
-                                    title="رفع صورة"
-                                  >
-                                    <Upload className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              );
-                            })()}
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            <button className="hover:text-primary hover:underline text-right" onClick={() => setCustomerFilter(cheque.policy?.client?.id || "all")}>
-                              {cheque.policy?.client?.full_name || "-"}
-                            </button>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">{cheque.broker_name || "-"}</TableCell>
-                          <TableCell className="font-mono text-sm"><bdi>{cheque.cheque_number || "-"}</bdi></TableCell>
-                          <TableCell className="font-medium"><bdi>{formatCurrency(cheque.amount)}</bdi></TableCell>
-                          <TableCell className={cn(isOverdue(cheque.payment_date, cheque.cheque_status) && "text-destructive font-medium")}>
-                            {formatDate(cheque.payment_date)}
-                            {isOverdue(cheque.payment_date, cheque.cheque_status) && <Badge variant="destructive" className="mr-2 text-xs">متأخر</Badge>}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={statusLabels[cheque.cheque_status || 'pending']?.variant || 'secondary'}>
-                              {statusLabels[cheque.cheque_status || 'pending']?.label || cheque.cheque_status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1 flex-wrap">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-7 text-xs" 
-                                onClick={() => {
-                                  setSelectedPolicyId(cheque.policy_id);
-                                  setPolicyDrawerOpen(true);
-                                }}
-                              >
-                                <ExternalLink className="h-3 w-3 ml-1" />
-                                الوثيقة
-                              </Button>
-                              {cheque.cheque_status === 'returned' && (
-                                <>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-7 text-xs"
-                                    onClick={() => handleEditCheque(cheque)}
-                                  >
-                                    <Edit className="h-3 w-3 ml-1" />
-                                    تغيير الرقم
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-7 text-xs border-blue-500/50 text-blue-600 hover:bg-blue-500/10"
-                                    onClick={() => openSmsDialog(cheque)}
-                                  >
-                                    <MessageSquare className="h-3 w-3 ml-1" />
-                                    SMS
-                                  </Button>
-                                </>
-                              )}
-                              {cheque.cheque_status !== 'cashed' && cheque.cheque_status !== 'returned' && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 text-xs border-green-500/50 text-green-600 hover:bg-green-500/10"
-                                  onClick={() => handleStatusChange(cheque.id, 'cashed')}
-                                >
-                                  <CheckCircle2 className="h-3 w-3 ml-1" />
-                                  صرف
-                                </Button>
-                              )}
-                              {cheque.cheque_status !== 'returned' && cheque.cheque_status !== 'cashed' && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 text-xs border-destructive/50 text-destructive hover:bg-destructive/10"
-                                  onClick={() => handleStatusChange(cheque.id, 'returned')}
-                                >
-                                  <RotateCcw className="h-3 w-3 ml-1" />
-                                  مرتجع
-                                </Button>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
+                                      {group.pendingAmount > 0 && (
+                                        <div>
+                                          <span className="text-muted-foreground">قيد الانتظار: </span>
+                                          <span className="font-bold text-amber-600 ltr-nums">{formatCurrency(group.pendingAmount)}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </CollapsibleTrigger>
+                              </TableCell>
+                            </TableRow>
+                            {/* Cheques Rows */}
+                            <CollapsibleContent asChild>
+                              <>
+                                {group.cheques.map((cheque, index) => renderChequeRow(cheque, index, true))}
+                              </>
+                            </CollapsibleContent>
+                          </>
+                        </Collapsible>
                       ))
                     )}
                   </TableBody>
@@ -939,7 +1119,9 @@ export default function Cheques() {
 
               {/* Pagination */}
               <div className="flex items-center justify-between border-t border-border/30 px-4 py-3">
-                <p className="text-sm text-muted-foreground">عرض {cheques.length} من {totalCount} شيك</p>
+                <p className="text-sm text-muted-foreground">
+                  {customerGroups.length} عميل، {cheques.length} شيك من {totalCount}
+                </p>
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="sm" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((p) => p + 1)}>
                     <ChevronRight className="h-4 w-4" />
@@ -996,10 +1178,17 @@ export default function Cheques() {
               <Label>رقم الشيك الجديد</Label>
               <Input
                 value={editChequeNumber}
-                onChange={(e) => setEditChequeNumber(e.target.value.replace(/\D/g, ''))}
+                onChange={(e) => handleEditChequeNumberChange(e.target.value)}
                 placeholder="أدخل رقم الشيك الجديد"
-                className="ltr-input font-mono"
+                maxLength={CHEQUE_NUMBER_MAX_LENGTH}
+                className={cn("ltr-input font-mono", editChequeNumberError && "border-destructive")}
               />
+              {editChequeNumberError && (
+                <p className="text-xs text-destructive">{editChequeNumberError}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                الحد الأقصى: {CHEQUE_NUMBER_MAX_LENGTH} أرقام
+              </p>
             </div>
             <p className="text-xs text-muted-foreground">
               ملاحظة: سيتم إعادة حالة الشيك إلى "قيد الانتظار" بعد تغيير الرقم
@@ -1007,7 +1196,7 @@ export default function Cheques() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>إلغاء</Button>
-            <Button onClick={saveEditedCheque}>حفظ</Button>
+            <Button onClick={saveEditedCheque} disabled={!!editChequeNumberError || !editChequeNumber}>حفظ</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1036,7 +1225,8 @@ export default function Cheques() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setSmsDialogOpen(false)}>إلغاء</Button>
             <Button onClick={sendReturnedChequeSms} disabled={sendingSms || !smsCheque?.policy?.client?.phone_number}>
-              {sendingSms ? "جاري الإرسال..." : "إرسال SMS"}
+              {sendingSms ? <Loader2 className="h-4 w-4 animate-spin ml-2" /> : null}
+              إرسال
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1047,11 +1237,6 @@ export default function Cheques() {
         open={policyDrawerOpen}
         onOpenChange={setPolicyDrawerOpen}
         policyId={selectedPolicyId}
-        onUpdated={fetchCheques}
-        onViewRelatedPolicy={(policyId) => {
-          setSelectedPolicyId(policyId);
-          setPolicyDrawerOpen(true);
-        }}
       />
     </MainLayout>
   );
