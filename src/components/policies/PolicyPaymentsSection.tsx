@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal";
 import type { Enums } from "@/integrations/supabase/types";
+import { sanitizeChequeNumber, CHEQUE_NUMBER_MAX_LENGTH } from "@/lib/chequeUtils";
 
 interface PaymentImage {
   id: string;
@@ -197,10 +198,16 @@ export function PolicyPaymentsSection({
         
         if (error) throw error;
         
+        // Get the CDN URL from the response - upload-media returns { success, file: { cdn_url, ... } }
+        const cdnUrl = data.file?.cdn_url || data.url;
+        if (!cdnUrl) {
+          throw new Error('No URL returned from upload');
+        }
+        
         const imageType = i === 0 ? 'front' : i === 1 ? 'back' : 'receipt';
         await supabase.from('payment_images').insert({
           payment_id: paymentId,
-          image_url: data.url,
+          image_url: cdnUrl,
           image_type: imageType,
           sort_order: i,
         });
@@ -612,8 +619,9 @@ export function PolicyPaymentsSection({
                 <Label>رقم الشيك *</Label>
                 <Input
                   value={formData.cheque_number}
-                  onChange={(e) => setFormData(f => ({ ...f, cheque_number: e.target.value.replace(/[^0-9]/g, '') }))}
+                  onChange={(e) => setFormData(f => ({ ...f, cheque_number: sanitizeChequeNumber(e.target.value) }))}
                   placeholder="أدخل رقم الشيك"
+                  maxLength={CHEQUE_NUMBER_MAX_LENGTH}
                   className="font-mono ltr-input"
                 />
               </div>
@@ -689,7 +697,8 @@ export function PolicyPaymentsSection({
                 <Label>رقم الشيك *</Label>
                 <Input
                   value={formData.cheque_number}
-                  onChange={(e) => setFormData(f => ({ ...f, cheque_number: e.target.value.replace(/[^0-9]/g, '') }))}
+                  onChange={(e) => setFormData(f => ({ ...f, cheque_number: sanitizeChequeNumber(e.target.value) }))}
+                  maxLength={CHEQUE_NUMBER_MAX_LENGTH}
                   className="font-mono ltr-input"
                 />
               </div>

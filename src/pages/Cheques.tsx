@@ -593,12 +593,18 @@ export default function Cheques() {
 
         const data = await response.json();
         
+        // Get the CDN URL from the response - upload-media returns { success, file: { cdn_url, ... } }
+        const cdnUrl = data.file?.cdn_url || data.url;
+        if (!cdnUrl) {
+          throw new Error('No URL returned from upload');
+        }
+        
         // Insert into payment_images table
         const { error: insertError } = await supabase
           .from('payment_images')
           .insert({ 
             payment_id: chequeId, 
-            image_url: data.url, 
+            image_url: cdnUrl, 
             image_type: 'cheque',
             sort_order: 0,
           });
