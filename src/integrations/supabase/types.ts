@@ -1989,6 +1989,24 @@ export type Database = {
         Returns: boolean
       }
       is_active_user: { Args: { _user_id: string }; Returns: boolean }
+      report_client_debts: {
+        Args: {
+          p_filter_days?: number
+          p_limit?: number
+          p_offset?: number
+          p_search?: string
+        }
+        Returns: {
+          client_id: string
+          client_name: string
+          days_until_expiry: number
+          earliest_expiry: string
+          phone_number: string
+          policies_count: number
+          total_owed: number
+          total_rows: number
+        }[]
+      }
       report_company_settlement: {
         Args: {
           p_broker_id?: string
