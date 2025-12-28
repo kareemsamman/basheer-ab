@@ -87,11 +87,12 @@ export default function DebtTracking() {
         const client = policy.clients as any;
         if (!client) continue;
 
-        // Calculate paid and remaining
-        const paid = (policy.policy_payments || [])
-          .filter((p: any) => !p.refused)
-          .reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
-        const remaining = policy.insurance_price - paid;
+        // Calculate paid and remaining - only count non-refused payments
+        const payments = policy.policy_payments || [];
+        const paid = payments
+          .filter((p: any) => p.refused !== true) // Include null and false
+          .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+        const remaining = Number(policy.insurance_price) - paid;
 
         // Skip fully paid policies
         if (remaining <= 0) continue;
