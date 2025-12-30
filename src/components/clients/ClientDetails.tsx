@@ -115,6 +115,11 @@ interface PaymentSummary {
   total_profit: number;
 }
 
+interface WalletBalance {
+  total_refunds: number;
+  transaction_count: number;
+}
+
 interface PaymentRecord {
   id: string;
   amount: number;
@@ -179,6 +184,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [broker, setBroker] = useState<Broker | null>(null);
   const [paymentSummary, setPaymentSummary] = useState<PaymentSummary>({ total_paid: 0, total_remaining: 0, total_profit: 0 });
+  const [walletBalance, setWalletBalance] = useState<WalletBalance>({ total_refunds: 0, transaction_count: 0 });
   const [loadingCars, setLoadingCars] = useState(true);
   const [loadingPolicies, setLoadingPolicies] = useState(true);
   const [loadingPayments, setLoadingPayments] = useState(true);
@@ -303,6 +309,28 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
     }
   };
 
+  const fetchWalletBalance = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('customer_wallet_transactions')
+        .select('amount, transaction_type')
+        .eq('client_id', client.id);
+
+      if (error) throw error;
+
+      const totalRefunds = (data || [])
+        .filter(t => t.transaction_type === 'refund')
+        .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+      setWalletBalance({
+        total_refunds: totalRefunds,
+        transaction_count: data?.length || 0,
+      });
+    } catch (error) {
+      console.error('Error fetching wallet balance:', error);
+    }
+  };
+
   const fetchPayments = async () => {
     setLoadingPayments(true);
     try {
@@ -349,6 +377,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
     fetchBroker();
     fetchPaymentSummary();
     fetchPayments();
+    fetchWalletBalance();
     setNotesValue(client.notes || '');
   }, [client.id]);
 
@@ -659,7 +688,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
         </Card>
 
         {/* Financial Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="p-4 flex items-center gap-4">
             <div className="h-12 w-12 rounded-xl bg-success/10 flex items-center justify-center shrink-0">
               <Wallet className="h-6 w-6 text-success" />
@@ -696,6 +725,20 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
               <p className="text-xl font-bold text-primary">₪{paymentSummary.total_profit.toLocaleString()}</p>
             </div>
           </Card>
+
+          {/* Wallet Balance - Show refunds owed to customer */}
+          {walletBalance.total_refunds > 0 && (
+            <Card className="p-4 flex items-center gap-4 border-amber-500/30 bg-amber-500/5">
+              <div className="h-12 w-12 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
+                <Banknote className="h-6 w-6 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-xs text-amber-700">مرتجع للعميل</p>
+                <p className="text-xl font-bold text-amber-600">₪{walletBalance.total_refunds.toLocaleString()}</p>
+                <p className="text-[10px] text-amber-600/70">نحن مدينون للعميل بهذا المبلغ</p>
+              </div>
+            </Card>
+          )}
         </div>
 
         {/* Tabs */}

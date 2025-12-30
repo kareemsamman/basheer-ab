@@ -681,6 +681,74 @@ export type Database = {
           },
         ]
       }
+      customer_wallet_transactions: {
+        Row: {
+          amount: number
+          branch_id: string | null
+          client_id: string
+          created_at: string
+          created_by_admin_id: string | null
+          description: string | null
+          id: string
+          notes: string | null
+          policy_id: string | null
+          transaction_type: string
+        }
+        Insert: {
+          amount: number
+          branch_id?: string | null
+          client_id: string
+          created_at?: string
+          created_by_admin_id?: string | null
+          description?: string | null
+          id?: string
+          notes?: string | null
+          policy_id?: string | null
+          transaction_type?: string
+        }
+        Update: {
+          amount?: number
+          branch_id?: string | null
+          client_id?: string
+          created_at?: string
+          created_by_admin_id?: string | null
+          description?: string | null
+          id?: string
+          notes?: string | null
+          policy_id?: string | null
+          transaction_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_wallet_transactions_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_wallet_transactions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_wallet_transactions_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_wallet_transactions_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "policies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       import_progress: {
         Row: {
           created_at: string
@@ -1295,7 +1363,10 @@ export type Database = {
             | null
           broker_id: string | null
           calc_status: string | null
+          cancellation_date: string | null
+          cancellation_note: string | null
           cancelled: boolean | null
+          cancelled_by_admin_id: string | null
           car_id: string | null
           category_id: string | null
           client_id: string
@@ -1332,7 +1403,10 @@ export type Database = {
             | null
           broker_id?: string | null
           calc_status?: string | null
+          cancellation_date?: string | null
+          cancellation_note?: string | null
           cancelled?: boolean | null
+          cancelled_by_admin_id?: string | null
           car_id?: string | null
           category_id?: string | null
           client_id: string
@@ -1369,7 +1443,10 @@ export type Database = {
             | null
           broker_id?: string | null
           calc_status?: string | null
+          cancellation_date?: string | null
+          cancellation_note?: string | null
           cancelled?: boolean | null
+          cancelled_by_admin_id?: string | null
           car_id?: string | null
           category_id?: string | null
           client_id?: string
@@ -1412,6 +1489,13 @@ export type Database = {
             columns: ["broker_id"]
             isOneToOne: false
             referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policies_cancelled_by_admin_id_fkey"
+            columns: ["cancelled_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -1852,6 +1936,7 @@ export type Database = {
       }
       sms_settings: {
         Row: {
+          cancellation_sms_template: string | null
           created_at: string
           default_ab_invoice_template_id: string | null
           default_insurance_invoice_template_id: string | null
@@ -1871,6 +1956,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          cancellation_sms_template?: string | null
           created_at?: string
           default_ab_invoice_template_id?: string | null
           default_insurance_invoice_template_id?: string | null
@@ -1890,6 +1976,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          cancellation_sms_template?: string | null
           created_at?: string
           default_ab_invoice_template_id?: string | null
           default_insurance_invoice_template_id?: string | null

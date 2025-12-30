@@ -34,6 +34,7 @@ import { PolicyEditDrawer } from "./PolicyEditDrawer";
 import { PolicyPaymentsSection } from "./PolicyPaymentsSection";
 import { PolicyFilesSection } from "./PolicyFilesSection";
 import { PolicyInvoicesSection } from "./PolicyInvoicesSection";
+import { CancelPolicyModal } from "./CancelPolicyModal";
 
 interface PolicyDetailsDrawerProps {
   open: boolean;
@@ -58,6 +59,8 @@ interface PolicyDetails {
   transferred_car_number: string | null;
   is_under_24: boolean | null;
   notes: string | null;
+  cancellation_note: string | null;
+  cancellation_date: string | null;
   legacy_wp_id: number | null;
   created_at: string;
   updated_at: string;
@@ -65,6 +68,7 @@ interface PolicyDetails {
   created_by_admin_id: string | null;
   group_id: string | null;
   road_service_id: string | null;
+  branch_id: string | null;
   clients: {
     id: string;
     full_name: string;
@@ -181,6 +185,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
   const [policy, setPolicy] = useState<PolicyDetails | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [editOpen, setEditOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("insurance");
   const [showQuickPayment, setShowQuickPayment] = useState(false);
   const [creatorName, setCreatorName] = useState<string | null>(null);
@@ -462,6 +467,17 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                       <Pencil className="h-4 w-4 ml-1" />
                       تعديل
                     </Button>
+                    {!policy.cancelled && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => setCancelOpen(true)}
+                      >
+                        <XCircle className="h-4 w-4 ml-1" />
+                        إلغاء
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -564,6 +580,26 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                     <p className="text-xs text-destructive/70 mt-2">
                       هذا المبلغ مخصوم من رصيد العميل ويجب تحصيله
                     </p>
+                  </div>
+                )}
+
+                {/* Cancellation Info */}
+                {policy.cancelled && (
+                  <div className="mt-4 bg-destructive/10 rounded-xl p-4 border border-destructive/20 shadow-sm">
+                    <div className="flex items-center gap-2 mb-2">
+                      <XCircle className="h-4 w-4 text-destructive" />
+                      <span className="text-sm font-semibold text-destructive">وثيقة ملغاة</span>
+                      {policy.cancellation_date && (
+                        <Badge variant="outline" className="text-xs mr-auto">
+                          {formatDate(policy.cancellation_date)}
+                        </Badge>
+                      )}
+                    </div>
+                    {policy.cancellation_note && (
+                      <p className="text-sm text-destructive/80 mt-2 whitespace-pre-wrap">
+                        {policy.cancellation_note}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -889,7 +925,21 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
       </Dialog>
 
       {policy && (
-        <PolicyEditDrawer open={editOpen} onOpenChange={setEditOpen} policy={policy} onSaved={handleEditComplete} />
+        <>
+          <PolicyEditDrawer open={editOpen} onOpenChange={setEditOpen} policy={policy} onSaved={handleEditComplete} />
+          <CancelPolicyModal
+            open={cancelOpen}
+            onOpenChange={setCancelOpen}
+            policyId={policy.id}
+            policyNumber={policy.policy_number}
+            clientId={policy.clients.id}
+            clientName={policy.clients.full_name}
+            clientPhone={policy.clients.phone_number}
+            branchId={policy.branch_id}
+            insurancePrice={policy.insurance_price}
+            onCancelled={handleEditComplete}
+          />
+        </>
       )}
     </>
   );
