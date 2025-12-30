@@ -50,6 +50,7 @@ import { PolicyWizard } from '@/components/policies/PolicyWizard';
 import { ClientDrawer } from '@/components/clients/ClientDrawer';
 import { ClientSignatureSection } from '@/components/clients/ClientSignatureSection';
 import { PolicyTreeView } from '@/components/clients/PolicyTreeView';
+import { CarFilterChips } from '@/components/clients/CarFilterChips';
 import { ExpiryBadge } from '@/components/shared/ExpiryBadge';
 import { DebtIndicator } from '@/components/shared/DebtIndicator';
 import { cn } from '@/lib/utils';
@@ -932,38 +933,44 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
           <TabsContent value="policies" className="mt-6 space-y-4">
             {/* Header with Add Button */}
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="font-semibold text-lg">وثائق التأمين</h3>
+              <div>
+                <h3 className="font-semibold text-lg">وثائق التأمين</h3>
+                <p className="text-sm text-muted-foreground">{policies.length} وثيقة مسجلة</p>
+              </div>
               <Button onClick={() => setPolicyWizardOpen(true)}>
                 <Plus className="h-4 w-4 ml-2" />
                 إضافة وثيقة جديدة
               </Button>
             </div>
             
-            {/* Filters */}
+            {/* Car Filter Chips - Visual car selector */}
+            {cars.length > 0 && (
+              <Card className="p-4">
+                <p className="text-sm font-medium mb-3 flex items-center gap-2">
+                  <Car className="h-4 w-4 text-primary" />
+                  فلترة حسب السيارة
+                </p>
+                <CarFilterChips
+                  cars={cars}
+                  policies={policies}
+                  selectedCarId={policyCarFilter}
+                  onSelect={setPolicyCarFilter}
+                />
+              </Card>
+            )}
+            
+            {/* Additional Filters */}
             <Card className="p-4">
               <div className="flex flex-wrap gap-3">
                 <div className="relative flex-1 min-w-[200px]">
                   <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="بحث برقم الوثيقة، الشركة، السيارة..."
+                    placeholder="بحث برقم الوثيقة، الشركة..."
                     value={policySearch}
                     onChange={(e) => setPolicySearch(e.target.value)}
                     className="pr-10"
                   />
                 </div>
-                <Select value={policyCarFilter} onValueChange={setPolicyCarFilter}>
-                  <SelectTrigger className="w-[160px]">
-                    <SelectValue placeholder="السيارة" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">كل السيارات</SelectItem>
-                    {cars.map(car => (
-                      <SelectItem key={car.id} value={car.id}>
-                        {car.car_number} {car.model ? `- ${car.model}` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
                 <Select value={policyTypeFilter} onValueChange={setPolicyTypeFilter}>
                   <SelectTrigger className="w-[160px]">
                     <SelectValue placeholder="نوع التأمين" />
@@ -993,11 +1000,27 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
             </Card>
 
             {loadingPolicies ? (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {[...Array(3)].map((_, i) => (
-                  <Skeleton key={i} className="h-16 w-full" />
+                  <Skeleton key={i} className="h-24 w-full rounded-xl" />
                 ))}
               </div>
+            ) : filteredPolicies.length === 0 ? (
+              <Card className="text-center py-12">
+                <FileText className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
+                <p className="text-muted-foreground">
+                  {policies.length > 0 ? 'لا توجد وثائق تطابق معايير البحث' : 'لا توجد وثائق تأمين'}
+                </p>
+                {policyCarFilter !== 'all' && (
+                  <Button 
+                    variant="link" 
+                    onClick={() => setPolicyCarFilter('all')}
+                    className="mt-2"
+                  >
+                    إظهار كل السيارات
+                  </Button>
+                )}
+              </Card>
             ) : (
               <PolicyTreeView 
                 policies={filteredPolicies} 

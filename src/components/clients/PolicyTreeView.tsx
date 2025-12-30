@@ -10,7 +10,11 @@ import {
   Package,
   FileText,
   Car,
-  Zap
+  Zap,
+  Calendar,
+  Building2,
+  ArrowUpDown,
+  Hash
 } from 'lucide-react';
 import { ExpiryBadge } from '@/components/shared/ExpiryBadge';
 import { cn } from '@/lib/utils';
@@ -63,6 +67,19 @@ const policyTypeColors: Record<string, string> = {
   OTHER: 'bg-gray-500/10 text-gray-600 border-gray-500/20',
 };
 
+const policyTypeIcons: Record<string, string> = {
+  ELZAMI: '🛡️',
+  THIRD_FULL: '🚗',
+  ROAD_SERVICE: '🛣️',
+  ACCIDENT_FEE_EXEMPTION: '💰',
+  HEALTH: '🏥',
+  LIFE: '❤️',
+  PROPERTY: '🏠',
+  TRAVEL: '✈️',
+  BUSINESS: '💼',
+  OTHER: '📄',
+};
+
 // Main policy types (parents)
 const MAIN_POLICY_TYPES = ['ELZAMI', 'THIRD_FULL', 'HEALTH', 'LIFE', 'PROPERTY', 'TRAVEL', 'BUSINESS', 'OTHER'];
 // Add-on types (children)
@@ -74,12 +91,12 @@ const formatDate = (dateStr: string | null) => {
 };
 
 const getPolicyStatus = (policy: PolicyRecord) => {
-  if (policy.cancelled) return { label: 'ملغاة', variant: 'destructive' as const, isActive: false, priority: 4 };
-  if (policy.transferred) return { label: 'محولة', variant: 'warning' as const, isActive: false, priority: 3 };
+  if (policy.cancelled) return { label: 'ملغاة', variant: 'destructive' as const, isActive: false, priority: 4, color: 'text-destructive' };
+  if (policy.transferred) return { label: 'محولة', variant: 'warning' as const, isActive: false, priority: 3, color: 'text-amber-600' };
   const endDate = new Date(policy.end_date);
   const today = new Date();
-  if (endDate < today) return { label: 'منتهية', variant: 'secondary' as const, isActive: false, priority: 2 };
-  return { label: 'سارية', variant: 'success' as const, isActive: true, priority: 1 };
+  if (endDate < today) return { label: 'منتهية', variant: 'secondary' as const, isActive: false, priority: 2, color: 'text-muted-foreground' };
+  return { label: 'سارية', variant: 'success' as const, isActive: true, priority: 1, color: 'text-success' };
 };
 
 interface PolicyGroup {
@@ -428,7 +445,7 @@ export function PolicyTreeView({ policies, onPolicyClick }: PolicyTreeViewProps)
   );
 }
 
-// Simple row for standalone policies
+// Modern card-style row for standalone policies
 function PolicyRow({ 
   policy, 
   isAddon,
@@ -443,46 +460,104 @@ function PolicyRow({
   return (
     <Card 
       className={cn(
-        "p-4 cursor-pointer hover:bg-muted/50 transition-colors",
-        isAddon && "mr-8 border-r-4 border-r-orange-400",
-        !status.isActive && "opacity-75"
+        "group cursor-pointer transition-all duration-200 overflow-hidden",
+        isAddon && "mr-6 border-r-4 border-r-orange-400",
+        status.isActive 
+          ? "bg-card hover:shadow-lg hover:shadow-primary/10 hover:border-primary/30" 
+          : "bg-muted/30 hover:bg-muted/50",
+        status.priority === 3 && "border-amber-500/30 bg-amber-50/50",
+        status.priority === 4 && "border-destructive/30 bg-destructive/5"
       )}
       onClick={() => onPolicyClick(policy.id)}
     >
-      <div className="flex items-center gap-3">
-        {isAddon && <Zap className="h-4 w-4 text-orange-500 shrink-0" />}
-        
-        <div className="flex-1 grid grid-cols-2 sm:grid-cols-7 gap-2 sm:gap-4">
-          <div>
-            <Badge className={cn("border", policyTypeColors[policy.policy_type_parent])}>
+      <div className="p-4">
+        {/* Top Row - Main Info */}
+        <div className="flex items-center gap-4 mb-3">
+          {/* Policy Type with Icon */}
+          <div className="flex items-center gap-2">
+            <span className="text-xl">{policyTypeIcons[policy.policy_type_parent] || '📄'}</span>
+            <Badge className={cn("border font-semibold", policyTypeColors[policy.policy_type_parent])}>
               {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
             </Badge>
+            {policy.transferred && (
+              <Badge variant="warning" className="gap-1">
+                <ArrowUpDown className="h-3 w-3" />
+                محولة
+              </Badge>
+            )}
           </div>
-          <div className="text-sm font-mono text-muted-foreground">
-            {policy.policy_number || '-'}
-          </div>
-          <div className="text-sm">
-            {policy.company?.name_ar || policy.company?.name || '-'}
-          </div>
-          <div className="text-sm font-mono flex items-center gap-1">
-            <Car className="h-3 w-3 text-muted-foreground" />
-            {policy.car?.car_number || '-'}
-          </div>
-          <div className="text-sm">
-            {formatDate(policy.start_date)} - {formatDate(policy.end_date)}
-          </div>
-          <div className="font-semibold">
-            ₪{policy.insurance_price.toLocaleString()}
-          </div>
-          <div className="flex items-center gap-2">
-            <ExpiryBadge endDate={policy.end_date} cancelled={policy.cancelled} />
-            <Badge variant={status.variant}>{status.label}</Badge>
-          </div>
+          
+          {/* Spacer */}
+          <div className="flex-1" />
+          
+          {/* Status */}
+          <ExpiryBadge endDate={policy.end_date} cancelled={policy.cancelled} />
+          <Badge variant={status.variant} className="font-medium">
+            {status.label}
+          </Badge>
+          
+          {/* View Button */}
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            <Eye className="h-4 w-4 ml-1" />
+            عرض
+          </Button>
         </div>
         
-        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-          <Eye className="h-4 w-4" />
-        </Button>
+        {/* Bottom Row - Details Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-sm">
+          {/* Policy Number */}
+          <div className="flex items-center gap-2">
+            <Hash className="h-4 w-4 text-muted-foreground shrink-0" />
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">رقم الوثيقة</p>
+              <p className="font-mono font-medium ltr-nums">{policy.policy_number || '-'}</p>
+            </div>
+          </div>
+          
+          {/* Company */}
+          <div className="flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">الشركة</p>
+              <p className="font-medium truncate">{policy.company?.name_ar || policy.company?.name || '-'}</p>
+            </div>
+          </div>
+          
+          {/* Car */}
+          <div className="flex items-center gap-2">
+            <Car className="h-4 w-4 text-muted-foreground shrink-0" />
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">السيارة</p>
+              <p className="font-mono font-medium ltr-nums">{policy.car?.car_number || '-'}</p>
+            </div>
+          </div>
+          
+          {/* Dates */}
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">الفترة</p>
+              <p className="font-medium ltr-nums">{formatDate(policy.start_date)} → {formatDate(policy.end_date)}</p>
+            </div>
+          </div>
+          
+          {/* Price */}
+          <div className="flex items-center justify-end gap-2">
+            <div className="text-left">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">السعر</p>
+              <p className={cn(
+                "text-lg font-bold ltr-nums",
+                status.isActive ? "text-primary" : "text-muted-foreground"
+              )}>
+                ₪{policy.insurance_price.toLocaleString()}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     </Card>
   );
