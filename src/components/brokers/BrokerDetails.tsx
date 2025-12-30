@@ -443,7 +443,7 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
             </CardContent>
           </Card>
 
-          {/* له علي - What broker wants from me (from_broker) */}
+          {/* مدين للوسيط - What I owe to broker (from_broker policies) */}
           <Card className="border-orange-200 dark:border-orange-800 print:border-orange-200">
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
@@ -451,7 +451,7 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
                   <TrendingDown className="h-5 w-5 text-orange-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">له علي</p>
+                  <p className="text-sm text-muted-foreground">مدين للوسيط</p>
                   <p className="text-xl font-bold text-orange-600">
                     {formatCurrency(stats.fromBrokerTotal)}
                   </p>
@@ -460,7 +460,7 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
             </CardContent>
           </Card>
 
-          {/* علي له - What I want from broker (to_broker or null) */}
+          {/* الوسيط مدين لي - What broker owes me (to_broker or null) */}
           <Card className="border-green-200 dark:border-green-800 print:border-green-200">
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
@@ -468,7 +468,7 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
                   <TrendingUp className="h-5 w-5 text-green-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">علي له</p>
+                  <p className="text-sm text-muted-foreground">الوسيط مدين لي</p>
                   <p className="text-xl font-bold text-green-600">
                     {formatCurrency(stats.toBrokerTotal)}
                   </p>
@@ -495,7 +495,7 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">
-                    {netBalance >= 0 ? "لي عليه" : "له علي (صافي)"}
+                    {netBalance >= 0 ? "الصافي (الوسيط مدين)" : "الصافي (أنا مدين)"}
                   </p>
                   <p className={cn(
                     "text-xl font-bold",

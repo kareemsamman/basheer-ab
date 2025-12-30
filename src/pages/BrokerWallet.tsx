@@ -450,7 +450,7 @@ export default function BrokerWallet() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">
-                  {netBalance >= 0 ? 'لي عنده' : 'له عندي'}
+                  {netBalance >= 0 ? 'الصافي (الوسيط مدين)' : 'الصافي (أنا مدين)'}
                 </p>
                 <p className={cn(
                   "text-2xl font-bold",
