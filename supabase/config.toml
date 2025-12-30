@@ -62,3 +62,12 @@ verify_jwt = true
 
 [functions.generate-broker-report]
 verify_jwt = true
+
+[functions.tranzila-broker-init]
+verify_jwt = true
+
+[functions.broker-payment-result]
+verify_jwt = false
+
+[functions.tranzila-broker-status]
+verify_jwt = true

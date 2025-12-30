@@ -7,11 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { FileUploader } from "@/components/media/FileUploader";
+import { BrokerPaymentModal } from "@/components/brokers/BrokerPaymentModal";
 import { 
   ArrowLeft, 
   Plus, 
@@ -20,14 +20,15 @@ import {
   ArrowDownLeft,
   Calendar,
   CheckCircle2,
-  Clock,
   CreditCard,
   Banknote,
   Building2,
   Receipt,
   XCircle,
   Image,
-  Loader2
+  Loader2,
+  Trash2,
+  Split,
 } from "lucide-react";
 import {
   Dialog,
@@ -50,6 +51,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { cn } from "@/lib/utils";
 
@@ -73,9 +79,22 @@ interface Transaction {
   bank_reference: string | null;
   refused: boolean;
   card_last_four: string | null;
+  installments_count: number | null;
 }
 
 type PaymentType = 'cash' | 'cheque' | 'bank_transfer' | 'visa';
+
+interface PaymentLine {
+  id: string;
+  payment_type: PaymentType;
+  amount: number;
+  payment_date: string;
+  cheque_number?: string;
+  cheque_image_url?: string;
+  bank_reference?: string;
+  notes?: string;
+  tranzila_paid?: boolean;
+}
 
 const paymentTypeLabels: Record<PaymentType, string> = {
   cash: 'نقداً',
@@ -83,6 +102,13 @@ const paymentTypeLabels: Record<PaymentType, string> = {
   bank_transfer: 'تحويل بنكي',
   visa: 'بطاقة ائتمان',
 };
+
+const PAYMENT_TYPES = [
+  { value: 'cash', label: 'نقداً' },
+  { value: 'cheque', label: 'شيك' },
+  { value: 'bank_transfer', label: 'تحويل بنكي' },
+  { value: 'visa', label: 'بطاقة ائتمان' },
+];
 
 const PaymentTypeIcon = ({ type }: { type: string }) => {
   switch (type) {
@@ -104,23 +130,26 @@ export default function BrokerWallet() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNewTransaction, setShowNewTransaction] = useState(false);
+  const [saving, setSaving] = useState(false);
   
   // Wallet summary
   const [paidToBroker, setPaidToBroker] = useState(0);
   const [receivedFromBroker, setReceivedFromBroker] = useState(0);
 
-  // New transaction form
+  // New transaction form - direction selection
   const [direction, setDirection] = useState<'we_owe' | 'broker_owes'>('broker_owes');
-  const [amount, setAmount] = useState('');
-  const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0]);
-  const [notes, setNotes] = useState('');
-  const [saving, setSaving] = useState(false);
 
-  // Payment method fields
-  const [paymentType, setPaymentType] = useState<PaymentType>('cash');
-  const [chequeNumber, setChequeNumber] = useState('');
-  const [chequeImageUrl, setChequeImageUrl] = useState('');
-  const [bankReference, setBankReference] = useState('');
+  // Payment lines (like Step4)
+  const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
+
+  // Split popover
+  const [splitPopoverOpen, setSplitPopoverOpen] = useState(false);
+  const [splitCount, setSplitCount] = useState(2);
+  const [splitAmount, setSplitAmount] = useState('');
+
+  // Tranzila modal
+  const [showTranzilaModal, setShowTranzilaModal] = useState(false);
+  const [selectedVisaPaymentIndex, setSelectedVisaPaymentIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (brokerId) {
@@ -131,7 +160,6 @@ export default function BrokerWallet() {
   const fetchBrokerData = async () => {
     setLoading(true);
     try {
-      // Fetch broker
       const { data: brokerData, error: brokerError } = await supabase
         .from('brokers')
         .select('id, name, phone')
@@ -141,7 +169,6 @@ export default function BrokerWallet() {
       if (brokerError) throw brokerError;
       setBroker(brokerData);
 
-      // Fetch transactions (settlements)
       const { data: transactionsData } = await supabase
         .from('broker_settlements')
         .select('*')
@@ -151,12 +178,11 @@ export default function BrokerWallet() {
       if (transactionsData) {
         setTransactions(transactionsData as Transaction[]);
         
-        // Calculate totals (exclude refused)
         const paid = transactionsData
-          .filter((t: any) => t.direction === 'we_owe' && !t.refused)
+          .filter((t: any) => t.direction === 'we_owe' && !t.refused && t.status === 'completed')
           .reduce((sum: number, t: any) => sum + (t.total_amount || 0), 0);
         const received = transactionsData
-          .filter((t: any) => t.direction === 'broker_owes' && !t.refused)
+          .filter((t: any) => t.direction === 'broker_owes' && !t.refused && t.status === 'completed')
           .reduce((sum: number, t: any) => sum + (t.total_amount || 0), 0);
         
         setPaidToBroker(paid);
@@ -174,49 +200,141 @@ export default function BrokerWallet() {
     }
   };
 
-  const validateChequeNumber = (num: string) => {
-    return /^\d{8}$/.test(num);
+  const validateChequeNumber = (num: string) => /^\d{8}$/.test(num);
+
+  const addPaymentLine = () => {
+    setPaymentLines([
+      ...paymentLines,
+      {
+        id: crypto.randomUUID(),
+        payment_type: 'cash',
+        amount: 0,
+        payment_date: new Date().toISOString().split('T')[0],
+      },
+    ]);
   };
 
-  const handleSaveTransaction = async () => {
-    if (!amount || parseFloat(amount) <= 0) {
-      toast({ title: "خطأ", description: "يرجى إدخال مبلغ صحيح", variant: "destructive" });
+  const removePaymentLine = (id: string) => {
+    setPaymentLines(paymentLines.filter(p => p.id !== id));
+  };
+
+  const updatePaymentLine = (id: string, field: string, value: any) => {
+    setPaymentLines(paymentLines.map(p => p.id === id ? { ...p, [field]: value } : p));
+  };
+
+  const handleSplitPayments = () => {
+    if (splitCount < 2 || splitCount > 12 || !splitAmount) return;
+    
+    const totalAmount = parseFloat(splitAmount) || 0;
+    if (totalAmount <= 0) return;
+
+    const amountPerInstallment = Math.floor(totalAmount / splitCount);
+    const remainder = totalAmount - (amountPerInstallment * splitCount);
+    
+    const today = new Date();
+    const newPayments: PaymentLine[] = [];
+    
+    for (let i = 0; i < splitCount; i++) {
+      const paymentDate = new Date(today);
+      paymentDate.setMonth(today.getMonth() + i);
+      
+      const amount = i === 0 ? amountPerInstallment + remainder : amountPerInstallment;
+      
+      newPayments.push({
+        id: crypto.randomUUID(),
+        payment_type: 'cash',
+        amount,
+        payment_date: paymentDate.toISOString().split('T')[0],
+      });
+    }
+    
+    setPaymentLines(newPayments);
+    setSplitPopoverOpen(false);
+  };
+
+  const handleVisaPayClick = (index: number) => {
+    const payment = paymentLines[index];
+    if (!payment || (payment.amount || 0) <= 0) return;
+    
+    setSelectedVisaPaymentIndex(index);
+    setShowTranzilaModal(true);
+  };
+
+  const handleVisaSuccess = () => {
+    if (selectedVisaPaymentIndex !== null) {
+      const payment = paymentLines[selectedVisaPaymentIndex];
+      if (payment) {
+        updatePaymentLine(payment.id, 'tranzila_paid', true);
+      }
+    }
+    setShowTranzilaModal(false);
+    setSelectedVisaPaymentIndex(null);
+    // Refresh data
+    fetchBrokerData();
+  };
+
+  const handleVisaFailure = () => {
+    setShowTranzilaModal(false);
+    setSelectedVisaPaymentIndex(null);
+  };
+
+  const handleSaveAllPayments = async () => {
+    // Validate
+    const hasInvalidCheque = paymentLines.some(
+      p => p.payment_type === 'cheque' && !validateChequeNumber(p.cheque_number || '')
+    );
+    if (hasInvalidCheque) {
+      toast({ title: "خطأ", description: "رقم الشيك يجب أن يكون 8 أرقام", variant: "destructive" });
       return;
     }
 
-    if (paymentType === 'cheque' && !validateChequeNumber(chequeNumber)) {
-      toast({ title: "خطأ", description: "رقم الشيك يجب أن يكون 8 أرقام", variant: "destructive" });
+    // Filter out visa payments that weren't paid (they're handled separately)
+    const paymentsToSave = paymentLines.filter(p => {
+      if (p.payment_type === 'visa') {
+        return p.tranzila_paid; // Only save visa if already paid via Tranzila
+      }
+      return p.amount > 0;
+    });
+
+    // Filter only non-visa payments to insert (visa already inserted by Tranzila flow)
+    const nonVisaPayments = paymentsToSave.filter(p => p.payment_type !== 'visa');
+
+    if (nonVisaPayments.length === 0 && !paymentLines.some(p => p.tranzila_paid)) {
+      toast({ title: "تنبيه", description: "لا توجد دفعات لحفظها", variant: "destructive" });
       return;
     }
 
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('broker_settlements')
-        .insert({
-          broker_id: brokerId,
-          direction,
-          total_amount: parseFloat(amount),
-          settlement_date: transactionDate,
-          notes,
-          status: 'completed',
-          created_by_admin_id: user?.id,
-          payment_type: paymentType,
-          cheque_number: paymentType === 'cheque' ? chequeNumber : null,
-          cheque_image_url: paymentType === 'cheque' ? chequeImageUrl : null,
-          bank_reference: paymentType === 'bank_transfer' ? bankReference : null,
-          refused: false,
-        });
+      // Insert non-visa payments
+      for (const payment of nonVisaPayments) {
+        const { error } = await supabase
+          .from('broker_settlements')
+          .insert({
+            broker_id: brokerId,
+            direction,
+            total_amount: payment.amount,
+            settlement_date: payment.payment_date,
+            notes: payment.notes || null,
+            status: 'completed',
+            created_by_admin_id: user?.id,
+            payment_type: payment.payment_type,
+            cheque_number: payment.payment_type === 'cheque' ? payment.cheque_number : null,
+            cheque_image_url: payment.payment_type === 'cheque' ? payment.cheque_image_url : null,
+            bank_reference: payment.payment_type === 'bank_transfer' ? payment.bank_reference : null,
+            refused: false,
+          });
 
-      if (error) throw error;
+        if (error) throw error;
+      }
 
-      toast({ title: "تم الحفظ", description: "تم تسجيل المعاملة بنجاح" });
+      toast({ title: "تم الحفظ", description: "تم تسجيل جميع الدفعات بنجاح" });
       setShowNewTransaction(false);
       resetForm();
       fetchBrokerData();
     } catch (error) {
-      console.error('Error saving transaction:', error);
-      toast({ title: "خطأ", description: "فشل في حفظ المعاملة", variant: "destructive" });
+      console.error('Error saving payments:', error);
+      toast({ title: "خطأ", description: "فشل في حفظ الدفعات", variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -233,7 +351,6 @@ export default function BrokerWallet() {
       
       toast({ 
         title: transaction.refused ? "تم استعادة المعاملة" : "تم إلغاء المعاملة",
-        description: transaction.refused ? "المعاملة فعّالة الآن" : "تم تحديد المعاملة كمرفوضة"
       });
       
       fetchBrokerData();
@@ -244,17 +361,14 @@ export default function BrokerWallet() {
 
   const resetForm = () => {
     setDirection('broker_owes');
-    setAmount('');
-    setTransactionDate(new Date().toISOString().split('T')[0]);
-    setNotes('');
-    setPaymentType('cash');
-    setChequeNumber('');
-    setChequeImageUrl('');
-    setBankReference('');
+    setPaymentLines([]);
+    setSplitAmount('');
   };
 
-  // Balance = received from broker - paid to broker
   const netBalance = receivedFromBroker - paidToBroker;
+  const totalPaymentLines = paymentLines.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+  const selectedVisaPayment = selectedVisaPaymentIndex !== null ? paymentLines[selectedVisaPaymentIndex] : null;
 
   if (loading) {
     return (
@@ -405,6 +519,11 @@ export default function BrokerWallet() {
                               #{transaction.cheque_number}
                             </Badge>
                           )}
+                          {transaction.card_last_four && (
+                            <Badge variant="secondary" className="text-xs">
+                              ****{transaction.card_last_four}
+                            </Badge>
+                          )}
                           {transaction.cheque_image_url && (
                             <a href={transaction.cheque_image_url} target="_blank" rel="noopener noreferrer">
                               <Image className="h-4 w-4 text-blue-500 cursor-pointer" />
@@ -414,6 +533,11 @@ export default function BrokerWallet() {
                       </TableCell>
                       <TableCell className="font-semibold">
                         ₪{transaction.total_amount.toLocaleString()}
+                        {transaction.installments_count && transaction.installments_count > 1 && (
+                          <span className="text-xs text-muted-foreground mr-1">
+                            ({transaction.installments_count} تقسيطات)
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>
                         {transaction.refused ? (
@@ -421,10 +545,14 @@ export default function BrokerWallet() {
                             <XCircle className="h-3 w-3 ml-1" />
                             مرفوض
                           </Badge>
-                        ) : (
+                        ) : transaction.status === 'completed' ? (
                           <Badge className="bg-green-100 text-green-700">
                             <CheckCircle2 className="h-3 w-3 ml-1" />
                             مكتمل
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-yellow-100 text-yellow-700">
+                            قيد الانتظار
                           </Badge>
                         )}
                       </TableCell>
@@ -452,9 +580,9 @@ export default function BrokerWallet() {
           </div>
         </Card>
 
-        {/* New Transaction Dialog */}
+        {/* New Transaction Dialog - Step4 Style */}
         <Dialog open={showNewTransaction} onOpenChange={setShowNewTransaction}>
-          <DialogContent className="max-w-lg" dir="rtl">
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" dir="rtl">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Wallet className="h-5 w-5" />
@@ -462,8 +590,8 @@ export default function BrokerWallet() {
               </DialogTitle>
             </DialogHeader>
 
-            <div className="space-y-5 mt-4">
-              {/* Direction */}
+            <div className="space-y-6 mt-4">
+              {/* Direction Selection */}
               <div>
                 <Label className="mb-2 block">اتجاه الدفعة</Label>
                 <div className="grid grid-cols-2 gap-3">
@@ -477,7 +605,7 @@ export default function BrokerWallet() {
                     onClick={() => setDirection('broker_owes')}
                   >
                     <ArrowDownLeft className="h-5 w-5" />
-                    <span>استلمت من الوسيط</span>
+                    <span className="text-sm">استلمت من الوسيط</span>
                   </Button>
                   <Button
                     type="button"
@@ -489,142 +617,266 @@ export default function BrokerWallet() {
                     onClick={() => setDirection('we_owe')}
                   >
                     <ArrowUpRight className="h-5 w-5" />
-                    <span>دفعت للوسيط</span>
+                    <span className="text-sm">دفعت للوسيط</span>
                   </Button>
                 </div>
               </div>
 
-              {/* Amount & Date */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>المبلغ (₪)</Label>
-                  <Input
-                    type="number"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder="0"
-                    className="text-lg h-12"
-                  />
-                </div>
-                <div>
-                  <Label>التاريخ</Label>
-                  <ArabicDatePicker
-                    value={transactionDate}
-                    onChange={(date) => setTransactionDate(date)}
-                  />
-                </div>
-              </div>
-
-              {/* Payment Method */}
-              <div className="space-y-3">
-                <Label>طريقة الدفع</Label>
-                <div className="grid grid-cols-4 gap-2">
-                  {(['cash', 'cheque', 'bank_transfer', 'visa'] as PaymentType[]).map((type) => (
-                    <Button
-                      key={type}
-                      type="button"
-                      variant={paymentType === type ? 'default' : 'outline'}
-                      className={cn(
-                        "flex-col gap-1 h-16 text-xs",
-                        paymentType === type && "bg-primary"
-                      )}
-                      onClick={() => setPaymentType(type)}
-                    >
-                      <PaymentTypeIcon type={type} />
-                      {paymentTypeLabels[type]}
-                    </Button>
-                  ))}
-                </div>
-
-                {/* Cheque Fields */}
-                {paymentType === 'cheque' && (
-                  <div className="grid grid-cols-2 gap-3 p-3 bg-muted/50 rounded-lg">
-                    <div>
-                      <Label className="text-xs">رقم الشيك (8 أرقام)</Label>
-                      <Input
-                        value={chequeNumber}
-                        onChange={(e) => setChequeNumber(e.target.value.replace(/\D/g, '').slice(0, 8))}
-                        placeholder="12345678"
-                        maxLength={8}
-                        className={cn(
-                          "h-9",
-                          chequeNumber && !validateChequeNumber(chequeNumber) && "border-red-500"
-                        )}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs">صورة الشيك</Label>
-                      <FileUploader
-                        entityType="cheque"
-                        onUploadComplete={(files) => {
-                          if (files.length > 0 && files[0].cdn_url) {
-                            setChequeImageUrl(files[0].cdn_url);
-                          }
-                        }}
-                        accept="image/*"
-                        maxFiles={1}
-                      />
-                      {chequeImageUrl && (
-                        <div className="mt-1 flex items-center gap-1 text-xs text-green-600">
-                          <CheckCircle2 className="h-3 w-3" />
-                          تم الرفع
+              {/* Payment Lines Header */}
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-semibold">الدفعات</Label>
+                <div className="flex gap-2">
+                  {/* Split Button */}
+                  <Popover open={splitPopoverOpen} onOpenChange={setSplitPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button type="button" variant="outline" size="sm" className="gap-2">
+                        <Split className="h-4 w-4" />
+                        تقسيط
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-72" align="end" dir="rtl">
+                      <div className="space-y-4">
+                        <h4 className="font-semibold text-sm">تقسيط المبلغ</h4>
+                        <div className="space-y-3">
+                          <div>
+                            <Label className="text-xs">المبلغ الإجمالي</Label>
+                            <Input
+                              type="number"
+                              value={splitAmount}
+                              onChange={(e) => setSplitAmount(e.target.value)}
+                              placeholder="0"
+                              className="h-9"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">عدد الأقساط (2-12)</Label>
+                            <div className="flex gap-2">
+                              <Input
+                                type="number"
+                                min={2}
+                                max={12}
+                                value={splitCount}
+                                onChange={(e) => setSplitCount(Math.min(12, Math.max(2, parseInt(e.target.value) || 2)))}
+                                className="h-9"
+                              />
+                              <Button 
+                                type="button" 
+                                size="sm" 
+                                onClick={handleSplitPayments}
+                                className="h-9 px-4"
+                              >
+                                تقسيم
+                              </Button>
+                            </div>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
 
-                {/* Bank Transfer Fields */}
-                {paymentType === 'bank_transfer' && (
-                  <div className="p-3 bg-muted/50 rounded-lg">
-                    <Label className="text-xs">رقم المرجع / الحوالة</Label>
-                    <Input
-                      value={bankReference}
-                      onChange={(e) => setBankReference(e.target.value)}
-                      placeholder="رقم التحويل البنكي"
-                      className="h-9"
-                    />
-                  </div>
-                )}
-
-                {/* Visa Note */}
-                {paymentType === 'visa' && (
-                  <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-                    سيتم تسجيل الدفع يدوياً
-                  </div>
-                )}
+                  <Button type="button" variant="outline" size="sm" onClick={addPaymentLine} className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    إضافة دفعة
+                  </Button>
+                </div>
               </div>
 
-              {/* Notes */}
-              <div>
-                <Label>ملاحظات (اختياري)</Label>
-                <Textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="ملاحظات إضافية..."
-                  className="resize-none h-16"
-                />
-              </div>
+              {/* Payment Lines */}
+              {paymentLines.length === 0 ? (
+                <Card className="p-8 text-center bg-muted/30">
+                  <CreditCard className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+                  <p className="text-sm text-muted-foreground">لا توجد دفعات</p>
+                  <p className="text-xs text-muted-foreground mt-1">يمكنك إضافة دفعات باستخدام الأزرار أعلاه</p>
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {paymentLines.map((payment, index) => {
+                    const isVisa = payment.payment_type === 'visa';
+                    const visaPaid = payment.tranzila_paid;
+                    
+                    return (
+                      <Card key={payment.id} className={cn(
+                        "p-4",
+                        visaPaid && "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800"
+                      )}>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+                          {/* Payment Type */}
+                          <div>
+                            <Label className="text-xs mb-1.5 block">نوع الدفع</Label>
+                            <Select
+                              value={payment.payment_type}
+                              onValueChange={(v) => updatePaymentLine(payment.id, 'payment_type', v)}
+                              disabled={visaPaid}
+                            >
+                              <SelectTrigger className="h-9">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {PAYMENT_TYPES.map((type) => (
+                                  <SelectItem key={type.value} value={type.value}>
+                                    {type.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
 
-              {/* Actions */}
+                          {/* Amount */}
+                          <div>
+                            <Label className="text-xs mb-1.5 block">المبلغ (₪)</Label>
+                            <Input
+                              type="number"
+                              value={payment.amount || ''}
+                              onChange={(e) => updatePaymentLine(payment.id, 'amount', parseFloat(e.target.value) || 0)}
+                              placeholder="0"
+                              disabled={visaPaid}
+                              className="h-9"
+                            />
+                          </div>
+
+                          {/* Date */}
+                          <div>
+                            <Label className="text-xs mb-1.5 block">التاريخ</Label>
+                            <ArabicDatePicker
+                              value={payment.payment_date}
+                              onChange={(date) => updatePaymentLine(payment.id, 'payment_date', date)}
+                              className="h-9"
+                              disabled={visaPaid}
+                            />
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex items-center gap-2">
+                            {/* Cheque Number */}
+                            {payment.payment_type === 'cheque' && (
+                              <Input
+                                value={payment.cheque_number || ''}
+                                onChange={(e) => updatePaymentLine(payment.id, 'cheque_number', e.target.value.replace(/\D/g, '').slice(0, 8))}
+                                placeholder="رقم الشيك"
+                                maxLength={8}
+                                className="h-9 flex-1 font-mono"
+                              />
+                            )}
+
+                            {/* Bank Reference */}
+                            {payment.payment_type === 'bank_transfer' && (
+                              <Input
+                                value={payment.bank_reference || ''}
+                                onChange={(e) => updatePaymentLine(payment.id, 'bank_reference', e.target.value)}
+                                placeholder="رقم التحويل"
+                                className="h-9 flex-1"
+                              />
+                            )}
+                            
+                            {/* Visa Pay Button */}
+                            {isVisa && !visaPaid && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => handleVisaPayClick(index)}
+                                disabled={(payment.amount || 0) <= 0}
+                                className="gap-1.5 bg-primary hover:bg-primary/90"
+                              >
+                                <CreditCard className="h-4 w-4" />
+                                ادفع
+                              </Button>
+                            )}
+                            
+                            {/* Paid Badge */}
+                            {isVisa && visaPaid && (
+                              <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                                <CreditCard className="h-3.5 w-3.5" />
+                                تم الدفع
+                              </span>
+                            )}
+                            
+                            {/* Delete Button */}
+                            {!visaPaid && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => removePaymentLine(payment.id)}
+                                className="h-9 w-9 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Cheque Image Upload */}
+                        {payment.payment_type === 'cheque' && !visaPaid && (
+                          <div className="mt-3 pt-3 border-t border-border/50">
+                            <Label className="text-xs text-muted-foreground mb-2 block">صورة الشيك</Label>
+                            <FileUploader
+                              entityType="broker_cheque"
+                              entityId={payment.id}
+                              accept="image/*"
+                              maxFiles={1}
+                              onUploadComplete={(files) => {
+                                if (files.length > 0) {
+                                  updatePaymentLine(payment.id, 'cheque_image_url', files[0].cdn_url);
+                                }
+                              }}
+                            />
+                            {payment.cheque_image_url && (
+                              <div className="mt-2">
+                                <img 
+                                  src={payment.cheque_image_url} 
+                                  alt="صورة الشيك" 
+                                  className="h-16 w-auto rounded border"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Total */}
+              {paymentLines.length > 0 && (
+                <div className="flex justify-between items-center p-4 bg-muted/50 rounded-lg">
+                  <span className="font-medium">إجمالي الدفعات:</span>
+                  <span className="text-xl font-bold">₪{totalPaymentLines.toLocaleString()}</span>
+                </div>
+              )}
+
+              {/* Save Button */}
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <Button variant="outline" onClick={() => setShowNewTransaction(false)}>
                   إلغاء
                 </Button>
-                <Button onClick={handleSaveTransaction} disabled={saving} className="min-w-[120px]">
-                  {saving ? (
-                    <>
-                      <Loader2 className="h-4 w-4 ml-2 animate-spin" />
-                      جاري الحفظ
-                    </>
-                  ) : (
-                    'حفظ الدفعة'
-                  )}
+                <Button 
+                  onClick={handleSaveAllPayments} 
+                  disabled={saving || paymentLines.length === 0}
+                  className="gap-2"
+                >
+                  {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                  حفظ الدفعات
                 </Button>
               </div>
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Tranzila Modal */}
+        {selectedVisaPayment && (
+          <BrokerPaymentModal
+            open={showTranzilaModal}
+            onOpenChange={setShowTranzilaModal}
+            brokerId={brokerId || ''}
+            amount={selectedVisaPayment.amount}
+            direction={direction}
+            settlementDate={selectedVisaPayment.payment_date}
+            notes={selectedVisaPayment.notes}
+            onSuccess={handleVisaSuccess}
+            onFailure={handleVisaFailure}
+          />
+        )}
       </div>
     </MainLayout>
   );
