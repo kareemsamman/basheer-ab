@@ -27,7 +27,6 @@ const brokerSchema = z.object({
   name: z.string().min(2, 'الاسم مطلوب'),
   phone: z.string().optional(),
   notes: z.string().optional(),
-  image_url: z.string().optional(),
 });
 
 type BrokerFormData = z.infer<typeof brokerSchema>;
@@ -59,20 +58,27 @@ export function BrokerDrawer({ open, onOpenChange, broker, onSaved }: BrokerDraw
       name: '',
       phone: '',
       notes: '',
-      image_url: '',
     },
   });
 
+  // Reset form immediately when broker prop changes or drawer opens
   useEffect(() => {
-    if (open) {
+    if (open && broker) {
+      // Force immediate reset with broker data
       form.reset({
-        name: broker?.name || '',
-        phone: broker?.phone || '',
-        notes: broker?.notes || '',
-        image_url: broker?.image_url || '',
+        name: broker.name || '',
+        phone: broker.phone || '',
+        notes: broker.notes || '',
+      });
+    } else if (open && !broker) {
+      // New broker - clear the form
+      form.reset({
+        name: '',
+        phone: '',
+        notes: '',
       });
     }
-  }, [open, broker, form]);
+  }, [open, broker?.id, broker?.name, broker?.phone, broker?.notes, form]);
 
   const onSubmit = async (data: BrokerFormData) => {
     setSaving(true);
@@ -84,7 +90,6 @@ export function BrokerDrawer({ open, onOpenChange, broker, onSaved }: BrokerDraw
             name: data.name,
             phone: data.phone || null,
             notes: data.notes || null,
-            image_url: data.image_url || null,
           })
           .eq('id', broker.id);
 
@@ -97,7 +102,6 @@ export function BrokerDrawer({ open, onOpenChange, broker, onSaved }: BrokerDraw
             name: data.name,
             phone: data.phone || null,
             notes: data.notes || null,
-            image_url: data.image_url || null,
           });
 
         if (error) throw error;
@@ -145,20 +149,6 @@ export function BrokerDrawer({ open, onOpenChange, broker, onSaved }: BrokerDraw
                   <FormLabel>رقم الهاتف</FormLabel>
                   <FormControl>
                     <Input placeholder="أدخل رقم الهاتف" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="image_url"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>رابط الصورة</FormLabel>
-                  <FormControl>
-                    <Input placeholder="رابط صورة الوسيط من CDN" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ import {
   X,
   MessageSquare,
   Loader2,
+  CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -86,6 +88,7 @@ const policyTypeLabels: Record<string, string> = {
 };
 
 export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetailsProps) {
+  const navigate = useNavigate();
   const [clients, setClients] = useState<Client[]>([]);
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -337,6 +340,10 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
             <Button variant="outline" onClick={onEdit}>
               <Pencil className="h-4 w-4 ml-2" />
               تعديل
+            </Button>
+            <Button variant="secondary" onClick={() => navigate(`/brokers/${broker.id}/wallet`)}>
+              <CreditCard className="h-4 w-4 ml-2" />
+              دفعة جديدة
             </Button>
             <Button onClick={() => setWizardOpen(true)}>
               <Plus className="h-4 w-4 ml-2" />
