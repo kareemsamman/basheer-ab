@@ -238,17 +238,19 @@ export function TransferPolicyModal({
 
       if (transferError) throw transferError;
 
-      // 2. Update policy with new car and mark as transferred
-      const { error: policyError } = await supabase
+      // 2. Update OLD policy: set end_date to transfer date and mark as transferred
+      // The OLD policy stays attached to the OLD car, just ends at transfer date
+      const { error: oldPolicyError } = await supabase
         .from("policies")
         .update({
-          car_id: selectedCarId,
+          end_date: transferDate,
           transferred: true,
           transferred_car_number: currentCar?.car_number || null,
+          updated_at: new Date().toISOString(),
         })
         .eq("id", policyId);
 
-      if (policyError) throw policyError;
+      if (oldPolicyError) throw oldPolicyError;
 
       // 3. Create wallet transaction if money adjustment exists
       if (adjustmentType !== "none" && adjustmentAmount) {
@@ -302,7 +304,10 @@ export function TransferPolicyModal({
         }
       }
 
-      toast({ title: "تم", description: "تم تحويل الوثيقة بنجاح" });
+      toast({ 
+        title: "تم", 
+        description: "تم تحويل الوثيقة - الوثيقة القديمة انتهت بتاريخ التحويل والسيارة الجديدة تحتاج وثيقة جديدة" 
+      });
       onTransferred();
       onOpenChange(false);
       

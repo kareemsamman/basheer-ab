@@ -96,6 +96,7 @@ interface CarRecord {
 
 interface PolicyRecord {
   id: string;
+  policy_number: string | null;
   policy_type_parent: string;
   policy_type_child: string | null;
   start_date: string;
@@ -103,9 +104,10 @@ interface PolicyRecord {
   insurance_price: number;
   profit: number | null;
   cancelled: boolean | null;
+  transferred: boolean | null;
   group_id: string | null;
   company: { name: string; name_ar: string | null } | null;
-  car: { car_number: string } | null;
+  car: { id: string; car_number: string } | null;
   creator: { full_name: string | null; email: string } | null;
 }
 
@@ -203,6 +205,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
   const [policySearch, setPolicySearch] = useState('');
   const [policyTypeFilter, setPolicyTypeFilter] = useState<string>('all');
   const [policyStatusFilter, setPolicyStatusFilter] = useState<string>('all');
+  const [policyCarFilter, setPolicyCarFilter] = useState<string>('all');
 
   // Payment filters
   const [paymentSearch, setPaymentSearch] = useState('');
@@ -252,15 +255,15 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
       const { data, error } = await supabase
         .from('policies')
         .select(`
-          id, policy_type_parent, policy_type_child, start_date, end_date, 
-          insurance_price, profit, cancelled, group_id,
+          id, policy_number, policy_type_parent, policy_type_child, start_date, end_date, 
+          insurance_price, profit, cancelled, transferred, group_id,
           company:insurance_companies(name, name_ar),
-          car:cars(car_number),
+          car:cars(id, car_number),
           creator:profiles!policies_created_by_admin_id_fkey(full_name, email)
         `)
         .eq('client_id', client.id)
         .is('deleted_at', null)
-        .order('created_at', { ascending: false });
+        .order('start_date', { ascending: false });
 
       if (error) throw error;
       setPolicies(data || []);
@@ -510,6 +513,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
 
   const getPolicyStatus = (policy: PolicyRecord) => {
     if (policy.cancelled) return { label: 'ملغاة', variant: 'destructive' as const, color: 'text-destructive' };
+    if (policy.transferred) return { label: 'محولة', variant: 'warning' as const, color: 'text-amber-600' };
     const endDate = new Date(policy.end_date);
     const today = new Date();
     if (endDate < today) return { label: 'منتهية', variant: 'secondary' as const, color: 'text-muted-foreground' };
@@ -523,6 +527,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
       if (policySearch) {
         const search = policySearch.toLowerCase();
         const matchesSearch = 
+          (policy.policy_number?.toLowerCase().includes(search)) ||
           (policy.company?.name?.toLowerCase().includes(search)) ||
           (policy.company?.name_ar?.toLowerCase().includes(search)) ||
           (policy.car?.car_number?.toLowerCase().includes(search)) ||
@@ -535,17 +540,23 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
         return false;
       }
       
+      // Car filter
+      if (policyCarFilter !== 'all' && policy.car?.id !== policyCarFilter) {
+        return false;
+      }
+      
       // Status filter
       if (policyStatusFilter !== 'all') {
         const status = getPolicyStatus(policy);
         if (policyStatusFilter === 'active' && status.label !== 'سارية') return false;
         if (policyStatusFilter === 'expired' && status.label !== 'منتهية') return false;
         if (policyStatusFilter === 'cancelled' && status.label !== 'ملغاة') return false;
+        if (policyStatusFilter === 'transferred' && status.label !== 'محولة') return false;
       }
       
       return true;
     });
-  }, [policies, policySearch, policyTypeFilter, policyStatusFilter]);
+  }, [policies, policySearch, policyTypeFilter, policyStatusFilter, policyCarFilter]);
 
   // Get unique policy types for filter
   const uniquePolicyTypes = useMemo(() => {
@@ -934,12 +945,25 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                 <div className="relative flex-1 min-w-[200px]">
                   <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="بحث في الوثائق..."
+                    placeholder="بحث برقم الوثيقة، الشركة، السيارة..."
                     value={policySearch}
                     onChange={(e) => setPolicySearch(e.target.value)}
                     className="pr-10"
                   />
                 </div>
+                <Select value={policyCarFilter} onValueChange={setPolicyCarFilter}>
+                  <SelectTrigger className="w-[160px]">
+                    <SelectValue placeholder="السيارة" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">كل السيارات</SelectItem>
+                    {cars.map(car => (
+                      <SelectItem key={car.id} value={car.id}>
+                        {car.car_number} {car.model ? `- ${car.model}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Select value={policyTypeFilter} onValueChange={setPolicyTypeFilter}>
                   <SelectTrigger className="w-[160px]">
                     <SelectValue placeholder="نوع التأمين" />
@@ -961,6 +985,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                     <SelectItem value="all">كل الحالات</SelectItem>
                     <SelectItem value="active">سارية</SelectItem>
                     <SelectItem value="expired">منتهية</SelectItem>
+                    <SelectItem value="transferred">محولة</SelectItem>
                     <SelectItem value="cancelled">ملغاة</SelectItem>
                   </SelectContent>
                 </Select>

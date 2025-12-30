@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 
 interface PolicyRecord {
   id: string;
+  policy_number: string | null;
   policy_type_parent: string;
   policy_type_child: string | null;
   start_date: string;
@@ -24,9 +25,10 @@ interface PolicyRecord {
   insurance_price: number;
   profit: number | null;
   cancelled: boolean | null;
+  transferred: boolean | null;
   group_id: string | null;
   company: { name: string; name_ar: string | null } | null;
-  car: { car_number: string } | null;
+  car: { id: string; car_number: string } | null;
   creator: { full_name: string | null; email: string } | null;
 }
 
@@ -73,6 +75,7 @@ const formatDate = (dateStr: string | null) => {
 
 const getPolicyStatus = (policy: PolicyRecord) => {
   if (policy.cancelled) return { label: 'ملغاة', variant: 'destructive' as const, isActive: false };
+  if (policy.transferred) return { label: 'محولة', variant: 'warning' as const, isActive: false };
   const endDate = new Date(policy.end_date);
   const today = new Date();
   if (endDate < today) return { label: 'منتهية', variant: 'secondary' as const, isActive: false };
@@ -437,16 +440,20 @@ function PolicyRow({
       <div className="flex items-center gap-3">
         {isAddon && <Zap className="h-4 w-4 text-orange-500 shrink-0" />}
         
-        <div className="flex-1 grid grid-cols-2 sm:grid-cols-6 gap-2 sm:gap-4">
+        <div className="flex-1 grid grid-cols-2 sm:grid-cols-7 gap-2 sm:gap-4">
           <div>
             <Badge className={cn("border", policyTypeColors[policy.policy_type_parent])}>
               {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
             </Badge>
           </div>
+          <div className="text-sm font-mono text-muted-foreground">
+            {policy.policy_number || '-'}
+          </div>
           <div className="text-sm">
             {policy.company?.name_ar || policy.company?.name || '-'}
           </div>
-          <div className="text-sm font-mono">
+          <div className="text-sm font-mono flex items-center gap-1">
+            <Car className="h-3 w-3 text-muted-foreground" />
             {policy.car?.car_number || '-'}
           </div>
           <div className="text-sm">
