@@ -47,52 +47,52 @@ export function CarFilterChips({ cars, policies, selectedCarId, onSelect }: CarF
   };
 
   return (
-    <div className="w-full overflow-x-auto pb-4" dir="rtl">
-      <div className="flex items-center gap-4 min-w-max">
+    <div className="w-full overflow-x-auto pb-2" dir="rtl">
+      <div className="flex items-center gap-3 min-w-max">
         {/* All Cars Card - First in RTL */}
         <button
           onClick={() => onSelect('all')}
           className={cn(
-            "group relative flex flex-col items-center justify-center gap-3 px-6 py-4 rounded-2xl border-2 transition-all duration-300 min-w-[110px]",
+            "group relative flex flex-col items-center justify-center gap-2 px-5 py-3 rounded-xl border-2 transition-all duration-300 min-w-[90px]",
             selectedCarId === 'all'
               ? "border-primary bg-gradient-to-b from-primary/10 to-primary/5 shadow-lg shadow-primary/15"
               : "border-border/50 bg-card/50 backdrop-blur-sm hover:border-primary/40 hover:bg-primary/5 hover:shadow-md"
           )}
         >
           {selectedCarId === 'all' && (
-            <div className="absolute -top-2 -left-2 h-6 w-6 rounded-full bg-primary flex items-center justify-center shadow-lg animate-in zoom-in-50 duration-200">
-              <Check className="h-3.5 w-3.5 text-primary-foreground" strokeWidth={3} />
+            <div className="absolute -top-1.5 -left-1.5 h-5 w-5 rounded-full bg-primary flex items-center justify-center shadow-lg animate-in zoom-in-50 duration-200">
+              <Check className="h-3 w-3 text-primary-foreground" strokeWidth={3} />
             </div>
           )}
           
           <div className={cn(
-            "h-14 w-14 rounded-2xl flex items-center justify-center transition-all duration-300",
+            "h-10 w-10 rounded-xl flex items-center justify-center transition-all duration-300",
             selectedCarId === 'all' 
-              ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30" 
+              ? "bg-primary text-primary-foreground shadow-md shadow-primary/30" 
               : "bg-muted/80 text-muted-foreground group-hover:bg-primary/20 group-hover:text-primary"
           )}>
-            <Car className="h-7 w-7" />
+            <Car className="h-5 w-5" />
           </div>
           
           <span className={cn(
-            "text-base font-bold transition-colors",
+            "text-sm font-bold transition-colors",
             selectedCarId === 'all' ? "text-primary" : "text-foreground"
           )}>
             الكل
           </span>
           
           <div className={cn(
-            "px-4 py-1.5 rounded-full text-sm font-bold transition-all",
+            "px-3 py-0.5 rounded-full text-xs font-bold transition-all",
             selectedCarId === 'all' 
-              ? "bg-primary text-primary-foreground shadow-sm" 
+              ? "bg-primary text-primary-foreground" 
               : "bg-muted/80 text-muted-foreground"
           )}>
-            <span className="ltr-nums">{totalPolicies}</span> وثيقة
+            <span className="ltr-nums">{totalPolicies}</span>
           </div>
         </button>
 
         {/* Divider */}
-        <div className="h-24 w-px bg-gradient-to-b from-transparent via-border to-transparent mx-2" />
+        <div className="h-16 w-px bg-gradient-to-b from-transparent via-border to-transparent mx-1" />
 
         {/* Car License Plates */}
         {carsWithPolicyCounts.map((car) => (
@@ -101,56 +101,58 @@ export function CarFilterChips({ cars, policies, selectedCarId, onSelect }: CarF
             onClick={() => onSelect(car.id)}
             className="group relative transition-all duration-300"
           >
-            {/* Selection Check */}
+            {/* Policy Count Badge - Top Left Circle */}
+            {car.policyCount > 0 && (
+              <div className={cn(
+                "absolute -top-2 -left-2 z-20 h-6 w-6 rounded-full flex items-center justify-center shadow-lg text-[11px] font-bold border-2 border-background",
+                selectedCarId === car.id
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-destructive text-destructive-foreground"
+              )}>
+                <span className="ltr-nums">{car.policyCount}</span>
+              </div>
+            )}
+            
+            {/* Selection Check - Top Right */}
             {selectedCarId === car.id && (
-              <div className="absolute -top-2 -left-2 z-20 h-6 w-6 rounded-full bg-primary flex items-center justify-center shadow-lg animate-in zoom-in-50 duration-200">
-                <Check className="h-3.5 w-3.5 text-primary-foreground" strokeWidth={3} />
+              <div className="absolute -top-2 -right-2 z-20 h-5 w-5 rounded-full bg-success flex items-center justify-center shadow-lg animate-in zoom-in-50 duration-200">
+                <Check className="h-3 w-3 text-white" strokeWidth={3} />
               </div>
             )}
             
             {/* License Plate Container */}
             <div className={cn(
-              "relative rounded-xl overflow-hidden transition-all duration-300",
+              "relative rounded-lg overflow-hidden transition-all duration-300",
               selectedCarId === car.id 
-                ? "ring-3 ring-primary ring-offset-2 ring-offset-background shadow-xl shadow-primary/25 scale-105" 
-                : "shadow-lg hover:shadow-xl hover:scale-102 ring-1 ring-black/10"
+                ? "ring-2 ring-primary ring-offset-1 ring-offset-background shadow-xl shadow-primary/20 scale-105" 
+                : "shadow-md hover:shadow-lg hover:scale-102 ring-1 ring-black/10"
             )}>
-              {/* Plate Body - Proper Israeli plate layout */}
-              <div className="relative flex items-stretch h-[72px]">
+              {/* Plate Body - Compact height */}
+              <div className="relative flex items-stretch h-[50px]">
                 {/* Yellow Section (Number) - Main part */}
-                <div className="bg-gradient-to-b from-[#FFD700] via-[#F5C400] to-[#E6B800] px-5 flex flex-col items-center justify-center min-w-[160px] border-2 border-black/20 border-l-0 rounded-l-lg">
+                <div className="bg-gradient-to-b from-[#FFD700] via-[#F5C400] to-[#E6B800] px-4 flex flex-col items-center justify-center min-w-[130px] border-2 border-black/15 border-l-0 rounded-l-md">
                   {/* Car Number - Centered */}
                   <span 
-                    className="text-black text-xl font-black tracking-wide whitespace-nowrap"
+                    className="text-black text-base font-black tracking-wide whitespace-nowrap"
                     dir="ltr"
                     style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}
                   >
                     {formatPlateNumber(car.car_number)}
                   </span>
                   
-                  {/* Model & Year */}
+                  {/* Model & Year - smaller */}
                   {(car.model || car.year) && (
-                    <span className="text-black/50 text-[10px] font-semibold mt-0.5 truncate max-w-[140px]">
+                    <span className="text-black/50 text-[9px] font-medium truncate max-w-[110px]">
                       {[car.model, car.year].filter(Boolean).join(' • ')}
                     </span>
                   )}
                 </div>
                 
-                {/* Blue Section (IL) - Right side */}
-                <div className="bg-gradient-to-b from-[#0052CC] to-[#003D99] w-9 flex flex-col items-center justify-center gap-0.5 rounded-r-lg border-2 border-black/20 border-r-0">
-                  <span className="text-white text-[10px] leading-none">🇮🇱</span>
-                  <span className="text-white text-xs font-bold leading-none tracking-tight">IL</span>
+                {/* Blue Section (IL) - Right side, compact */}
+                <div className="bg-gradient-to-b from-[#0052CC] to-[#003D99] w-7 flex flex-col items-center justify-center gap-0 rounded-r-md border-2 border-black/15 border-r-0">
+                  <span className="text-white text-[8px] leading-none">🇮🇱</span>
+                  <span className="text-white text-[10px] font-bold leading-none">IL</span>
                 </div>
-              </div>
-              
-              {/* Policy Count Badge - Floating below */}
-              <div className={cn(
-                "absolute -bottom-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-xs font-bold shadow-lg whitespace-nowrap border-2 border-background",
-                car.policyCount > 0
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground"
-              )}>
-                <span className="ltr-nums">{car.policyCount}</span> وثيقة
               </div>
             </div>
           </button>
