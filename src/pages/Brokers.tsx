@@ -204,25 +204,45 @@ export default function Brokers() {
 
   if (viewingBroker) {
     return (
-      <BrokerDetails
-        broker={viewingBroker}
-        onBack={() => setViewingBroker(null)}
-        onEdit={() => {
-          setSelectedBroker(viewingBroker);
-          setDrawerOpen(true);
-        }}
-        onRefresh={() => {
-          fetchBrokers();
-          supabase
-            .from('brokers')
-            .select('*')
-            .eq('id', viewingBroker.id)
-            .single()
-            .then(({ data }) => {
-              if (data) setViewingBroker(data);
-            });
-        }}
-      />
+      <>
+        <BrokerDetails
+          broker={viewingBroker}
+          onBack={() => setViewingBroker(null)}
+          onEdit={() => {
+            setSelectedBroker(viewingBroker);
+            setDrawerOpen(true);
+          }}
+          onRefresh={() => {
+            fetchBrokers();
+            supabase
+              .from('brokers')
+              .select('*')
+              .eq('id', viewingBroker.id)
+              .single()
+              .then(({ data }) => {
+                if (data) setViewingBroker(data);
+              });
+          }}
+        />
+
+        <BrokerDrawer
+          open={drawerOpen}
+          onOpenChange={setDrawerOpen}
+          broker={selectedBroker || viewingBroker}
+          onSaved={() => {
+            fetchBrokers();
+            setDrawerOpen(false);
+            supabase
+              .from('brokers')
+              .select('*')
+              .eq('id', viewingBroker.id)
+              .single()
+              .then(({ data }) => {
+                if (data) setViewingBroker(data);
+              });
+          }}
+        />
+      </>
     );
   }
 
