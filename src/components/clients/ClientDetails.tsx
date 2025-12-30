@@ -318,12 +318,18 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
 
       if (error) throw error;
 
-      const totalRefunds = (data || [])
-        .filter(t => t.transaction_type === 'refund')
+      // "refund" and "transfer_refund_owed" = We owe customer
+      // "transfer_adjustment_due" = Customer owes us
+      const weOweCustomer = (data || [])
+        .filter(t => t.transaction_type === 'refund' || t.transaction_type === 'transfer_refund_owed')
+        .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+      const customerOwesUs = (data || [])
+        .filter(t => t.transaction_type === 'transfer_adjustment_due')
         .reduce((sum, t) => sum + (t.amount || 0), 0);
 
       setWalletBalance({
-        total_refunds: totalRefunds,
+        total_refunds: weOweCustomer - customerOwesUs, // Net amount we owe
         transaction_count: data?.length || 0,
       });
     } catch (error) {

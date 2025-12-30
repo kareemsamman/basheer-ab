@@ -28,6 +28,8 @@ import {
   Send,
   Loader2,
   Package,
+  ArrowLeftRight,
+  History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PolicyEditDrawer } from "./PolicyEditDrawer";
@@ -35,6 +37,7 @@ import { PolicyPaymentsSection } from "./PolicyPaymentsSection";
 import { PolicyFilesSection } from "./PolicyFilesSection";
 import { PolicyInvoicesSection } from "./PolicyInvoicesSection";
 import { CancelPolicyModal } from "./CancelPolicyModal";
+import { TransferPolicyModal } from "./TransferPolicyModal";
 
 interface PolicyDetailsDrawerProps {
   open: boolean;
@@ -186,11 +189,13 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
   const [payments, setPayments] = useState<Payment[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("insurance");
   const [showQuickPayment, setShowQuickPayment] = useState(false);
   const [creatorName, setCreatorName] = useState<string | null>(null);
   const [sendingSignatureSms, setSendingSignatureSms] = useState(false);
   const [relatedPolicies, setRelatedPolicies] = useState<RelatedPolicy[]>([]);
+  const [transferHistory, setTransferHistory] = useState<any[]>([]);
 
   const handleSendSignatureSms = async () => {
     if (!policy || !policy.clients.phone_number) {
@@ -268,6 +273,26 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
       } else {
         setRelatedPolicies([]);
       }
+
+      // Fetch transfer history
+      const { data: transfersData } = await supabase
+        .from("policy_transfers")
+        .select(`
+          id,
+          from_car_id,
+          to_car_id,
+          transfer_date,
+          note,
+          adjustment_type,
+          adjustment_amount,
+          created_at,
+          from_car:cars!policy_transfers_from_car_id_fkey(car_number, model, year),
+          to_car:cars!policy_transfers_to_car_id_fkey(car_number, model, year)
+        `)
+        .eq("policy_id", policyId)
+        .order("created_at", { ascending: false });
+
+      setTransferHistory(transfersData || []);
 
       // Fetch creator name via safe directory function
       if (policyData.created_by_admin_id) {
@@ -467,6 +492,16 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                       <Pencil className="h-4 w-4 ml-1" />
                       تعديل
                     </Button>
+                    {!policy.cancelled && policy.cars && (
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => setTransferOpen(true)}
+                      >
+                        <ArrowLeftRight className="h-4 w-4 ml-1" />
+                        تحويل
+                      </Button>
+                    )}
                     {!policy.cancelled && (
                       <Button 
                         variant="outline" 
@@ -802,6 +837,45 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                         <p className="text-sm text-muted-foreground whitespace-pre-wrap">{policy.notes}</p>
                       </Card>
                     )}
+
+                    {/* Transfer History */}
+                    {transferHistory.length > 0 && (
+                      <Card className="p-4 border-amber-500/30 bg-amber-500/5">
+                        <div className="flex items-center gap-2 text-amber-700 font-semibold mb-3">
+                          <History className="h-4 w-4" />
+                          <span>سجل التحويلات ({transferHistory.length})</span>
+                        </div>
+                        <div className="space-y-3">
+                          {transferHistory.map((transfer) => (
+                            <div key={transfer.id} className="text-sm border-b border-amber-500/20 pb-2 last:border-0 last:pb-0">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-muted-foreground">
+                                  {formatDate(transfer.transfer_date)}
+                                </span>
+                                {transfer.adjustment_type && transfer.adjustment_type !== 'none' && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {transfer.adjustment_type === 'customer_pays' ? 'العميل يدفع' : 'مرتجع'}
+                                    : ₪{transfer.adjustment_amount}
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className="font-mono bg-muted px-1.5 py-0.5 rounded">
+                                  {transfer.from_car?.car_number}
+                                </span>
+                                <ArrowLeftRight className="h-3 w-3 text-muted-foreground" />
+                                <span className="font-mono bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                                  {transfer.to_car?.car_number}
+                                </span>
+                              </div>
+                              {transfer.note && (
+                                <p className="text-xs text-muted-foreground mt-1">{transfer.note}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </Card>
+                    )}
                   </TabsContent>
 
                   {/* Payments Tab */}
@@ -938,6 +1012,18 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
             branchId={policy.branch_id}
             insurancePrice={policy.insurance_price}
             onCancelled={handleEditComplete}
+          />
+          <TransferPolicyModal
+            open={transferOpen}
+            onOpenChange={setTransferOpen}
+            policyId={policy.id}
+            policyNumber={policy.policy_number}
+            clientId={policy.clients.id}
+            clientName={policy.clients.full_name}
+            clientPhone={policy.clients.phone_number}
+            branchId={policy.branch_id}
+            currentCar={policy.cars}
+            onTransferred={handleEditComplete}
           />
         </>
       )}

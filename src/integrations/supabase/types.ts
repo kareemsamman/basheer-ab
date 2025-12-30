@@ -1727,6 +1727,94 @@ export type Database = {
           },
         ]
       }
+      policy_transfers: {
+        Row: {
+          adjustment_amount: number | null
+          adjustment_type: string | null
+          branch_id: string | null
+          client_id: string
+          created_at: string
+          created_by_admin_id: string | null
+          from_car_id: string
+          id: string
+          note: string | null
+          policy_id: string
+          to_car_id: string
+          transfer_date: string
+        }
+        Insert: {
+          adjustment_amount?: number | null
+          adjustment_type?: string | null
+          branch_id?: string | null
+          client_id: string
+          created_at?: string
+          created_by_admin_id?: string | null
+          from_car_id: string
+          id?: string
+          note?: string | null
+          policy_id: string
+          to_car_id: string
+          transfer_date?: string
+        }
+        Update: {
+          adjustment_amount?: number | null
+          adjustment_type?: string | null
+          branch_id?: string | null
+          client_id?: string
+          created_at?: string
+          created_by_admin_id?: string | null
+          from_car_id?: string
+          id?: string
+          note?: string | null
+          policy_id?: string
+          to_car_id?: string
+          transfer_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "policy_transfers_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policy_transfers_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policy_transfers_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policy_transfers_from_car_id_fkey"
+            columns: ["from_car_id"]
+            isOneToOne: false
+            referencedRelation: "cars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policy_transfers_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "policies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policy_transfers_to_car_id_fkey"
+            columns: ["to_car_id"]
+            isOneToOne: false
+            referencedRelation: "cars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pricing_rules: {
         Row: {
           age_band: Database["public"]["Enums"]["age_band"] | null
