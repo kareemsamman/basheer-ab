@@ -1018,6 +1018,8 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
             onOpenChange={setTransferOpen}
             policyId={policy.id}
             policyNumber={policy.policy_number}
+            policyType={policy.policy_type_parent}
+            groupId={policy.group_id}
             clientId={policy.clients.id}
             clientName={policy.clients.full_name}
             clientPhone={policy.clients.phone_number}

@@ -28,7 +28,10 @@ import {
   Car, 
   Send,
   AlertTriangle,
+  Package,
+  CheckCircle2,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/card";
@@ -38,6 +41,8 @@ interface TransferPolicyModalProps {
   onOpenChange: (open: boolean) => void;
   policyId: string;
   policyNumber: string | null;
+  policyType: string;
+  groupId: string | null;
   clientId: string;
   clientName: string;
   clientPhone: string | null;
@@ -60,6 +65,20 @@ interface CarOption {
   manufacturer_name: string | null;
 }
 
+interface RelatedPolicy {
+  id: string;
+  policy_type_parent: string;
+  policy_number: string | null;
+  insurance_price: number;
+}
+
+const POLICY_TYPE_LABELS: Record<string, string> = {
+  ELZAMI: "إلزامي",
+  THIRD_FULL: "ثالث/شامل",
+  ROAD_SERVICE: "خدمات الطريق",
+  ACCIDENT_FEE_EXEMPTION: "إعفاء رسوم حادث",
+};
+
 type AdjustmentType = "none" | "customer_pays" | "refund";
 
 export function TransferPolicyModal({
@@ -67,6 +86,8 @@ export function TransferPolicyModal({
   onOpenChange,
   policyId,
   policyNumber,
+  policyType,
+  groupId,
   clientId,
   clientName,
   clientPhone,
@@ -82,6 +103,11 @@ export function TransferPolicyModal({
   const [loadingCars, setLoadingCars] = useState(false);
   const [selectedCarId, setSelectedCarId] = useState<string>("");
   const [showNewCarForm, setShowNewCarForm] = useState(false);
+  
+  // Package / related policies
+  const [relatedPolicies, setRelatedPolicies] = useState<RelatedPolicy[]>([]);
+  const [loadingRelated, setLoadingRelated] = useState(false);
+  const [transferPackage, setTransferPackage] = useState(true);
   
   // Transfer details
   const [transferDate, setTransferDate] = useState(new Date().toISOString().split("T")[0]);
@@ -104,13 +130,43 @@ export function TransferPolicyModal({
   const [newCarManufacturer, setNewCarManufacturer] = useState("");
   const [savingNewCar, setSavingNewCar] = useState(false);
 
-  // Fetch client's cars
+  // Fetch client's cars and related policies
   useEffect(() => {
     if (open && clientId) {
       fetchCars();
       loadSmsTemplate();
+      if (groupId) {
+        fetchRelatedPolicies();
+      } else {
+        setRelatedPolicies([]);
+      }
     }
-  }, [open, clientId]);
+  }, [open, clientId, groupId]);
+
+  // Fetch related policies in the same group (add-ons)
+  const fetchRelatedPolicies = async () => {
+    if (!groupId) return;
+    
+    setLoadingRelated(true);
+    try {
+      const { data, error } = await supabase
+        .from("policies")
+        .select("id, policy_type_parent, policy_number, insurance_price")
+        .eq("group_id", groupId)
+        .neq("id", policyId)
+        .is("deleted_at", null)
+        .is("cancelled", false)
+        .is("transferred", false);
+
+      if (error) throw error;
+      setRelatedPolicies(data || []);
+    } catch (error) {
+      console.error("Error fetching related policies:", error);
+      setRelatedPolicies([]);
+    } finally {
+      setLoadingRelated(false);
+    }
+  };
 
   const fetchCars = async () => {
     setLoadingCars(true);
@@ -221,7 +277,13 @@ export function TransferPolicyModal({
     try {
       const selectedCar = cars.find(c => c.id === selectedCarId);
       
-      // 1. Create policy transfer audit record
+      // Determine which policies to transfer
+      const policiesToTransfer = [policyId];
+      if (transferPackage && relatedPolicies.length > 0) {
+        policiesToTransfer.push(...relatedPolicies.map(p => p.id));
+      }
+      
+      // 1. Create policy transfer audit record for main policy
       const { error: transferError } = await supabase
         .from("policy_transfers")
         .insert({
@@ -239,9 +301,32 @@ export function TransferPolicyModal({
 
       if (transferError) throw transferError;
 
-      // 2. Update OLD policy: set end_date to transfer date and mark as transferred
-      // The OLD policy stays attached to the OLD car, just ends at transfer date
-      const { error: oldPolicyError } = await supabase
+      // 2. Create transfer records for related policies if transferring as package
+      if (transferPackage && relatedPolicies.length > 0) {
+        const relatedTransferRecords = relatedPolicies.map(p => ({
+          policy_id: p.id,
+          client_id: clientId,
+          from_car_id: currentCar?.id,
+          to_car_id: selectedCarId,
+          transfer_date: transferDate,
+          note: `تحويل ضمن الحزمة مع الوثيقة ${policyNumber || policyId}`,
+          adjustment_type: "none",
+          adjustment_amount: null,
+          created_by_admin_id: user?.id,
+          branch_id: branchId,
+        }));
+        
+        const { error: relatedTransferError } = await supabase
+          .from("policy_transfers")
+          .insert(relatedTransferRecords);
+
+        if (relatedTransferError) {
+          console.error("Error creating related transfer records:", relatedTransferError);
+        }
+      }
+
+      // 3. Update ALL policies being transferred: set end_date to transfer date and mark as transferred
+      const { error: policiesUpdateError } = await supabase
         .from("policies")
         .update({
           end_date: transferDate,
@@ -249,11 +334,11 @@ export function TransferPolicyModal({
           transferred_car_number: currentCar?.car_number || null,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", policyId);
+        .in("id", policiesToTransfer);
 
-      if (oldPolicyError) throw oldPolicyError;
+      if (policiesUpdateError) throw policiesUpdateError;
 
-      // 3. Create wallet transaction if money adjustment exists
+      // 4. Create wallet transaction if money adjustment exists
       if (adjustmentType !== "none" && adjustmentAmount) {
         const transactionType = adjustmentType === "customer_pays" 
           ? "transfer_adjustment_due" 
@@ -277,7 +362,7 @@ export function TransferPolicyModal({
         if (walletError) throw walletError;
       }
 
-      // 4. Send SMS if enabled
+      // 5. Send SMS if enabled
       if (sendSms && clientPhone && smsMessage) {
         try {
           const { error: smsError } = await supabase.functions.invoke("send-sms", {
@@ -305,9 +390,12 @@ export function TransferPolicyModal({
         }
       }
 
+      const transferCount = policiesToTransfer.length;
       toast({ 
         title: "تم", 
-        description: "تم تحويل الوثيقة - الوثيقة القديمة انتهت بتاريخ التحويل والسيارة الجديدة تحتاج وثيقة جديدة" 
+        description: transferCount > 1 
+          ? `تم تحويل ${transferCount} وثائق (الحزمة الكاملة)`
+          : "تم تحويل الوثيقة - الوثيقة القديمة انتهت بتاريخ التحويل"
       });
       onTransferred();
       onOpenChange(false);
@@ -336,6 +424,8 @@ export function TransferPolicyModal({
     setSendSms(true);
     setSmsMessage("");
     setShowNewCarForm(false);
+    setTransferPackage(true);
+    setRelatedPolicies([]);
   };
 
   const formatCarLabel = (car: CarOption) => {
@@ -365,6 +455,67 @@ export function TransferPolicyModal({
               {currentCar ? formatCarLabel(currentCar) : "غير محدد"}
             </p>
           </Card>
+
+          {/* Package Transfer Option - Show if there are related policies */}
+          {relatedPolicies.length > 0 && (
+            <Card className="p-4 border-primary/30 bg-primary/5 space-y-3">
+              <div className="flex items-center gap-2">
+                <Package className="h-5 w-5 text-primary" />
+                <Label className="font-semibold text-primary">
+                  هذه الوثيقة جزء من حزمة
+                </Label>
+              </div>
+              
+              <div className="text-sm text-muted-foreground">
+                تم العثور على {relatedPolicies.length} وثائق إضافية مرتبطة:
+              </div>
+              
+              <div className="space-y-2">
+                {relatedPolicies.map((policy) => (
+                  <div 
+                    key={policy.id} 
+                    className="flex items-center justify-between bg-background/50 rounded-md px-3 py-2 text-sm"
+                  >
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                      <span className="font-medium">
+                        {POLICY_TYPE_LABELS[policy.policy_type_parent] || policy.policy_type_parent}
+                      </span>
+                      {policy.policy_number && (
+                        <span className="text-muted-foreground">
+                          ({policy.policy_number})
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-bold text-primary">
+                      ₪{policy.insurance_price.toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-3 pt-2 border-t">
+                <Checkbox
+                  id="transfer-package"
+                  checked={transferPackage}
+                  onCheckedChange={(checked) => setTransferPackage(checked === true)}
+                />
+                <Label 
+                  htmlFor="transfer-package" 
+                  className="cursor-pointer text-sm font-medium"
+                >
+                  تحويل الحزمة كاملة (الخدمات وإعفاء الرسوم)
+                </Label>
+              </div>
+            </Card>
+          )}
+
+          {loadingRelated && (
+            <div className="flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              جاري البحث عن وثائق مرتبطة...
+            </div>
+          )}
 
           {/* Target Car Selection */}
           <div className="space-y-2">
