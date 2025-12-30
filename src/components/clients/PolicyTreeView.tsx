@@ -74,12 +74,12 @@ const formatDate = (dateStr: string | null) => {
 };
 
 const getPolicyStatus = (policy: PolicyRecord) => {
-  if (policy.cancelled) return { label: 'ملغاة', variant: 'destructive' as const, isActive: false };
-  if (policy.transferred) return { label: 'محولة', variant: 'warning' as const, isActive: false };
+  if (policy.cancelled) return { label: 'ملغاة', variant: 'destructive' as const, isActive: false, priority: 4 };
+  if (policy.transferred) return { label: 'محولة', variant: 'warning' as const, isActive: false, priority: 3 };
   const endDate = new Date(policy.end_date);
   const today = new Date();
-  if (endDate < today) return { label: 'منتهية', variant: 'secondary' as const, isActive: false };
-  return { label: 'سارية', variant: 'success' as const, isActive: true };
+  if (endDate < today) return { label: 'منتهية', variant: 'secondary' as const, isActive: false, priority: 2 };
+  return { label: 'سارية', variant: 'success' as const, isActive: true, priority: 1 };
 };
 
 interface PolicyGroup {
@@ -88,6 +88,7 @@ interface PolicyGroup {
   addons: PolicyRecord[];
   isActive: boolean;
   newestDate: Date;
+  priority: number; // 1=active, 2=expired, 3=transferred, 4=cancelled
 }
 
 export function PolicyTreeView({ policies, onPolicyClick }: PolicyTreeViewProps) {
@@ -100,6 +101,7 @@ export function PolicyTreeView({ policies, onPolicyClick }: PolicyTreeViewProps)
     policies.forEach(policy => {
       const isMainType = MAIN_POLICY_TYPES.includes(policy.policy_type_parent);
       const isAddonType = ADDON_POLICY_TYPES.includes(policy.policy_type_parent);
+      const status = getPolicyStatus(policy);
       
       if (isMainType) {
         const groupKey = policy.group_id || `standalone-${policy.id}`;
@@ -108,8 +110,9 @@ export function PolicyTreeView({ policies, onPolicyClick }: PolicyTreeViewProps)
             groupId: policy.group_id,
             mainPolicy: policy,
             addons: [],
-            isActive: getPolicyStatus(policy).isActive,
-            newestDate: new Date(policy.start_date)
+            isActive: status.isActive,
+            newestDate: new Date(policy.start_date),
+            priority: status.priority
           });
         } else {
           // If there's already a main policy in this group, compare dates
@@ -119,25 +122,29 @@ export function PolicyTreeView({ policies, onPolicyClick }: PolicyTreeViewProps)
           if (newDate > existingDate) {
             // Move old main to be handled as standalone
             if (existing.mainPolicy) {
+              const oldStatus = getPolicyStatus(existing.mainPolicy);
               groups.set(`standalone-${existing.mainPolicy.id}`, {
                 groupId: null,
                 mainPolicy: existing.mainPolicy,
                 addons: [],
-                isActive: getPolicyStatus(existing.mainPolicy).isActive,
-                newestDate: existingDate
+                isActive: oldStatus.isActive,
+                newestDate: existingDate,
+                priority: oldStatus.priority
               });
             }
             existing.mainPolicy = policy;
-            existing.isActive = getPolicyStatus(policy).isActive;
+            existing.isActive = status.isActive;
             existing.newestDate = newDate;
+            existing.priority = status.priority;
           } else {
             // This is an older policy, make it standalone
             groups.set(`standalone-${policy.id}`, {
               groupId: null,
               mainPolicy: policy,
               addons: [],
-              isActive: getPolicyStatus(policy).isActive,
-              newestDate: newDate
+              isActive: status.isActive,
+              newestDate: newDate,
+              priority: status.priority
             });
           }
         }
@@ -149,8 +156,9 @@ export function PolicyTreeView({ policies, onPolicyClick }: PolicyTreeViewProps)
             groupId: policy.group_id,
             mainPolicy: null,
             addons: [policy],
-            isActive: getPolicyStatus(policy).isActive,
-            newestDate: new Date(policy.start_date)
+            isActive: status.isActive,
+            newestDate: new Date(policy.start_date),
+            priority: status.priority
           });
         } else {
           groups.get(policy.group_id)!.addons.push(policy);
@@ -161,25 +169,29 @@ export function PolicyTreeView({ policies, onPolicyClick }: PolicyTreeViewProps)
       }
     });
     
-    // Convert to array and sort: active first, then by newest date
+    // Convert to array and sort
     const groupArray = Array.from(groups.values());
     
     // Add standalone add-ons as their own groups
     standaloneAddons.forEach(addon => {
+      const status = getPolicyStatus(addon);
       groupArray.push({
         groupId: null,
         mainPolicy: null,
         addons: [addon],
-        isActive: getPolicyStatus(addon).isActive,
-        newestDate: new Date(addon.start_date)
+        isActive: status.isActive,
+        newestDate: new Date(addon.start_date),
+        priority: status.priority
       });
     });
     
-    // Sort: active first, then by newest date descending
+    // Sort: by priority first (1=active, 2=expired, 3=transferred, 4=cancelled), then by newest date descending
     groupArray.sort((a, b) => {
-      if (a.isActive !== b.isActive) {
-        return a.isActive ? -1 : 1;
+      // First sort by priority (lower = higher priority)
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
       }
+      // Then by newest date descending
       return b.newestDate.getTime() - a.newestDate.getTime();
     });
     

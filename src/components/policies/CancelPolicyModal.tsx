@@ -15,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, XCircle, Send, AlertTriangle } from "lucide-react";
+import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { useAuth } from "@/hooks/useAuth";
 
 interface CancelPolicyModalProps {
@@ -227,11 +228,9 @@ export function CancelPolicyModal({
           {/* Cancellation Date */}
           <div className="space-y-2">
             <Label>تاريخ الإلغاء *</Label>
-            <Input
-              type="date"
+            <ArabicDatePicker
               value={cancellationDate}
-              onChange={(e) => setCancellationDate(e.target.value)}
-              dir="ltr"
+              onChange={(date) => setCancellationDate(date)}
             />
           </div>
 

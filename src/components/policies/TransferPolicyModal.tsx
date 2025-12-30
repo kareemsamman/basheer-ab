@@ -29,6 +29,7 @@ import {
   Send,
   AlertTriangle,
 } from "lucide-react";
+import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/card";
 
@@ -464,11 +465,9 @@ export function TransferPolicyModal({
           {/* Transfer Date */}
           <div className="space-y-2">
             <Label>تاريخ التحويل *</Label>
-            <Input
-              type="date"
+            <ArabicDatePicker
               value={transferDate}
-              onChange={(e) => setTransferDate(e.target.value)}
-              dir="ltr"
+              onChange={(date) => setTransferDate(date)}
             />
           </div>
 
