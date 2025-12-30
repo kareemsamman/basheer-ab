@@ -213,7 +213,7 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
     return new Date(dateStr).toLocaleDateString("ar-EG");
   };
 
-  const handleExportPdf = async () => {
+  const handleExportPdf = async (sendSms = false) => {
     setExporting(true);
     try {
       const { data, error } = await supabase.functions.invoke("generate-broker-report", {
@@ -228,17 +228,43 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
       if (error) throw error;
 
       if (data?.url) {
-        window.open(data.url, "_blank");
-        toast({
-          title: "تم التصدير",
-          description: "تم إنشاء التقرير بنجاح",
-        });
+        if (sendSms && broker.phone) {
+          // Send report link via SMS
+          const { error: smsError } = await supabase.functions.invoke("send-sms", {
+            body: {
+              phone: broker.phone,
+              message: `مرحباً ${broker.name}،\n\nيمكنك مشاهدة تقرير التأمينات الخاص بك عبر الرابط:\n${data.url}\n\nبشير للتأمينات 🚗`,
+            },
+          });
+
+          if (smsError) throw smsError;
+
+          // Log SMS
+          await supabase.from("sms_logs").insert({
+            phone_number: broker.phone,
+            message: `تقرير الوسيط - ${data.url}`,
+            sms_type: "manual",
+            status: "sent",
+            sent_at: new Date().toISOString(),
+          });
+
+          toast({
+            title: "تم الإرسال",
+            description: "تم إرسال رابط التقرير للوسيط عبر SMS",
+          });
+        } else {
+          window.open(data.url, "_blank");
+          toast({
+            title: "تم التصدير",
+            description: "تم إنشاء التقرير بنجاح",
+          });
+        }
       }
     } catch (error: any) {
       console.error("Error exporting PDF:", error);
       toast({
         title: "خطأ",
-        description: "فشل في تصدير التقرير",
+        description: sendSms ? "فشل في إرسال التقرير" : "فشل في تصدير التقرير",
         variant: "destructive",
       });
     } finally {
@@ -290,14 +316,24 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
                 إرسال SMS
               </Button>
             )}
-            <Button variant="outline" onClick={handleExportPdf} disabled={exporting}>
+            <Button variant="outline" onClick={() => handleExportPdf(false)} disabled={exporting}>
               {exporting ? (
                 <Loader2 className="h-4 w-4 ml-2 animate-spin" />
               ) : (
                 <Download className="h-4 w-4 ml-2" />
               )}
-              تصدير PDF
+              تصدير التقرير
             </Button>
+            {broker.phone && (
+              <Button variant="outline" onClick={() => handleExportPdf(true)} disabled={exporting}>
+                {exporting ? (
+                  <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                ) : (
+                  <FileText className="h-4 w-4 ml-2" />
+                )}
+                إرسال التقرير SMS
+              </Button>
+            )}
             <Button variant="outline" onClick={onEdit}>
               <Pencil className="h-4 w-4 ml-2" />
               تعديل

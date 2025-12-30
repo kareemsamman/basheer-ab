@@ -7,9 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { FileUploader } from "@/components/media/FileUploader";
 import { 
   ArrowLeft, 
   Plus, 
@@ -19,7 +21,13 @@ import {
   FileText,
   Calendar,
   CheckCircle2,
-  Clock
+  Clock,
+  CreditCard,
+  Banknote,
+  Building2,
+  Receipt,
+  XCircle,
+  Image
 } from "lucide-react";
 import {
   Dialog,
@@ -44,6 +52,7 @@ import {
 } from "@/components/ui/table";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
 
 interface Broker {
   id: string;
@@ -60,6 +69,12 @@ interface Settlement {
   status: string;
   notes: string | null;
   created_at: string;
+  payment_type: string;
+  cheque_number: string | null;
+  cheque_image_url: string | null;
+  bank_reference: string | null;
+  refused: boolean;
+  card_last_four: string | null;
 }
 
 interface Policy {
@@ -70,6 +85,25 @@ interface Policy {
   client: { full_name: string } | null;
   broker_direction: string | null;
 }
+
+type PaymentType = 'cash' | 'cheque' | 'bank_transfer' | 'visa';
+
+const paymentTypeLabels: Record<PaymentType, string> = {
+  cash: 'نقداً',
+  cheque: 'شيك',
+  bank_transfer: 'تحويل بنكي',
+  visa: 'بطاقة ائتمان',
+};
+
+const PaymentTypeIcon = ({ type }: { type: string }) => {
+  switch (type) {
+    case 'cash': return <Banknote className="h-4 w-4" />;
+    case 'cheque': return <Receipt className="h-4 w-4" />;
+    case 'bank_transfer': return <Building2 className="h-4 w-4" />;
+    case 'visa': return <CreditCard className="h-4 w-4" />;
+    default: return <Wallet className="h-4 w-4" />;
+  }
+};
 
 export default function BrokerWallet() {
   const { brokerId } = useParams<{ brokerId: string }>();
@@ -95,6 +129,12 @@ export default function BrokerWallet() {
   const [allocations, setAllocations] = useState<Record<string, number>>({});
   const [brokerPolicies, setBrokerPolicies] = useState<Policy[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // Payment method fields
+  const [paymentType, setPaymentType] = useState<PaymentType>('cash');
+  const [chequeNumber, setChequeNumber] = useState('');
+  const [chequeImageUrl, setChequeImageUrl] = useState('');
+  const [bankReference, setBankReference] = useState('');
 
   useEffect(() => {
     if (brokerId) {
@@ -125,12 +165,12 @@ export default function BrokerWallet() {
       if (settlementsData) {
         setSettlements(settlementsData as Settlement[]);
         
-        // Calculate totals
+        // Calculate totals (exclude refused)
         const weOwe = settlementsData
-          .filter((s: any) => s.direction === 'we_owe')
+          .filter((s: any) => s.direction === 'we_owe' && !s.refused)
           .reduce((sum: number, s: any) => sum + (s.total_amount || 0), 0);
         const brokerOwes = settlementsData
-          .filter((s: any) => s.direction === 'broker_owes')
+          .filter((s: any) => s.direction === 'broker_owes' && !s.refused)
           .reduce((sum: number, s: any) => sum + (s.total_amount || 0), 0);
         
         setWeOweTotal(weOwe);
@@ -213,9 +253,18 @@ export default function BrokerWallet() {
     setAllocations(newAllocations);
   };
 
+  const validateChequeNumber = (num: string) => {
+    return /^\d{8}$/.test(num);
+  };
+
   const handleSaveSettlement = async () => {
     if (!totalAmount || parseFloat(totalAmount) <= 0) {
       toast({ title: "خطأ", description: "يرجى إدخال مبلغ صحيح", variant: "destructive" });
+      return;
+    }
+
+    if (paymentType === 'cheque' && !validateChequeNumber(chequeNumber)) {
+      toast({ title: "خطأ", description: "رقم الشيك يجب أن يكون 8 أرقام", variant: "destructive" });
       return;
     }
 
@@ -232,6 +281,11 @@ export default function BrokerWallet() {
           notes,
           status: 'completed',
           created_by_admin_id: user?.id,
+          payment_type: paymentType,
+          cheque_number: paymentType === 'cheque' ? chequeNumber : null,
+          cheque_image_url: paymentType === 'cheque' ? chequeImageUrl : null,
+          bank_reference: paymentType === 'bank_transfer' ? bankReference : null,
+          refused: false,
         })
         .select()
         .single();
@@ -265,6 +319,26 @@ export default function BrokerWallet() {
     }
   };
 
+  const handleToggleRefused = async (settlement: Settlement) => {
+    try {
+      const { error } = await supabase
+        .from('broker_settlements')
+        .update({ refused: !settlement.refused })
+        .eq('id', settlement.id);
+
+      if (error) throw error;
+      
+      toast({ 
+        title: settlement.refused ? "تم استعادة التسوية" : "تم إلغاء التسوية",
+        description: settlement.refused ? "التسوية فعّالة الآن" : "تم تحديد التسوية كمرفوضة"
+      });
+      
+      fetchBrokerData();
+    } catch (error) {
+      toast({ title: "خطأ", description: "فشل في تحديث التسوية", variant: "destructive" });
+    }
+  };
+
   const resetForm = () => {
     setDirection('broker_owes');
     setTotalAmount('');
@@ -272,6 +346,10 @@ export default function BrokerWallet() {
     setNotes('');
     setSelectedPolicies([]);
     setAllocations({});
+    setPaymentType('cash');
+    setChequeNumber('');
+    setChequeImageUrl('');
+    setBankReference('');
   };
 
   const netBalance = brokerOwesTotal - weOweTotal;
@@ -279,7 +357,7 @@ export default function BrokerWallet() {
   if (loading) {
     return (
       <MainLayout>
-        <div className="space-y-6" dir="rtl">
+        <div className="p-6 space-y-6" dir="rtl">
           <Skeleton className="h-8 w-48" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Skeleton className="h-32" />
@@ -293,7 +371,7 @@ export default function BrokerWallet() {
 
   return (
     <MainLayout>
-      <div className="space-y-6" dir="rtl">
+      <div className="p-6 space-y-6" dir="rtl">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -310,7 +388,7 @@ export default function BrokerWallet() {
           </div>
           <Button onClick={() => setShowNewSettlement(true)} className="gap-2">
             <Plus className="h-4 w-4" />
-            تسوية جديدة
+            معاملة جديدة
           </Button>
         </div>
 
@@ -322,7 +400,7 @@ export default function BrokerWallet() {
                 <ArrowUpRight className="h-6 w-6 text-red-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">نحن ندين له</p>
+                <p className="text-sm text-muted-foreground">دفعت للوسيط</p>
                 <p className="text-2xl font-bold text-red-600">₪{weOweTotal.toLocaleString()}</p>
               </div>
             </div>
@@ -334,21 +412,35 @@ export default function BrokerWallet() {
                 <ArrowDownLeft className="h-6 w-6 text-green-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">يدين لنا</p>
+                <p className="text-sm text-muted-foreground">استلمت من الوسيط</p>
                 <p className="text-2xl font-bold text-green-600">₪{brokerOwesTotal.toLocaleString()}</p>
               </div>
             </div>
           </Card>
 
-          <Card className={`p-6 ${netBalance >= 0 ? 'bg-green-50 dark:bg-green-950/20' : 'bg-red-50 dark:bg-red-950/20'}`}>
+          <Card className={cn(
+            "p-6",
+            netBalance >= 0 ? 'bg-green-50 dark:bg-green-950/20' : 'bg-red-50 dark:bg-red-950/20'
+          )}>
             <div className="flex items-center gap-3">
-              <div className={`p-3 rounded-xl ${netBalance >= 0 ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
-                <Wallet className={`h-6 w-6 ${netBalance >= 0 ? 'text-green-600' : 'text-red-600'}`} />
+              <div className={cn(
+                "p-3 rounded-xl",
+                netBalance >= 0 ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'
+              )}>
+                <Wallet className={cn(
+                  "h-6 w-6",
+                  netBalance >= 0 ? 'text-green-600' : 'text-red-600'
+                )} />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">الرصيد الصافي</p>
-                <p className={`text-2xl font-bold ${netBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {netBalance >= 0 ? '+' : ''}₪{netBalance.toLocaleString()}
+                <p className="text-sm text-muted-foreground">
+                  {netBalance >= 0 ? 'لي عنده' : 'له عندي'}
+                </p>
+                <p className={cn(
+                  "text-2xl font-bold",
+                  netBalance >= 0 ? 'text-green-600' : 'text-red-600'
+                )}>
+                  ₪{Math.abs(netBalance).toLocaleString()}
                 </p>
               </div>
             </div>
@@ -358,71 +450,109 @@ export default function BrokerWallet() {
         {/* Settlements Table */}
         <Card>
           <div className="p-4 border-b">
-            <h2 className="font-semibold">سجل التسويات</h2>
+            <h2 className="font-semibold">سجل المعاملات</h2>
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>التاريخ</TableHead>
-                <TableHead>الاتجاه</TableHead>
-                <TableHead>المبلغ</TableHead>
-                <TableHead>الحالة</TableHead>
-                <TableHead>ملاحظات</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {settlements.length === 0 ? (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                    لا توجد تسويات بعد
-                  </TableCell>
+                  <TableHead>التاريخ</TableHead>
+                  <TableHead>الاتجاه</TableHead>
+                  <TableHead>طريقة الدفع</TableHead>
+                  <TableHead>المبلغ</TableHead>
+                  <TableHead>الحالة</TableHead>
+                  <TableHead>ملاحظات</TableHead>
+                  <TableHead className="w-20">إجراءات</TableHead>
                 </TableRow>
-              ) : (
-                settlements.map((settlement) => (
-                  <TableRow key={settlement.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        {new Date(settlement.settlement_date).toLocaleDateString('ar-EG')}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {settlement.direction === 'we_owe' ? (
-                        <Badge variant="outline" className="text-red-600 border-red-200">
-                          <ArrowUpRight className="h-3 w-3 ml-1" />
-                          نحن ندين
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-green-600 border-green-200">
-                          <ArrowDownLeft className="h-3 w-3 ml-1" />
-                          يدين لنا
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="font-semibold">
-                      ₪{settlement.total_amount.toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      {settlement.status === 'completed' ? (
-                        <Badge className="bg-green-100 text-green-700">
-                          <CheckCircle2 className="h-3 w-3 ml-1" />
-                          مكتمل
-                        </Badge>
-                      ) : (
-                        <Badge className="bg-yellow-100 text-yellow-700">
-                          <Clock className="h-3 w-3 ml-1" />
-                          معلق
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {settlement.notes || '-'}
+              </TableHeader>
+              <TableBody>
+                {settlements.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      لا توجد معاملات بعد
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : (
+                  settlements.map((settlement) => (
+                    <TableRow key={settlement.id} className={cn(settlement.refused && "opacity-50")}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-muted-foreground" />
+                          {new Date(settlement.settlement_date).toLocaleDateString('ar-EG')}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {settlement.direction === 'we_owe' ? (
+                          <Badge variant="outline" className="text-red-600 border-red-200">
+                            <ArrowUpRight className="h-3 w-3 ml-1" />
+                            دفعت للوسيط
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-green-600 border-green-200">
+                            <ArrowDownLeft className="h-3 w-3 ml-1" />
+                            استلمت من الوسيط
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <PaymentTypeIcon type={settlement.payment_type || 'cash'} />
+                          <span>{paymentTypeLabels[(settlement.payment_type || 'cash') as PaymentType]}</span>
+                          {settlement.cheque_number && (
+                            <Badge variant="secondary" className="text-xs">
+                              #{settlement.cheque_number}
+                            </Badge>
+                          )}
+                          {settlement.cheque_image_url && (
+                            <a href={settlement.cheque_image_url} target="_blank" rel="noopener noreferrer">
+                              <Image className="h-4 w-4 text-blue-500 cursor-pointer" />
+                            </a>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-semibold">
+                        ₪{settlement.total_amount.toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        {settlement.refused ? (
+                          <Badge className="bg-red-100 text-red-700">
+                            <XCircle className="h-3 w-3 ml-1" />
+                            مرفوض
+                          </Badge>
+                        ) : settlement.status === 'completed' ? (
+                          <Badge className="bg-green-100 text-green-700">
+                            <CheckCircle2 className="h-3 w-3 ml-1" />
+                            مكتمل
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-yellow-100 text-yellow-700">
+                            <Clock className="h-3 w-3 ml-1" />
+                            معلق
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">
+                        {settlement.notes || '-'}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleToggleRefused(settlement)}
+                          className={cn(
+                            "text-xs",
+                            settlement.refused ? "text-green-600 hover:text-green-700" : "text-red-600 hover:text-red-700"
+                          )}
+                        >
+                          {settlement.refused ? "استعادة" : "رفض"}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </Card>
 
         {/* New Settlement Dialog */}
@@ -431,7 +561,7 @@ export default function BrokerWallet() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5" />
-                تسوية جديدة - {broker?.name}
+                معاملة جديدة - {broker?.name}
               </DialogTitle>
             </DialogHeader>
 
@@ -445,13 +575,13 @@ export default function BrokerWallet() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="broker_owes">الوسيط يدين لنا</SelectItem>
-                      <SelectItem value="we_owe">نحن ندين للوسيط</SelectItem>
+                      <SelectItem value="broker_owes">استلمت من الوسيط</SelectItem>
+                      <SelectItem value="we_owe">دفعت للوسيط</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label>المبلغ الإجمالي (₪)</Label>
+                  <Label>المبلغ (₪)</Label>
                   <Input
                     type="number"
                     value={totalAmount}
@@ -460,12 +590,87 @@ export default function BrokerWallet() {
                   />
                 </div>
                 <div>
-                  <Label>تاريخ التسوية</Label>
+                  <Label>تاريخ المعاملة</Label>
                   <ArabicDatePicker
                     value={settlementDate}
                     onChange={(date) => setSettlementDate(date)}
                   />
                 </div>
+              </div>
+
+              {/* Payment Method */}
+              <div className="space-y-4">
+                <Label>طريقة الدفع</Label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {(['cash', 'cheque', 'bank_transfer', 'visa'] as PaymentType[]).map((type) => (
+                    <Button
+                      key={type}
+                      type="button"
+                      variant={paymentType === type ? 'default' : 'outline'}
+                      className={cn("gap-2", paymentType === type && "bg-primary")}
+                      onClick={() => setPaymentType(type)}
+                    >
+                      <PaymentTypeIcon type={type} />
+                      {paymentTypeLabels[type]}
+                    </Button>
+                  ))}
+                </div>
+
+                {/* Cheque Fields */}
+                {paymentType === 'cheque' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
+                    <div>
+                      <Label>رقم الشيك (8 أرقام)</Label>
+                      <Input
+                        value={chequeNumber}
+                        onChange={(e) => setChequeNumber(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                        placeholder="12345678"
+                        maxLength={8}
+                        className={cn(
+                          chequeNumber && !validateChequeNumber(chequeNumber) && "border-red-500"
+                        )}
+                      />
+                    </div>
+                    <div>
+                      <Label>صورة الشيك</Label>
+                      <FileUploader
+                        entityType="cheque"
+                        onUploadComplete={(files) => {
+                          if (files.length > 0 && files[0].cdn_url) {
+                            setChequeImageUrl(files[0].cdn_url);
+                          }
+                        }}
+                        accept="image/*"
+                        maxFiles={1}
+                      />
+                      {chequeImageUrl && (
+                        <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
+                          <CheckCircle2 className="h-4 w-4" />
+                          تم رفع الصورة
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Bank Transfer Fields */}
+                {paymentType === 'bank_transfer' && (
+                  <div className="p-4 bg-muted/50 rounded-lg">
+                    <Label>رقم المرجع / الحوالة</Label>
+                    <Input
+                      value={bankReference}
+                      onChange={(e) => setBankReference(e.target.value)}
+                      placeholder="رقم التحويل البنكي"
+                    />
+                  </div>
+                )}
+
+                {/* Visa Note */}
+                {paymentType === 'visa' && (
+                  <div className="p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg text-sm text-blue-700 dark:text-blue-300">
+                    سيتم تسجيل الدفع يدوياً. لاستخدام Tranzila، يرجى استخدام نظام الدفع في الوثائق.
+                  </div>
+                )}
               </div>
 
               {/* Policies Selection */}
@@ -536,10 +741,12 @@ export default function BrokerWallet() {
               {/* Notes */}
               <div>
                 <Label>ملاحظات</Label>
-                <Input
+                <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="ملاحظات إضافية..."
+                  className="resize-none"
+                  rows={2}
                 />
               </div>
 
@@ -549,7 +756,7 @@ export default function BrokerWallet() {
                   إلغاء
                 </Button>
                 <Button onClick={handleSaveSettlement} disabled={saving}>
-                  {saving ? 'جاري الحفظ...' : 'حفظ التسوية'}
+                  {saving ? 'جاري الحفظ...' : 'حفظ المعاملة'}
                 </Button>
               </div>
             </div>

@@ -184,45 +184,75 @@ export type Database = {
       }
       broker_settlements: {
         Row: {
+          bank_reference: string | null
           branch_id: string | null
           broker_id: string
+          card_expiry: string | null
+          card_last_four: string | null
+          cheque_image_url: string | null
+          cheque_number: string | null
           created_at: string
           created_by_admin_id: string | null
           direction: string
           id: string
+          installments_count: number | null
           notes: string | null
+          payment_type: string | null
+          refused: boolean | null
           settlement_date: string
           settlement_number: string | null
           status: string
           total_amount: number
+          tranzila_approval_code: string | null
+          tranzila_transaction_id: string | null
           updated_at: string
         }
         Insert: {
+          bank_reference?: string | null
           branch_id?: string | null
           broker_id: string
+          card_expiry?: string | null
+          card_last_four?: string | null
+          cheque_image_url?: string | null
+          cheque_number?: string | null
           created_at?: string
           created_by_admin_id?: string | null
           direction: string
           id?: string
+          installments_count?: number | null
           notes?: string | null
+          payment_type?: string | null
+          refused?: boolean | null
           settlement_date?: string
           settlement_number?: string | null
           status?: string
           total_amount?: number
+          tranzila_approval_code?: string | null
+          tranzila_transaction_id?: string | null
           updated_at?: string
         }
         Update: {
+          bank_reference?: string | null
           branch_id?: string | null
           broker_id?: string
+          card_expiry?: string | null
+          card_last_four?: string | null
+          cheque_image_url?: string | null
+          cheque_number?: string | null
           created_at?: string
           created_by_admin_id?: string | null
           direction?: string
           id?: string
+          installments_count?: number | null
           notes?: string | null
+          payment_type?: string | null
+          refused?: boolean | null
           settlement_date?: string
           settlement_number?: string | null
           status?: string
           total_amount?: number
+          tranzila_approval_code?: string | null
+          tranzila_transaction_id?: string | null
           updated_at?: string
         }
         Relationships: [
