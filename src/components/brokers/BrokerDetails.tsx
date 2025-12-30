@@ -97,6 +97,8 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
     totalRemaining: 0,
     fromBrokerTotal: 0,
     toBrokerTotal: 0,
+    paidToBroker: 0,
+    receivedFromBroker: 0,
   });
   const [clientDrawerOpen, setClientDrawerOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -179,20 +181,42 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
         (p) => p.broker_direction === 'to_broker' || p.broker_direction === null
       );
 
+      // Use PROFIT (not insurance_price) for broker financial obligations
+      // from_broker = broker brought this deal, I owe broker the profit
+      // to_broker = I made this for broker, broker owes me the profit
       const fromBrokerTotal = fromBrokerPolicies.reduce(
-        (sum, p) => sum + Number(p.insurance_price || 0),
+        (sum, p) => sum + Number(p.profit || 0),
         0
       );
       const toBrokerTotal = toBrokerPolicies.reduce(
-        (sum, p) => sum + Number(p.insurance_price || 0),
+        (sum, p) => sum + Number(p.profit || 0),
         0
       );
+
+      // Also fetch broker settlements to factor into the net calculation
+      const { data: settlementsData } = await supabase
+        .from("broker_settlements")
+        .select("*")
+        .eq("broker_id", broker.id)
+        .eq("status", "completed");
+
+      // we_owe = I paid broker (reduces my debt)
+      // broker_owes = Broker paid me (reduces broker's debt)
+      const paidToBroker = (settlementsData || [])
+        .filter((s: any) => s.direction === 'we_owe' && !s.refused)
+        .reduce((sum: number, s: any) => sum + Number(s.total_amount || 0), 0);
+      
+      const receivedFromBroker = (settlementsData || [])
+        .filter((s: any) => s.direction === 'broker_owes' && !s.refused)
+        .reduce((sum: number, s: any) => sum + Number(s.total_amount || 0), 0);
 
       setStats({
         totalCollected,
         totalRemaining: totalPrice - totalCollected,
-        fromBrokerTotal,
-        toBrokerTotal,
+        fromBrokerTotal, // Policy profits I owe broker
+        toBrokerTotal,   // Policy profits broker owes me
+        paidToBroker,    // Settlements I paid to broker
+        receivedFromBroker, // Settlements broker paid to me
       });
     } catch (error) {
       console.error("Error fetching broker data:", error);
@@ -280,7 +304,12 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
     setEndDate(undefined);
   };
 
-  const netBalance = stats.toBrokerTotal - stats.fromBrokerTotal;
+  // Net balance = (what broker owes me from policies + what I received from broker)
+  //             - (what I owe broker from policies + what I paid to broker)
+  // Simplified: (toBrokerTotal - fromBrokerTotal) + (receivedFromBroker - paidToBroker)
+  const policyNetBalance = stats.toBrokerTotal - stats.fromBrokerTotal;
+  const settlementNetBalance = stats.receivedFromBroker - stats.paidToBroker;
+  const netBalance = policyNetBalance + settlementNetBalance;
 
   const dateRangeText = startDate || endDate
     ? `${startDate ? format(startDate, "yyyy/MM/dd") : "..."} - ${endDate ? format(endDate, "yyyy/MM/dd") : "..."}`

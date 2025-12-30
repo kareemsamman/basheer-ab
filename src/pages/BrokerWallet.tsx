@@ -29,6 +29,8 @@ import {
   Loader2,
   Trash2,
   Split,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import {
   Dialog,
@@ -132,9 +134,13 @@ export default function BrokerWallet() {
   const [showNewTransaction, setShowNewTransaction] = useState(false);
   const [saving, setSaving] = useState(false);
   
-  // Wallet summary
+  // Wallet summary - settlements
   const [paidToBroker, setPaidToBroker] = useState(0);
   const [receivedFromBroker, setReceivedFromBroker] = useState(0);
+  
+  // Policy profit totals
+  const [policyOweToBroker, setPolicyOweToBroker] = useState(0); // from_broker policies
+  const [policyBrokerOwesMe, setPolicyBrokerOwesMe] = useState(0); // to_broker policies
 
   // New transaction form - direction selection
   const [direction, setDirection] = useState<'we_owe' | 'broker_owes'>('broker_owes');
@@ -169,6 +175,7 @@ export default function BrokerWallet() {
       if (brokerError) throw brokerError;
       setBroker(brokerData);
 
+      // Fetch settlements
       const { data: transactionsData } = await supabase
         .from('broker_settlements')
         .select('*')
@@ -187,6 +194,29 @@ export default function BrokerWallet() {
         
         setPaidToBroker(paid);
         setReceivedFromBroker(received);
+      }
+
+      // Fetch policy profits for this broker
+      const { data: policiesData } = await supabase
+        .from('policies')
+        .select('profit, broker_direction')
+        .eq('broker_id', brokerId)
+        .is('deleted_at', null)
+        .eq('cancelled', false);
+
+      if (policiesData) {
+        // from_broker = broker brought this deal, I owe broker the profit
+        const fromBrokerProfit = policiesData
+          .filter((p: any) => p.broker_direction === 'from_broker')
+          .reduce((sum: number, p: any) => sum + Number(p.profit || 0), 0);
+        
+        // to_broker = I made this for broker, broker owes me the profit
+        const toBrokerProfit = policiesData
+          .filter((p: any) => p.broker_direction === 'to_broker' || p.broker_direction === null)
+          .reduce((sum: number, p: any) => sum + Number(p.profit || 0), 0);
+        
+        setPolicyOweToBroker(fromBrokerProfit);
+        setPolicyBrokerOwesMe(toBrokerProfit);
       }
     } catch (error) {
       console.error('Error fetching broker data:', error);
@@ -365,7 +395,12 @@ export default function BrokerWallet() {
     setSplitAmount('');
   };
 
-  const netBalance = receivedFromBroker - paidToBroker;
+  // Net balance includes both policy profits AND settlements
+  // Policy obligations: toBrokerProfit - fromBrokerProfit
+  // Settlement balance: receivedFromBroker - paidToBroker
+  const policyNetBalance = policyBrokerOwesMe - policyOweToBroker;
+  const settlementNetBalance = receivedFromBroker - paidToBroker;
+  const netBalance = policyNetBalance + settlementNetBalance;
   const totalPaymentLines = paymentLines.reduce((sum, p) => sum + (p.amount || 0), 0);
 
   const selectedVisaPayment = selectedVisaPaymentIndex !== null ? paymentLines[selectedVisaPaymentIndex] : null;
@@ -408,52 +443,81 @@ export default function BrokerWallet() {
           </Button>
         </div>
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="p-6">
+        {/* Summary Cards - 5 cards like BrokerDetails */}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          {/* الوسيط مدين لي - Broker owes me (to_broker policies profit) */}
+          <Card className="p-4 border-green-200 dark:border-green-800">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-red-100 dark:bg-red-900/30">
-                <ArrowUpRight className="h-6 w-6 text-red-600" />
+              <div className="p-2 rounded-xl bg-green-100 dark:bg-green-900/30">
+                <TrendingUp className="h-5 w-5 text-green-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">دفعت للوسيط</p>
-                <p className="text-2xl font-bold text-red-600">₪{paidToBroker.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">الوسيط مدين لي</p>
+                <p className="text-lg font-bold text-green-600">₪{policyBrokerOwesMe.toLocaleString()}</p>
               </div>
             </div>
           </Card>
 
-          <Card className="p-6">
+          {/* مدين للوسيط - I owe broker (from_broker policies profit) */}
+          <Card className="p-4 border-orange-200 dark:border-orange-800">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-green-100 dark:bg-green-900/30">
-                <ArrowDownLeft className="h-6 w-6 text-green-600" />
+              <div className="p-2 rounded-xl bg-orange-100 dark:bg-orange-900/30">
+                <TrendingDown className="h-5 w-5 text-orange-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">استلمت من الوسيط</p>
-                <p className="text-2xl font-bold text-green-600">₪{receivedFromBroker.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">مدين للوسيط</p>
+                <p className="text-lg font-bold text-orange-600">₪{policyOweToBroker.toLocaleString()}</p>
               </div>
             </div>
           </Card>
 
+          {/* استلمت من الوسيط - Received from broker */}
+          <Card className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-green-100 dark:bg-green-900/30">
+                <ArrowDownLeft className="h-5 w-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">استلمت من الوسيط</p>
+                <p className="text-lg font-bold text-green-600">₪{receivedFromBroker.toLocaleString()}</p>
+              </div>
+            </div>
+          </Card>
+
+          {/* دفعت للوسيط - Paid to broker */}
+          <Card className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-red-100 dark:bg-red-900/30">
+                <ArrowUpRight className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">دفعت للوسيط</p>
+                <p className="text-lg font-bold text-red-600">₪{paidToBroker.toLocaleString()}</p>
+              </div>
+            </div>
+          </Card>
+
+          {/* Net Balance */}
           <Card className={cn(
-            "p-6",
-            netBalance >= 0 ? 'bg-green-50 dark:bg-green-950/20' : 'bg-red-50 dark:bg-red-950/20'
+            "p-4 border-2",
+            netBalance >= 0 ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/20' : 'border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/20'
           )}>
             <div className="flex items-center gap-3">
               <div className={cn(
-                "p-3 rounded-xl",
+                "p-2 rounded-xl",
                 netBalance >= 0 ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'
               )}>
                 <Wallet className={cn(
-                  "h-6 w-6",
+                  "h-5 w-5",
                   netBalance >= 0 ? 'text-green-600' : 'text-red-600'
                 )} />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   {netBalance >= 0 ? 'الصافي (الوسيط مدين)' : 'الصافي (أنا مدين)'}
                 </p>
                 <p className={cn(
-                  "text-2xl font-bold",
+                  "text-lg font-bold",
                   netBalance >= 0 ? 'text-green-600' : 'text-red-600'
                 )}>
                   ₪{Math.abs(netBalance).toLocaleString()}
