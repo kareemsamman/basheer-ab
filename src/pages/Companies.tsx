@@ -14,7 +14,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Search, Settings, Building2, Truck, Shield } from 'lucide-react';
+import { Plus, Search, Settings, Building2, Truck, Shield, Wallet } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -35,6 +36,7 @@ const POLICY_TYPES = [
 
 export default function Companies() {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
@@ -248,7 +250,18 @@ export default function Companies() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/companies/${company.id}/wallet`);
+                          }}
+                        >
+                          <Wallet className="h-4 w-4 ml-2" />
+                          المحفظة
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
