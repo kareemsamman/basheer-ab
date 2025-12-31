@@ -10,10 +10,18 @@ interface ProfitSummary {
   monthRevenue: number;
   yearRevenue: number;
   // Breakdown for charts
-  elzamiCommission: number;
+  elzamiCommission: number;  // تكلفة الإلزامي (سالب)
   otherProfit: number;
   monthElzamiCommission: number;
   monthOtherProfit: number;
+  // ELZAMI costs (new)
+  totalElzamiCost: number;  // إجمالي تكلفة عمولات الإلزامي
+  monthElzamiCost: number;
+  todayElzamiCost: number;
+  // Net profit (after ELZAMI costs)
+  netProfit: number;
+  monthNetProfit: number;
+  todayNetProfit: number;
 }
 
 export function useProfitSummary() {
@@ -29,6 +37,12 @@ export function useProfitSummary() {
     otherProfit: 0,
     monthElzamiCommission: 0,
     monthOtherProfit: 0,
+    totalElzamiCost: 0,
+    monthElzamiCost: 0,
+    todayElzamiCost: 0,
+    netProfit: 0,
+    monthNetProfit: 0,
+    todayNetProfit: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -78,10 +92,14 @@ export function useProfitSummary() {
       let todayRevenue = 0;
       let monthRevenue = 0;
       let yearRevenue = 0;
-      let elzamiCommission = 0;
+      let elzamiCommission = 0;  // تكلفة الإلزامي (للتوافق مع القديم)
       let otherProfit = 0;
       let monthElzamiCommission = 0;
       let monthOtherProfit = 0;
+      // New: ELZAMI costs tracking
+      let totalElzamiCost = 0;
+      let monthElzamiCost = 0;
+      let todayElzamiCost = 0;
 
       policies?.forEach((policy) => {
         const isElzami = policy.policy_type_parent === 'ELZAMI';
@@ -90,12 +108,21 @@ export function useProfitSummary() {
         let policyRevenue: number;
         
         if (isElzami) {
-          const commission = policy.company_id ? (elzamiCommissionMap.get(policy.company_id) || 0) : 0;
-          policyProfit = commission;
-          policyRevenue = 0;
-          elzamiCommission += commission;
+          // ELZAMI: العمولة هي تكلفة سالبة وليست ربحاً
+          const elzamiCost = policy.company_id ? (elzamiCommissionMap.get(policy.company_id) || 0) : 0;
+          policyProfit = 0;  // لا ربح من الإلزامي
+          policyRevenue = 0; // الإيراد لا يُحسب لأنه يذهب للشركة
+          
+          // تسجيل تكلفة الإلزامي (كقيمة موجبة للعرض، لكنها خصم)
+          totalElzamiCost += elzamiCost;
+          elzamiCommission += elzamiCost; // للتوافق مع القديم
+          
           if (policy.start_date >= monthStart) {
-            monthElzamiCommission += commission;
+            monthElzamiCost += elzamiCost;
+            monthElzamiCommission += elzamiCost;
+          }
+          if (policy.start_date === today) {
+            todayElzamiCost += elzamiCost;
           }
         } else {
           policyProfit = Number(policy.profit) || 0;
@@ -121,6 +148,11 @@ export function useProfitSummary() {
         }
       });
 
+      // حساب صافي الربح بعد خصم تكلفة الإلزامي
+      const netProfit = yearProfit - totalElzamiCost;
+      const monthNetProfit = monthProfit - monthElzamiCost;
+      const todayNetProfit = todayProfit - todayElzamiCost;
+
       setSummary({
         todayProfit,
         monthProfit,
@@ -133,6 +165,12 @@ export function useProfitSummary() {
         otherProfit,
         monthElzamiCommission,
         monthOtherProfit,
+        totalElzamiCost,
+        monthElzamiCost,
+        todayElzamiCost,
+        netProfit,
+        monthNetProfit,
+        todayNetProfit,
       });
     } catch (error) {
       console.error('Error fetching profit summary:', error);

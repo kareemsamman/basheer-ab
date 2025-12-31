@@ -14,6 +14,95 @@ export type Database = {
   }
   public: {
     Tables: {
+      ab_ledger: {
+        Row: {
+          amount: number
+          branch_id: string | null
+          category: Database["public"]["Enums"]["ledger_category"]
+          counterparty_id: string | null
+          counterparty_type: Database["public"]["Enums"]["ledger_counterparty_type"]
+          created_at: string
+          created_by_admin_id: string | null
+          description: string | null
+          id: string
+          policy_id: string | null
+          policy_type: string | null
+          reference_id: string
+          reference_type: Database["public"]["Enums"]["ledger_reference_type"]
+          reversal_of: string | null
+          reversed_by: string | null
+          status: Database["public"]["Enums"]["ledger_status"]
+          transaction_date: string
+        }
+        Insert: {
+          amount: number
+          branch_id?: string | null
+          category: Database["public"]["Enums"]["ledger_category"]
+          counterparty_id?: string | null
+          counterparty_type: Database["public"]["Enums"]["ledger_counterparty_type"]
+          created_at?: string
+          created_by_admin_id?: string | null
+          description?: string | null
+          id?: string
+          policy_id?: string | null
+          policy_type?: string | null
+          reference_id: string
+          reference_type: Database["public"]["Enums"]["ledger_reference_type"]
+          reversal_of?: string | null
+          reversed_by?: string | null
+          status?: Database["public"]["Enums"]["ledger_status"]
+          transaction_date?: string
+        }
+        Update: {
+          amount?: number
+          branch_id?: string | null
+          category?: Database["public"]["Enums"]["ledger_category"]
+          counterparty_id?: string | null
+          counterparty_type?: Database["public"]["Enums"]["ledger_counterparty_type"]
+          created_at?: string
+          created_by_admin_id?: string | null
+          description?: string | null
+          id?: string
+          policy_id?: string | null
+          policy_type?: string | null
+          reference_id?: string
+          reference_type?: Database["public"]["Enums"]["ledger_reference_type"]
+          reversal_of?: string | null
+          reversed_by?: string | null
+          status?: Database["public"]["Enums"]["ledger_status"]
+          transaction_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ab_ledger_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ab_ledger_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ab_ledger_reversal_of_fkey"
+            columns: ["reversal_of"]
+            isOneToOne: false
+            referencedRelation: "ab_ledger"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ab_ledger_reversed_by_fkey"
+            columns: ["reversed_by"]
+            isOneToOne: false
+            referencedRelation: "ab_ledger"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       accident_fee_services: {
         Row: {
           active: boolean
@@ -1405,6 +1494,7 @@ export type Database = {
           created_at: string
           created_by_admin_id: string | null
           deleted_at: string | null
+          elzami_cost: number | null
           end_date: string
           group_id: string | null
           id: string
@@ -1445,6 +1535,7 @@ export type Database = {
           created_at?: string
           created_by_admin_id?: string | null
           deleted_at?: string | null
+          elzami_cost?: number | null
           end_date: string
           group_id?: string | null
           id?: string
@@ -1485,6 +1576,7 @@ export type Database = {
           created_at?: string
           created_by_admin_id?: string | null
           deleted_at?: string | null
+          elzami_cost?: number | null
           end_date?: string
           group_id?: string | null
           id?: string
@@ -2185,6 +2277,26 @@ export type Database = {
       }
       generate_file_number: { Args: never; Returns: string }
       generate_invoice_number: { Args: never; Returns: string }
+      get_ab_balance: {
+        Args: { p_branch_id?: string; p_from_date?: string; p_to_date?: string }
+        Returns: {
+          broker_payables: number
+          broker_receivables: number
+          company_payables: number
+          customer_refunds_due: number
+          net_balance: number
+          total_expense: number
+          total_income: number
+        }[]
+      }
+      get_company_balance: {
+        Args: { p_company_id: string; p_from_date?: string; p_to_date?: string }
+        Returns: {
+          outstanding: number
+          total_paid: number
+          total_payable: number
+        }[]
+      }
       get_user_branch_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
@@ -2192,6 +2304,23 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      insert_ledger_entry: {
+        Args: {
+          p_admin_id?: string
+          p_amount: number
+          p_branch_id?: string
+          p_category: Database["public"]["Enums"]["ledger_category"]
+          p_counterparty_id: string
+          p_counterparty_type: Database["public"]["Enums"]["ledger_counterparty_type"]
+          p_description?: string
+          p_policy_id?: string
+          p_policy_type?: string
+          p_reference_id: string
+          p_reference_type: Database["public"]["Enums"]["ledger_reference_type"]
+          p_transaction_date?: string
+        }
+        Returns: string
       }
       is_active_user: { Args: { _user_id: string }; Returns: boolean }
       report_client_debts: {
@@ -2266,6 +2395,10 @@ export type Database = {
           status: string
         }[]
       }
+      reverse_ledger_entry: {
+        Args: { p_admin_id?: string; p_entry_id: string; p_reason?: string }
+        Returns: string
+      }
       user_directory_get_by_ids: {
         Args: { p_ids: string[] }
         Returns: {
@@ -2288,6 +2421,40 @@ export type Database = {
       app_role: "admin" | "worker"
       broker_direction: "from_broker" | "to_broker"
       car_type: "car" | "cargo" | "small" | "taxi" | "tjeradown4" | "tjeraup4"
+      ledger_category:
+        | "premium_income"
+        | "company_payable"
+        | "company_payable_reversal"
+        | "commission_income"
+        | "commission_expense"
+        | "profit_share"
+        | "receivable_collected"
+        | "receivable_reversal"
+        | "refund_payable"
+        | "broker_receivable"
+        | "broker_payable"
+        | "broker_settlement_paid"
+        | "broker_settlement_received"
+        | "company_settlement_paid"
+        | "adjustment"
+      ledger_counterparty_type:
+        | "insurance_company"
+        | "customer"
+        | "broker"
+        | "internal"
+      ledger_reference_type:
+        | "policy_created"
+        | "policy_cancelled"
+        | "policy_transferred"
+        | "payment_received"
+        | "payment_refused"
+        | "cheque_returned"
+        | "cheque_restored"
+        | "company_settlement"
+        | "broker_settlement"
+        | "customer_refund"
+        | "manual_adjustment"
+      ledger_status: "posted" | "reversed" | "pending"
       payment_status: "paid" | "partial" | "unpaid"
       payment_type: "cash" | "cheque" | "visa" | "transfer"
       policy_type_child: "THIRD" | "FULL"
@@ -2450,6 +2617,43 @@ export const Constants = {
       app_role: ["admin", "worker"],
       broker_direction: ["from_broker", "to_broker"],
       car_type: ["car", "cargo", "small", "taxi", "tjeradown4", "tjeraup4"],
+      ledger_category: [
+        "premium_income",
+        "company_payable",
+        "company_payable_reversal",
+        "commission_income",
+        "commission_expense",
+        "profit_share",
+        "receivable_collected",
+        "receivable_reversal",
+        "refund_payable",
+        "broker_receivable",
+        "broker_payable",
+        "broker_settlement_paid",
+        "broker_settlement_received",
+        "company_settlement_paid",
+        "adjustment",
+      ],
+      ledger_counterparty_type: [
+        "insurance_company",
+        "customer",
+        "broker",
+        "internal",
+      ],
+      ledger_reference_type: [
+        "policy_created",
+        "policy_cancelled",
+        "policy_transferred",
+        "payment_received",
+        "payment_refused",
+        "cheque_returned",
+        "cheque_restored",
+        "company_settlement",
+        "broker_settlement",
+        "customer_refund",
+        "manual_adjustment",
+      ],
+      ledger_status: ["posted", "reversed", "pending"],
       payment_status: ["paid", "partial", "unpaid"],
       payment_type: ["cash", "cheque", "visa", "transfer"],
       policy_type_child: ["THIRD", "FULL"],

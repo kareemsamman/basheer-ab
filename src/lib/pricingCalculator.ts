@@ -17,6 +17,7 @@ interface CalculateProfitParams {
 interface ProfitResult {
   companyPayment: number;
   profit: number;
+  elzamiCost?: number; // تكلفة عمولة الإلزامي (قيمة سالبة)
 }
 
 /**
@@ -36,17 +37,23 @@ export async function calculatePolicyProfit(params: CalculateProfitParams): Prom
     roadServiceId,
   } = params;
 
-  // ELZAMI: profit = commission from company, company gets insurance_price
+  // ELZAMI: لا يوجد ربح، الشركة تأخذ كامل المبلغ + قد تأخذ عمولة منا
+  // العمولة هي تكلفة سالبة على AB وليست ربحاً
   if (policyTypeParent === 'ELZAMI') {
-    // Fetch the ELZAMI commission from the company
+    // Fetch the ELZAMI commission (cost) from the company
     const { data: company } = await supabase
       .from('insurance_companies')
       .select('elzami_commission')
       .eq('id', companyId)
       .single();
     
-    const commission = company?.elzami_commission || 0;
-    return { companyPayment: insurancePrice, profit: commission };
+    // العمولة هي تكلفة تُخصم من AB (تُسجل كقيمة سالبة في التقارير)
+    const elzamiCost = company?.elzami_commission || 0;
+    return { 
+      companyPayment: insurancePrice, 
+      profit: 0,  // لا ربح من الإلزامي
+      elzamiCost  // تكلفة العمولة
+    };
   }
 
   try {
