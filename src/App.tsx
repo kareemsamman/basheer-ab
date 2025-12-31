@@ -39,6 +39,7 @@ import SmsHistory from "./pages/SmsHistory";
 import DebtTracking from "./pages/DebtTracking";
 import AuthSettings from "./pages/AuthSettings";
 import FinancialReports from "./pages/FinancialReports";
+import CompanyWallet from "./pages/CompanyWallet";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -118,6 +119,11 @@ const App = () => (
               <Route path="/reports/company-settlement/:companyId" element={
                 <ProtectedRoute>
                   <CompanySettlementDetail />
+                </ProtectedRoute>
+              } />
+              <Route path="/companies/:companyId/wallet" element={
+                <ProtectedRoute>
+                  <CompanyWallet />
                 </ProtectedRoute>
               } />
               <Route path="/invoices" element={

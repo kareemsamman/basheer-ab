@@ -736,6 +736,81 @@ export type Database = {
           },
         ]
       }
+      company_settlements: {
+        Row: {
+          bank_reference: string | null
+          branch_id: string | null
+          card_expiry: string | null
+          card_last_four: string | null
+          cheque_image_url: string | null
+          cheque_number: string | null
+          company_id: string
+          created_at: string
+          created_by_admin_id: string | null
+          id: string
+          notes: string | null
+          payment_type: string
+          refused: boolean | null
+          settlement_date: string
+          status: string
+          total_amount: number
+          updated_at: string
+        }
+        Insert: {
+          bank_reference?: string | null
+          branch_id?: string | null
+          card_expiry?: string | null
+          card_last_four?: string | null
+          cheque_image_url?: string | null
+          cheque_number?: string | null
+          company_id: string
+          created_at?: string
+          created_by_admin_id?: string | null
+          id?: string
+          notes?: string | null
+          payment_type?: string
+          refused?: boolean | null
+          settlement_date?: string
+          status?: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Update: {
+          bank_reference?: string | null
+          branch_id?: string | null
+          card_expiry?: string | null
+          card_last_four?: string | null
+          cheque_image_url?: string | null
+          cheque_number?: string | null
+          company_id?: string
+          created_at?: string
+          created_by_admin_id?: string | null
+          id?: string
+          notes?: string | null
+          payment_type?: string
+          refused?: boolean | null
+          settlement_date?: string
+          status?: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_settlements_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_settlements_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_signatures: {
         Row: {
           branch_id: string | null
@@ -2289,7 +2364,26 @@ export type Database = {
           total_income: number
         }[]
       }
+      get_all_companies_wallet_summary: {
+        Args: never
+        Returns: {
+          company_id: string
+          company_name: string
+          company_name_ar: string
+          outstanding: number
+          total_paid: number
+          total_payable: number
+        }[]
+      }
       get_company_balance: {
+        Args: { p_company_id: string; p_from_date?: string; p_to_date?: string }
+        Returns: {
+          outstanding: number
+          total_paid: number
+          total_payable: number
+        }[]
+      }
+      get_company_wallet_balance: {
         Args: { p_company_id: string; p_from_date?: string; p_to_date?: string }
         Returns: {
           outstanding: number
@@ -2437,6 +2531,7 @@ export type Database = {
         | "broker_settlement_received"
         | "company_settlement_paid"
         | "adjustment"
+        | "company_settlement_reversal"
       ledger_counterparty_type:
         | "insurance_company"
         | "customer"
@@ -2454,6 +2549,7 @@ export type Database = {
         | "broker_settlement"
         | "customer_refund"
         | "manual_adjustment"
+        | "company_settlement_reversal"
       ledger_status: "posted" | "reversed" | "pending"
       payment_status: "paid" | "partial" | "unpaid"
       payment_type: "cash" | "cheque" | "visa" | "transfer"
@@ -2633,6 +2729,7 @@ export const Constants = {
         "broker_settlement_received",
         "company_settlement_paid",
         "adjustment",
+        "company_settlement_reversal",
       ],
       ledger_counterparty_type: [
         "insurance_company",
@@ -2652,6 +2749,7 @@ export const Constants = {
         "broker_settlement",
         "customer_refund",
         "manual_adjustment",
+        "company_settlement_reversal",
       ],
       ledger_status: ["posted", "reversed", "pending"],
       payment_status: ["paid", "partial", "unpaid"],
