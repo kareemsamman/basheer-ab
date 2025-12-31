@@ -40,6 +40,7 @@ import DebtTracking from "./pages/DebtTracking";
 import AuthSettings from "./pages/AuthSettings";
 import FinancialReports from "./pages/FinancialReports";
 import CompanyWallet from "./pages/CompanyWallet";
+import ElzamiCostsReport from "./pages/ElzamiCostsReport";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -199,6 +200,11 @@ const App = () => (
               <Route path="/reports/financial" element={
                 <ProtectedRoute>
                   <FinancialReports />
+                </ProtectedRoute>
+              } />
+              <Route path="/reports/elzami-costs" element={
+                <ProtectedRoute>
+                  <ElzamiCostsReport />
                 </ProtectedRoute>
               } />
               {/* Public payment callback routes (loaded in iframe) */}
