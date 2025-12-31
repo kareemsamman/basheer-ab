@@ -38,6 +38,7 @@ import NotFound from "./pages/NotFound";
 import SmsHistory from "./pages/SmsHistory";
 import DebtTracking from "./pages/DebtTracking";
 import AuthSettings from "./pages/AuthSettings";
+import FinancialReports from "./pages/FinancialReports";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -187,6 +188,11 @@ const App = () => (
               <Route path="/admin/auth-settings" element={
                 <ProtectedRoute>
                   <AuthSettings />
+                </ProtectedRoute>
+              } />
+              <Route path="/reports/financial" element={
+                <ProtectedRoute>
+                  <FinancialReports />
                 </ProtectedRoute>
               } />
               {/* Public payment callback routes (loaded in iframe) */}

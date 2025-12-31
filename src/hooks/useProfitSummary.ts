@@ -63,27 +63,13 @@ export function useProfitSummary() {
           payed_for_company, 
           insurance_price,
           policy_type_parent,
-          company_id
+          elzami_cost
         `)
         .is('deleted_at', null)
         .eq('cancelled', false)
         .gte('start_date', yearStart);
 
       if (error) throw error;
-
-      // Fetch ELZAMI companies with their commission (now category_parent is an array)
-      const { data: elzamiCompanies, error: compError } = await supabase
-        .from('insurance_companies')
-        .select('id, elzami_commission')
-        .contains('category_parent', ['ELZAMI']);
-
-      if (compError) throw compError;
-
-      // Create a map for quick lookup
-      const elzamiCommissionMap = new Map<string, number>();
-      elzamiCompanies?.forEach((comp: any) => {
-        elzamiCommissionMap.set(comp.id, comp.elzami_commission || 0);
-      });
 
       let todayProfit = 0;
       let monthProfit = 0;
@@ -108,8 +94,8 @@ export function useProfitSummary() {
         let policyRevenue: number;
         
         if (isElzami) {
-          // ELZAMI: العمولة هي تكلفة سالبة وليست ربحاً
-          const elzamiCost = policy.company_id ? (elzamiCommissionMap.get(policy.company_id) || 0) : 0;
+          // ELZAMI: العمولة هي تكلفة سالبة وليست ربحاً - نستخدم elzami_cost مباشرة من البوليصة
+          const elzamiCost = Number(policy.elzami_cost) || 0;
           policyProfit = 0;  // لا ربح من الإلزامي
           policyRevenue = 0; // الإيراد لا يُحسب لأنه يذهب للشركة
           
