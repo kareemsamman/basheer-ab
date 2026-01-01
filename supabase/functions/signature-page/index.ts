@@ -433,21 +433,59 @@ function buildSignaturePageHtml(
       background: #f8fafc;
       border-radius: 12px;
       margin-bottom: 20px;
-      cursor: pointer;
     }
-    .checkbox-wrapper input[type="checkbox"] {
-      width: 22px;
-      height: 22px;
-      accent-color: #1e3a5f;
-      cursor: pointer;
+    .custom-checkbox {
+      position: relative;
+      width: 24px;
+      height: 24px;
       flex-shrink: 0;
       margin-top: 2px;
+    }
+    .custom-checkbox input[type="checkbox"] {
+      position: absolute;
+      opacity: 0;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+      z-index: 2;
+      margin: 0;
+    }
+    .custom-checkbox .checkmark {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 24px;
+      height: 24px;
+      background: white;
+      border: 2px solid #cbd5e1;
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+    .custom-checkbox input[type="checkbox"]:checked + .checkmark {
+      background: #1e3a5f;
+      border-color: #1e3a5f;
+    }
+    .custom-checkbox .checkmark:after {
+      content: '';
+      position: absolute;
+      display: none;
+      left: 8px;
+      top: 4px;
+      width: 6px;
+      height: 11px;
+      border: solid white;
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+    .custom-checkbox input[type="checkbox"]:checked + .checkmark:after {
+      display: block;
     }
     .checkbox-wrapper label {
       font-size: 14px;
       color: #475569;
       line-height: 1.6;
       cursor: pointer;
+      flex: 1;
     }
     .buttons {
       display: flex;
@@ -586,8 +624,11 @@ function buildSignaturePageHtml(
 
       <div class="error-message" id="errorMessage"></div>
 
-      <div class="checkbox-wrapper" onclick="document.getElementById('acceptTerms').click()">
-        <input type="checkbox" id="acceptTerms">
+      <div class="checkbox-wrapper">
+        <div class="custom-checkbox">
+          <input type="checkbox" id="acceptTerms">
+          <span class="checkmark"></span>
+        </div>
         <label for="acceptTerms">أقرّ أنني قرأت وأوافق على جميع الشروط والأحكام المذكورة أعلاه</label>
       </div>
 

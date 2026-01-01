@@ -393,21 +393,21 @@ function buildPackageInvoiceHtml(
       line-height: 1.7;
       color: #2d3748;
       background: #fff;
-      padding: 25px;
+      padding: 20px;
       direction: rtl;
     }
     .container { max-width: 800px; margin: 0 auto; }
     .header {
       text-align: center;
       margin-bottom: 30px;
-      padding: 30px;
+      padding: 30px 20px;
       background: linear-gradient(135deg, #f8fafc 0%, #edf2f7 100%);
       border-radius: 12px;
       border-bottom: 3px solid #1e3a5f;
     }
-    .header h1 { color: #1e3a5f; font-size: 28px; font-weight: 800; margin-bottom: 8px; }
-    .header .english-name { color: #4a5568; font-size: 18px; font-weight: 500; letter-spacing: 2px; margin-bottom: 10px; }
-    .header p { color: #718096; font-size: 15px; }
+    .header h1 { color: #1e3a5f; font-size: 26px; font-weight: 800; margin-bottom: 8px; }
+    .header .english-name { color: #4a5568; font-size: 16px; font-weight: 500; letter-spacing: 2px; margin-bottom: 10px; }
+    .header p { color: #718096; font-size: 14px; }
     .package-badge {
       display: inline-block;
       background: linear-gradient(135deg, #10b981 0%, #059669 100%);
@@ -420,87 +420,107 @@ function buildPackageInvoiceHtml(
     .summary-cards {
       display: flex;
       justify-content: space-between;
-      gap: 15px;
-      margin-bottom: 30px;
+      gap: 12px;
+      margin-bottom: 25px;
       flex-wrap: wrap;
     }
     .summary-card {
       flex: 1;
-      min-width: 120px;
+      min-width: 100px;
       text-align: center;
-      padding: 20px;
+      padding: 16px 12px;
       border-radius: 12px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     }
     .summary-card.total { background: linear-gradient(135deg, #f0f4f8 0%, #e2e8f0 100%); }
     .summary-card.paid { background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); }
     .summary-card.remaining { background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); }
-    .summary-card strong { display: block; font-size: 13px; color: #4a5568; margin-bottom: 8px; }
-    .summary-card .value { font-size: 24px; font-weight: 800; }
+    .summary-card strong { display: block; font-size: 12px; color: #4a5568; margin-bottom: 6px; }
+    .summary-card .value { font-size: 20px; font-weight: 800; }
     .summary-card.total .value { color: #1e3a5f; }
     .summary-card.paid .value { color: #059669; }
     .summary-card.remaining .value { color: #dc2626; }
-    .section { margin-bottom: 28px; }
+    .section { margin-bottom: 24px; }
     .section-title {
       background: linear-gradient(135deg, #1e3a5f 0%, #2d4a6f 100%);
       color: white;
-      padding: 12px 18px;
-      font-size: 17px;
+      padding: 10px 16px;
+      font-size: 15px;
       font-weight: 700;
       border-radius: 8px 8px 0 0;
     }
     .section-content {
       border: 1px solid #e2e8f0;
       border-top: none;
-      padding: 18px;
+      padding: 16px;
       border-radius: 0 0 8px 8px;
       background: #fafbfc;
     }
-    .info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
     .info-item {
       display: flex;
       justify-content: space-between;
-      padding: 10px 12px;
+      padding: 8px 10px;
       background: white;
       border-radius: 6px;
       border-bottom: 1px dashed #e2e8f0;
     }
-    .info-label { color: #718096; font-weight: 500; }
-    .info-value { color: #1e3a5f; font-weight: 700; }
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    .info-label { color: #718096; font-weight: 500; font-size: 13px; }
+    .info-value { color: #1e3a5f; font-weight: 700; font-size: 13px; }
+    .table-wrapper {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; min-width: 500px; }
     th {
       background: linear-gradient(135deg, #edf2f7 0%, #e2e8f0 100%);
-      padding: 12px;
+      padding: 10px 8px;
       border: 1px solid #ddd;
       text-align: right;
       font-weight: 700;
       color: #1e3a5f;
+      font-size: 12px;
+      white-space: nowrap;
     }
-    td { padding: 10px 12px; border: 1px solid #e2e8f0; text-align: right; background: white; }
+    td { 
+      padding: 8px; 
+      border: 1px solid #e2e8f0; 
+      text-align: right; 
+      background: white; 
+      font-size: 12px;
+      white-space: nowrap;
+    }
     .total-row { background: #f0f4f8; font-weight: bold; }
     .status-badge {
       display: inline-block;
       padding: 6px 16px;
       border-radius: 20px;
       font-weight: 700;
-      font-size: 14px;
+      font-size: 13px;
     }
     .status-paid { background: #d1fae5; color: #065f46; }
     .status-partial { background: #fef3c7; color: #92400e; }
     .status-unpaid { background: #fee2e2; color: #991b1b; }
     .footer {
       text-align: center;
-      margin-top: 40px;
-      padding-top: 25px;
+      margin-top: 30px;
+      padding-top: 20px;
       border-top: 2px solid #e2e8f0;
       color: #718096;
-      font-size: 13px;
+      font-size: 12px;
     }
-    .signature { text-align: left; margin-top: 20px; font-style: italic; color: #1e3a5f; font-weight: 600; }
+    .signature { text-align: left; margin-top: 15px; font-style: italic; color: #1e3a5f; font-weight: 600; }
     @media (max-width: 600px) {
-      .summary-cards { flex-direction: column; }
+      body { padding: 12px; }
+      .header { padding: 20px 15px; }
+      .header h1 { font-size: 22px; }
+      .summary-cards { flex-direction: column; gap: 10px; }
+      .summary-card { min-width: auto; }
+      .summary-card .value { font-size: 18px; }
       .info-grid { grid-template-columns: 1fr; }
-      table { font-size: 12px; }
+      .section-content { padding: 12px; }
+      .section-title { padding: 8px 12px; font-size: 14px; }
     }
   </style>
 </head>
@@ -547,28 +567,30 @@ function buildPackageInvoiceHtml(
     <div class="section">
       <div class="section-title">📦 وثائق الباقة</div>
       <div class="section-content">
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>نوع التأمين</th>
-              <th>الشركة</th>
-              <th>السيارة</th>
-              <th>السعر</th>
-              <th>المدفوع</th>
-              <th>المتبقي</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${policyRows}
-            <tr class="total-row">
-              <td colspan="4" style="text-align: center; font-weight: bold;">الإجمالي</td>
-              <td style="font-weight: bold;">₪${totalPrice.toLocaleString()}</td>
-              <td style="font-weight: bold; color: #22c55e;">₪${totalPaid.toLocaleString()}</td>
-              <td style="font-weight: bold; color: ${remaining > 0 ? '#ef4444' : '#22c55e'};">₪${remaining.toLocaleString()}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>نوع التأمين</th>
+                <th>الشركة</th>
+                <th>السيارة</th>
+                <th>السعر</th>
+                <th>المدفوع</th>
+                <th>المتبقي</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${policyRows}
+              <tr class="total-row">
+                <td colspan="4" style="text-align: center; font-weight: bold;">الإجمالي</td>
+                <td style="font-weight: bold;">₪${totalPrice.toLocaleString()}</td>
+                <td style="font-weight: bold; color: #22c55e;">₪${totalPaid.toLocaleString()}</td>
+                <td style="font-weight: bold; color: ${remaining > 0 ? '#ef4444' : '#22c55e'};">₪${remaining.toLocaleString()}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -576,19 +598,21 @@ function buildPackageInvoiceHtml(
     <div class="section">
       <div class="section-title">💳 سجل الدفعات</div>
       <div class="section-content">
-        <table>
-          <thead>
-            <tr>
-              <th>الوثيقة</th>
-              <th>التاريخ</th>
-              <th>طريقة الدفع</th>
-              <th>المبلغ</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${allPaymentsRows.join('')}
-          </tbody>
-        </table>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>الوثيقة</th>
+                <th>التاريخ</th>
+                <th>طريقة الدفع</th>
+                <th>المبلغ</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${allPaymentsRows.join('')}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
     ` : ''}
