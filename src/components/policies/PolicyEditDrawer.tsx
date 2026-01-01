@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +21,7 @@ interface PolicyEditDrawerProps {
   onOpenChange: (open: boolean) => void;
   policy: {
     id: string;
+    group_id?: string | null;
     policy_type_parent: string;
     policy_type_child: string | null;
     start_date: string;
@@ -55,6 +57,13 @@ interface PolicyEditDrawerProps {
   onSaved?: () => void;
 }
 
+interface PackagePolicy {
+  id: string;
+  policy_type_parent: string;
+  start_date: string;
+  end_date: string;
+}
+
 interface Company {
   id: string;
   name: string;
@@ -83,6 +92,10 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
   const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [packagePolicies, setPackagePolicies] = useState<PackagePolicy[]>([]);
+  const [showPackageDateSync, setShowPackageDateSync] = useState(false);
+  const [pendingSave, setPendingSave] = useState<{ syncDates: boolean } | null>(null);
+  const [originalDates, setOriginalDates] = useState({ start_date: '', end_date: '' });
 
   // Determine initial under24_type from client data or fallback to policy is_under_24
   const getInitialUnder24Type = (): 'none' | 'client' | 'additional_driver' => {
@@ -118,6 +131,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
     if (open) {
       fetchCompanies(policy.policy_type_parent);
       fetchBrokers();
+      fetchPackagePolicies();
       const initialUnder24Type = (): 'none' | 'client' | 'additional_driver' => {
         if (policy.clients?.under24_type && policy.clients.under24_type !== 'none') {
           return policy.clients.under24_type;
@@ -128,7 +142,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
         return 'none';
       };
 
-      setFormData({
+      const initialFormData = {
         policy_type_parent: policy.policy_type_parent,
         policy_type_child: policy.policy_type_child || "",
         company_id: policy.insurance_companies?.id || "",
@@ -144,9 +158,29 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
         under24_type: initialUnder24Type(),
         under24_driver_name: policy.clients?.under24_driver_name || "",
         under24_driver_id: policy.clients?.under24_driver_id || "",
-      });
+      };
+      
+      setFormData(initialFormData);
+      setOriginalDates({ start_date: policy.start_date, end_date: policy.end_date });
     }
   }, [open, policy]);
+
+  const fetchPackagePolicies = async () => {
+    if (!policy.group_id) {
+      setPackagePolicies([]);
+      return;
+    }
+    
+    const { data } = await supabase
+      .from('policies')
+      .select('id, policy_type_parent, start_date, end_date')
+      .eq('group_id', policy.group_id)
+      .neq('id', policy.id)
+      .is('deleted_at', null)
+      .eq('cancelled', false);
+    
+    setPackagePolicies(data || []);
+  };
 
   const fetchCompanies = async (policyType?: string) => {
     setLoadingCompanies(true);
@@ -174,7 +208,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
     if (data) setBrokers(data);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (syncPackageDates: boolean = false) => {
     // Validate additional driver fields if selected
     if (formData.under24_type === 'additional_driver') {
       if (!formData.under24_driver_name?.trim() || !formData.under24_driver_id?.trim()) {
@@ -185,6 +219,13 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
         });
         return;
       }
+    }
+
+    // Check if dates changed and there are package policies
+    const datesChanged = formData.start_date !== originalDates.start_date || formData.end_date !== originalDates.end_date;
+    if (datesChanged && packagePolicies.length > 0 && !pendingSave) {
+      setShowPackageDateSync(true);
+      return;
     }
 
     setSaving(true);
@@ -250,7 +291,25 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
 
       if (error) throw error;
 
+      // Sync package dates if requested
+      if (syncPackageDates && packagePolicies.length > 0) {
+        const { error: syncError } = await supabase
+          .from('policies')
+          .update({
+            start_date: formData.start_date,
+            end_date: formData.end_date,
+            updated_at: new Date().toISOString(),
+          })
+          .in('id', packagePolicies.map(p => p.id));
+        
+        if (syncError) {
+          console.error('Error syncing package dates:', syncError);
+          toast({ title: "تنبيه", description: "تم حفظ الوثيقة لكن فشل تحديث باقي الباكيج", variant: "default" });
+        }
+      }
+
       toast({ title: "تم الحفظ", description: "تم تحديث الوثيقة بنجاح" });
+      setPendingSave(null);
       onOpenChange(false);
       onSaved?.();
     } catch (error) {
@@ -259,6 +318,12 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
     } finally {
       setSaving(false);
     }
+  };
+
+  const handlePackageSyncConfirm = (sync: boolean) => {
+    setShowPackageDateSync(false);
+    setPendingSave({ syncDates: sync });
+    handleSave(sync);
   };
 
   const selectedType = POLICY_TYPES.find(t => t.value === formData.policy_type_parent);
@@ -520,7 +585,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
             <X className="h-4 w-4 ml-1" />
             إلغاء
           </Button>
-          <Button className="flex-1 h-9" onClick={handleSave} disabled={saving}>
+          <Button className="flex-1 h-9" onClick={() => handleSave(false)} disabled={saving}>
             {saving ? (
               <Loader2 className="h-4 w-4 ml-1 animate-spin" />
             ) : (
@@ -530,6 +595,33 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
           </Button>
         </div>
       </DialogContent>
+
+      {/* Package Date Sync Dialog */}
+      <AlertDialog open={showPackageDateSync} onOpenChange={setShowPackageDateSync}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>تحديث تواريخ الباكيج</AlertDialogTitle>
+            <AlertDialogDescription>
+              هذه الوثيقة جزء من باكيج يحتوي على {packagePolicies.length} وثائق أخرى.
+              <br />
+              هل تريد تحديث تواريخ جميع وثائق الباكيج؟
+              <div className="mt-2 text-xs text-muted-foreground">
+                {packagePolicies.map(p => (
+                  <div key={p.id}>• {POLICY_TYPES.find(t => t.value === p.policy_type_parent)?.label || p.policy_type_parent}</div>
+                ))}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel onClick={() => handlePackageSyncConfirm(false)}>
+              هذه الوثيقة فقط
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => handlePackageSyncConfirm(true)}>
+              تحديث الكل
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
