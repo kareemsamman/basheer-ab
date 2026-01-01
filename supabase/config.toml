@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.tranzila-broker-status]
 verify_jwt = true
+
+[functions.send-package-invoice-sms]
+verify_jwt = true

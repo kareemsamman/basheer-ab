@@ -19,12 +19,15 @@ import {
   AlertCircle,
   CheckCircle,
   Banknote,
-  List
+  List,
+  Send,
+  Loader2
 } from 'lucide-react';
 import { ExpiryBadge } from '@/components/shared/ExpiryBadge';
 import { PackagePaymentModal } from './PackagePaymentModal';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 interface PolicyRecord {
   id: string;
@@ -127,6 +130,8 @@ export function PolicyTreeView({ policies, onPolicyClick, onPaymentAdded }: Poli
   const [packagePaymentOpen, setPackagePaymentOpen] = useState(false);
   const [selectedPackagePolicyIds, setSelectedPackagePolicyIds] = useState<string[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
+  const [sendingPackage, setSendingPackage] = useState<string | null>(null);
+  const [sendingPolicy, setSendingPolicy] = useState<string | null>(null);
 
   // Fetch payment info for all policies
   useEffect(() => {
@@ -326,6 +331,62 @@ export function PolicyTreeView({ policies, onPolicyClick, onPaymentAdded }: Poli
     const percentage = totalPrice > 0 ? Math.round((totalPaid / totalPrice) * 100) : 0;
     
     return { totalPrice, totalPaid, remaining, isPaid, percentage };
+  };
+
+  // Send package invoice/files to customer
+  const handleSendPackageInvoice = async (e: React.MouseEvent, policyIds: string[], groupKey: string) => {
+    e.stopPropagation();
+    setSendingPackage(groupKey);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-package-invoice-sms', {
+        body: { policy_ids: policyIds }
+      });
+      
+      if (error) {
+        const errorBody = error.context?.body ? 
+          (typeof error.context.body === 'string' ? JSON.parse(error.context.body) : error.context.body) : null;
+        throw new Error(errorBody?.error || 'فشل في الإرسال');
+      }
+      
+      if (data?.success) {
+        toast.success('تم إرسال الفواتير للعميل');
+      } else {
+        toast.info(data?.message || 'تم الإرسال');
+      }
+    } catch (err: any) {
+      console.error('Error sending package invoice:', err);
+      toast.error(err.message || 'فشل في الإرسال');
+    } finally {
+      setSendingPackage(null);
+    }
+  };
+
+  // Send single policy invoice/files to customer
+  const handleSendPolicyInvoice = async (e: React.MouseEvent, policyId: string) => {
+    e.stopPropagation();
+    setSendingPolicy(policyId);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-invoice-sms', {
+        body: { policy_id: policyId }
+      });
+      
+      if (error) {
+        const errorBody = error.context?.body ? 
+          (typeof error.context.body === 'string' ? JSON.parse(error.context.body) : error.context.body) : null;
+        throw new Error(errorBody?.error || 'فشل في الإرسال');
+      }
+      
+      if (data?.success) {
+        toast.success('تم إرسال الفاتورة للعميل');
+      } else {
+        toast.info(data?.message || 'تم الإرسال');
+      }
+    } catch (err: any) {
+      console.error('Error sending policy invoice:', err);
+      toast.error(err.message || 'فشل في الإرسال');
+    } finally {
+      setSendingPolicy(null);
+    }
   };
 
   if (policies.length === 0) {
@@ -533,6 +594,22 @@ export function PolicyTreeView({ policies, onPolicyClick, onPaymentAdded }: Poli
                       دفع للباقة
                     </Button>
                   )}
+                  
+                  {/* Send Package Invoice Button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 shrink-0"
+                    onClick={(e) => handleSendPackageInvoice(e, allPolicyIds, groupKey)}
+                    disabled={sendingPackage === groupKey}
+                  >
+                    {sendingPackage === groupKey ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Send className="h-3.5 w-3.5" />
+                    )}
+                    إرسال للعميل
+                  </Button>
                   
                   {/* Status */}
                   <div className="shrink-0">
