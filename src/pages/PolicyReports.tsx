@@ -126,6 +126,7 @@ interface RenewalPolicy {
   reminder_sent_at: string | null;
   created_by_id: string | null;
   created_by_name: string | null;
+  group_id?: string | null;
   total_rows: number;
 }
 
@@ -192,6 +193,7 @@ export default function PolicyReports() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [sendingReminders, setSendingReminders] = useState(false);
+  const [sendingSingleSms, setSendingSingleSms] = useState<string | null>(null);
 
   // Fetch reference data
   useEffect(() => {
@@ -398,6 +400,60 @@ export default function PolicyReports() {
       toast.error(error.message || 'فشل في إرسال التذكيرات');
     } finally {
       setSendingReminders(false);
+    }
+  };
+
+  // Send single renewal reminder SMS with package details
+  const handleSendSingleSms = async (policy: RenewalPolicy) => {
+    if (!policy.client_phone) {
+      toast.error('رقم هاتف العميل مطلوب');
+      return;
+    }
+
+    setSendingSingleSms(policy.id);
+    try {
+      // Fetch package policies if exists
+      let packageTypes: string[] = [policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent];
+      
+      if (policy.group_id) {
+        const { data: groupPolicies } = await supabase
+          .from('policies')
+          .select('policy_type_parent')
+          .eq('group_id', policy.group_id)
+          .is('deleted_at', null)
+          .eq('cancelled', false);
+        
+        if (groupPolicies && groupPolicies.length > 1) {
+          packageTypes = [...new Set(groupPolicies.map(p => policyTypeLabels[p.policy_type_parent] || p.policy_type_parent))];
+        }
+      }
+
+      const typesText = packageTypes.join(' و ');
+      const endDate = formatDate(policy.end_date);
+      
+      // Build message
+      const message = `مرحباً ${policy.client_name}، نذكرك بأن تأمين (${typesText}) لسيارتك رقم ${policy.car_number || '-'} سينتهي بتاريخ ${endDate}. يرجى التواصل معنا أو زيارة المكتب للتجديد.`;
+
+      const { error } = await supabase.functions.invoke('send-sms', {
+        body: { phone: policy.client_phone, message }
+      });
+
+      if (error) throw error;
+
+      // Update renewal tracking
+      await supabase.from('policy_renewal_tracking').upsert({
+        policy_id: policy.id,
+        renewal_status: 'sms_sent',
+        reminder_sent_at: new Date().toISOString()
+      }, { onConflict: 'policy_id' });
+
+      toast.success('تم إرسال التذكير');
+      fetchRenewals();
+    } catch (error: any) {
+      console.error('Error sending SMS:', error);
+      toast.error(error.message || 'فشل في إرسال الرسالة');
+    } finally {
+      setSendingSingleSms(null);
     }
   };
 
@@ -813,12 +869,25 @@ export default function PolicyReports() {
                                   تحديث الحالة
                                 </DropdownMenuItem>
                                 {policy.client_phone && (
-                                  <DropdownMenuItem asChild>
-                                    <a href={`tel:${policy.client_phone}`}>
-                                      <Phone className="h-4 w-4 ml-2" />
-                                      اتصال
-                                    </a>
-                                  </DropdownMenuItem>
+                                  <>
+                                    <DropdownMenuItem 
+                                      onClick={() => handleSendSingleSms(policy)}
+                                      disabled={sendingSingleSms === policy.id}
+                                    >
+                                      {sendingSingleSms === policy.id ? (
+                                        <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                                      ) : (
+                                        <Send className="h-4 w-4 ml-2" />
+                                      )}
+                                      إرسال تذكير SMS
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem asChild>
+                                      <a href={`tel:${policy.client_phone}`}>
+                                        <Phone className="h-4 w-4 ml-2" />
+                                        اتصال
+                                      </a>
+                                    </DropdownMenuItem>
+                                  </>
                                 )}
                               </DropdownMenuContent>
                             </DropdownMenu>

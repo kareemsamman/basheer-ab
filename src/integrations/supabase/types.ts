@@ -2616,6 +2616,7 @@ export type Database = {
           created_by_name: string
           days_remaining: number
           end_date: string
+          group_id: string
           id: string
           insurance_price: number
           last_contacted_at: string
