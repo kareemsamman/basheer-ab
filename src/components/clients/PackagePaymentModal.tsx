@@ -9,6 +9,7 @@ import { Loader2, CreditCard, Banknote, Wallet, AlertCircle, CheckCircle, Packag
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { TranzilaPaymentModal } from '@/components/payments/TranzilaPaymentModal';
 
 interface PolicyPaymentInfo {
   policyId: string;
@@ -43,6 +44,7 @@ const paymentTypes = [
   { value: 'cash', label: 'نقدي', icon: Banknote },
   { value: 'cheque', label: 'شيك', icon: CreditCard },
   { value: 'transfer', label: 'تحويل', icon: Wallet },
+  { value: 'visa', label: 'بطاقة ائتمان', icon: CreditCard },
 ];
 
 export function PackagePaymentModal({
@@ -60,6 +62,9 @@ export function PackagePaymentModal({
   const [chequeNumber, setChequeNumber] = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
+  const [tranzilaEnabled, setTranzilaEnabled] = useState(false);
+  const [tranzilaModalOpen, setTranzilaModalOpen] = useState(false);
+  const [activeTranzilaPolicyId, setActiveTranzilaPolicyId] = useState<string | null>(null);
 
   const totalRemaining = policies.reduce((sum, p) => sum + p.remaining, 0);
   const totalPrice = policies.reduce((sum, p) => sum + p.price, 0);
@@ -71,8 +76,18 @@ export function PackagePaymentModal({
   useEffect(() => {
     if (open && policyIds.length > 0) {
       fetchPolicyPaymentInfo();
+      checkTranzilaEnabled();
     }
   }, [open, policyIds]);
+
+  const checkTranzilaEnabled = async () => {
+    const { data } = await supabase
+      .from('payment_settings')
+      .select('is_enabled')
+      .eq('provider', 'tranzila')
+      .single();
+    setTranzilaEnabled(data?.is_enabled || false);
+  };
 
   const fetchPolicyPaymentInfo = async () => {
     setLoading(true);
@@ -151,6 +166,21 @@ export function PackagePaymentModal({
   const handleSubmit = async () => {
     if (!isValid) return;
 
+    // If Visa selected, use Tranzila flow
+    if (paymentType === 'visa') {
+      if (!tranzilaEnabled) {
+        toast.error('الدفع بالبطاقة غير مفعل');
+        return;
+      }
+      // Use first policy for Tranzila, then after success split into all policies
+      const firstPolicy = policies.find(p => p.remaining > 0);
+      if (firstPolicy) {
+        setActiveTranzilaPolicyId(firstPolicy.policyId);
+        setTranzilaModalOpen(true);
+      }
+      return;
+    }
+
     const splits = calculateSplitPayments();
     if (splits.length === 0) {
       toast.error('لا توجد دفعات للإضافة');
@@ -191,6 +221,38 @@ export function PackagePaymentModal({
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleTranzilaSuccess = async () => {
+    setTranzilaModalOpen(false);
+    // Tranzila only creates payment for one policy
+    // We need to create additional split payments for other policies
+    const splits = calculateSplitPayments();
+    const otherSplits = splits.filter(s => s.policyId !== activeTranzilaPolicyId);
+    
+    if (otherSplits.length > 0) {
+      try {
+        const payments = otherSplits.map(split => ({
+          policy_id: split.policyId,
+          amount: split.amount,
+          payment_type: 'visa' as const,
+          payment_date: new Date().toISOString().split('T')[0],
+          notes: notes || `دفعة من باقة (${policies.length} وثائق)`,
+          branch_id: branchId,
+        }));
+
+        await supabase.from('policy_payments').insert(payments);
+      } catch (error) {
+        console.error('Error creating additional payments:', error);
+      }
+    }
+
+    toast.success('تم الدفع بنجاح');
+    onOpenChange(false);
+    onSuccess();
+    setAmount('');
+    setNotes('');
+    setPaymentType('cash');
   };
 
   const splits = calculateSplitPayments();
@@ -273,14 +335,16 @@ export function PackagePaymentModal({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {paymentTypes.map(pt => (
-                        <SelectItem key={pt.value} value={pt.value}>
-                          <span className="flex items-center gap-2">
-                            <pt.icon className="h-4 w-4" />
-                            {pt.label}
-                          </span>
-                        </SelectItem>
-                      ))}
+                      {paymentTypes
+                        .filter(pt => pt.value !== 'visa' || tranzilaEnabled)
+                        .map(pt => (
+                          <SelectItem key={pt.value} value={pt.value}>
+                            <span className="flex items-center gap-2">
+                              <pt.icon className="h-4 w-4" />
+                              {pt.label}
+                            </span>
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -352,6 +416,20 @@ export function PackagePaymentModal({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Tranzila Payment Modal */}
+      {activeTranzilaPolicyId && (
+        <TranzilaPaymentModal
+          open={tranzilaModalOpen}
+          onOpenChange={setTranzilaModalOpen}
+          policyId={activeTranzilaPolicyId}
+          amount={amountNum}
+          paymentDate={paymentDate}
+          notes={notes || `دفعة من باقة (${policies.length} وثائق)`}
+          onSuccess={handleTranzilaSuccess}
+          onFailure={() => setTranzilaModalOpen(false)}
+        />
+      )}
     </Dialog>
   );
 }
