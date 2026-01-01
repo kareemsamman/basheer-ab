@@ -8,6 +8,7 @@ const corsHeaders = {
 
 interface SendInvoiceSmsRequest {
   policy_id: string;
+  force_resend?: boolean;
 }
 
 // Map policy types to Arabic labels
@@ -72,7 +73,7 @@ serve(async (req) => {
       );
     }
 
-    const { policy_id }: SendInvoiceSmsRequest = await req.json();
+    const { policy_id, force_resend }: SendInvoiceSmsRequest = await req.json();
 
     if (!policy_id) {
       return new Response(
@@ -105,8 +106,8 @@ serve(async (req) => {
       );
     }
 
-    // Check if already sent
-    if (policy.invoices_sent_at) {
+    // Check if already sent (skip check if force_resend is true)
+    if (policy.invoices_sent_at && !force_resend) {
       console.log("[send-invoice-sms] Invoices already sent at:", policy.invoices_sent_at);
       return new Response(
         JSON.stringify({ 
@@ -116,6 +117,10 @@ serve(async (req) => {
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+    
+    if (force_resend) {
+      console.log("[send-invoice-sms] Force resend enabled, bypassing sent check");
     }
 
     // Get insurance files (uploaded policy documents from Bunny CDN)

@@ -367,7 +367,7 @@ export function PolicyTreeView({ policies, onPolicyClick, onPaymentAdded }: Poli
     setSendingPolicy(policyId);
     try {
       const { data, error } = await supabase.functions.invoke('send-invoice-sms', {
-        body: { policy_id: policyId }
+        body: { policy_id: policyId, force_resend: true }
       });
       
       if (error) {
@@ -429,6 +429,8 @@ export function PolicyTreeView({ policies, onPolicyClick, onPaymentAdded }: Poli
               isAddon={false}
               onPolicyClick={onPolicyClick}
               paymentInfo={paymentInfo[addon.id]}
+              onSendInvoice={handleSendPolicyInvoice}
+              isSending={sendingPolicy === addon.id}
             />
           ));
         }
@@ -442,6 +444,8 @@ export function PolicyTreeView({ policies, onPolicyClick, onPaymentAdded }: Poli
               isAddon={false}
               onPolicyClick={onPolicyClick}
               paymentInfo={paymentInfo[group.mainPolicy!.id]}
+              onSendInvoice={handleSendPolicyInvoice}
+              isSending={sendingPolicy === group.mainPolicy!.id}
             />
           );
         }
@@ -740,12 +744,16 @@ function PolicyRow({
   policy, 
   isAddon,
   onPolicyClick,
-  paymentInfo
+  paymentInfo,
+  onSendInvoice,
+  isSending
 }: { 
   policy: PolicyRecord; 
   isAddon: boolean;
   onPolicyClick: (id: string) => void;
   paymentInfo?: { paid: number; remaining: number };
+  onSendInvoice?: (e: React.MouseEvent, policyId: string) => void;
+  isSending?: boolean;
 }) {
   const status = getPolicyStatus(policy);
   const isPaid = !paymentInfo || paymentInfo.remaining <= 0;
@@ -791,6 +799,24 @@ function PolicyRow({
           
           {/* Spacer */}
           <div className="flex-1" />
+          
+          {/* Send Invoice Button */}
+          {onSendInvoice && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1 shrink-0"
+              onClick={(e) => onSendInvoice(e, policy.id)}
+              disabled={isSending}
+            >
+              {isSending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Send className="h-3.5 w-3.5" />
+              )}
+              إرسال للعميل
+            </Button>
+          )}
           
           {/* Status */}
           <ExpiryBadge endDate={policy.end_date} cancelled={policy.cancelled} />
