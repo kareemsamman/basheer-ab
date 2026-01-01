@@ -71,8 +71,8 @@ serve(async (req) => {
 
     console.log(`[generate-renewals-report] Generating report for month: ${month}`);
 
-    // Fetch renewals data
-    const { data: renewals, error: renewalsError } = await supabase.rpc('report_renewals', {
+    // Fetch renewals data using service function (no auth check)
+    const { data: renewals, error: renewalsError } = await supabase.rpc('report_renewals_service', {
       p_end_month: `${month}-01`,
       p_days_remaining: days_filter,
       p_policy_type: policy_type,
