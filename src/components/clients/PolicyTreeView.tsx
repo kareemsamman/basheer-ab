@@ -371,9 +371,24 @@ export function PolicyTreeView({ policies, onPolicyClick, onPaymentAdded }: Poli
       });
       
       if (error) {
-        const errorBody = error.context?.body ? 
-          (typeof error.context.body === 'string' ? JSON.parse(error.context.body) : error.context.body) : null;
-        throw new Error(errorBody?.error || 'فشل في الإرسال');
+        // Try to parse error message from various formats
+        let errorMessage = 'فشل في الإرسال';
+        try {
+          if (error.context?.body) {
+            const body = typeof error.context.body === 'string' 
+              ? JSON.parse(error.context.body) 
+              : error.context.body;
+            errorMessage = body?.error || errorMessage;
+          }
+        } catch {
+          // Keep default error message
+        }
+        throw new Error(errorMessage);
+      }
+      
+      // Check if the response indicates an error
+      if (data?.error) {
+        throw new Error(data.error);
       }
       
       if (data?.success) {
