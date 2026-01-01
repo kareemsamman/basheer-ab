@@ -124,6 +124,8 @@ interface RenewalPolicy {
   renewal_notes: string | null;
   last_contacted_at: string | null;
   reminder_sent_at: string | null;
+  created_by_id: string | null;
+  created_by_name: string | null;
   total_rows: number;
 }
 
@@ -175,6 +177,7 @@ export default function PolicyReports() {
   const [renewalsMonth, setRenewalsMonth] = useState<string>(new Date().toISOString().slice(0, 7));
   const [renewalsDaysFilter, setRenewalsDaysFilter] = useState<string>('month');
   const [renewalsPolicyTypeFilter, setRenewalsPolicyTypeFilter] = useState<string>('all');
+  const [renewalsCreatedByFilter, setRenewalsCreatedByFilter] = useState<string>('all');
   const [renewalsSearch, setRenewalsSearch] = useState('');
   
   // Reference Data
@@ -273,6 +276,7 @@ export default function PolicyReports() {
           p_end_month: monthDate,
           p_days_remaining: daysRemaining,
           p_policy_type: renewalsPolicyTypeFilter !== 'all' ? renewalsPolicyTypeFilter : null,
+          p_created_by: renewalsCreatedByFilter !== 'all' ? renewalsCreatedByFilter : null,
           p_search: renewalsSearch || null,
           p_limit: PAGE_SIZE,
           p_offset: renewalsPage * PAGE_SIZE
@@ -308,7 +312,7 @@ export default function PolicyReports() {
     if (activeTab === 'renewals') {
       fetchRenewals();
     }
-  }, [activeTab, renewalsPage, renewalsMonth, renewalsDaysFilter, renewalsPolicyTypeFilter, renewalsSearch]);
+  }, [activeTab, renewalsPage, renewalsMonth, renewalsDaysFilter, renewalsPolicyTypeFilter, renewalsCreatedByFilter, renewalsSearch]);
 
   // Update renewal status
   const handleUpdateStatus = async () => {
@@ -689,6 +693,18 @@ export default function PolicyReports() {
                   </SelectContent>
                 </Select>
 
+                <Select value={renewalsCreatedByFilter} onValueChange={(v) => { setRenewalsCreatedByFilter(v); setRenewalsPage(0); }}>
+                  <SelectTrigger className="w-[160px]">
+                    <SelectValue placeholder="أنشأه" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">كل المستخدمين</SelectItem>
+                    {users.map(u => (
+                      <SelectItem key={u.id} value={u.id}>{u.display_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
                 <div className="relative flex-1 min-w-[200px]">
                   <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -738,6 +754,7 @@ export default function PolicyReports() {
                         <TableHead className="text-right">النوع</TableHead>
                         <TableHead className="text-right">الشركة</TableHead>
                         <TableHead className="text-right">السعر</TableHead>
+                        <TableHead className="text-right">أنشأها</TableHead>
                         <TableHead className="text-right">حالة التجديد</TableHead>
                         <TableHead className="text-right">ملاحظات</TableHead>
                         <TableHead className="w-10"></TableHead>
@@ -769,6 +786,7 @@ export default function PolicyReports() {
                           </TableCell>
                           <TableCell>{policy.company_name_ar || policy.company_name || '-'}</TableCell>
                           <TableCell className="font-bold">₪{policy.insurance_price.toLocaleString()}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{policy.created_by_name || '-'}</TableCell>
                           <TableCell>
                             <Badge className={cn('border', renewalStatusColors[policy.renewal_status])}>
                               {renewalStatusLabels[policy.renewal_status]}

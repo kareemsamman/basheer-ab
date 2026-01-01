@@ -2286,6 +2286,8 @@ export type Database = {
           provider: string
           reminder_1month_template: string | null
           reminder_1week_template: string | null
+          renewal_reminder_1month_enabled: boolean | null
+          renewal_reminder_1week_enabled: boolean | null
           renewal_reminder_cooldown_days: number | null
           renewal_reminder_days: number | null
           renewal_reminder_template: string | null
@@ -2310,6 +2312,8 @@ export type Database = {
           provider?: string
           reminder_1month_template?: string | null
           reminder_1week_template?: string | null
+          renewal_reminder_1month_enabled?: boolean | null
+          renewal_reminder_1week_enabled?: boolean | null
           renewal_reminder_cooldown_days?: number | null
           renewal_reminder_days?: number | null
           renewal_reminder_template?: string | null
@@ -2334,6 +2338,8 @@ export type Database = {
           provider?: string
           reminder_1month_template?: string | null
           reminder_1week_template?: string | null
+          renewal_reminder_1month_enabled?: boolean | null
+          renewal_reminder_1week_enabled?: boolean | null
           renewal_reminder_cooldown_days?: number | null
           renewal_reminder_days?: number | null
           renewal_reminder_template?: string | null
@@ -2590,6 +2596,7 @@ export type Database = {
       }
       report_renewals: {
         Args: {
+          p_created_by?: string
           p_days_remaining?: number
           p_end_month?: string
           p_limit?: number
@@ -2605,6 +2612,39 @@ export type Database = {
           client_phone: string
           company_name: string
           company_name_ar: string
+          created_by_id: string
+          created_by_name: string
+          days_remaining: number
+          end_date: string
+          id: string
+          insurance_price: number
+          last_contacted_at: string
+          policy_type_child: string
+          policy_type_parent: string
+          reminder_sent_at: string
+          renewal_notes: string
+          renewal_status: string
+          total_rows: number
+        }[]
+      }
+      report_renewals_service: {
+        Args: {
+          p_days_remaining?: number
+          p_end_month?: string
+          p_limit?: number
+          p_offset?: number
+          p_policy_type?: string
+        }
+        Returns: {
+          car_number: string
+          client_file_number: string
+          client_id: string
+          client_name: string
+          client_phone: string
+          company_name: string
+          company_name_ar: string
+          created_by_id: string
+          created_by_name: string
           days_remaining: number
           end_date: string
           id: string

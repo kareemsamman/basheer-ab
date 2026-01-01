@@ -80,3 +80,6 @@ verify_jwt = true
 
 [functions.send-renewal-reminders]
 verify_jwt = true
+
+[functions.cron-renewal-reminders]
+verify_jwt = false
