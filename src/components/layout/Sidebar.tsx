@@ -46,6 +46,7 @@ const navigation = [
   { name: "التنبيهات", href: "/notifications", icon: Bell },
   { name: "تقرير الشركات", href: "/reports/company-settlement", icon: BarChart3 },
   { name: "التقارير المالية", href: "/reports/financial", icon: Wallet },
+  { name: "تقارير الوثائق", href: "/reports/policies", icon: BarChart3 },
 ];
 
 const adminNav = [
