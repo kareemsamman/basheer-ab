@@ -188,7 +188,14 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
   const steps: WizardStep[] = useMemo(() => {
     const step1Valid = !!(selectedClient || (createNewClient && newClient.full_name.trim() && digitsOnly(newClient.id_number).length === 9));
     const step2Valid = isLightMode ? true : !!(selectedCar || existingCar || (createNewCar && newCar.car_number && !carConflict));
-    const step3Valid = !!(policy.company_id && policy.start_date && policy.end_date && policy.insurance_price);
+    
+    // Package addons validation
+    const roadServiceAddonValid = !packageMode || !packageAddons[0].enabled || 
+      (packageAddons[0].road_service_id && packageAddons[0].company_id && parseFloat(packageAddons[0].insurance_price) > 0);
+    const accidentFeeAddonValid = !packageMode || !packageAddons[1].enabled || 
+      (packageAddons[1].accident_fee_service_id && packageAddons[1].company_id && parseFloat(packageAddons[1].insurance_price) > 0);
+    
+    const step3Valid = !!(policy.company_id && policy.start_date && policy.end_date && policy.insurance_price && roadServiceAddonValid && accidentFeeAddonValid);
     const step4Valid = !paymentsExceedPrice;
 
     if (isLightMode) {
@@ -208,7 +215,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
   }, [
     selectedClient, createNewClient, newClient, selectedCategory, isLightMode,
     selectedCar, existingCar, createNewCar, newCar, carConflict,
-    policy, paymentsExceedPrice,
+    policy, paymentsExceedPrice, packageMode, packageAddons,
   ]);
 
   // Get current step index for the steps array
@@ -345,6 +352,21 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
         if (policyBrokerId && policyBrokerId !== "none" && !brokerDirection) {
           newErrors.broker_direction = "الرجاء اختيار نوع التعامل مع الوسيط";
         }
+        // Package addons validation
+        if (packageMode && packageAddons[0].enabled) {
+          if (!packageAddons[0].road_service_id) newErrors.addon_road_service = "الرجاء اختيار نوع الخدمة";
+          if (!packageAddons[0].company_id) newErrors.addon_road_company = "الرجاء اختيار الشركة";
+          if (!packageAddons[0].insurance_price || parseFloat(packageAddons[0].insurance_price) <= 0) {
+            newErrors.addon_road_price = "السعر مطلوب";
+          }
+        }
+        if (packageMode && packageAddons[1].enabled) {
+          if (!packageAddons[1].accident_fee_service_id) newErrors.addon_accident_service = "الرجاء اختيار نوع الخدمة";
+          if (!packageAddons[1].company_id) newErrors.addon_accident_company = "الرجاء اختيار الشركة";
+          if (!packageAddons[1].insurance_price || parseFloat(packageAddons[1].insurance_price) <= 0) {
+            newErrors.addon_accident_price = "السعر مطلوب";
+          }
+        }
         break;
 
       case "payments":
@@ -360,6 +382,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     steps, selectedCategory, selectedClient, createNewClient, newClient,
     selectedCar, existingCar, createNewCar, newCar, carConflict,
     policy, policyBrokerId, brokerDirection, paymentsExceedPrice,
+    packageMode, packageAddons,
   ]);
 
   // Navigate to step

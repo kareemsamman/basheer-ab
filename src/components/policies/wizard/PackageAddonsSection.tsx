@@ -16,6 +16,7 @@ interface PackageAddonsSectionProps {
   accidentFeeCompanies: Company[];
   carType?: string;
   disabled?: boolean;
+  errors?: Record<string, string>;
 }
 
 export function PackageAddonsSection({
@@ -27,6 +28,7 @@ export function PackageAddonsSection({
   accidentFeeCompanies,
   carType,
   disabled,
+  errors = {},
 }: PackageAddonsSectionProps) {
   const roadServiceAddon = addons[0];
   const accidentFeeAddon = addons[1];
@@ -76,7 +78,7 @@ export function PackageAddonsSection({
                   onValueChange={(v) => updateAddon(0, { road_service_id: v })}
                   disabled={disabled}
                 >
-                  <SelectTrigger className="h-9">
+                  <SelectTrigger className={cn("h-9", errors.addon_road_service && "border-destructive")}>
                     <SelectValue placeholder="اختر الخدمة" />
                   </SelectTrigger>
                   <SelectContent>
@@ -87,6 +89,9 @@ export function PackageAddonsSection({
                     ))}
                   </SelectContent>
                 </Select>
+                {errors.addon_road_service && (
+                  <p className="text-xs text-destructive">{errors.addon_road_service}</p>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -96,7 +101,7 @@ export function PackageAddonsSection({
                   onValueChange={(v) => updateAddon(0, { company_id: v })}
                   disabled={disabled}
                 >
-                  <SelectTrigger className="h-9">
+                  <SelectTrigger className={cn("h-9", errors.addon_road_company && "border-destructive")}>
                     <SelectValue placeholder="اختر الشركة" />
                   </SelectTrigger>
                   <SelectContent>
@@ -107,6 +112,9 @@ export function PackageAddonsSection({
                     ))}
                   </SelectContent>
                 </Select>
+                {errors.addon_road_company && (
+                  <p className="text-xs text-destructive">{errors.addon_road_company}</p>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -116,9 +124,12 @@ export function PackageAddonsSection({
                   value={roadServiceAddon.insurance_price}
                   onChange={(e) => updateAddon(0, { insurance_price: e.target.value })}
                   placeholder="₪"
-                  className="h-9"
+                  className={cn("h-9", errors.addon_road_price && "border-destructive")}
                   disabled={disabled}
                 />
+                {errors.addon_road_price && (
+                  <p className="text-xs text-destructive">{errors.addon_road_price}</p>
+                )}
               </div>
             </div>
           )}
@@ -150,7 +161,7 @@ export function PackageAddonsSection({
                   onValueChange={(v) => updateAddon(1, { accident_fee_service_id: v })}
                   disabled={disabled}
                 >
-                  <SelectTrigger className="h-9">
+                  <SelectTrigger className={cn("h-9", errors.addon_accident_service && "border-destructive")}>
                     <SelectValue placeholder="اختر الخدمة" />
                   </SelectTrigger>
                   <SelectContent>
@@ -161,6 +172,9 @@ export function PackageAddonsSection({
                     ))}
                   </SelectContent>
                 </Select>
+                {errors.addon_accident_service && (
+                  <p className="text-xs text-destructive">{errors.addon_accident_service}</p>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -170,7 +184,7 @@ export function PackageAddonsSection({
                   onValueChange={(v) => updateAddon(1, { company_id: v })}
                   disabled={disabled}
                 >
-                  <SelectTrigger className="h-9">
+                  <SelectTrigger className={cn("h-9", errors.addon_accident_company && "border-destructive")}>
                     <SelectValue placeholder="اختر الشركة" />
                   </SelectTrigger>
                   <SelectContent>
@@ -181,6 +195,9 @@ export function PackageAddonsSection({
                     ))}
                   </SelectContent>
                 </Select>
+                {errors.addon_accident_company && (
+                  <p className="text-xs text-destructive">{errors.addon_accident_company}</p>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -190,9 +207,12 @@ export function PackageAddonsSection({
                   value={accidentFeeAddon.insurance_price}
                   onChange={(e) => updateAddon(1, { insurance_price: e.target.value })}
                   placeholder="₪"
-                  className="h-9"
+                  className={cn("h-9", errors.addon_accident_price && "border-destructive")}
                   disabled={disabled}
                 />
+                {errors.addon_accident_price && (
+                  <p className="text-xs text-destructive">{errors.addon_accident_price}</p>
+                )}
               </div>
             </div>
           )}

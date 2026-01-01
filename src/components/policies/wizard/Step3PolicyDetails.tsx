@@ -644,6 +644,7 @@ export function Step3PolicyDetails({
                 roadServiceCompanies={packageRoadServiceCompanies}
                 accidentFeeCompanies={packageAccidentCompanies}
                 carType={getCarType() || undefined}
+                errors={errors}
               />
             </div>
           )}
