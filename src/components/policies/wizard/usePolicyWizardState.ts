@@ -73,6 +73,29 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
   const [loadingClients, setLoadingClients] = useState(false);
   const [checkingDuplicate, setCheckingDuplicate] = useState(false);
 
+  // Auto-select preselected client
+  useEffect(() => {
+    if (!preselectedClientId || !open) return;
+    if (selectedClient?.id === preselectedClientId) return;
+
+    const fetchPreselectedClient = async () => {
+      setLoadingClients(true);
+      const { data, error } = await supabase
+        .from('clients')
+        .select('id, full_name, id_number, file_number, phone_number, less_than_24, under24_type, under24_driver_name, under24_driver_id, broker_id')
+        .eq('id', preselectedClientId)
+        .single();
+      
+      setLoadingClients(false);
+      if (!error && data) {
+        setSelectedClient(data as Client);
+        setCreateNewClient(false);
+      }
+    };
+
+    fetchPreselectedClient();
+  }, [preselectedClientId, open]);
+
   // Car
   const [clientCars, setClientCars] = useState<CarRecord[]>([]);
   const [selectedCar, setSelectedCar] = useState<CarRecord | null>(null);
