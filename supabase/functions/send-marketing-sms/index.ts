@@ -156,16 +156,9 @@ Deno.serve(async (req) => {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&apos;');
 
-        // Build XML payload
-        const xmlPayload = `<?xml version="1.0" encoding="UTF-8"?>
-<sms>
-  <user>${escapeXml(smsSettings.sms_user)}</user>
-  <source>${escapeXml(smsSettings.sms_source)}</source>
-  <destinations>
-    <phone>${escapeXml(phone)}</phone>
-  </destinations>
-  <message>${escapeXml(message)}</message>
-</sms>`;
+        // Build XML payload - same format as working send-sms function
+        const dlr = crypto.randomUUID();
+        const xmlPayload = `<?xml version="1.0" encoding="UTF-8"?><sms><user><username>${escapeXml(smsSettings.sms_user)}</username></user><source>${escapeXml(smsSettings.sms_source)}</source><destinations><phone id="${dlr}">${escapeXml(phone)}</phone></destinations><message>${escapeXml(message)}</message></sms>`;
 
         console.log(`Sending SMS to ${phone}`);
 
