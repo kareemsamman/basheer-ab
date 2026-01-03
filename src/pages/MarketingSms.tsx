@@ -584,7 +584,11 @@ export default function MarketingSms() {
                     </TableHeader>
                     <TableBody>
                       {campaigns.map(campaign => (
-                        <TableRow key={campaign.id}>
+                        <TableRow 
+                          key={campaign.id} 
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => handleViewCampaign(campaign)}
+                        >
                           <TableCell className="font-medium">{campaign.title}</TableCell>
                           <TableCell className="max-w-xs truncate">{campaign.message}</TableCell>
                           <TableCell>
@@ -605,7 +609,10 @@ export default function MarketingSms() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleViewCampaign(campaign)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleViewCampaign(campaign);
+                              }}
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
