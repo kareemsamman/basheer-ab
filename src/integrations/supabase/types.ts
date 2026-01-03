@@ -2583,13 +2583,17 @@ export type Database = {
       report_debt_policies_for_clients: {
         Args: { p_client_ids: string[] }
         Returns: {
+          car_number: string
           client_id: string
           days_until_expiry: number
           end_date: string
+          group_id: string
           insurance_price: number
           paid: number
           policy_id: string
           policy_number: string
+          policy_type_child: string
+          policy_type_parent: string
           remaining: number
           status: string
         }[]

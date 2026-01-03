@@ -40,7 +40,28 @@ interface PolicyDebt {
   end_date: string;
   days_until_expiry: number;
   status: 'active' | 'expiring_soon' | 'expired';
+  policy_type_parent: string | null;
+  policy_type_child: string | null;
+  car_number: string | null;
+  group_id: string | null;
 }
+
+const POLICY_TYPE_LABELS: Record<string, string> = {
+  'THIRD_FULL': 'ثالث/شامل',
+  'THIRD_ONLY': 'طرف ثالث',
+  'ROAD_SERVICE': 'سرفيس',
+  'ACCIDENT_FEE_EXEMPTION': 'إعفاء رسوم الحادث',
+};
+
+const getPolicyTypeLabel = (parent: string | null, child: string | null): string => {
+  if (!parent) return '';
+  const parentLabel = POLICY_TYPE_LABELS[parent] || parent;
+  if (child) {
+    const childLabel = child === 'THIRD_FULL' ? 'شامل' : child === 'THIRD_ONLY' ? 'طرف ثالث' : child;
+    return `${parentLabel} - ${childLabel}`;
+  }
+  return parentLabel;
+};
 
 export default function DebtTracking() {
   const { toast } = useToast();
@@ -151,6 +172,10 @@ export default function DebtTracking() {
           end_date: String(row.end_date),
           days_until_expiry: Number(row.days_until_expiry) || 0,
           status: row.status,
+          policy_type_parent: row.policy_type_parent,
+          policy_type_child: row.policy_type_child,
+          car_number: row.car_number,
+          group_id: row.group_id,
         };
         const list = policiesByClient.get(row.client_id) || [];
         list.push(policy);
@@ -446,6 +471,8 @@ export default function DebtTracking() {
                           <TableHeader>
                             <TableRow>
                               <TableHead className="text-right">رقم الوثيقة</TableHead>
+                              <TableHead className="text-right">نوع الوثيقة</TableHead>
+                              <TableHead className="text-right">رقم السيارة</TableHead>
                               <TableHead className="text-right">سعر التأمين</TableHead>
                               <TableHead className="text-right">المدفوع</TableHead>
                               <TableHead className="text-right">المتبقي</TableHead>
@@ -455,34 +482,48 @@ export default function DebtTracking() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {client.policies.map((policy) => (
-                              <TableRow key={policy.id}>
-                                <TableCell className="font-medium">
-                                  {policy.policy_number || policy.id.substring(0, 8)}
-                                </TableCell>
-                                <TableCell>{formatCurrency(policy.insurance_price)}</TableCell>
-                                <TableCell className="text-green-600">
-                                  {formatCurrency(policy.paid)}
-                                </TableCell>
-                                <TableCell className="text-destructive font-medium">
-                                  {formatCurrency(policy.remaining)}
-                                </TableCell>
-                                <TableCell>
-                                  {format(new Date(policy.end_date), "dd/MM/yyyy")}
-                                </TableCell>
-                                <TableCell>{getExpiryBadge(policy.days_until_expiry)}</TableCell>
-                                <TableCell>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => openPolicyDetails(policy.id)}
-                                  >
-                                    <Eye className="h-4 w-4 ml-1" />
-                                    عرض
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            ))}
+                            {client.policies.map((policy) => {
+                              const isPartOfPackage = policy.group_id && client.policies.filter(p => p.group_id === policy.group_id).length > 1;
+                              return (
+                                <TableRow key={policy.id} className={isPartOfPackage ? 'bg-muted/20' : ''}>
+                                  <TableCell className="font-medium">
+                                    <div className="flex items-center gap-2">
+                                      {policy.policy_number || policy.id.substring(0, 8)}
+                                      {isPartOfPackage && (
+                                        <Badge variant="outline" className="text-xs">باقة</Badge>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    {getPolicyTypeLabel(policy.policy_type_parent, policy.policy_type_child)}
+                                  </TableCell>
+                                  <TableCell className="font-mono">
+                                    {policy.car_number || '-'}
+                                  </TableCell>
+                                  <TableCell>{formatCurrency(policy.insurance_price)}</TableCell>
+                                  <TableCell className="text-green-600">
+                                    {formatCurrency(policy.paid)}
+                                  </TableCell>
+                                  <TableCell className="text-destructive font-medium">
+                                    {formatCurrency(policy.remaining)}
+                                  </TableCell>
+                                  <TableCell>
+                                    {format(new Date(policy.end_date), "dd/MM/yyyy")}
+                                  </TableCell>
+                                  <TableCell>{getExpiryBadge(policy.days_until_expiry)}</TableCell>
+                                  <TableCell>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => openPolicyDetails(policy.id)}
+                                    >
+                                      <Eye className="h-4 w-4 ml-1" />
+                                      عرض
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
                           </TableBody>
                         </Table>
                       </div>
