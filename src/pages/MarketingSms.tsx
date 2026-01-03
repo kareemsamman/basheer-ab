@@ -92,16 +92,34 @@ export default function MarketingSms() {
   async function fetchClients() {
     setIsLoadingClients(true);
     try {
-      const { data, error } = await supabase
-        .from('clients')
-        .select('id, full_name, phone_number, file_number')
-        .is('deleted_at', null)
-        .not('phone_number', 'is', null)
-        .order('full_name');
+      // Fetch all clients - use range to bypass 1000 limit
+      let allClients: Client[] = [];
+      let from = 0;
+      const batchSize = 1000;
+      let hasMore = true;
 
-      if (error) throw error;
-      setClients(data || []);
-      setFilteredClients(data || []);
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('clients')
+          .select('id, full_name, phone_number, file_number')
+          .is('deleted_at', null)
+          .not('phone_number', 'is', null)
+          .order('full_name')
+          .range(from, from + batchSize - 1);
+
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          allClients = [...allClients, ...data];
+          from += batchSize;
+          hasMore = data.length === batchSize;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      setClients(allClients);
+      setFilteredClients(allClients);
     } catch (error) {
       console.error('Error fetching clients:', error);
       toast.error('فشل تحميل العملاء');
@@ -168,7 +186,7 @@ export default function MarketingSms() {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('entity_type', 'marketing_sms');
-      formData.append('entity_id', 'campaign');
+      // Don't send entity_id - it must be a valid UUID or null
 
       const response = await supabase.functions.invoke('upload-media', {
         body: formData,
@@ -180,6 +198,8 @@ export default function MarketingSms() {
       if (cdnUrl) {
         setImageUrl(cdnUrl);
         toast.success('تم رفع الصورة بنجاح');
+      } else {
+        throw new Error('No CDN URL returned');
       }
     } catch (error) {
       console.error('Error uploading image:', error);
