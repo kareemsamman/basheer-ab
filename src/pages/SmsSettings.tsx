@@ -28,6 +28,10 @@ interface SmsSettings {
   reminder_1week_template?: string | null;
   payment_request_template?: string | null;
   enable_auto_reminders?: boolean;
+  birthday_sms_enabled?: boolean;
+  birthday_sms_template?: string | null;
+  license_expiry_sms_enabled?: boolean;
+  license_expiry_sms_template?: string | null;
 }
 
 interface SignaturePageSettings {
@@ -58,6 +62,10 @@ export default function SmsSettings() {
     reminder_1week_template: null,
     payment_request_template: null,
     enable_auto_reminders: false,
+    birthday_sms_enabled: false,
+    birthday_sms_template: null,
+    license_expiry_sms_enabled: false,
+    license_expiry_sms_template: null,
   });
 
   const [signaturePageSettings, setSignaturePageSettings] = useState<SignaturePageSettings>({
@@ -97,6 +105,10 @@ export default function SmsSettings() {
           reminder_1week_template: data.reminder_1week_template ?? null,
           payment_request_template: data.payment_request_template ?? null,
           enable_auto_reminders: data.enable_auto_reminders ?? false,
+          birthday_sms_enabled: data.birthday_sms_enabled ?? false,
+          birthday_sms_template: data.birthday_sms_template ?? null,
+          license_expiry_sms_enabled: data.license_expiry_sms_enabled ?? false,
+          license_expiry_sms_template: data.license_expiry_sms_template ?? null,
         });
 
         // Load signature template settings
@@ -136,6 +148,10 @@ export default function SmsSettings() {
             reminder_1week_template: settings.reminder_1week_template ?? null,
             payment_request_template: settings.payment_request_template ?? null,
             enable_auto_reminders: settings.enable_auto_reminders ?? false,
+            birthday_sms_enabled: settings.birthday_sms_enabled ?? false,
+            birthday_sms_template: settings.birthday_sms_template ?? null,
+            license_expiry_sms_enabled: settings.license_expiry_sms_enabled ?? false,
+            license_expiry_sms_template: settings.license_expiry_sms_template ?? null,
           })
           .eq("id", settings.id);
 
@@ -156,6 +172,10 @@ export default function SmsSettings() {
             reminder_1week_template: settings.reminder_1week_template ?? null,
             payment_request_template: settings.payment_request_template ?? null,
             enable_auto_reminders: settings.enable_auto_reminders ?? false,
+            birthday_sms_enabled: settings.birthday_sms_enabled ?? false,
+            birthday_sms_template: settings.birthday_sms_template ?? null,
+            license_expiry_sms_enabled: settings.license_expiry_sms_enabled ?? false,
+            license_expiry_sms_template: settings.license_expiry_sms_template ?? null,
           })
           .select()
           .single();
@@ -531,6 +551,78 @@ export default function SmsSettings() {
                     <p className="text-xs text-muted-foreground">
                       المتغيرات: {"{{client_name}}"} ، {"{{policy_number}}"} ، {"{{remaining_amount}}"} ، {"{{end_date}}"}
                     </p>
+                  </div>
+
+                  {/* Birthday SMS Section */}
+                  <div className="border-t pt-6 mt-6">
+                    <h3 className="text-lg font-semibold mb-4">🎂 رسائل عيد الميلاد التلقائية</h3>
+                    
+                    <div className="flex items-center justify-between p-4 rounded-lg border bg-pink-500/10 border-pink-500/20 mb-4">
+                      <div className="space-y-0.5">
+                        <Label className="font-medium">تفعيل رسائل عيد الميلاد</Label>
+                        <p className="text-sm text-muted-foreground">
+                          إرسال رسالة تهنئة تلقائياً في يوم ميلاد العميل
+                        </p>
+                      </div>
+                      <Switch
+                        checked={settings.birthday_sms_enabled || false}
+                        onCheckedChange={(checked) =>
+                          setSettings((prev) => ({ ...prev, birthday_sms_enabled: checked }))
+                        }
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="birthday_sms_template">نص رسالة عيد الميلاد</Label>
+                      <Textarea
+                        id="birthday_sms_template"
+                        value={settings.birthday_sms_template || ""}
+                        onChange={(e) =>
+                          setSettings((prev) => ({ ...prev, birthday_sms_template: e.target.value }))
+                        }
+                        placeholder="عيد ميلاد سعيد {client_name}! 🎂 نتمنى لك سنة مليئة بالفرح والسعادة."
+                        className="min-h-[100px]"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        المتغيرات: {"{client_name}"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* License Expiry SMS Section */}
+                  <div className="border-t pt-6 mt-6">
+                    <h3 className="text-lg font-semibold mb-4">🚗 رسائل انتهاء الترخيص التلقائية</h3>
+                    
+                    <div className="flex items-center justify-between p-4 rounded-lg border bg-orange-500/10 border-orange-500/20 mb-4">
+                      <div className="space-y-0.5">
+                        <Label className="font-medium">تفعيل رسائل انتهاء الترخيص</Label>
+                        <p className="text-sm text-muted-foreground">
+                          إرسال تذكير قبل شهر من انتهاء ترخيص السيارة (التست)
+                        </p>
+                      </div>
+                      <Switch
+                        checked={settings.license_expiry_sms_enabled || false}
+                        onCheckedChange={(checked) =>
+                          setSettings((prev) => ({ ...prev, license_expiry_sms_enabled: checked }))
+                        }
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="license_expiry_sms_template">نص رسالة انتهاء الترخيص</Label>
+                      <Textarea
+                        id="license_expiry_sms_template"
+                        value={settings.license_expiry_sms_template || ""}
+                        onChange={(e) =>
+                          setSettings((prev) => ({ ...prev, license_expiry_sms_template: e.target.value }))
+                        }
+                        placeholder="مرحباً {client_name}، نذكرك أن رخصة سيارتك رقم {car_number} ستنتهي خلال شهر. يرجى التواصل معنا لتجديدها."
+                        className="min-h-[100px]"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        المتغيرات: {"{client_name}"} ، {"{car_number}"}
+                      </p>
+                    </div>
                   </div>
 
                   {/* Save Button */}

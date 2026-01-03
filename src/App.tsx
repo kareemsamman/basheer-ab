@@ -43,6 +43,7 @@ import FinancialReports from "./pages/FinancialReports";
 import CompanyWallet from "./pages/CompanyWallet";
 import ElzamiCostsReport from "./pages/ElzamiCostsReport";
 import PolicyReports from "./pages/PolicyReports";
+import MarketingSms from "./pages/MarketingSms";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -211,6 +212,11 @@ const App = () => (
                 <ProtectedRoute>
                   <PolicyReports />
                 </ProtectedRoute>
+              } />
+              <Route path="/admin/marketing-sms" element={
+                <AdminRoute>
+                  <MarketingSms />
+                </AdminRoute>
               } />
               {/* Public payment callback routes (loaded in iframe) */}
               <Route path="/payment/success" element={<PaymentSuccess />} />

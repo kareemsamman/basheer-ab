@@ -1,0 +1,541 @@
+import { useState, useEffect } from 'react';
+import { MainLayout } from '@/components/layout/MainLayout';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Search, Send, Image, Users, CheckCircle, XCircle, Clock, Loader2, Upload, Link, History } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
+import { ar } from 'date-fns/locale';
+
+interface Client {
+  id: string;
+  full_name: string;
+  phone_number: string | null;
+  file_number: string | null;
+}
+
+interface Campaign {
+  id: string;
+  title: string;
+  message: string;
+  image_url: string | null;
+  recipients_count: number;
+  sent_count: number;
+  failed_count: number;
+  status: string;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export default function MarketingSms() {
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState('compose');
+  
+  // Compose state
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  
+  // Customer selection state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [clients, setClients] = useState<Client[]>([]);
+  const [filteredClients, setFilteredClients] = useState<Client[]>([]);
+  const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
+  const [selectAll, setSelectAll] = useState(false);
+  const [isLoadingClients, setIsLoadingClients] = useState(true);
+  
+  // Campaign history state
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [isLoadingCampaigns, setIsLoadingCampaigns] = useState(false);
+
+  // Fetch clients
+  useEffect(() => {
+    fetchClients();
+  }, []);
+
+  // Filter clients based on search
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredClients(clients);
+    } else {
+      const query = searchQuery.toLowerCase();
+      setFilteredClients(
+        clients.filter(
+          c =>
+            c.full_name?.toLowerCase().includes(query) ||
+            c.phone_number?.includes(query) ||
+            c.file_number?.toLowerCase().includes(query)
+        )
+      );
+    }
+  }, [searchQuery, clients]);
+
+  // Fetch campaigns when history tab is active
+  useEffect(() => {
+    if (activeTab === 'history') {
+      fetchCampaigns();
+    }
+  }, [activeTab]);
+
+  async function fetchClients() {
+    setIsLoadingClients(true);
+    try {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('id, full_name, phone_number, file_number')
+        .is('deleted_at', null)
+        .not('phone_number', 'is', null)
+        .order('full_name');
+
+      if (error) throw error;
+      setClients(data || []);
+      setFilteredClients(data || []);
+    } catch (error) {
+      console.error('Error fetching clients:', error);
+      toast.error('فشل تحميل العملاء');
+    } finally {
+      setIsLoadingClients(false);
+    }
+  }
+
+  async function fetchCampaigns() {
+    setIsLoadingCampaigns(true);
+    try {
+      const { data, error } = await supabase
+        .from('marketing_sms_campaigns')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      setCampaigns(data || []);
+    } catch (error) {
+      console.error('Error fetching campaigns:', error);
+      toast.error('فشل تحميل الحملات');
+    } finally {
+      setIsLoadingCampaigns(false);
+    }
+  }
+
+  function handleSelectAll(checked: boolean) {
+    setSelectAll(checked);
+    if (checked) {
+      // Select all clients with phone numbers from filtered list
+      const validClients = filteredClients.filter(c => c.phone_number);
+      setSelectedClientIds(new Set(validClients.map(c => c.id)));
+    } else {
+      setSelectedClientIds(new Set());
+    }
+  }
+
+  function handleSelectClient(clientId: string, checked: boolean) {
+    const newSelected = new Set(selectedClientIds);
+    if (checked) {
+      newSelected.add(clientId);
+    } else {
+      newSelected.delete(clientId);
+    }
+    setSelectedClientIds(newSelected);
+    setSelectAll(false);
+  }
+
+  async function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('يرجى اختيار صورة فقط');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('entity_type', 'marketing_sms');
+      formData.append('entity_id', 'campaign');
+
+      const response = await supabase.functions.invoke('upload-media', {
+        body: formData,
+      });
+
+      if (response.error) throw response.error;
+      
+      const cdnUrl = response.data?.file?.cdn_url;
+      if (cdnUrl) {
+        setImageUrl(cdnUrl);
+        toast.success('تم رفع الصورة بنجاح');
+      }
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast.error('فشل رفع الصورة');
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  function insertLink() {
+    const url = prompt('أدخل الرابط:');
+    if (url) {
+      setMessage(prev => prev + ' ' + url);
+    }
+  }
+
+  async function handleSendCampaign() {
+    if (!title.trim()) {
+      toast.error('يرجى إدخال عنوان الحملة');
+      return;
+    }
+    if (!message.trim()) {
+      toast.error('يرجى إدخال نص الرسالة');
+      return;
+    }
+    if (selectedClientIds.size === 0) {
+      toast.error('يرجى اختيار عميل واحد على الأقل');
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      // Get selected clients with phone numbers
+      const selectedClients = clients.filter(
+        c => selectedClientIds.has(c.id) && c.phone_number
+      );
+
+      const response = await supabase.functions.invoke('send-marketing-sms', {
+        body: {
+          title,
+          message: imageUrl ? `${message}\n${imageUrl}` : message,
+          imageUrl,
+          recipients: selectedClients.map(c => ({
+            clientId: c.id,
+            phone: c.phone_number,
+            name: c.full_name,
+          })),
+        },
+      });
+
+      if (response.error) throw response.error;
+
+      toast.success(`تم إرسال الحملة إلى ${selectedClients.length} عميل`);
+      
+      // Reset form
+      setTitle('');
+      setMessage('');
+      setImageUrl('');
+      setSelectedClientIds(new Set());
+      setSelectAll(false);
+      
+      // Switch to history tab
+      setActiveTab('history');
+    } catch (error) {
+      console.error('Error sending campaign:', error);
+      toast.error('فشل إرسال الحملة');
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  function getStatusBadge(status: string) {
+    switch (status) {
+      case 'completed':
+        return <Badge className="bg-green-500">مكتمل</Badge>;
+      case 'sending':
+        return <Badge className="bg-blue-500">جاري الإرسال</Badge>;
+      case 'failed':
+        return <Badge variant="destructive">فشل</Badge>;
+      default:
+        return <Badge variant="secondary">مسودة</Badge>;
+    }
+  }
+
+  return (
+    <MainLayout>
+      <div className="container mx-auto py-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">رسائل SMS التسويقية</h1>
+        </div>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-2 max-w-md">
+            <TabsTrigger value="compose" className="flex items-center gap-2">
+              <Send className="h-4 w-4" />
+              إنشاء حملة
+            </TabsTrigger>
+            <TabsTrigger value="history" className="flex items-center gap-2">
+              <History className="h-4 w-4" />
+              سجل الحملات
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="compose" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Message Composer */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Send className="h-5 w-5" />
+                    نص الرسالة
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">عنوان الحملة</label>
+                    <Input
+                      placeholder="مثال: عروض الصيف"
+                      value={title}
+                      onChange={e => setTitle(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">نص الرسالة</label>
+                    <Textarea
+                      placeholder="اكتب رسالتك هنا..."
+                      value={message}
+                      onChange={e => setMessage(e.target.value)}
+                      rows={6}
+                      className="resize-none"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {message.length} حرف
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={insertLink}
+                    >
+                      <Link className="h-4 w-4 ml-1" />
+                      إضافة رابط
+                    </Button>
+                    
+                    <label className="cursor-pointer">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isUploading}
+                        asChild
+                      >
+                        <span>
+                          {isUploading ? (
+                            <Loader2 className="h-4 w-4 ml-1 animate-spin" />
+                          ) : (
+                            <Image className="h-4 w-4 ml-1" />
+                          )}
+                          رفع صورة
+                        </span>
+                      </Button>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+
+                  {imageUrl && (
+                    <div className="p-3 bg-muted rounded-lg">
+                      <p className="text-sm font-medium mb-2">الصورة المرفقة:</p>
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={imageUrl}
+                          alt="Uploaded"
+                          className="h-16 w-16 object-cover rounded"
+                        />
+                        <Input
+                          value={imageUrl}
+                          readOnly
+                          className="text-xs flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setImageUrl('')}
+                        >
+                          <XCircle className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="pt-4 border-t">
+                    <Button
+                      className="w-full"
+                      size="lg"
+                      onClick={handleSendCampaign}
+                      disabled={isSending || selectedClientIds.size === 0}
+                    >
+                      {isSending ? (
+                        <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4 ml-2" />
+                      )}
+                      إرسال إلى {selectedClientIds.size} عميل
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Customer Selection */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    اختيار العملاء
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="relative">
+                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="بحث بالاسم أو الهاتف..."
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      className="pr-10"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 bg-muted rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="selectAll"
+                        checked={selectAll}
+                        onCheckedChange={handleSelectAll}
+                      />
+                      <label htmlFor="selectAll" className="text-sm font-medium cursor-pointer">
+                        تحديد الكل ({filteredClients.filter(c => c.phone_number).length})
+                      </label>
+                    </div>
+                    <Badge variant="secondary">
+                      {selectedClientIds.size} محدد
+                    </Badge>
+                  </div>
+
+                  <ScrollArea className="h-[400px] border rounded-lg">
+                    {isLoadingClients ? (
+                      <div className="p-4 space-y-3">
+                        {[...Array(8)].map((_, i) => (
+                          <Skeleton key={i} className="h-12 w-full" />
+                        ))}
+                      </div>
+                    ) : filteredClients.length === 0 ? (
+                      <div className="p-8 text-center text-muted-foreground">
+                        لا يوجد عملاء
+                      </div>
+                    ) : (
+                      <div className="divide-y">
+                        {filteredClients.map(client => (
+                          <div
+                            key={client.id}
+                            className="flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors"
+                          >
+                            <Checkbox
+                              checked={selectedClientIds.has(client.id)}
+                              onCheckedChange={checked =>
+                                handleSelectClient(client.id, checked as boolean)
+                              }
+                              disabled={!client.phone_number}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{client.full_name}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {client.phone_number || 'لا يوجد رقم'}
+                                {client.file_number && ` • ${client.file_number}`}
+                              </p>
+                            </div>
+                            {!client.phone_number && (
+                              <Badge variant="outline" className="text-xs">
+                                لا يوجد رقم
+                              </Badge>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="history">
+            <Card>
+              <CardHeader>
+                <CardTitle>سجل الحملات</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {isLoadingCampaigns ? (
+                  <div className="space-y-3">
+                    {[...Array(5)].map((_, i) => (
+                      <Skeleton key={i} className="h-16 w-full" />
+                    ))}
+                  </div>
+                ) : campaigns.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    لا توجد حملات سابقة
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>العنوان</TableHead>
+                        <TableHead>الرسالة</TableHead>
+                        <TableHead>المستلمين</TableHead>
+                        <TableHead>الحالة</TableHead>
+                        <TableHead>التاريخ</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {campaigns.map(campaign => (
+                        <TableRow key={campaign.id}>
+                          <TableCell className="font-medium">{campaign.title}</TableCell>
+                          <TableCell className="max-w-xs truncate">{campaign.message}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span className="text-green-600">{campaign.sent_count}</span>
+                              /
+                              <span>{campaign.recipients_count}</span>
+                              {campaign.failed_count > 0 && (
+                                <span className="text-red-500">({campaign.failed_count} فشل)</span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>{getStatusBadge(campaign.status)}</TableCell>
+                          <TableCell>
+                            {format(new Date(campaign.created_at), 'dd/MM/yyyy HH:mm', { locale: ar })}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </MainLayout>
+  );
+}
