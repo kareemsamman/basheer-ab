@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowRight, Building2, Download, TrendingUp, Wallet, FileText, Calculator, Printer, Eye, Pencil, Calendar, RotateCcw } from 'lucide-react';
+import { ArrowRight, Building2, Download, TrendingUp, Wallet, FileText, Calculator, Printer, Eye, Pencil, Calendar, RotateCcw, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -104,6 +104,7 @@ export default function CompanySettlementDetail() {
   });
   const [selectedPolicyType, setSelectedPolicyType] = useState<string>('all');
   const [includeCancelled, setIncludeCancelled] = useState(false);
+  const [generatingReport, setGeneratingReport] = useState(false);
 
   // Filtered data
   const filteredPolicies = useMemo(() => {
@@ -318,6 +319,42 @@ export default function CompanySettlementDetail() {
     window.print();
   };
 
+  const handleGenerateReport = async () => {
+    if (!companyId) return;
+    
+    setGeneratingReport(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-settlement-report', {
+        body: {
+          company_id: companyId,
+          start_date: showAllTime ? null : startDate,
+          end_date: showAllTime ? null : endDate,
+          policy_type: selectedPolicyType !== 'all' ? selectedPolicyType : null,
+          include_cancelled: includeCancelled,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.url) {
+        window.open(data.url, '_blank');
+        toast({
+          title: 'تم إنشاء التقرير',
+          description: `تقرير ${company?.name_ar || company?.name} جاهز للطباعة`,
+        });
+      }
+    } catch (error) {
+      console.error('Error generating report:', error);
+      toast({
+        title: 'خطأ',
+        description: 'فشل في إنشاء التقرير',
+        variant: 'destructive',
+      });
+    } finally {
+      setGeneratingReport(false);
+    }
+  };
+
   const handleExplainCalculation = (policy: PolicyDetail) => {
     setSelectedPolicyForCalc(policy);
     setCalculationModalOpen(true);
@@ -455,9 +492,21 @@ export default function CompanySettlementDetail() {
               </div>
 
               <div className="flex items-end gap-2">
-                <Button variant="outline" onClick={exportToCSV} className="flex-1">
-                  <Download className="h-4 w-4 ml-2" />
-                  CSV
+                <Button 
+                  variant="default" 
+                  onClick={handleGenerateReport}
+                  disabled={generatingReport}
+                  className="flex-1"
+                >
+                  {generatingReport ? (
+                    <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                  ) : (
+                    <FileText className="h-4 w-4 ml-2" />
+                  )}
+                  تقرير PDF
+                </Button>
+                <Button variant="outline" onClick={exportToCSV}>
+                  <Download className="h-4 w-4" />
                 </Button>
                 <Button variant="outline" onClick={handlePrint}>
                   <Printer className="h-4 w-4" />
