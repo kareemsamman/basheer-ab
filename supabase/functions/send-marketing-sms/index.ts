@@ -181,10 +181,13 @@ Deno.serve(async (req) => {
         const responseText = await smsResponse.text();
         console.log(`SMS response for ${phone}:`, responseText);
 
-        // Parse response to check success
-        const isSuccess = responseText.includes('<status>0</status>') || 
-                         responseText.includes('success') ||
-                         smsResponse.ok;
+        // Parse response to check success - ONLY <status>0</status> means success
+        // Status 11 = token mismatch, other statuses are also failures
+        const isSuccess = responseText.includes('<status>0</status>');
+        
+        if (!isSuccess) {
+          console.log(`SMS failed for ${phone}:`, responseText);
+        }
 
         if (isSuccess) {
           sentCount++;

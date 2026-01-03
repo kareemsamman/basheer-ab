@@ -10,7 +10,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search, Send, Image, Users, CheckCircle, XCircle, Clock, Loader2, Upload, Link, History } from 'lucide-react';
+import { Search, Send, Image, Users, CheckCircle, XCircle, Clock, Loader2, Upload, Link, History, Copy, Eye } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
@@ -37,6 +38,16 @@ interface Campaign {
   completed_at: string | null;
 }
 
+interface CampaignRecipient {
+  id: string;
+  client_id: string;
+  phone_number: string;
+  status: string;
+  error_message: string | null;
+  sent_at: string | null;
+  clients: { full_name: string } | null;
+}
+
 export default function MarketingSms() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('compose');
@@ -59,6 +70,11 @@ export default function MarketingSms() {
   // Campaign history state
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [isLoadingCampaigns, setIsLoadingCampaigns] = useState(false);
+  
+  // Campaign details modal
+  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+  const [campaignRecipients, setCampaignRecipients] = useState<CampaignRecipient[]>([]);
+  const [isLoadingRecipients, setIsLoadingRecipients] = useState(false);
 
   // Fetch clients
   useEffect(() => {
@@ -145,6 +161,35 @@ export default function MarketingSms() {
     } finally {
       setIsLoadingCampaigns(false);
     }
+  }
+
+  async function fetchCampaignRecipients(campaignId: string) {
+    setIsLoadingRecipients(true);
+    try {
+      const { data, error } = await supabase
+        .from('marketing_sms_recipients')
+        .select('id, client_id, phone_number, status, error_message, sent_at, clients(full_name)')
+        .eq('campaign_id', campaignId)
+        .order('status', { ascending: true });
+
+      if (error) throw error;
+      setCampaignRecipients(data || []);
+    } catch (error) {
+      console.error('Error fetching recipients:', error);
+      toast.error('فشل تحميل المستلمين');
+    } finally {
+      setIsLoadingRecipients(false);
+    }
+  }
+
+  function handleViewCampaign(campaign: Campaign) {
+    setSelectedCampaign(campaign);
+    fetchCampaignRecipients(campaign.id);
+  }
+
+  function copyToClipboard(text: string) {
+    navigator.clipboard.writeText(text);
+    toast.success('تم نسخ الرابط');
   }
 
   function handleSelectAll(checked: boolean) {
@@ -390,6 +435,15 @@ export default function MarketingSms() {
                         />
                         <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => copyToClipboard(imageUrl)}
+                          title="نسخ الرابط"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
                           variant="ghost"
                           size="sm"
                           onClick={() => setImageUrl('')}
@@ -525,6 +579,7 @@ export default function MarketingSms() {
                         <TableHead>المستلمين</TableHead>
                         <TableHead>الحالة</TableHead>
                         <TableHead>التاريخ</TableHead>
+                        <TableHead></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -546,6 +601,15 @@ export default function MarketingSms() {
                           <TableCell>
                             {format(new Date(campaign.created_at), 'dd/MM/yyyy HH:mm', { locale: ar })}
                           </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleViewCampaign(campaign)}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -555,6 +619,86 @@ export default function MarketingSms() {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Campaign Details Modal */}
+        <Dialog open={!!selectedCampaign} onOpenChange={() => setSelectedCampaign(null)}>
+          <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+            <DialogHeader>
+              <DialogTitle>تفاصيل الحملة: {selectedCampaign?.title}</DialogTitle>
+            </DialogHeader>
+            
+            {selectedCampaign && (
+              <div className="space-y-4 overflow-hidden flex flex-col flex-1">
+                {/* Campaign Summary */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="p-3 bg-muted rounded-lg text-center">
+                    <p className="text-2xl font-bold text-green-600">{selectedCampaign.sent_count}</p>
+                    <p className="text-xs text-muted-foreground">تم الإرسال</p>
+                  </div>
+                  <div className="p-3 bg-muted rounded-lg text-center">
+                    <p className="text-2xl font-bold text-red-600">{selectedCampaign.failed_count}</p>
+                    <p className="text-xs text-muted-foreground">فشل</p>
+                  </div>
+                  <div className="p-3 bg-muted rounded-lg text-center">
+                    <p className="text-2xl font-bold">{selectedCampaign.recipients_count}</p>
+                    <p className="text-xs text-muted-foreground">إجمالي</p>
+                  </div>
+                </div>
+
+                {/* Message Preview */}
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-sm font-medium mb-1">نص الرسالة:</p>
+                  <p className="text-sm whitespace-pre-wrap">{selectedCampaign.message}</p>
+                </div>
+
+                {/* Recipients List */}
+                <div className="flex-1 overflow-hidden">
+                  <p className="text-sm font-medium mb-2">المستلمين:</p>
+                  <ScrollArea className="h-[300px] border rounded-lg">
+                    {isLoadingRecipients ? (
+                      <div className="p-4 space-y-2">
+                        {[...Array(5)].map((_, i) => (
+                          <Skeleton key={i} className="h-10 w-full" />
+                        ))}
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>الاسم</TableHead>
+                            <TableHead>الهاتف</TableHead>
+                            <TableHead>الحالة</TableHead>
+                            <TableHead>الخطأ</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {campaignRecipients.map(recipient => (
+                            <TableRow key={recipient.id}>
+                              <TableCell>{recipient.clients?.full_name || '-'}</TableCell>
+                              <TableCell dir="ltr">{recipient.phone_number}</TableCell>
+                              <TableCell>
+                                {recipient.status === 'sent' ? (
+                                  <Badge className="bg-green-500">تم الإرسال</Badge>
+                                ) : recipient.status === 'failed' ? (
+                                  <Badge variant="destructive">فشل</Badge>
+                                ) : (
+                                  <Badge variant="secondary">قيد الانتظار</Badge>
+                                )}
+                              </TableCell>
+                              <TableCell className="max-w-xs truncate text-xs text-red-500">
+                                {recipient.error_message || '-'}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </ScrollArea>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </MainLayout>
   );
