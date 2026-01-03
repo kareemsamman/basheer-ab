@@ -16,9 +16,10 @@ import { format, differenceInDays } from "date-fns";
 import { 
   DollarSign, Search, AlertTriangle, Clock, Send, 
   Phone, Eye, Filter, Users, TrendingDown, Calendar,
-  MessageSquare, RefreshCw, ChevronDown, ChevronUp
+  MessageSquare, RefreshCw, ChevronDown, ChevronUp, Wallet
 } from "lucide-react";
 import { PolicyDetailsDrawer } from "@/components/policies/PolicyDetailsDrawer";
+import { DebtPaymentModal } from "@/components/debt/DebtPaymentModal";
 
 interface ClientDebt {
   client_id: string;
@@ -77,6 +78,8 @@ export default function DebtTracking() {
   const [selectedPolicyId, setSelectedPolicyId] = useState<string | null>(null);
   const [policyDrawerOpen, setPolicyDrawerOpen] = useState(false);
   const [filterDays, setFilterDays] = useState<number | null>(null);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentClient, setPaymentClient] = useState<ClientDebt | null>(null);
 
   const [totalRows, setTotalRows] = useState(0);
   const [pageIndex, setPageIndex] = useState(0);
@@ -254,6 +257,11 @@ export default function DebtTracking() {
   const openPolicyDetails = (policyId: string) => {
     setSelectedPolicyId(policyId);
     setPolicyDrawerOpen(true);
+  };
+
+  const openPaymentModal = (client: ClientDebt) => {
+    setPaymentClient(client);
+    setPaymentModalOpen(true);
   };
 
   const formatCurrency = (amount: number) => `₪${amount.toLocaleString("he-IL")}`;
@@ -450,6 +458,17 @@ export default function DebtTracking() {
                           </p>
                         </div>
                         <Button
+                          variant="default"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openPaymentModal(client);
+                          }}
+                        >
+                          <Wallet className="h-4 w-4 ml-2" />
+                          تسديد المبلغ
+                        </Button>
+                        <Button
                           variant="outline"
                           size="sm"
                           onClick={(e) => {
@@ -620,6 +639,18 @@ export default function DebtTracking() {
         onOpenChange={setPolicyDrawerOpen}
         onUpdated={fetchDebtData}
       />
+
+      {/* Debt Payment Modal */}
+      {paymentClient && (
+        <DebtPaymentModal
+          open={paymentModalOpen}
+          onOpenChange={setPaymentModalOpen}
+          clientId={paymentClient.client_id}
+          clientName={paymentClient.client_name}
+          totalOwed={paymentClient.total_owed}
+          onSuccess={fetchDebtData}
+        />
+      )}
     </MainLayout>
   );
 }
