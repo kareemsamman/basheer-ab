@@ -202,6 +202,8 @@ serve(async (req) => {
       headers: {
         'AccessKey': bunnyApiKey,
         'Content-Type': 'text/html; charset=utf-8',
+        // Prevent caching issues for customers opening the link on mobile
+        'Cache-Control': 'no-store, max-age=0',
       },
       body: signatureHtml,
     });
@@ -215,7 +217,8 @@ serve(async (req) => {
       );
     }
 
-    const signaturePageUrl = `${bunnyCdnUrl}/${storagePath}`;
+    // Cache-busting query param helps when users open links from SMS multiple times
+    const signaturePageUrl = `${bunnyCdnUrl}/${storagePath}?v=${timestamp}`;
     console.log(`[send-signature-sms] Signature page uploaded: ${signaturePageUrl}`);
 
     // Create signature record with token (policy_id is optional, just for reference)
@@ -481,29 +484,63 @@ function buildSignaturePageHtml(
       transition: opacity 0.3s;
     }
     .canvas-hint.hidden { opacity: 0; }
-    .checkbox-wrapper {
+    .toggle-wrapper {
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       gap: 12px;
       padding: 15px;
       background: #f8fafc;
       border-radius: 12px;
       margin-bottom: 20px;
       cursor: pointer;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
     }
-    .checkbox-wrapper input[type="checkbox"] {
-      width: 22px;
-      height: 22px;
-      accent-color: #1e3a5f;
-      cursor: pointer;
+    .toggle-switch {
+      position: relative;
+      width: 52px;
+      height: 28px;
       flex-shrink: 0;
-      margin-top: 2px;
+      pointer-events: none; /* wrapper handles click for reliability */
     }
-    .checkbox-wrapper label {
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .toggle-slider {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #cbd5e1;
+      transition: 0.3s;
+      border-radius: 28px;
+    }
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 22px;
+      width: 22px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.3s;
+      border-radius: 50%;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    input:checked + .toggle-slider {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    }
+    input:checked + .toggle-slider:before {
+      transform: translateX(24px);
+    }
+    .terms-text {
       font-size: 14px;
       color: #475569;
       line-height: 1.6;
-      cursor: pointer;
+      flex: 1;
     }
     .buttons {
       display: flex;
@@ -642,9 +679,12 @@ function buildSignaturePageHtml(
 
       <div class="error-message" id="errorMessage"></div>
 
-      <div class="checkbox-wrapper" onclick="document.getElementById('acceptTerms').click()">
-        <input type="checkbox" id="acceptTerms">
-        <label for="acceptTerms">أقرّ أنني قرأت وأوافق على جميع الشروط والأحكام المذكورة أعلاه</label>
+      <div class="toggle-wrapper" id="toggleWrapper">
+        <label class="toggle-switch">
+          <input type="checkbox" id="acceptTerms">
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="terms-text">أقرّ أنني قرأت وأوافق على جميع الشروط والأحكام المذكورة أعلاه</span>
       </div>
 
       <div class="buttons">
@@ -683,6 +723,7 @@ function buildSignaturePageHtml(
     const hint = document.getElementById('canvasHint');
     const submitBtn = document.getElementById('submitBtn');
     const acceptTerms = document.getElementById('acceptTerms');
+    const toggleWrapper = document.getElementById('toggleWrapper');
     const errorMessage = document.getElementById('errorMessage');
     const loadingSpinner = document.getElementById('loadingSpinner');
     const btnText = document.querySelector('.btn-text');
@@ -755,6 +796,14 @@ function buildSignaturePageHtml(
     
     function updateSubmitButton() {
       submitBtn.disabled = !hasDrawn || !acceptTerms.checked;
+    }
+
+    // Reliable toggle for mobile (single tap anywhere on the row)
+    if (toggleWrapper) {
+      toggleWrapper.addEventListener('click', () => {
+        acceptTerms.checked = !acceptTerms.checked;
+        updateSubmitButton();
+      });
     }
     
     acceptTerms.addEventListener('change', updateSubmitButton);
