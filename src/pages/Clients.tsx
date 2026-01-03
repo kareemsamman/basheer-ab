@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Header } from "@/components/layout/Header";
 import { Card } from "@/components/ui/card";
@@ -59,6 +60,7 @@ interface Client {
 
 export default function Clients() {
   const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -77,6 +79,27 @@ export default function Clients() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingClient, setDeletingClient] = useState<Client | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Handle URL param to open client directly
+  useEffect(() => {
+    const openClientId = searchParams.get('open');
+    if (openClientId && !viewingClient) {
+      // Fetch the client and open their details
+      supabase
+        .from('clients')
+        .select('*, broker:brokers(id, name), branch:branches(id, name, name_ar), created_by:profiles!clients_created_by_admin_id_fkey(full_name, email)')
+        .eq('id', openClientId)
+        .is('deleted_at', null)
+        .single()
+        .then(({ data, error }) => {
+          if (data && !error) {
+            setViewingClient(data);
+            // Clear the URL param
+            setSearchParams({});
+          }
+        });
+    }
+  }, [searchParams, setSearchParams, viewingClient]);
 
   const fetchClients = useCallback(async () => {
     setLoading(true);
