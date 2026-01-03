@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Search, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlobalPolicySearch } from "./GlobalPolicySearch";
-import { NotificationsDropdown } from "./NotificationsDropdown";
 
 interface HeaderProps {
   title: string;
@@ -51,10 +50,7 @@ export function Header({ title, subtitle, action }: HeaderProps) {
             <Search className="h-4 w-4 text-muted-foreground" />
           </Button>
 
-          {/* Notifications */}
-          <NotificationsDropdown />
-
-          {/* Action button */}
+          {/* Action button - only for specific pages like Clients */}
           {action && (
             <Button onClick={action.onClick} size="sm" className="text-xs md:text-sm">
               <Plus className="h-3 w-3 md:h-4 md:w-4 ml-1 md:ml-2" />

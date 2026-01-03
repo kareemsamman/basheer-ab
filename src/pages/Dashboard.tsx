@@ -5,17 +5,14 @@ import { StatCard } from "@/components/dashboard/StatCard";
 import { ExpiringPolicies } from "@/components/dashboard/ExpiringPolicies";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { ProfitBreakdownChart } from "@/components/dashboard/ProfitBreakdownChart";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Users, FileText, Car, TrendingUp, Wallet, AlertCircle, Plus, Building2 } from "lucide-react";
+import { Users, FileText, Car, TrendingUp, AlertCircle, Building2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { PolicyWizard } from "@/components/policies/PolicyWizard";
 import { useProfitSummary } from "@/hooks/useProfitSummary";
 
 export default function Dashboard() {
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const { summary: profitSummary, loading: profitLoading } = useProfitSummary();
+  const { summary: profitSummary, loading: profitLoading, refetch: refetchProfit } = useProfitSummary();
   const [stats, setStats] = useState({
     totalClients: 0,
     activePolicies: 0,
@@ -78,24 +75,19 @@ export default function Dashboard() {
     }
   };
 
+  const handlePolicyComplete = () => {
+    fetchStats();
+    refetchProfit();
+  };
+
   return (
-    <MainLayout>
+    <MainLayout onPolicyComplete={handlePolicyComplete}>
       <Header
         title="لوحة التحكم"
         subtitle="مرحباً بك، مرشد"
-        action={{ label: "عميل جديد", onClick: () => {} }}
       />
 
       <div className="p-6 space-y-6">
-        {/* Quick Create Button */}
-        <Button 
-          size="lg" 
-          className="w-full sm:w-auto"
-          onClick={() => setWizardOpen(true)}
-        >
-          <Plus className="h-5 w-5 ml-2" />
-          إضافة وثيقة جديدة
-        </Button>
 
         {/* Stats Grid */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -204,12 +196,6 @@ export default function Dashboard() {
           <RecentActivity />
         </div>
       </div>
-
-      <PolicyWizard 
-        open={wizardOpen} 
-        onOpenChange={setWizardOpen}
-        onComplete={() => fetchStats()}
-      />
     </MainLayout>
   );
 }

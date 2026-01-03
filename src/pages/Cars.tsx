@@ -168,17 +168,10 @@ export default function Cars() {
   const totalPages = Math.ceil(totalCount / pageSize);
 
   return (
-    <MainLayout>
+    <MainLayout onPolicyComplete={fetchCars}>
       <Header
         title="السيارات"
         subtitle="إدارة قاعدة بيانات المركبات"
-        action={{
-          label: "إضافة سيارة",
-          onClick: () => {
-            setSelectedCar(null);
-            setDrawerOpen(true);
-          },
-        }}
       />
 
       <div className="p-6 space-y-4">

@@ -19,7 +19,6 @@ import {
   Download,
   ChevronLeft,
   ChevronRight,
-  Plus,
   RefreshCw,
   X,
   Package,
@@ -27,7 +26,6 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { PolicyWizard } from "@/components/policies/PolicyWizard";
 import { PolicyDetailsDrawer } from "@/components/policies/PolicyDetailsDrawer";
 import { PolicyEditDrawer } from "@/components/policies/PolicyEditDrawer";
 import { PolicyFilters, PolicyFilterValues } from "@/components/policies/PolicyFilters";
@@ -130,7 +128,6 @@ export default function Policies() {
   });
   const pageSize = 25;
 
-  const [wizardOpen, setWizardOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [selectedPolicyId, setSelectedPolicyId] = useState<string | null>(null);
@@ -403,25 +400,13 @@ export default function Policies() {
   };
 
   return (
-    <MainLayout>
+    <MainLayout onPolicyComplete={fetchPolicies}>
       <Header
         title="الوثائق"
         subtitle="إدارة وثائق التأمين"
-        action={{
-          label: "وثيقة جديدة",
-          onClick: () => setWizardOpen(true),
-        }}
       />
 
       <div className="p-6 space-y-4">
-        {/* Quick Create */}
-        <Button 
-          size="lg"
-          onClick={() => setWizardOpen(true)}
-        >
-          <Plus className="h-5 w-5 ml-2" />
-          إضافة وثيقة جديدة
-        </Button>
 
         {/* Toolbar */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -644,16 +629,6 @@ export default function Policies() {
           </div>
         </Card>
       </div>
-
-      <PolicyWizard
-        open={wizardOpen}
-        onOpenChange={setWizardOpen}
-        onComplete={(policyId) => {
-          // Optimistic: Just add to top of list, don't refetch
-          // Silent refresh in background after a short delay
-          setTimeout(() => fetchPolicies(), 2000);
-        }}
-      />
 
       <PolicyDetailsDrawer
         open={detailsOpen}
