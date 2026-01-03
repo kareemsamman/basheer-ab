@@ -39,8 +39,8 @@ const getNavigation = (isAdmin: boolean) => {
     { name: "العملاء", href: "/clients", icon: Users },
     { name: "السيارات", href: "/cars", icon: Car },
     { name: "الوثائق", href: "/policies", icon: FileText },
-    { name: "شركات التأمين", href: "/companies", icon: Building2 },
     { name: "الشيكات", href: "/cheques", icon: CreditCard },
+    { name: "متابعة الديون", href: "/debt-tracking", icon: DollarSign },
     { name: "الوسائط", href: "/media", icon: Image },
     { name: "التنبيهات", href: "/notifications", icon: Bell },
     { name: "تقارير الوثائق", href: "/reports/policies", icon: BarChart3 },
@@ -48,9 +48,9 @@ const getNavigation = (isAdmin: boolean) => {
 
   // Admin-only items in main navigation
   if (isAdmin) {
-    baseNav.splice(5, 0, { name: "الوسطاء", href: "/brokers", icon: Wallet });
+    baseNav.splice(4, 0, { name: "شركات التأمين", href: "/companies", icon: Building2 });
+    baseNav.splice(6, 0, { name: "الوسطاء", href: "/brokers", icon: Wallet });
     baseNav.push(
-      { name: "متابعة الديون", href: "/debt-tracking", icon: DollarSign },
       { name: "تقرير الشركات", href: "/reports/company-settlement", icon: BarChart3 },
       { name: "التقارير المالية", href: "/reports/financial", icon: Wallet }
     );
@@ -82,7 +82,7 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
   const [signingOut, setSigningOut] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { profile, signOut, isAdmin } = useAuth();
+  const { profile, signOut, isAdmin, branchName } = useAuth();
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -97,6 +97,7 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
   const userName = profile?.full_name || profile?.email?.split('@')[0] || 'مستخدم';
   const userInitial = userName.charAt(0);
   const userRole = isAdmin ? 'مدير' : 'موظف';
+  const userBranch = branchName;
 
   return (
     <div className="flex flex-col h-full">
@@ -220,7 +221,9 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
               <p className="truncate text-sm font-medium text-sidebar-foreground">
                 {userName}
               </p>
-              <p className="truncate text-xs text-muted-foreground">{userRole}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {userRole}{userBranch ? ` • ${userBranch}` : ''}
+              </p>
             </div>
           )}
           {!collapsed && (

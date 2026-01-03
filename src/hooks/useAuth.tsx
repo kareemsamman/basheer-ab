@@ -23,6 +23,7 @@ interface AuthContextType {
   isAdmin: boolean;
   isSuperAdmin: boolean;
   branchId: string | null;
+  branchName: string | null;
   signOut: () => Promise<void>;
 }
 
@@ -35,6 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [branchName, setBranchName] = useState<string | null>(null);
 
   // Super admin check based on email - this is the authoritative check
   const isSuperAdmin = user?.email === SUPER_ADMIN_EMAIL;
@@ -72,6 +74,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAdmin(!!roleData);
       }
 
+      // Fetch branch name if user has a branch
+      if (profileData.branch_id) {
+        const { data: branchData } = await supabase
+          .from('branches')
+          .select('name_ar, name')
+          .eq('id', profileData.branch_id)
+          .single();
+        
+        if (branchData) {
+          setBranchName(branchData.name_ar || branchData.name);
+        }
+      } else {
+        setBranchName(null);
+      }
+
       setProfileLoading(false);
       return profileData as UserProfile;
     } catch (error) {
@@ -87,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
     setProfile(null);
     setIsAdmin(false);
+    setBranchName(null);
   };
 
   useEffect(() => {
@@ -112,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           setProfile(null);
           setIsAdmin(false);
+          setBranchName(null);
           setProfileLoading(false);
         }
         
@@ -161,6 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin: isAdmin || isSuperAdmin,
       isSuperAdmin,
       branchId,
+      branchName,
       signOut,
     }}>
       {children}

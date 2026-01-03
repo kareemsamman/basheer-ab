@@ -153,7 +153,7 @@ interface User {
 const PAGE_SIZE = 25;
 
 export default function PolicyReports() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const [activeTab, setActiveTab] = useState('created');
   
   // Created Policies State
@@ -244,10 +244,15 @@ export default function PolicyReports() {
     try {
       const { fromDate, toDate } = getDateRange();
       
+      // Workers can only see their own policies in "Created" tab
+      const effectiveCreatedBy = isAdmin 
+        ? (createdByFilter !== 'all' ? createdByFilter : null)
+        : user?.id || null;
+      
       const { data, error } = await supabase.rpc('report_created_policies', {
         p_from_date: fromDate,
         p_to_date: toDate,
-        p_created_by: createdByFilter !== 'all' ? createdByFilter : null,
+        p_created_by: effectiveCreatedBy,
         p_policy_type: createdPolicyTypeFilter !== 'all' ? createdPolicyTypeFilter : null,
         p_company_id: createdCompanyFilter !== 'all' ? createdCompanyFilter : null,
         p_search: createdSearch || null,
@@ -534,17 +539,20 @@ export default function PolicyReports() {
                   </>
                 )}
 
-                <Select value={createdByFilter} onValueChange={(v) => { setCreatedByFilter(v); setCreatedPage(0); }}>
-                  <SelectTrigger className="w-[160px]">
-                    <SelectValue placeholder="أنشأه" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">كل المستخدمين</SelectItem>
-                    {users.map(u => (
-                      <SelectItem key={u.id} value={u.id}>{u.display_name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* Created By filter - Admin only */}
+                {isAdmin && (
+                  <Select value={createdByFilter} onValueChange={(v) => { setCreatedByFilter(v); setCreatedPage(0); }}>
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue placeholder="أنشأه" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">كل المستخدمين</SelectItem>
+                      {users.map(u => (
+                        <SelectItem key={u.id} value={u.id}>{u.display_name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
 
                 <Select value={createdPolicyTypeFilter} onValueChange={(v) => { setCreatedPolicyTypeFilter(v); setCreatedPage(0); }}>
                   <SelectTrigger className="w-[140px]">
@@ -599,7 +607,7 @@ export default function PolicyReports() {
                     <TableHeader>
                       <TableRow className="bg-muted/50">
                         <TableHead className="text-right">تاريخ الإنشاء</TableHead>
-                        <TableHead className="text-right">أنشأه</TableHead>
+                        {isAdmin && <TableHead className="text-right">أنشأه</TableHead>}
                         <TableHead className="text-right">العميل</TableHead>
                         <TableHead className="text-right">الهاتف</TableHead>
                         <TableHead className="text-right">السيارة</TableHead>
@@ -614,7 +622,7 @@ export default function PolicyReports() {
                       {createdPolicies.map(policy => (
                         <TableRow key={policy.id} className="hover:bg-muted/30">
                           <TableCell className="font-mono text-xs">{formatDateTime(policy.created_at)}</TableCell>
-                          <TableCell>{policy.created_by_name || '-'}</TableCell>
+                          {isAdmin && <TableCell>{policy.created_by_name || '-'}</TableCell>}
                           <TableCell>
                             <div>
                               <p className="font-medium">{policy.client_name}</p>

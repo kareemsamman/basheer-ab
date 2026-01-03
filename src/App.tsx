@@ -84,10 +84,11 @@ const App = () => (
                   <Policies />
                 </ProtectedRoute>
               } />
+              {/* Admin-only route: Companies */}
               <Route path="/companies" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <Companies />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               {/* Admin-only routes: Brokers, BrokerWallet */}
               <Route path="/brokers" element={
@@ -187,9 +188,9 @@ const App = () => (
                 </AdminRoute>
               } />
               <Route path="/debt-tracking" element={
-                <AdminRoute>
+                <ProtectedRoute>
                   <DebtTracking />
-                </AdminRoute>
+                </ProtectedRoute>
               } />
               <Route path="/admin/auth-settings" element={
                 <AdminRoute>
