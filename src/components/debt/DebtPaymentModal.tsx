@@ -303,7 +303,8 @@ export function DebtPaymentModal({
         return;
       }
       
-      const reportUrl = reportData?.report_url;
+      // Edge function returns 'url' not 'report_url'
+      const reportUrl = reportData?.url;
       
       // Send SMS with payment confirmation and report link
       const message = `مرحباً ${clientName}، تم استلام دفعة بمبلغ ₪${paidAmount.toLocaleString()}. شكراً لك!\n\nلعرض تقريرك الشامل:\n${reportUrl || 'غير متوفر'}`;
