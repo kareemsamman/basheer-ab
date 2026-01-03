@@ -40,6 +40,7 @@ interface DebtPaymentModalProps {
   onOpenChange: (open: boolean) => void;
   clientId: string;
   clientName: string;
+  clientPhone: string | null;
   totalOwed: number;
   onSuccess: () => void;
 }
@@ -69,6 +70,7 @@ export function DebtPaymentModal({
   onOpenChange,
   clientId,
   clientName,
+  clientPhone,
   totalOwed,
   onSuccess,
 }: DebtPaymentModalProps) {
@@ -125,14 +127,15 @@ export function DebtPaymentModal({
   const fetchPolicyPaymentInfo = async () => {
     setLoading(true);
     try {
+      // Fetch ALL unpaid policies for this client (including expired) - excluding ELZAMI
+      // This matches the debt tracking page logic
       const { data: policiesData, error: policiesError } = await supabase
         .from('policies')
         .select('id, policy_type_parent, policy_type_child, insurance_price, branch_id, car:cars(car_number)')
         .eq('client_id', clientId)
         .eq('cancelled', false)
         .is('deleted_at', null)
-        .neq('policy_type_parent', 'ELZAMI')
-        .gte('end_date', new Date().toISOString().split('T')[0]);
+        .neq('policy_type_parent', 'ELZAMI');
 
       if (policiesError) throw policiesError;
 
@@ -286,6 +289,40 @@ export function DebtPaymentModal({
     setActiveTranzilaPolicyId(null);
   };
 
+  const sendPaymentConfirmationSms = async (paidAmount: number) => {
+    if (!clientPhone) return;
+    
+    try {
+      // Generate client report
+      const { data: reportData, error: reportError } = await supabase.functions.invoke('generate-client-report', {
+        body: { client_id: clientId }
+      });
+      
+      if (reportError) {
+        console.error('Error generating client report:', reportError);
+        return;
+      }
+      
+      const reportUrl = reportData?.report_url;
+      
+      // Send SMS with payment confirmation and report link
+      const message = `مرحباً ${clientName}، تم استلام دفعة بمبلغ ₪${paidAmount.toLocaleString()}. شكراً لك!\n\nلعرض تقريرك الشامل:\n${reportUrl || 'غير متوفر'}`;
+      
+      await supabase.functions.invoke('send-sms', {
+        body: {
+          phone: clientPhone,
+          message,
+          sms_type: 'payment_confirmation'
+        }
+      });
+      
+      toast.success('تم إرسال رسالة التأكيد للعميل');
+    } catch (error) {
+      console.error('Error sending payment confirmation SMS:', error);
+      // Don't throw - payment was successful, just SMS failed
+    }
+  };
+
   const handleSubmit = async () => {
     if (!isValid) return;
 
@@ -339,6 +376,10 @@ export function DebtPaymentModal({
       }
 
       toast.success('تم تسديد الدفعات بنجاح');
+      
+      // Send SMS confirmation with client report link
+      await sendPaymentConfirmationSms(totalPaymentAmount);
+      
       onOpenChange(false);
       onSuccess();
     } catch (error: any) {

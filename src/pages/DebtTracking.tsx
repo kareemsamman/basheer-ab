@@ -647,6 +647,7 @@ export default function DebtTracking() {
           onOpenChange={setPaymentModalOpen}
           clientId={paymentClient.client_id}
           clientName={paymentClient.client_name}
+          clientPhone={paymentClient.phone_number}
           totalOwed={paymentClient.total_owed}
           onSuccess={fetchDebtData}
         />
