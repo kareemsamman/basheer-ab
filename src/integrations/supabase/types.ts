@@ -199,6 +199,60 @@ export type Database = {
         }
         Relationships: []
       }
+      automated_sms_log: {
+        Row: {
+          car_id: string | null
+          client_id: string
+          created_at: string
+          error_message: string | null
+          id: string
+          message: string
+          phone_number: string
+          sent_for_date: string
+          sms_type: string
+          status: string
+        }
+        Insert: {
+          car_id?: string | null
+          client_id: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message: string
+          phone_number: string
+          sent_for_date: string
+          sms_type: string
+          status?: string
+        }
+        Update: {
+          car_id?: string | null
+          client_id?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message?: string
+          phone_number?: string
+          sent_for_date?: string
+          sms_type?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automated_sms_log_car_id_fkey"
+            columns: ["car_id"]
+            isOneToOne: false
+            referencedRelation: "cars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automated_sms_log_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       branches: {
         Row: {
           created_at: string
@@ -1340,6 +1394,114 @@ export type Database = {
         }
         Relationships: []
       }
+      marketing_sms_campaigns: {
+        Row: {
+          branch_id: string | null
+          completed_at: string | null
+          created_at: string
+          created_by_admin_id: string | null
+          failed_count: number
+          id: string
+          image_url: string | null
+          message: string
+          recipients_count: number
+          sent_count: number
+          status: string
+          title: string
+        }
+        Insert: {
+          branch_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by_admin_id?: string | null
+          failed_count?: number
+          id?: string
+          image_url?: string | null
+          message: string
+          recipients_count?: number
+          sent_count?: number
+          status?: string
+          title: string
+        }
+        Update: {
+          branch_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by_admin_id?: string | null
+          failed_count?: number
+          id?: string
+          image_url?: string | null
+          message?: string
+          recipients_count?: number
+          sent_count?: number
+          status?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_sms_campaigns_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_sms_campaigns_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketing_sms_recipients: {
+        Row: {
+          campaign_id: string
+          client_id: string
+          created_at: string
+          error_message: string | null
+          id: string
+          phone_number: string
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          campaign_id: string
+          client_id: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          phone_number: string
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          campaign_id?: string
+          client_id?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          phone_number?: string
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_sms_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_sms_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_sms_recipients_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       media_files: {
         Row: {
           branch_id: string | null
@@ -2363,6 +2525,8 @@ export type Database = {
       }
       sms_settings: {
         Row: {
+          birthday_sms_enabled: boolean | null
+          birthday_sms_template: string | null
           cancellation_sms_template: string | null
           created_at: string
           default_ab_invoice_template_id: string | null
@@ -2373,6 +2537,8 @@ export type Database = {
           id: string
           invoice_sms_template: string | null
           is_enabled: boolean
+          license_expiry_sms_enabled: boolean | null
+          license_expiry_sms_template: string | null
           payment_request_template: string | null
           provider: string
           reminder_1month_template: string | null
@@ -2389,6 +2555,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          birthday_sms_enabled?: boolean | null
+          birthday_sms_template?: string | null
           cancellation_sms_template?: string | null
           created_at?: string
           default_ab_invoice_template_id?: string | null
@@ -2399,6 +2567,8 @@ export type Database = {
           id?: string
           invoice_sms_template?: string | null
           is_enabled?: boolean
+          license_expiry_sms_enabled?: boolean | null
+          license_expiry_sms_template?: string | null
           payment_request_template?: string | null
           provider?: string
           reminder_1month_template?: string | null
@@ -2415,6 +2585,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          birthday_sms_enabled?: boolean | null
+          birthday_sms_template?: string | null
           cancellation_sms_template?: string | null
           created_at?: string
           default_ab_invoice_template_id?: string | null
@@ -2425,6 +2597,8 @@ export type Database = {
           id?: string
           invoice_sms_template?: string | null
           is_enabled?: boolean
+          license_expiry_sms_enabled?: boolean | null
+          license_expiry_sms_template?: string | null
           payment_request_template?: string | null
           provider?: string
           reminder_1month_template?: string | null
