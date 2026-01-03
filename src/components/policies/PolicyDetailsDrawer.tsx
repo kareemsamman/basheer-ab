@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import {
   User,
@@ -184,6 +185,7 @@ const carTypeLabels: Record<string, string> = {
 
 export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, onViewRelatedPolicy }: PolicyDetailsDrawerProps) {
   const { toast } = useToast();
+  const { isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [policy, setPolicy] = useState<PolicyDetails | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -547,8 +549,8 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                     </p>
                   </div>
 
-                  {/* Profit - Only show if not ELZAMI */}
-                  {!isElzami && (
+                  {/* Profit - Only show if not ELZAMI and user is Admin */}
+                  {!isElzami && isAdmin && (
                     <div className="bg-success/10 rounded-xl p-4 text-center border border-success/20 shadow-sm">
                       <p className="text-xs text-muted-foreground mb-1">
                         {hasPackage ? 'ربح هذه الوثيقة' : 'الربح'}
@@ -558,8 +560,8 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                   )}
                 </div>
 
-                {/* Package Total - Only show if part of a package */}
-                {hasPackage && !isElzami && (
+                {/* Package Total - Only show if part of a package and user is Admin */}
+                {hasPackage && !isElzami && isAdmin && (
                   <div className="grid grid-cols-2 gap-4 mt-4">
                     <div className="bg-primary/10 rounded-xl p-4 text-center border border-primary/20 shadow-sm">
                       <div className="flex items-center justify-center gap-1.5 mb-1">
@@ -707,7 +709,10 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                                 <th className="text-right py-2 px-3 font-medium text-muted-foreground">الخدمة</th>
                                 <th className="text-right py-2 px-3 font-medium text-muted-foreground">الشركة</th>
                                 <th className="text-left py-2 px-3 font-medium text-muted-foreground">السعر</th>
-                                <th className="text-left py-2 px-3 font-medium text-muted-foreground">الربح</th>
+                                {/* Profit column - Admin only */}
+                                {isAdmin && (
+                                  <th className="text-left py-2 px-3 font-medium text-muted-foreground">الربح</th>
+                                )}
                               </tr>
                             </thead>
                             <tbody>
@@ -742,16 +747,19 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                                   <td className="py-2 px-3 text-left font-semibold">
                                     {formatCurrency(rp.insurance_price)}
                                   </td>
-                                  <td className="py-2 px-3 text-left text-success font-medium">
-                                    {formatCurrency(rp.profit)}
-                                  </td>
+                                  {/* Profit column - Admin only */}
+                                  {isAdmin && (
+                                    <td className="py-2 px-3 text-left text-success font-medium">
+                                      {formatCurrency(rp.profit)}
+                                    </td>
+                                  )}
                                 </tr>
                               ))}
                             </tbody>
                             <tfoot className="bg-muted/30 border-t border-border/50">
                               <tr>
-                                <td colSpan={3} className="py-2 px-3 font-semibold text-right">مجموع الباقة:</td>
-                                <td colSpan={2} className="py-2 px-3 text-left font-bold text-primary">
+                                <td colSpan={isAdmin ? 3 : 2} className="py-2 px-3 font-semibold text-right">مجموع الباقة:</td>
+                                <td colSpan={isAdmin ? 2 : 2} className="py-2 px-3 text-left font-bold text-primary">
                                   {formatCurrency(policy.insurance_price + relatedPolicies.reduce((sum, rp) => sum + rp.insurance_price, 0))}
                                 </td>
                               </tr>
@@ -806,7 +814,8 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                           <span className="text-muted-foreground">سعر التأمين</span>
                           <span className="font-bold">{formatCurrency(policy.insurance_price)}</span>
                         </div>
-                        {!isElzami && (
+                        {/* Company payment and profit - Admin only */}
+                        {!isElzami && isAdmin && (
                           <>
                             <div className="flex justify-between py-2 border-b">
                               <span className="text-muted-foreground">مدفوع للشركة</span>

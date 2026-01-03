@@ -26,6 +26,7 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { PolicyDetailsDrawer } from "@/components/policies/PolicyDetailsDrawer";
 import { PolicyEditDrawer } from "@/components/policies/PolicyEditDrawer";
 import { PolicyFilters, PolicyFilterValues } from "@/components/policies/PolicyFilters";
@@ -113,6 +114,7 @@ const policyTypeColors: Record<string, string> = {
 
 export default function Policies() {
   const { toast } = useToast();
+  const { isAdmin } = useAuth();
   const [policies, setPolicies] = useState<PolicyRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -427,43 +429,46 @@ export default function Policies() {
               filters={filters} 
               onFiltersChange={(f) => { setFilters(f); setCurrentPage(1); }} 
             />
-            {recalculating ? (
-              <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 rounded-lg border">
-                <RefreshCw className="h-4 w-4 animate-spin text-primary" />
-                <div className="flex flex-col text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{percentComplete}%</span>
-                    <span className="text-muted-foreground">({recalcProgress.done}/{recalcProgress.total})</span>
+            {/* Recalculate button - Admin only */}
+            {isAdmin && (
+              recalculating ? (
+                <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 rounded-lg border">
+                  <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+                  <div className="flex flex-col text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{percentComplete}%</span>
+                      <span className="text-muted-foreground">({recalcProgress.done}/{recalcProgress.total})</span>
+                    </div>
+                    {formatTimeRemaining() && (
+                      <span className="text-muted-foreground">متبقي: {formatTimeRemaining()}</span>
+                    )}
                   </div>
-                  {formatTimeRemaining() && (
-                    <span className="text-muted-foreground">متبقي: {formatTimeRemaining()}</span>
-                  )}
+                  <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-primary transition-all duration-300" 
+                      style={{ width: `${percentComplete}%` }} 
+                    />
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive"
+                    onClick={handleCancelRecalculation}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
-                <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-primary transition-all duration-300" 
-                    style={{ width: `${percentComplete}%` }} 
-                  />
-                </div>
-                <Button
-                  variant="ghost"
+              ) : (
+                <Button 
+                  variant="outline" 
                   size="sm"
-                  className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive"
-                  onClick={handleCancelRecalculation}
+                  onClick={handleRecalculateAll}
                 >
-                  <X className="h-4 w-4" />
+                  <RefreshCw className="ml-1 md:ml-2 h-4 w-4" />
+                  <span className="hidden sm:inline">إعادة حساب الأرباح</span>
+                  <span className="sm:hidden">حساب</span>
                 </Button>
-              </div>
-            ) : (
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={handleRecalculateAll}
-              >
-                <RefreshCw className="ml-1 md:ml-2 h-4 w-4" />
-                <span className="hidden sm:inline">إعادة حساب الأرباح</span>
-                <span className="sm:hidden">حساب</span>
-              </Button>
+              )
             )}
             <Button variant="outline" size="sm">
               <Download className="ml-1 md:ml-2 h-4 w-4" />
@@ -484,7 +489,10 @@ export default function Policies() {
                   <TableHead className="text-muted-foreground font-medium">الشركة</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الفترة</TableHead>
                   <TableHead className="text-muted-foreground font-medium">السعر</TableHead>
-                  <TableHead className="text-muted-foreground font-medium">الربح</TableHead>
+                  {/* Profit column - Admin only */}
+                  {isAdmin && (
+                    <TableHead className="text-muted-foreground font-medium">الربح</TableHead>
+                  )}
                   <TableHead className="text-muted-foreground font-medium">أنشئ بواسطة</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الفرع</TableHead>
                   <TableHead className="text-muted-foreground font-medium">انتهاء</TableHead>
@@ -502,15 +510,17 @@ export default function Policies() {
                       <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-8 w-28" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                      {isAdmin && <TableCell><Skeleton className="h-4 w-16" /></TableCell>}
                       <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-8 w-8" /></TableCell>
                     </TableRow>
                   ))
                 ) : policies.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={isAdmin ? 12 : 11} className="text-center py-8 text-muted-foreground">
                       لا توجد بيانات
                     </TableCell>
                   </TableRow>
@@ -559,9 +569,12 @@ export default function Policies() {
                         <TableCell className="font-medium">
                           ₪{policy.insurance_price.toLocaleString('ar-EG')}
                         </TableCell>
-                        <TableCell className="font-medium text-success">
-                          ₪{(policy.profit || 0).toLocaleString('ar-EG')}
-                        </TableCell>
+                        {/* Profit column - Admin only */}
+                        {isAdmin && (
+                          <TableCell className="font-medium text-success">
+                            ₪{(policy.profit || 0).toLocaleString('ar-EG')}
+                          </TableCell>
+                        )}
                         <TableCell className="text-sm text-muted-foreground">
                           {policy.created_by?.full_name || policy.created_by?.email || '-'}
                         </TableCell>

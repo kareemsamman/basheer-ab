@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { AdminRoute } from "@/components/auth/AdminRoute";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import NoAccess from "./pages/NoAccess";
@@ -88,15 +89,16 @@ const App = () => (
                   <Companies />
                 </ProtectedRoute>
               } />
+              {/* Admin-only routes: Brokers, BrokerWallet */}
               <Route path="/brokers" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <Brokers />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/brokers/:brokerId/wallet" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <BrokerWallet />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/cheques" element={
                 <ProtectedRoute>
@@ -108,60 +110,61 @@ const App = () => (
                   <Media />
                 </ProtectedRoute>
               } />
+              {/* Admin-only routes */}
               <Route path="/admin/users" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <AdminUsers />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/reports/company-settlement" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <CompanySettlement />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/reports/company-settlement/:companyId" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <CompanySettlementDetail />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/companies/:companyId/wallet" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <CompanyWallet />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/admin/invoice-templates" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <InvoiceTemplates />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/admin/insurance-categories" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <InsuranceCategories />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/admin/road-services" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <RoadServices />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/admin/accident-fee-services" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <AccidentFeeServices />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/admin/payment-settings" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <PaymentSettings />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/admin/sms-settings" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <SmsSettings />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/admin/customer-signatures" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <CustomerSignatures />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/notifications" element={
                 <ProtectedRoute>
@@ -169,39 +172,39 @@ const App = () => (
                 </ProtectedRoute>
               } />
               <Route path="/admin/wordpress-import" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <WordPressImport />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/admin/database-migration" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <DatabaseMigration />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/sms-history" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <SmsHistory />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/debt-tracking" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <DebtTracking />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/admin/auth-settings" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <AuthSettings />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/reports/financial" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <FinancialReports />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/reports/elzami-costs" element={
-                <ProtectedRoute>
+                <AdminRoute>
                   <ElzamiCostsReport />
-                </ProtectedRoute>
+                </AdminRoute>
               } />
               <Route path="/reports/policies" element={
                 <ProtectedRoute>

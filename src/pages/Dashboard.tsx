@@ -7,11 +7,13 @@ import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { ProfitBreakdownChart } from "@/components/dashboard/ProfitBreakdownChart";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Users, FileText, Car, TrendingUp, AlertCircle, Building2 } from "lucide-react";
+import { Users, FileText, Car, TrendingUp, AlertCircle, Building2, Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfitSummary } from "@/hooks/useProfitSummary";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Dashboard() {
+  const { isAdmin } = useAuth();
   const { summary: profitSummary, loading: profitLoading, refetch: refetchProfit } = useProfitSummary();
   const [stats, setStats] = useState({
     totalClients: 0,
@@ -19,6 +21,8 @@ export default function Dashboard() {
     totalCars: 0,
     outstandingBalance: 0,
     expiringThisWeek: 0,
+    expiringThisMonth: 0,
+    newPoliciesThisMonth: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -61,12 +65,34 @@ export default function Dashboard() {
         .gte('end_date', today)
         .lte('end_date', nextWeek.toISOString().split('T')[0]);
 
+      // Fetch expiring this month
+      const nextMonth = new Date();
+      nextMonth.setDate(nextMonth.getDate() + 30);
+      const { count: expiringMonthCount } = await supabase
+        .from('policies')
+        .select('*', { count: 'exact', head: true })
+        .is('deleted_at', null)
+        .eq('cancelled', false)
+        .gte('end_date', today)
+        .lte('end_date', nextMonth.toISOString().split('T')[0]);
+
+      // Fetch new policies this month
+      const firstDayOfMonth = new Date();
+      firstDayOfMonth.setDate(1);
+      const { count: newPoliciesCount } = await supabase
+        .from('policies')
+        .select('*', { count: 'exact', head: true })
+        .is('deleted_at', null)
+        .gte('created_at', firstDayOfMonth.toISOString());
+
       setStats({
         totalClients: clientsCount || 0,
         activePolicies: policiesCount || 0,
         totalCars: carsCount || 0,
         outstandingBalance: 0,
         expiringThisWeek: expiringCount || 0,
+        expiringThisMonth: expiringMonthCount || 0,
+        newPoliciesThisMonth: newPoliciesCount || 0,
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -118,77 +144,143 @@ export default function Dashboard() {
                 icon={Car}
                 variant="default"
               />
-              <StatCard
-                title="أرباح الشهر"
-                value={profitLoading ? '...' : `₪${profitSummary.monthProfit.toLocaleString('ar-EG')}`}
-                icon={TrendingUp}
-                variant="success"
-              />
+              {/* Admin sees profit, Workers see expiring this month */}
+              {isAdmin ? (
+                <StatCard
+                  title="أرباح الشهر"
+                  value={profitLoading ? '...' : `₪${profitSummary.monthProfit.toLocaleString('ar-EG')}`}
+                  icon={TrendingUp}
+                  variant="success"
+                />
+              ) : (
+                <StatCard
+                  title="تنتهي هذا الشهر"
+                  value={stats.expiringThisMonth.toLocaleString('ar-EG')}
+                  icon={Clock}
+                  variant="warning"
+                />
+              )}
             </>
           )}
         </div>
 
-        {/* Second Row Stats */}
+        {/* Second Row Stats - Different for Admin vs Worker */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Card className="p-6 border shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">أرباح اليوم</p>
-                <p className="text-2xl font-bold text-success">
-                  {profitLoading ? '...' : `₪${profitSummary.todayProfit.toLocaleString('ar-EG')}`}
-                </p>
-              </div>
-              <div className="rounded-xl bg-success/10 p-3">
-                <TrendingUp className="h-6 w-6 text-success" />
-              </div>
-            </div>
-          </Card>
-          <Card className="p-6 border shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">المستحق للشركات</p>
-                <p className="text-2xl font-bold text-destructive">
-                  {profitLoading ? '...' : `₪${profitSummary.totalCompanyPaymentDue.toLocaleString('ar-EG')}`}
-                </p>
-              </div>
-              <div className="rounded-xl bg-destructive/10 p-3">
-                <Building2 className="h-6 w-6 text-destructive" />
-              </div>
-            </div>
-          </Card>
-          <Card className="p-6 border shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">تنتهي هذا الأسبوع</p>
-                <p className="text-2xl font-bold text-warning">{stats.expiringThisWeek}</p>
-                <p className="text-sm text-muted-foreground mt-1">وثيقة تحتاج تجديد</p>
-              </div>
-              <div className="rounded-xl bg-warning/10 p-3">
-                <AlertCircle className="h-6 w-6 text-warning" />
-              </div>
-            </div>
-          </Card>
-          <Card className="p-6 border shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">أرباح السنة</p>
-                <p className="text-2xl font-bold text-success">
-                  {profitLoading ? '...' : `₪${profitSummary.yearProfit.toLocaleString('ar-EG')}`}
-                </p>
-              </div>
-              <div className="rounded-xl bg-success/10 p-3">
-                <TrendingUp className="h-6 w-6 text-success" />
-              </div>
-            </div>
-          </Card>
+          {isAdmin ? (
+            <>
+              {/* Admin Financial Stats */}
+              <Card className="p-6 border shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">أرباح اليوم</p>
+                    <p className="text-2xl font-bold text-success">
+                      {profitLoading ? '...' : `₪${profitSummary.todayProfit.toLocaleString('ar-EG')}`}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-success/10 p-3">
+                    <TrendingUp className="h-6 w-6 text-success" />
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-6 border shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">المستحق للشركات</p>
+                    <p className="text-2xl font-bold text-destructive">
+                      {profitLoading ? '...' : `₪${profitSummary.totalCompanyPaymentDue.toLocaleString('ar-EG')}`}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-destructive/10 p-3">
+                    <Building2 className="h-6 w-6 text-destructive" />
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-6 border shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">تنتهي هذا الأسبوع</p>
+                    <p className="text-2xl font-bold text-warning">{stats.expiringThisWeek}</p>
+                    <p className="text-sm text-muted-foreground mt-1">وثيقة تحتاج تجديد</p>
+                  </div>
+                  <div className="rounded-xl bg-warning/10 p-3">
+                    <AlertCircle className="h-6 w-6 text-warning" />
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-6 border shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">أرباح السنة</p>
+                    <p className="text-2xl font-bold text-success">
+                      {profitLoading ? '...' : `₪${profitSummary.yearProfit.toLocaleString('ar-EG')}`}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-success/10 p-3">
+                    <TrendingUp className="h-6 w-6 text-success" />
+                  </div>
+                </div>
+              </Card>
+            </>
+          ) : (
+            <>
+              {/* Worker Operational Stats */}
+              <Card className="p-6 border shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">تنتهي هذا الأسبوع</p>
+                    <p className="text-2xl font-bold text-warning">{stats.expiringThisWeek}</p>
+                    <p className="text-sm text-muted-foreground mt-1">وثيقة تحتاج تجديد</p>
+                  </div>
+                  <div className="rounded-xl bg-warning/10 p-3">
+                    <AlertCircle className="h-6 w-6 text-warning" />
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-6 border shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">وثائق جديدة هذا الشهر</p>
+                    <p className="text-2xl font-bold text-primary">{stats.newPoliciesThisMonth}</p>
+                  </div>
+                  <div className="rounded-xl bg-primary/10 p-3">
+                    <FileText className="h-6 w-6 text-primary" />
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-6 border shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">إجمالي العملاء</p>
+                    <p className="text-2xl font-bold">{stats.totalClients}</p>
+                  </div>
+                  <div className="rounded-xl bg-muted p-3">
+                    <Users className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-6 border shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">الوثائق النشطة</p>
+                    <p className="text-2xl font-bold">{stats.activePolicies}</p>
+                  </div>
+                  <div className="rounded-xl bg-muted p-3">
+                    <FileText className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                </div>
+              </Card>
+            </>
+          )}
         </div>
 
-        {/* Profit Breakdown Chart */}
-        <ProfitBreakdownChart
-          elzamiCommission={profitSummary.elzamiCommission}
-          otherProfit={profitSummary.otherProfit}
-          loading={profitLoading}
-        />
+        {/* Profit Breakdown Chart - Admin only */}
+        {isAdmin && (
+          <ProfitBreakdownChart
+            elzamiCommission={profitSummary.elzamiCommission}
+            otherProfit={profitSummary.otherProfit}
+            loading={profitLoading}
+          />
+        )}
 
         {/* Bottom Grid */}
         <div className="grid gap-6 lg:grid-cols-2">

@@ -263,6 +263,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "broker_settlement_items_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_policies"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "broker_settlement_items_settlement_id_fkey"
             columns: ["settlement_id"]
             isOneToOne: false
@@ -357,6 +364,13 @@ export type Database = {
             columns: ["broker_id"]
             isOneToOne: false
             referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broker_settlements_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_brokers"
             referencedColumns: ["id"]
           },
           {
@@ -620,6 +634,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "clients_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_brokers"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "clients_created_by_admin_id_fkey"
             columns: ["created_by_admin_id"]
             isOneToOne: false
@@ -873,6 +894,13 @@ export type Database = {
             referencedRelation: "policies"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "customer_signatures_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_policies"
+            referencedColumns: ["id"]
+          },
         ]
       }
       customer_wallet_transactions: {
@@ -939,6 +967,13 @@ export type Database = {
             columns: ["policy_id"]
             isOneToOne: false
             referencedRelation: "policies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_wallet_transactions_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_policies"
             referencedColumns: ["id"]
           },
         ]
@@ -1082,6 +1117,13 @@ export type Database = {
             columns: ["broker_id"]
             isOneToOne: false
             referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_companies_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_brokers"
             referencedColumns: ["id"]
           },
         ]
@@ -1244,6 +1286,13 @@ export type Database = {
             columns: ["policy_id"]
             isOneToOne: false
             referencedRelation: "policies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_policies"
             referencedColumns: ["id"]
           },
           {
@@ -1689,6 +1738,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "policies_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_brokers"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "policies_cancelled_by_admin_id_fkey"
             columns: ["cancelled_by_admin_id"]
             isOneToOne: false
@@ -1883,6 +1939,13 @@ export type Database = {
             referencedRelation: "policies"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "policy_payments_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_policies"
+            referencedColumns: ["id"]
+          },
         ]
       }
       policy_reminders: {
@@ -1913,6 +1976,13 @@ export type Database = {
             columns: ["policy_id"]
             isOneToOne: false
             referencedRelation: "policies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policy_reminders_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_policies"
             referencedColumns: ["id"]
           },
           {
@@ -1971,6 +2041,13 @@ export type Database = {
             columns: ["policy_id"]
             isOneToOne: false
             referencedRelation: "policies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policy_renewal_tracking_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_policies"
             referencedColumns: ["id"]
           },
         ]
@@ -2052,6 +2129,13 @@ export type Database = {
             columns: ["policy_id"]
             isOneToOne: false
             referencedRelation: "policies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policy_transfers_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_policies"
             referencedColumns: ["id"]
           },
           {
@@ -2268,6 +2352,13 @@ export type Database = {
             referencedRelation: "policies"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "sms_logs_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_policies"
+            referencedColumns: ["id"]
+          },
         ]
       }
       sms_settings: {
@@ -2396,7 +2487,219 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      v_worker_brokers: {
+        Row: {
+          id: string | null
+          name: string | null
+        }
+        Insert: {
+          id?: string | null
+          name?: string | null
+        }
+        Update: {
+          id?: string | null
+          name?: string | null
+        }
+        Relationships: []
+      }
+      v_worker_policies: {
+        Row: {
+          branch_id: string | null
+          broker_direction:
+            | Database["public"]["Enums"]["broker_direction"]
+            | null
+          broker_id: string | null
+          calc_status: string | null
+          cancellation_date: string | null
+          cancellation_note: string | null
+          cancelled: boolean | null
+          cancelled_by_admin_id: string | null
+          car_id: string | null
+          category_id: string | null
+          client_id: string | null
+          company_id: string | null
+          created_at: string | null
+          created_by_admin_id: string | null
+          deleted_at: string | null
+          end_date: string | null
+          group_id: string | null
+          id: string | null
+          insurance_price: number | null
+          invoices_sent_at: string | null
+          is_under_24: boolean | null
+          legacy_wp_id: number | null
+          notes: string | null
+          policy_number: string | null
+          policy_type_child:
+            | Database["public"]["Enums"]["policy_type_child"]
+            | null
+          policy_type_parent:
+            | Database["public"]["Enums"]["policy_type_parent"]
+            | null
+          road_service_id: string | null
+          start_date: string | null
+          transferred: boolean | null
+          transferred_car_number: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          broker_direction?:
+            | Database["public"]["Enums"]["broker_direction"]
+            | null
+          broker_id?: string | null
+          calc_status?: string | null
+          cancellation_date?: string | null
+          cancellation_note?: string | null
+          cancelled?: boolean | null
+          cancelled_by_admin_id?: string | null
+          car_id?: string | null
+          category_id?: string | null
+          client_id?: string | null
+          company_id?: string | null
+          created_at?: string | null
+          created_by_admin_id?: string | null
+          deleted_at?: string | null
+          end_date?: string | null
+          group_id?: string | null
+          id?: string | null
+          insurance_price?: number | null
+          invoices_sent_at?: string | null
+          is_under_24?: boolean | null
+          legacy_wp_id?: number | null
+          notes?: string | null
+          policy_number?: string | null
+          policy_type_child?:
+            | Database["public"]["Enums"]["policy_type_child"]
+            | null
+          policy_type_parent?:
+            | Database["public"]["Enums"]["policy_type_parent"]
+            | null
+          road_service_id?: string | null
+          start_date?: string | null
+          transferred?: boolean | null
+          transferred_car_number?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          broker_direction?:
+            | Database["public"]["Enums"]["broker_direction"]
+            | null
+          broker_id?: string | null
+          calc_status?: string | null
+          cancellation_date?: string | null
+          cancellation_note?: string | null
+          cancelled?: boolean | null
+          cancelled_by_admin_id?: string | null
+          car_id?: string | null
+          category_id?: string | null
+          client_id?: string | null
+          company_id?: string | null
+          created_at?: string | null
+          created_by_admin_id?: string | null
+          deleted_at?: string | null
+          end_date?: string | null
+          group_id?: string | null
+          id?: string | null
+          insurance_price?: number | null
+          invoices_sent_at?: string | null
+          is_under_24?: boolean | null
+          legacy_wp_id?: number | null
+          notes?: string | null
+          policy_number?: string | null
+          policy_type_child?:
+            | Database["public"]["Enums"]["policy_type_child"]
+            | null
+          policy_type_parent?:
+            | Database["public"]["Enums"]["policy_type_parent"]
+            | null
+          road_service_id?: string | null
+          start_date?: string | null
+          transferred?: boolean | null
+          transferred_car_number?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "policies_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policies_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policies_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_brokers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policies_cancelled_by_admin_id_fkey"
+            columns: ["cancelled_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policies_car_id_fkey"
+            columns: ["car_id"]
+            isOneToOne: false
+            referencedRelation: "cars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policies_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policies_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policies_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policies_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policies_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "policy_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policies_road_service_id_fkey"
+            columns: ["road_service_id"]
+            isOneToOne: false
+            referencedRelation: "road_services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       calculate_policy_company_payment: {
@@ -2419,6 +2722,7 @@ export type Database = {
         Args: { _branch_id: string; _user_id: string }
         Returns: boolean
       }
+      can_view_financials: { Args: { _user_id: string }; Returns: boolean }
       generate_file_number: { Args: never; Returns: string }
       generate_invoice_number: { Args: never; Returns: string }
       get_ab_balance: {

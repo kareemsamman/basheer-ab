@@ -32,23 +32,34 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
-const navigation = [
-  { name: "لوحة التحكم", href: "/", icon: LayoutDashboard },
-  { name: "العملاء", href: "/clients", icon: Users },
-  { name: "السيارات", href: "/cars", icon: Car },
-  { name: "الوثائق", href: "/policies", icon: FileText },
-  
-  { name: "شركات التأمين", href: "/companies", icon: Building2 },
-  { name: "الوسطاء", href: "/brokers", icon: Wallet },
-  { name: "الشيكات", href: "/cheques", icon: CreditCard },
-  { name: "متابعة الديون", href: "/debt-tracking", icon: DollarSign },
-  { name: "الوسائط", href: "/media", icon: Image },
-  { name: "التنبيهات", href: "/notifications", icon: Bell },
-  { name: "تقرير الشركات", href: "/reports/company-settlement", icon: BarChart3 },
-  { name: "التقارير المالية", href: "/reports/financial", icon: Wallet },
-  { name: "تقارير الوثائق", href: "/reports/policies", icon: BarChart3 },
-];
+// Navigation items - some are admin-only
+const getNavigation = (isAdmin: boolean) => {
+  const baseNav = [
+    { name: "لوحة التحكم", href: "/", icon: LayoutDashboard },
+    { name: "العملاء", href: "/clients", icon: Users },
+    { name: "السيارات", href: "/cars", icon: Car },
+    { name: "الوثائق", href: "/policies", icon: FileText },
+    { name: "شركات التأمين", href: "/companies", icon: Building2 },
+    { name: "الشيكات", href: "/cheques", icon: CreditCard },
+    { name: "الوسائط", href: "/media", icon: Image },
+    { name: "التنبيهات", href: "/notifications", icon: Bell },
+    { name: "تقارير الوثائق", href: "/reports/policies", icon: BarChart3 },
+  ];
 
+  // Admin-only items in main navigation
+  if (isAdmin) {
+    baseNav.splice(5, 0, { name: "الوسطاء", href: "/brokers", icon: Wallet });
+    baseNav.push(
+      { name: "متابعة الديون", href: "/debt-tracking", icon: DollarSign },
+      { name: "تقرير الشركات", href: "/reports/company-settlement", icon: BarChart3 },
+      { name: "التقارير المالية", href: "/reports/financial", icon: Wallet }
+    );
+  }
+
+  return baseNav;
+};
+
+// Admin-only navigation section
 const adminNav = [
   { name: "المستخدمون", href: "/admin/users", icon: UserCog },
   { name: "أنواع التأمين", href: "/admin/insurance-categories", icon: FileText },
@@ -117,8 +128,8 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
             </span>
           )}
         </div>
-        {navigation.map((item) => {
-          const isActive = location.pathname === item.href;
+        {getNavigation(isAdmin).map((item) => {
+          const isActiveRoute = location.pathname === item.href;
           return (
             <NavLink
               key={item.name}
@@ -126,49 +137,52 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
               onClick={handleNavClick}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                isActive
+                isActiveRoute
                   ? "bg-primary/10 text-primary"
                   : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                 collapsed && "justify-center px-2"
               )}
             >
-              <item.icon className={cn("h-5 w-5 flex-shrink-0", isActive && "text-primary")} />
+              <item.icon className={cn("h-5 w-5 flex-shrink-0", isActiveRoute && "text-primary")} />
               {!collapsed && <span>{item.name}</span>}
             </NavLink>
           );
         })}
 
-        <div className="my-4 border-t border-sidebar-border" />
+        {/* Admin section - only visible to admins */}
+        {isAdmin && (
+          <>
+            <div className="my-4 border-t border-sidebar-border" />
 
-        <div className="mb-2">
-          {!collapsed && (
-            <span className="px-3 text-xs font-medium text-muted-foreground">
-              الإدارة
-            </span>
-          )}
-        </div>
-        {adminNav.map((item) => {
-          if (item.href === '/admin/users' && !isAdmin) return null;
-          
-          const isActive = location.pathname === item.href;
-          return (
-            <NavLink
-              key={item.name}
-              to={item.href}
-              onClick={handleNavClick}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                isActive
-                  ? "bg-primary/10 text-primary"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                collapsed && "justify-center px-2"
+            <div className="mb-2">
+              {!collapsed && (
+                <span className="px-3 text-xs font-medium text-muted-foreground">
+                  الإدارة
+                </span>
               )}
-            >
-              <item.icon className={cn("h-5 w-5 flex-shrink-0", isActive && "text-primary")} />
-              {!collapsed && <span>{item.name}</span>}
-            </NavLink>
-          );
-        })}
+            </div>
+            {adminNav.map((item) => {
+              const isActiveRoute = location.pathname === item.href;
+              return (
+                <NavLink
+                  key={item.name}
+                  to={item.href}
+                  onClick={handleNavClick}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
+                    isActiveRoute
+                      ? "bg-primary/10 text-primary"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    collapsed && "justify-center px-2"
+                  )}
+                >
+                  <item.icon className={cn("h-5 w-5 flex-shrink-0", isActiveRoute && "text-primary")} />
+                  {!collapsed && <span>{item.name}</span>}
+                </NavLink>
+              );
+            })}
+          </>
+        )}
       </nav>
 
       {/* Collapse toggle - only on desktop */}
