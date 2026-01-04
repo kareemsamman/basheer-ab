@@ -94,7 +94,12 @@ interface PaymentLine {
   bank_reference?: string;
   notes?: string;
   selected_cheques?: SelectableCheque[];
-  receipt_images?: string[];
+}
+
+// Settlement detail dialog state
+interface SettlementDetail {
+  id: string;
+  settlement: Settlement;
 }
 
 const paymentTypeLabels: Record<PaymentType, string> = {
@@ -136,6 +141,13 @@ export default function CompanyWallet() {
 
   // Payment lines
   const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
+  
+  // Main receipt images for the whole settlement
+  const [mainReceiptImages, setMainReceiptImages] = useState<string[]>([]);
+  const [mainNotes, setMainNotes] = useState('');
+
+  // Settlement detail dialog
+  const [settlementDetail, setSettlementDetail] = useState<SettlementDetail | null>(null);
 
   // Split popover
   const [splitPopoverOpen, setSplitPopoverOpen] = useState(false);
@@ -288,14 +300,14 @@ export default function CompanyWallet() {
             company_id: companyId,
             total_amount: amount,
             settlement_date: payment.payment_date,
-            notes: payment.notes || null,
+            notes: mainNotes || null,
             status: 'completed',
             created_by_admin_id: user?.id,
             payment_type: payment.payment_type === 'customer_cheque' ? 'cheque' : payment.payment_type,
             cheque_number: payment.payment_type === 'cheque' ? payment.cheque_number : null,
             cheque_image_url: payment.payment_type === 'cheque' ? payment.cheque_image_url : null,
             bank_reference: payment.payment_type === 'bank_transfer' ? payment.bank_reference : null,
-            receipt_images: payment.receipt_images || [],
+            receipt_images: mainReceiptImages,
             refused: false,
             branch_id: null,
           })
@@ -328,6 +340,8 @@ export default function CompanyWallet() {
       toast({ title: "تم الحفظ", description: "تم تسجيل جميع الدفعات بنجاح" });
       setShowNewPayment(false);
       setPaymentLines([]);
+      setMainReceiptImages([]);
+      setMainNotes('');
       fetchCompanyData();
     } catch (error) {
       console.error('Error saving payments:', error);
@@ -479,15 +493,14 @@ export default function CompanyWallet() {
                   <TableHead>التاريخ</TableHead>
                   <TableHead>المبلغ</TableHead>
                   <TableHead>طريقة الدفع</TableHead>
-                  <TableHead>رقم الشيك/المرجع</TableHead>
+                  <TableHead>التفاصيل</TableHead>
                   <TableHead>الحالة</TableHead>
-                  <TableHead>ملاحظات</TableHead>
                   <TableHead>إجراءات</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {settlements.map((s) => (
-                  <TableRow key={s.id} className={s.refused ? "opacity-50 line-through" : ""}>
+                  <TableRow key={s.id} className={s.refused ? "opacity-50" : ""}>
                     <TableCell>{new Date(s.settlement_date).toLocaleDateString('ar-EG')}</TableCell>
                     <TableCell className="font-bold">₪{s.total_amount.toLocaleString()}</TableCell>
                     <TableCell>
@@ -497,7 +510,42 @@ export default function CompanyWallet() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {s.cheque_number || s.bank_reference || '-'}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {s.cheque_number && (
+                          <Badge variant="secondary" className="font-mono text-xs">
+                            #{s.cheque_number}
+                          </Badge>
+                        )}
+                        {s.bank_reference && (
+                          <Badge variant="secondary" className="text-xs">
+                            {s.bank_reference}
+                          </Badge>
+                        )}
+                        {s.cheque_image_url && (
+                          <a href={s.cheque_image_url} target="_blank" rel="noopener noreferrer">
+                            <Badge variant="outline" className="text-xs cursor-pointer hover:bg-muted">
+                              <Receipt className="h-3 w-3 ml-1" />
+                              صورة الشيك
+                            </Badge>
+                          </a>
+                        )}
+                        {s.receipt_images && s.receipt_images.length > 0 && (
+                          <Badge 
+                            variant="outline" 
+                            className="text-xs cursor-pointer hover:bg-muted"
+                            onClick={() => setSettlementDetail({ id: s.id, settlement: s })}
+                          >
+                            <FileText className="h-3 w-3 ml-1" />
+                            سند قبض ({s.receipt_images.length})
+                          </Badge>
+                        )}
+                        {s.notes && (
+                          <span className="text-xs text-muted-foreground truncate max-w-[150px]" title={s.notes}>
+                            {s.notes}
+                          </span>
+                        )}
+                        {!s.cheque_number && !s.bank_reference && !s.receipt_images?.length && !s.notes && '-'}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {s.refused ? (
@@ -506,7 +554,6 @@ export default function CompanyWallet() {
                         <Badge variant="default">تم الدفع</Badge>
                       )}
                     </TableCell>
-                    <TableCell className="max-w-[200px] truncate">{s.notes || '-'}</TableCell>
                     <TableCell>
                       <Button
                         variant="ghost"
@@ -526,6 +573,98 @@ export default function CompanyWallet() {
             </Table>
           )}
         </Card>
+
+        {/* Settlement Detail Dialog */}
+        <Dialog open={!!settlementDetail} onOpenChange={(open) => !open && setSettlementDetail(null)}>
+          <DialogContent className="max-w-lg" dir="rtl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                تفاصيل الدفعة
+              </DialogTitle>
+            </DialogHeader>
+            {settlementDetail && (
+              <div className="space-y-4 py-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">التاريخ</p>
+                    <p className="font-medium">{new Date(settlementDetail.settlement.settlement_date).toLocaleDateString('ar-EG')}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">المبلغ</p>
+                    <p className="font-bold text-lg">₪{settlementDetail.settlement.total_amount.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">طريقة الدفع</p>
+                    <div className="flex items-center gap-2">
+                      <PaymentTypeIcon type={settlementDetail.settlement.payment_type} />
+                      {paymentTypeLabels[settlementDetail.settlement.payment_type as PaymentType] || settlementDetail.settlement.payment_type}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">الحالة</p>
+                    {settlementDetail.settlement.refused ? (
+                      <Badge variant="destructive">مرفوض</Badge>
+                    ) : (
+                      <Badge variant="default">تم الدفع</Badge>
+                    )}
+                  </div>
+                </div>
+                
+                {settlementDetail.settlement.cheque_number && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">رقم الشيك</p>
+                    <p className="font-mono">{settlementDetail.settlement.cheque_number}</p>
+                  </div>
+                )}
+                
+                {settlementDetail.settlement.bank_reference && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">رقم المرجع البنكي</p>
+                    <p>{settlementDetail.settlement.bank_reference}</p>
+                  </div>
+                )}
+                
+                {settlementDetail.settlement.notes && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">ملاحظات</p>
+                    <p>{settlementDetail.settlement.notes}</p>
+                  </div>
+                )}
+                
+                {settlementDetail.settlement.cheque_image_url && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">صورة الشيك</p>
+                    <a href={settlementDetail.settlement.cheque_image_url} target="_blank" rel="noopener noreferrer">
+                      <img 
+                        src={settlementDetail.settlement.cheque_image_url} 
+                        alt="صورة الشيك" 
+                        className="max-h-40 rounded border hover:opacity-80 transition-opacity"
+                      />
+                    </a>
+                  </div>
+                )}
+                
+                {settlementDetail.settlement.receipt_images && settlementDetail.settlement.receipt_images.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">سند قبض / إيصال</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {settlementDetail.settlement.receipt_images.map((url, idx) => (
+                        <a key={idx} href={url} target="_blank" rel="noopener noreferrer">
+                          <img 
+                            src={url} 
+                            alt={`سند قبض ${idx + 1}`} 
+                            className="h-24 w-auto rounded border hover:opacity-80 transition-opacity"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* New Payment Dialog */}
         <Dialog open={showNewPayment} onOpenChange={setShowNewPayment}>
@@ -708,45 +847,48 @@ export default function CompanyWallet() {
                         </div>
                       )}
 
-                      {/* Receipt Image Upload - سند قبض / إيصال */}
-                      <div className="space-y-2 border-t pt-4">
-                        <Label>سند قبض / إيصال</Label>
-                        <FileUploader
-                          entityType="company_receipt"
-                          entityId={payment.id}
-                          accept="image/*"
-                          maxFiles={3}
-                          onUploadComplete={(files) => {
-                            if (files.length > 0) {
-                              updatePaymentLine(payment.id, 'receipt_images', files.map((f) => f.cdn_url));
-                            }
-                          }}
-                        />
-                        {payment.receipt_images && payment.receipt_images.length > 0 && (
-                          <div className="mt-2 flex gap-2 flex-wrap">
-                            {payment.receipt_images.map((url, idx) => (
-                              <img
-                                key={idx}
-                                src={url}
-                                alt={`سند قبض ${idx + 1}`}
-                                className="h-16 w-auto rounded border"
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>ملاحظات</Label>
-                        <Textarea
-                          value={payment.notes || ''}
-                          onChange={(e) => updatePaymentLine(payment.id, 'notes', e.target.value)}
-                          placeholder="ملاحظات إضافية..."
-                          rows={2}
-                        />
-                      </div>
                     </Card>
                   ))}
+
+                  {/* Main Receipt Image Upload - سند قبض / إيصال - for all payments */}
+                  <Card className="p-4 border-dashed border-2">
+                    <Label className="font-semibold">سند قبض / إيصال</Label>
+                    <p className="text-xs text-muted-foreground mb-2">صورة الإيصال لجميع الدفعات</p>
+                    <FileUploader
+                      entityType="company_receipt"
+                      entityId={companyId || 'new'}
+                      accept="image/*"
+                      maxFiles={5}
+                      onUploadComplete={(files) => {
+                        if (files.length > 0) {
+                          setMainReceiptImages(files.map((f) => f.cdn_url));
+                        }
+                      }}
+                    />
+                    {mainReceiptImages.length > 0 && (
+                      <div className="mt-2 flex gap-2 flex-wrap">
+                        {mainReceiptImages.map((url, idx) => (
+                          <img
+                            key={idx}
+                            src={url}
+                            alt={`سند قبض ${idx + 1}`}
+                            className="h-16 w-auto rounded border"
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+
+                  {/* Main Notes */}
+                  <div className="space-y-2">
+                    <Label>ملاحظات</Label>
+                    <Textarea
+                      value={mainNotes}
+                      onChange={(e) => setMainNotes(e.target.value)}
+                      placeholder="ملاحظات إضافية..."
+                      rows={2}
+                    />
+                  </div>
 
                   {/* Total */}
                   <div className="flex items-center justify-between p-4 bg-muted rounded-lg">

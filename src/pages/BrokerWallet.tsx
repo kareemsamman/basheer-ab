@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -99,7 +100,16 @@ interface PaymentLine {
   notes?: string;
   tranzila_paid?: boolean;
   selected_cheques?: SelectableCheque[];
-  receipt_images?: string[];
+}
+
+interface TransactionWithReceipts extends Transaction {
+  receipt_images?: string[] | null;
+}
+
+// Settlement detail dialog state
+interface SettlementDetail {
+  id: string;
+  transaction: TransactionWithReceipts;
 }
 
 const paymentTypeLabels: Record<PaymentType, string> = {
@@ -136,7 +146,7 @@ export default function BrokerWallet() {
   const { user } = useAuth();
 
   const [broker, setBroker] = useState<Broker | null>(null);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactions, setTransactions] = useState<TransactionWithReceipts[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNewTransaction, setShowNewTransaction] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -155,6 +165,13 @@ export default function BrokerWallet() {
 
   // Payment lines (like Step4)
   const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
+  
+  // Main receipt images for the whole settlement
+  const [mainReceiptImages, setMainReceiptImages] = useState<string[]>([]);
+  const [mainNotes, setMainNotes] = useState('');
+
+  // Settlement detail dialog
+  const [settlementDetail, setSettlementDetail] = useState<SettlementDetail | null>(null);
 
   // Split popover
   const [splitPopoverOpen, setSplitPopoverOpen] = useState(false);
@@ -191,7 +208,7 @@ export default function BrokerWallet() {
         .order('settlement_date', { ascending: false });
 
       if (transactionsData) {
-        setTransactions(transactionsData as Transaction[]);
+        setTransactions(transactionsData as TransactionWithReceipts[]);
         
         const paid = transactionsData
           .filter((t: any) => t.direction === 'we_owe' && !t.refused && t.status === 'completed')
@@ -374,14 +391,14 @@ export default function BrokerWallet() {
             direction,
             total_amount: amount,
             settlement_date: payment.payment_date,
-            notes: payment.notes || null,
+            notes: mainNotes || null,
             status: 'completed',
             created_by_admin_id: user?.id,
             payment_type: payment.payment_type === 'customer_cheque' ? 'cheque' : payment.payment_type,
             cheque_number: payment.payment_type === 'cheque' ? payment.cheque_number : null,
             cheque_image_url: payment.payment_type === 'cheque' ? payment.cheque_image_url : null,
             bank_reference: payment.payment_type === 'bank_transfer' ? payment.bank_reference : null,
-            receipt_images: payment.receipt_images || [],
+            receipt_images: mainReceiptImages,
             refused: false,
           })
           .select('id')
@@ -445,6 +462,8 @@ export default function BrokerWallet() {
     setDirection('broker_owes');
     setPaymentLines([]);
     setSplitAmount('');
+    setMainReceiptImages([]);
+    setMainNotes('');
   };
 
   // Net balance includes both policy profits AND settlements
@@ -566,8 +585,8 @@ export default function BrokerWallet() {
                   <TableHead>الاتجاه</TableHead>
                   <TableHead>طريقة الدفع</TableHead>
                   <TableHead>المبلغ</TableHead>
+                  <TableHead>التفاصيل</TableHead>
                   <TableHead>الحالة</TableHead>
-                  <TableHead>ملاحظات</TableHead>
                   <TableHead className="w-20">إجراءات</TableHead>
                 </TableRow>
               </TableHeader>
@@ -604,8 +623,20 @@ export default function BrokerWallet() {
                         <div className="flex items-center gap-2">
                           <PaymentTypeIcon type={transaction.payment_type || 'cash'} />
                           <span>{paymentTypeLabels[(transaction.payment_type || 'cash') as PaymentType]}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-semibold">
+                        ₪{transaction.total_amount.toLocaleString()}
+                        {transaction.installments_count && transaction.installments_count > 1 && (
+                          <span className="text-xs text-muted-foreground mr-1">
+                            ({transaction.installments_count} تقسيطات)
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2 flex-wrap">
                           {transaction.cheque_number && (
-                            <Badge variant="secondary" className="text-xs">
+                            <Badge variant="secondary" className="font-mono text-xs">
                               #{transaction.cheque_number}
                             </Badge>
                           )}
@@ -616,18 +647,29 @@ export default function BrokerWallet() {
                           )}
                           {transaction.cheque_image_url && (
                             <a href={transaction.cheque_image_url} target="_blank" rel="noopener noreferrer">
-                              <Image className="h-4 w-4 text-blue-500 cursor-pointer" />
+                              <Badge variant="outline" className="text-xs cursor-pointer hover:bg-muted">
+                                <Receipt className="h-3 w-3 ml-1" />
+                                صورة الشيك
+                              </Badge>
                             </a>
                           )}
+                          {transaction.receipt_images && transaction.receipt_images.length > 0 && (
+                            <Badge 
+                              variant="outline" 
+                              className="text-xs cursor-pointer hover:bg-muted"
+                              onClick={() => setSettlementDetail({ id: transaction.id, transaction })}
+                            >
+                              <FileText className="h-3 w-3 ml-1" />
+                              سند قبض ({transaction.receipt_images.length})
+                            </Badge>
+                          )}
+                          {transaction.notes && (
+                            <span className="text-xs text-muted-foreground truncate max-w-[100px]" title={transaction.notes}>
+                              {transaction.notes}
+                            </span>
+                          )}
+                          {!transaction.cheque_number && !transaction.card_last_four && !transaction.receipt_images?.length && !transaction.notes && '-'}
                         </div>
-                      </TableCell>
-                      <TableCell className="font-semibold">
-                        ₪{transaction.total_amount.toLocaleString()}
-                        {transaction.installments_count && transaction.installments_count > 1 && (
-                          <span className="text-xs text-muted-foreground mr-1">
-                            ({transaction.installments_count} تقسيطات)
-                          </span>
-                        )}
                       </TableCell>
                       <TableCell>
                         {transaction.refused ? (
@@ -645,9 +687,6 @@ export default function BrokerWallet() {
                             قيد الانتظار
                           </Badge>
                         )}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">
-                        {transaction.notes || '-'}
                       </TableCell>
                       <TableCell>
                         <Button
@@ -669,6 +708,105 @@ export default function BrokerWallet() {
             </Table>
           </div>
         </Card>
+
+        {/* Settlement Detail Dialog */}
+        <Dialog open={!!settlementDetail} onOpenChange={(open) => !open && setSettlementDetail(null)}>
+          <DialogContent className="max-w-lg" dir="rtl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                تفاصيل المعاملة
+              </DialogTitle>
+            </DialogHeader>
+            {settlementDetail && (
+              <div className="space-y-4 py-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">التاريخ</p>
+                    <p className="font-medium">{new Date(settlementDetail.transaction.settlement_date).toLocaleDateString('ar-EG')}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">المبلغ</p>
+                    <p className="font-bold text-lg">₪{settlementDetail.transaction.total_amount.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">الاتجاه</p>
+                    {settlementDetail.transaction.direction === 'we_owe' ? (
+                      <Badge variant="outline" className="text-red-600 border-red-200">دفعت للوسيط</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-green-600 border-green-200">استلمت من الوسيط</Badge>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">طريقة الدفع</p>
+                    <div className="flex items-center gap-2">
+                      <PaymentTypeIcon type={settlementDetail.transaction.payment_type || 'cash'} />
+                      {paymentTypeLabels[(settlementDetail.transaction.payment_type || 'cash') as PaymentType]}
+                    </div>
+                  </div>
+                </div>
+                
+                {settlementDetail.transaction.cheque_number && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">رقم الشيك</p>
+                    <p className="font-mono">{settlementDetail.transaction.cheque_number}</p>
+                  </div>
+                )}
+                
+                {settlementDetail.transaction.bank_reference && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">رقم المرجع البنكي</p>
+                    <p>{settlementDetail.transaction.bank_reference}</p>
+                  </div>
+                )}
+                
+                {settlementDetail.transaction.card_last_four && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">بطاقة الائتمان</p>
+                    <p>****{settlementDetail.transaction.card_last_four}</p>
+                  </div>
+                )}
+                
+                {settlementDetail.transaction.notes && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">ملاحظات</p>
+                    <p>{settlementDetail.transaction.notes}</p>
+                  </div>
+                )}
+                
+                {settlementDetail.transaction.cheque_image_url && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">صورة الشيك</p>
+                    <a href={settlementDetail.transaction.cheque_image_url} target="_blank" rel="noopener noreferrer">
+                      <img 
+                        src={settlementDetail.transaction.cheque_image_url} 
+                        alt="صورة الشيك" 
+                        className="max-h-40 rounded border hover:opacity-80 transition-opacity"
+                      />
+                    </a>
+                  </div>
+                )}
+                
+                {settlementDetail.transaction.receipt_images && settlementDetail.transaction.receipt_images.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">سند قبض / إيصال</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {settlementDetail.transaction.receipt_images.map((url, idx) => (
+                        <a key={idx} href={url} target="_blank" rel="noopener noreferrer">
+                          <img 
+                            src={url} 
+                            alt={`سند قبض ${idx + 1}`} 
+                            className="h-24 w-auto rounded border hover:opacity-80 transition-opacity"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* New Transaction Dialog - Step4 Style */}
         <Dialog open={showNewTransaction} onOpenChange={setShowNewTransaction}>
@@ -949,38 +1087,53 @@ export default function BrokerWallet() {
                           </div>
                         )}
 
-                        {/* Receipt Image Upload - سند قبض / إيصال */}
-                        {!visaPaid && (
-                          <div className="mt-3 pt-3 border-t border-border/50">
-                            <Label className="text-xs text-muted-foreground mb-2 block">سند قبض / إيصال</Label>
-                            <FileUploader
-                              entityType="broker_receipt"
-                              entityId={payment.id}
-                              accept="image/*"
-                              maxFiles={3}
-                              onUploadComplete={(files) => {
-                                if (files.length > 0) {
-                                  updatePaymentLine(payment.id, 'receipt_images', files.map((f) => f.cdn_url));
-                                }
-                              }}
-                            />
-                            {payment.receipt_images && payment.receipt_images.length > 0 && (
-                              <div className="mt-2 flex gap-2 flex-wrap">
-                                {payment.receipt_images.map((url, idx) => (
-                                  <img
-                                    key={idx}
-                                    src={url}
-                                    alt={`سند قبض ${idx + 1}`}
-                                    className="h-16 w-auto rounded border"
-                                  />
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </Card>
                     );
                   })}
+                </div>
+              )}
+
+              {/* Main Receipt Image Upload - سند قبض / إيصال - for all payments */}
+              {paymentLines.length > 0 && (
+                <Card className="p-4 border-dashed border-2">
+                  <Label className="font-semibold">سند قبض / إيصال</Label>
+                  <p className="text-xs text-muted-foreground mb-2">صورة الإيصال لجميع الدفعات</p>
+                  <FileUploader
+                    entityType="broker_receipt"
+                    entityId={brokerId || 'new'}
+                    accept="image/*"
+                    maxFiles={5}
+                    onUploadComplete={(files) => {
+                      if (files.length > 0) {
+                        setMainReceiptImages(files.map((f) => f.cdn_url));
+                      }
+                    }}
+                  />
+                  {mainReceiptImages.length > 0 && (
+                    <div className="mt-2 flex gap-2 flex-wrap">
+                      {mainReceiptImages.map((url, idx) => (
+                        <img
+                          key={idx}
+                          src={url}
+                          alt={`سند قبض ${idx + 1}`}
+                          className="h-16 w-auto rounded border"
+                        />
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              )}
+
+              {/* Main Notes */}
+              {paymentLines.length > 0 && (
+                <div className="space-y-2">
+                  <Label>ملاحظات</Label>
+                  <Textarea
+                    value={mainNotes}
+                    onChange={(e) => setMainNotes(e.target.value)}
+                    placeholder="ملاحظات إضافية..."
+                    rows={2}
+                  />
                 </div>
               )}
 
