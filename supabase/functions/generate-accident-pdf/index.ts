@@ -7,6 +7,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// IMPORTANT: must match the scale used when rendering the PDF inside the Accident Template Mapper UI
+// (see src/pages/AccidentTemplateMapper.tsx -> page.getViewport({ scale: 1.5 }))
+const MAPPER_RENDER_SCALE = 1.5;
+
 interface FieldMapping {
   page: number;
   x: number;
@@ -191,12 +195,15 @@ serve(async (req) => {
             
             if (!textValue) continue;
             
-            // Convert coordinates from mapper (top-left origin) to PDF (bottom-left origin)
-            // The mapper uses canvas coordinates where Y increases downward
-            // PDF uses coordinates where Y increases upward
-            const pdfX = fieldConfig.x;
-            const pdfY = height - fieldConfig.y - (fieldConfig.size || 12);
-            
+            // Convert coordinates from mapper (top-left origin in a rendered image) to PDF points (bottom-left origin).
+            // Mapper stores pixel coordinates from a PDF.js render at MAPPER_RENDER_SCALE.
+            // So we must divide by that scale to get PDF points.
+            const maybeNeedsScale = fieldConfig.x > width + 1 || fieldConfig.y > height + 1;
+            const scale = maybeNeedsScale ? MAPPER_RENDER_SCALE : 1;
+
+            const pdfX = fieldConfig.x / scale;
+            const pdfY = height - fieldConfig.y / scale - (fieldConfig.size || 12);
+
             try {
               page.drawText(textValue, {
                 x: pdfX,
