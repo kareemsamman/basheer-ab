@@ -1,19 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useParams, useNavigate } from "react-router-dom";
@@ -29,6 +20,7 @@ import {
   Trash2,
   FileText,
   CheckCircle,
+  ExternalLink,
 } from "lucide-react";
 
 // All canonical fields from accident_reports
@@ -86,8 +78,8 @@ export default function AccidentTemplateMapper() {
   const { companyId } = useParams<{ companyId: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const pdfObjectUrlRef = useRef<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -96,12 +88,14 @@ export default function AccidentTemplateMapper() {
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [mappingJson, setMappingJson] = useState<MappingJson>({});
 
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewLoading, setPdfPreviewLoading] = useState(false);
+  const [pdfPreviewError, setPdfPreviewError] = useState<string | null>(null);
+
   const [currentPage, setCurrentPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
+  const totalPages = 1;
   const [zoom, setZoom] = useState(1);
   const [selectedField, setSelectedField] = useState<string | null>(null);
-  const [pdfImages, setPdfImages] = useState<string[]>([]);
-
   // Fetch company and template
   useEffect(() => {
     const fetchData = async () => {
@@ -145,6 +139,59 @@ export default function AccidentTemplateMapper() {
     fetchData();
   }, [companyId, toast]);
 
+  // Create a local blob URL for the PDF (avoids Chrome iframe/object blocking on CDN PDFs)
+  useEffect(() => {
+    if (!templateUrl) return;
+
+    let cancelled = false;
+    setPdfPreviewLoading(true);
+    setPdfPreviewError(null);
+
+    (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("proxy-cdn-file", {
+          body: { url: templateUrl },
+        });
+
+        if (error) throw error;
+        if (!(data instanceof Blob)) throw new Error("Invalid PDF response");
+
+        const objectUrl = URL.createObjectURL(data);
+
+        if (cancelled) {
+          URL.revokeObjectURL(objectUrl);
+          return;
+        }
+
+        if (pdfObjectUrlRef.current) {
+          URL.revokeObjectURL(pdfObjectUrlRef.current);
+        }
+
+        pdfObjectUrlRef.current = objectUrl;
+        setPdfPreviewUrl(objectUrl);
+      } catch (e: any) {
+        console.error("PDF preview error:", e);
+        setPdfPreviewUrl(null);
+        setPdfPreviewError(e?.message || "فشل في تحميل ملف PDF للمعاينة");
+      } finally {
+        if (!cancelled) setPdfPreviewLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [templateUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (pdfObjectUrlRef.current) {
+        URL.revokeObjectURL(pdfObjectUrlRef.current);
+        pdfObjectUrlRef.current = null;
+      }
+    };
+  }, []);
+
   // Handle canvas click for field placement
   const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!selectedField) return;
@@ -154,7 +201,7 @@ export default function AccidentTemplateMapper() {
     const x = (e.clientX - rect.left) / zoom;
     const y = (e.clientY - rect.top) / zoom;
 
-    setMappingJson(prev => ({
+    setMappingJson((prev) => ({
       ...prev,
       [selectedField]: {
         page: currentPage,
@@ -167,7 +214,7 @@ export default function AccidentTemplateMapper() {
 
     toast({
       title: "تم تعيين الحقل",
-      description: `تم تحديد موقع "${CANONICAL_FIELDS.find(f => f.id === selectedField)?.label}"`,
+      description: `تم تحديد موقع "${CANONICAL_FIELDS.find((f) => f.id === selectedField)?.label}"`,
     });
 
     setSelectedField(null);
@@ -399,32 +446,34 @@ export default function AccidentTemplateMapper() {
                   transformOrigin: "top center",
                 }}
               >
-                {/* PDF Preview using object tag for better compatibility */}
+                {/* PDF Preview (render via blob URL to avoid Chrome "blocked" screen) */}
                 <div className="w-[800px] h-[1100px] bg-white relative overflow-hidden">
-                  <object
-                    data={templateUrl}
-                    type="application/pdf"
-                    className="w-full h-full"
-                  >
-                    {/* Fallback to iframe */}
-                    <iframe
-                      src={templateUrl}
-                      className="w-full h-full border-0"
-                      title="PDF Preview"
-                    >
-                      <p className="p-4 text-center text-muted-foreground">
-                        لا يمكن عرض ملف PDF. 
-                        <a 
-                          href={templateUrl} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-primary underline mr-1"
-                        >
-                          افتحه في نافذة جديدة
-                        </a>
+                  {pdfPreviewLoading ? (
+                    <div className="w-full h-full p-4">
+                      <Skeleton className="h-full w-full" />
+                    </div>
+                  ) : pdfPreviewUrl ? (
+                    <object
+                      data={`${pdfPreviewUrl}#page=${currentPage + 1}`}
+                      type="application/pdf"
+                      className="w-full h-full"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-6 text-center">
+                      <FileText className="h-10 w-10 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">
+                        {pdfPreviewError || "تعذر عرض ملف PDF داخل الصفحة"}
                       </p>
-                    </iframe>
-                  </object>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(templateUrl, "_blank", "noopener,noreferrer")}
+                      >
+                        <ExternalLink className="h-4 w-4 ml-2" />
+                        فتح PDF في تبويب جديد
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Overlay for field markers */}
