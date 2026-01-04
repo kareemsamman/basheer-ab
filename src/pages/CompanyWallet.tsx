@@ -94,6 +94,7 @@ interface PaymentLine {
   bank_reference?: string;
   notes?: string;
   selected_cheques?: SelectableCheque[];
+  receipt_images?: string[];
 }
 
 const paymentTypeLabels: Record<PaymentType, string> = {
@@ -292,6 +293,7 @@ export default function CompanyWallet() {
             cheque_number: payment.payment_type === 'cheque' ? payment.cheque_number : null,
             cheque_image_url: payment.payment_type === 'cheque' ? payment.cheque_image_url : null,
             bank_reference: payment.payment_type === 'bank_transfer' ? payment.bank_reference : null,
+            receipt_images: payment.receipt_images || [],
             refused: false,
             branch_id: null,
           })
@@ -600,16 +602,19 @@ export default function CompanyWallet() {
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                          <Label>المبلغ</Label>
-                          <Input
-                            type="number"
-                            value={payment.amount || ''}
-                            onChange={(e) => updatePaymentLine(payment.id, 'amount', parseFloat(e.target.value) || 0)}
-                            placeholder="0"
-                            dir="ltr"
-                          />
-                        </div>
+                        {/* Amount - hide for customer_cheque */}
+                        {payment.payment_type !== 'customer_cheque' && (
+                          <div className="space-y-2">
+                            <Label>المبلغ</Label>
+                            <Input
+                              type="number"
+                              value={payment.amount || ''}
+                              onChange={(e) => updatePaymentLine(payment.id, 'amount', parseFloat(e.target.value) || 0)}
+                              placeholder="0"
+                              dir="ltr"
+                            />
+                          </div>
+                        )}
 
                         <div className="space-y-2">
                           <Label>التاريخ</Label>
@@ -698,6 +703,36 @@ export default function CompanyWallet() {
                             placeholder="رقم الحوالة"
                             dir="ltr"
                           />
+                        </div>
+                      )}
+
+                      {/* Receipt Image Upload - سند قبض (for all payment types except customer_cheque) */}
+                      {payment.payment_type !== 'customer_cheque' && (
+                        <div className="space-y-2 border-t pt-4">
+                          <Label>سند قبض / إيصال</Label>
+                          <FileUploader
+                            entityType="company_receipt"
+                            entityId={payment.id}
+                            accept="image/*"
+                            maxFiles={3}
+                            onUploadComplete={(files) => {
+                              if (files.length > 0) {
+                                updatePaymentLine(payment.id, 'receipt_images', files.map(f => f.cdn_url));
+                              }
+                            }}
+                          />
+                          {payment.receipt_images && payment.receipt_images.length > 0 && (
+                            <div className="mt-2 flex gap-2 flex-wrap">
+                              {payment.receipt_images.map((url, idx) => (
+                                <img 
+                                  key={idx}
+                                  src={url} 
+                                  alt={`سند قبض ${idx + 1}`} 
+                                  className="h-16 w-auto rounded border"
+                                />
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
 

@@ -99,6 +99,7 @@ interface PaymentLine {
   notes?: string;
   tranzila_paid?: boolean;
   selected_cheques?: SelectableCheque[];
+  receipt_images?: string[];
 }
 
 const paymentTypeLabels: Record<PaymentType, string> = {
@@ -378,6 +379,7 @@ export default function BrokerWallet() {
             cheque_number: payment.payment_type === 'cheque' ? payment.cheque_number : null,
             cheque_image_url: payment.payment_type === 'cheque' ? payment.cheque_image_url : null,
             bank_reference: payment.payment_type === 'bank_transfer' ? payment.bank_reference : null,
+            receipt_images: payment.receipt_images || [],
             refused: false,
           })
           .select('id')
@@ -491,8 +493,8 @@ export default function BrokerWallet() {
           </Button>
         </div>
 
-        {/* Summary Cards - 6 cards like BrokerDetails */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {/* Summary Cards - 3 cards: policy count, total amount, net balance */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* عدد الوثائق - Policy count */}
           <Card className="p-4 border-blue-200 dark:border-blue-800">
             <div className="flex items-center gap-3">
@@ -506,59 +508,20 @@ export default function BrokerWallet() {
             </div>
           </Card>
 
-          {/* الوسيط مدين لي - Broker owes me (to_broker policies profit) */}
+          {/* إجمالي المبالغ - Total policy amounts from broker */}
           <Card className="p-4 border-green-200 dark:border-green-800">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-xl bg-green-100 dark:bg-green-900/30">
                 <TrendingUp className="h-5 w-5 text-green-600" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">الوسيط مدين لي</p>
-                <p className="text-lg font-bold text-green-600">₪{policyBrokerOwesMe.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">إجمالي الأرباح</p>
+                <p className="text-lg font-bold text-green-600">₪{(policyBrokerOwesMe + policyOweToBroker).toLocaleString()}</p>
               </div>
             </div>
           </Card>
 
-          {/* مدين للوسيط - I owe broker (from_broker policies profit) */}
-          <Card className="p-4 border-orange-200 dark:border-orange-800">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-orange-100 dark:bg-orange-900/30">
-                <TrendingDown className="h-5 w-5 text-orange-600" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">مدين للوسيط</p>
-                <p className="text-lg font-bold text-orange-600">₪{policyOweToBroker.toLocaleString()}</p>
-              </div>
-            </div>
-          </Card>
-
-          {/* استلمت من الوسيط - Received from broker */}
-          <Card className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-green-100 dark:bg-green-900/30">
-                <ArrowDownLeft className="h-5 w-5 text-green-600" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">استلمت من الوسيط</p>
-                <p className="text-lg font-bold text-green-600">₪{receivedFromBroker.toLocaleString()}</p>
-              </div>
-            </div>
-          </Card>
-
-          {/* دفعت للوسيط - Paid to broker */}
-          <Card className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-red-100 dark:bg-red-900/30">
-                <ArrowUpRight className="h-5 w-5 text-red-600" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">دفعت للوسيط</p>
-                <p className="text-lg font-bold text-red-600">₪{paidToBroker.toLocaleString()}</p>
-              </div>
-            </div>
-          </Card>
-
-          {/* Net Balance */}
+          {/* Net Balance - المتبقي */}
           <Card className={cn(
             "p-4 border-2",
             netBalance >= 0 ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/20' : 'border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/20'
@@ -575,7 +538,7 @@ export default function BrokerWallet() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">
-                  {netBalance >= 0 ? 'الصافي (الوسيط مدين)' : 'الصافي (أنا مدين)'}
+                  {netBalance >= 0 ? 'المتبقي (الوسيط مدين لي)' : 'المتبقي (أنا مدين للوسيط)'}
                 </p>
                 <p className={cn(
                   "text-lg font-bold",
@@ -979,6 +942,36 @@ export default function BrokerWallet() {
                                   alt="صورة الشيك" 
                                   className="h-16 w-auto rounded border"
                                 />
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Receipt Image Upload - سند قبض (for all payment types except customer_cheque) */}
+                        {payment.payment_type !== 'customer_cheque' && !visaPaid && (
+                          <div className="mt-3 pt-3 border-t border-border/50">
+                            <Label className="text-xs text-muted-foreground mb-2 block">سند قبض / إيصال</Label>
+                            <FileUploader
+                              entityType="broker_receipt"
+                              entityId={payment.id}
+                              accept="image/*"
+                              maxFiles={3}
+                              onUploadComplete={(files) => {
+                                if (files.length > 0) {
+                                  updatePaymentLine(payment.id, 'receipt_images', files.map(f => f.cdn_url));
+                                }
+                              }}
+                            />
+                            {payment.receipt_images && payment.receipt_images.length > 0 && (
+                              <div className="mt-2 flex gap-2 flex-wrap">
+                                {payment.receipt_images.map((url, idx) => (
+                                  <img 
+                                    key={idx}
+                                    src={url} 
+                                    alt={`سند قبض ${idx + 1}`} 
+                                    className="h-16 w-auto rounded border"
+                                  />
+                                ))}
                               </div>
                             )}
                           </div>
