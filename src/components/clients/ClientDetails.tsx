@@ -49,7 +49,7 @@ import { PolicyDetailsDrawer } from '@/components/policies/PolicyDetailsDrawer';
 import { PolicyWizard } from '@/components/policies/PolicyWizard';
 import { ClientDrawer } from '@/components/clients/ClientDrawer';
 import { ClientSignatureSection } from '@/components/clients/ClientSignatureSection';
-import { PolicyTreeView } from '@/components/clients/PolicyTreeView';
+import { PolicyYearTimeline } from '@/components/clients/PolicyYearTimeline';
 import { ClientReportModal } from '@/components/clients/ClientReportModal';
 import { CarFilterChips } from '@/components/clients/CarFilterChips';
 import { ExpiryBadge } from '@/components/shared/ExpiryBadge';
@@ -1028,7 +1028,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                 )}
               </Card>
             ) : (
-              <PolicyTreeView 
+              <PolicyYearTimeline 
                 policies={filteredPolicies} 
                 onPolicyClick={handlePolicyClick}
                 onPaymentAdded={() => {
@@ -1038,22 +1038,18 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                 onTransferPolicy={(policyId) => {
                   setSelectedPolicyId(policyId);
                   setPolicyDetailsOpen(true);
-                  // User can then use transfer from details drawer
                 }}
                 onCancelPolicy={(policyId) => {
                   setSelectedPolicyId(policyId);
                   setPolicyDetailsOpen(true);
-                  // User can then use cancel from details drawer
                 }}
                 onTransferPackage={(policyIds) => {
-                  // Open the first policy's details, they can transfer package from there
                   if (policyIds.length > 0) {
                     setSelectedPolicyId(policyIds[0]);
                     setPolicyDetailsOpen(true);
                   }
                 }}
                 onCancelPackage={(policyIds) => {
-                  // Open the first policy's details
                   if (policyIds.length > 0) {
                     setSelectedPolicyId(policyIds[0]);
                     setPolicyDetailsOpen(true);
