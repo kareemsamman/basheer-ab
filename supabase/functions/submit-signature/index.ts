@@ -11,6 +11,32 @@ interface SubmitSignatureRequest {
   signature_data_url: string; // Base64 data URL of signature image
 }
 
+// Rate limiting configuration
+const RATE_LIMIT_WINDOW_MS = 3600000; // 1 hour
+const MAX_ATTEMPTS_PER_IP = 15; // 15 submission attempts per hour per IP
+
+// In-memory rate limit store (resets on cold start, but provides basic protection)
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+
+function checkRateLimit(ipAddress: string): { allowed: boolean; remaining: number } {
+  const now = Date.now();
+  const key = `sig_submit:${ipAddress}`;
+  
+  const existing = rateLimitStore.get(key);
+  
+  if (!existing || existing.resetTime < now) {
+    rateLimitStore.set(key, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
+    return { allowed: true, remaining: MAX_ATTEMPTS_PER_IP - 1 };
+  }
+  
+  if (existing.count >= MAX_ATTEMPTS_PER_IP) {
+    return { allowed: false, remaining: 0 };
+  }
+  
+  existing.count++;
+  return { allowed: true, remaining: MAX_ATTEMPTS_PER_IP - existing.count };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -19,6 +45,28 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
+    // Get IP for rate limiting
+    const ipAddress = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
+                      req.headers.get("cf-connecting-ip") || 
+                      "unknown";
+    
+    // Check rate limit
+    const { allowed, remaining } = checkRateLimit(ipAddress);
+    if (!allowed) {
+      console.log(`[submit-signature] Rate limit exceeded for IP: ${ipAddress.substring(0, 10)}...`);
+      return new Response(
+        JSON.stringify({ error: "Too many requests. Please try again later." }),
+        { 
+          status: 429, 
+          headers: { 
+            ...corsHeaders, 
+            "Content-Type": "application/json",
+            "Retry-After": "3600"
+          } 
+        }
+      );
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -39,7 +87,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[submit-signature] Processing token: ${token.substring(0, 8)}...`);
+    console.log(`[submit-signature] Processing token: ${token.substring(0, 8)}... from IP: ${ipAddress.substring(0, 10)}...`);
 
     // Find signature record by token
     const { data: signatureRecord, error: signatureError } = await supabase
@@ -48,8 +96,9 @@ serve(async (req) => {
       .eq("token", token)
       .maybeSingle();
 
+    // Log token not found - don't reveal whether token exists
     if (signatureError || !signatureRecord) {
-      console.error("[submit-signature] Token not found:", signatureError);
+      console.log("[submit-signature] Token not found or invalid");
       return new Response(
         JSON.stringify({ error: "Invalid or expired signature link" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -123,10 +172,7 @@ serve(async (req) => {
     const signatureImageUrl = `${bunnyCdnUrl}/${fileName}`;
     console.log(`[submit-signature] Signature uploaded: ${signatureImageUrl}`);
 
-    // Get request metadata
-    const ipAddress = req.headers.get("x-forwarded-for") || 
-                      req.headers.get("cf-connecting-ip") || 
-                      "unknown";
+    // Get request metadata (ipAddress already captured at start for rate limiting)
     const userAgent = req.headers.get("user-agent") || "unknown";
 
     // Update signature record

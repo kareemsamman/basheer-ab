@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, RotateCcw, Check, AlertCircle, FileSignature } from "lucide-react";
+import { createSafeHtml } from "@/lib/sanitize";
 
 interface SignatureInfo {
   valid: boolean;
@@ -277,13 +278,13 @@ export default function SignaturePage() {
                   />
                 )}
                 {signatureInfo.template.header_html && (
-                  <div dangerouslySetInnerHTML={{ __html: signatureInfo.template.header_html }} />
+                  <div dangerouslySetInnerHTML={createSafeHtml(signatureInfo.template.header_html)} />
                 )}
                 {signatureInfo.template.body_html && (
-                  <div dangerouslySetInnerHTML={{ __html: signatureInfo.template.body_html }} />
+                  <div dangerouslySetInnerHTML={createSafeHtml(signatureInfo.template.body_html)} />
                 )}
                 {signatureInfo.template.footer_html && (
-                  <div dangerouslySetInnerHTML={{ __html: signatureInfo.template.footer_html }} />
+                  <div dangerouslySetInnerHTML={createSafeHtml(signatureInfo.template.footer_html)} />
                 )}
               </div>
             )}

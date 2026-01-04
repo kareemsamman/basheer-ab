@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { Save, Loader2, MessageSquare, Send, Settings2, FileSignature, Image, Upload, X } from "lucide-react";
 import { Navigate } from "react-router-dom";
+import { createSafeHtml } from "@/lib/sanitize";
 
 interface SmsSettings {
   id?: string;
@@ -754,13 +755,13 @@ export default function SmsSettings() {
                         <img src={signaturePageSettings.logo_url} alt="الشعار" className="h-12 mx-auto mb-4" />
                       )}
                       {signaturePageSettings.header_html && (
-                        <div dangerouslySetInnerHTML={{ __html: signaturePageSettings.header_html }} />
+                        <div dangerouslySetInnerHTML={createSafeHtml(signaturePageSettings.header_html)} />
                       )}
                       {signaturePageSettings.body_html && (
-                        <div dangerouslySetInnerHTML={{ __html: signaturePageSettings.body_html }} />
+                        <div dangerouslySetInnerHTML={createSafeHtml(signaturePageSettings.body_html)} />
                       )}
                       {signaturePageSettings.footer_html && (
-                        <div dangerouslySetInnerHTML={{ __html: signaturePageSettings.footer_html }} />
+                        <div dangerouslySetInnerHTML={createSafeHtml(signaturePageSettings.footer_html)} />
                       )}
                     </div>
                   </div>
