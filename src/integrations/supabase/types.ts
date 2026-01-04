@@ -343,6 +343,7 @@ export type Database = {
           cheque_number: string | null
           created_at: string
           created_by_admin_id: string | null
+          customer_cheque_ids: Json | null
           direction: string
           id: string
           installments_count: number | null
@@ -368,6 +369,7 @@ export type Database = {
           cheque_number?: string | null
           created_at?: string
           created_by_admin_id?: string | null
+          customer_cheque_ids?: Json | null
           direction: string
           id?: string
           installments_count?: number | null
@@ -393,6 +395,7 @@ export type Database = {
           cheque_number?: string | null
           created_at?: string
           created_by_admin_id?: string | null
+          customer_cheque_ids?: Json | null
           direction?: string
           id?: string
           installments_count?: number | null
@@ -831,6 +834,7 @@ export type Database = {
           company_id: string
           created_at: string
           created_by_admin_id: string | null
+          customer_cheque_ids: Json | null
           id: string
           notes: string | null
           payment_type: string
@@ -851,6 +855,7 @@ export type Database = {
           company_id: string
           created_at?: string
           created_by_admin_id?: string | null
+          customer_cheque_ids?: Json | null
           id?: string
           notes?: string | null
           payment_type?: string
@@ -871,6 +876,7 @@ export type Database = {
           company_id?: string
           created_at?: string
           created_by_admin_id?: string | null
+          customer_cheque_ids?: Json | null
           id?: string
           notes?: string | null
           payment_type?: string

@@ -85,6 +85,17 @@ interface Transaction {
   refused: boolean;
   card_last_four: string | null;
   installments_count: number | null;
+  customer_cheque_ids: string[] | null;
+}
+
+interface CustomerChequeDetail {
+  id: string;
+  amount: number;
+  payment_date: string;
+  cheque_number: string | null;
+  cheque_image_url: string | null;
+  client_name: string | null;
+  car_number: string | null;
 }
 
 type PaymentType = 'cash' | 'cheque' | 'bank_transfer' | 'visa' | 'customer_cheque';
@@ -110,6 +121,7 @@ interface TransactionWithReceipts extends Transaction {
 interface SettlementDetail {
   id: string;
   transaction: TransactionWithReceipts;
+  customerCheques?: CustomerChequeDetail[];
 }
 
 const paymentTypeLabels: Record<PaymentType, string> = {
@@ -384,6 +396,11 @@ export default function BrokerWallet() {
           ? payment.selected_cheques.reduce((sum, c) => sum + c.amount, 0)
           : payment.amount;
 
+        // Collect customer cheque IDs if applicable
+        const customerChequeIds = payment.payment_type === 'customer_cheque' && payment.selected_cheques
+          ? payment.selected_cheques.map(c => c.id)
+          : [];
+
         const { data: settlement, error } = await supabase
           .from('broker_settlements')
           .insert({
@@ -394,11 +411,12 @@ export default function BrokerWallet() {
             notes: mainNotes || null,
             status: 'completed',
             created_by_admin_id: user?.id,
-            payment_type: payment.payment_type === 'customer_cheque' ? 'cheque' : payment.payment_type,
+            payment_type: payment.payment_type, // Keep actual payment type
             cheque_number: payment.payment_type === 'cheque' ? payment.cheque_number : null,
             cheque_image_url: payment.payment_type === 'cheque' ? payment.cheque_image_url : null,
             bank_reference: payment.payment_type === 'bank_transfer' ? payment.bank_reference : null,
             receipt_images: mainReceiptImages,
+            customer_cheque_ids: customerChequeIds,
             refused: false,
           })
           .select('id')
@@ -456,6 +474,51 @@ export default function BrokerWallet() {
     } catch (error) {
       toast({ title: "خطأ", description: "فشل في تحديث المعاملة", variant: "destructive" });
     }
+  };
+
+  // Fetch customer cheque details for settlement detail dialog
+  const handleOpenSettlementDetail = async (transaction: TransactionWithReceipts) => {
+    let customerCheques: CustomerChequeDetail[] = [];
+    
+    if (transaction.payment_type === 'customer_cheque' && (transaction as any).customer_cheque_ids && (transaction as any).customer_cheque_ids.length > 0) {
+      try {
+        // Fetch the cheques with their policy/client/car details
+        const { data: payments } = await supabase
+          .from('policy_payments')
+          .select('id, amount, payment_date, cheque_number, cheque_image_url, policy_id')
+          .in('id', (transaction as any).customer_cheque_ids);
+        
+        if (payments && payments.length > 0) {
+          // Get policy IDs
+          const policyIds = [...new Set(payments.map(p => p.policy_id).filter(Boolean))];
+          
+          // Fetch policies with clients and cars
+          const { data: policies } = await supabase
+            .from('policies')
+            .select('id, client:clients(full_name), car:cars(car_number)')
+            .in('id', policyIds);
+          
+          const policyMap = new Map(policies?.map(p => [p.id, p]) || []);
+          
+          customerCheques = payments.map(p => {
+            const policy = policyMap.get(p.policy_id);
+            return {
+              id: p.id,
+              amount: p.amount,
+              payment_date: p.payment_date,
+              cheque_number: p.cheque_number,
+              cheque_image_url: p.cheque_image_url,
+              client_name: (policy?.client as any)?.full_name || null,
+              car_number: (policy?.car as any)?.car_number || null,
+            };
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching customer cheque details:', error);
+      }
+    }
+    
+    setSettlementDetail({ id: transaction.id, transaction, customerCheques });
   };
 
   const resetForm = () => {
@@ -635,6 +698,16 @@ export default function BrokerWallet() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2 flex-wrap">
+                          {transaction.payment_type === 'customer_cheque' && transaction.customer_cheque_ids && transaction.customer_cheque_ids.length > 0 && (
+                            <Badge 
+                              variant="secondary" 
+                              className="text-xs cursor-pointer hover:bg-muted"
+                              onClick={() => handleOpenSettlementDetail(transaction)}
+                            >
+                              <FileText className="h-3 w-3 ml-1" />
+                              {transaction.customer_cheque_ids.length} شيك عميل
+                            </Badge>
+                          )}
                           {transaction.cheque_number && (
                             <Badge variant="secondary" className="font-mono text-xs">
                               #{transaction.cheque_number}
@@ -657,7 +730,7 @@ export default function BrokerWallet() {
                             <Badge 
                               variant="outline" 
                               className="text-xs cursor-pointer hover:bg-muted"
-                              onClick={() => setSettlementDetail({ id: transaction.id, transaction })}
+                              onClick={() => handleOpenSettlementDetail(transaction)}
                             >
                               <FileText className="h-3 w-3 ml-1" />
                               سند قبض ({transaction.receipt_images.length})
@@ -668,7 +741,7 @@ export default function BrokerWallet() {
                               {transaction.notes}
                             </span>
                           )}
-                          {!transaction.cheque_number && !transaction.card_last_four && !transaction.receipt_images?.length && !transaction.notes && '-'}
+                          {!transaction.cheque_number && !transaction.card_last_four && !transaction.receipt_images?.length && !transaction.notes && !(transaction.payment_type === 'customer_cheque' && transaction.customer_cheque_ids?.length) && '-'}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -771,6 +844,43 @@ export default function BrokerWallet() {
                   <div>
                     <p className="text-xs text-muted-foreground">ملاحظات</p>
                     <p>{settlementDetail.transaction.notes}</p>
+                  </div>
+                )}
+                
+                {/* Customer Cheques Section */}
+                {settlementDetail.customerCheques && settlementDetail.customerCheques.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">شيكات العملاء المستخدمة ({settlementDetail.customerCheques.length})</p>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {settlementDetail.customerCheques.map((cheque) => (
+                        <div key={cheque.id} className="p-2 rounded-lg bg-muted/50 flex items-center justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {cheque.cheque_number && (
+                                <Badge variant="secondary" className="font-mono text-xs">
+                                  #{cheque.cheque_number}
+                                </Badge>
+                              )}
+                              <span className="font-bold text-sm">₪{cheque.amount.toLocaleString()}</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {cheque.client_name && <span>{cheque.client_name}</span>}
+                              {cheque.car_number && <span className="mr-2">• {cheque.car_number}</span>}
+                              {cheque.payment_date && <span className="mr-2">• {new Date(cheque.payment_date).toLocaleDateString('ar-EG')}</span>}
+                            </div>
+                          </div>
+                          {cheque.cheque_image_url && (
+                            <a href={cheque.cheque_image_url} target="_blank" rel="noopener noreferrer">
+                              <img 
+                                src={cheque.cheque_image_url} 
+                                alt="صورة الشيك" 
+                                className="h-12 w-auto rounded border hover:opacity-80 transition-opacity"
+                              />
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
                 
