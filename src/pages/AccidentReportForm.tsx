@@ -31,6 +31,8 @@ import {
   Users,
   Building2,
   CheckCircle,
+  Eye,
+  Printer,
 } from "lucide-react";
 import { AccidentThirdPartyForm } from "@/components/accident-reports/AccidentThirdPartyForm";
 
@@ -54,6 +56,8 @@ interface Policy {
     manufacturer_name: string | null;
     model: string | null;
     year: number | null;
+    color: string | null;
+    license_expiry: string | null;
   } | null;
   insurance_companies: {
     id: string;
@@ -83,6 +87,24 @@ interface AccidentReport {
   police_report_number: string | null;
   croquis_url: string | null;
   generated_pdf_url: string | null;
+  // New fields
+  owner_address: string | null;
+  driver_address: string | null;
+  driver_age: number | null;
+  driver_occupation: string | null;
+  license_issue_place: string | null;
+  license_expiry_date: string | null;
+  first_license_date: string | null;
+  vehicle_license_expiry: string | null;
+  passengers_count: number | null;
+  vehicle_usage_purpose: string | null;
+  own_car_damages: string | null;
+  was_anyone_injured: boolean | null;
+  injuries_description: string | null;
+  witnesses_info: string | null;
+  passengers_info: string | null;
+  responsible_party: string | null;
+  additional_details: string | null;
 }
 
 interface ThirdParty {
@@ -131,18 +153,43 @@ export default function AccidentReportForm() {
   const [report, setReport] = useState<AccidentReport | null>(null);
   const [thirdParties, setThirdParties] = useState<ThirdParty[]>([]);
 
-  // Form state
+  // Form state - Accident details
   const [accidentDate, setAccidentDate] = useState("");
   const [accidentTime, setAccidentTime] = useState("");
   const [accidentLocation, setAccidentLocation] = useState("");
   const [accidentDescription, setAccidentDescription] = useState("");
+  const [vehicleUsagePurpose, setVehicleUsagePurpose] = useState("");
+  const [passengersCount, setPassengersCount] = useState<number | "">("");
+  
+  // Form state - Damages & Injuries
+  const [ownCarDamages, setOwnCarDamages] = useState("");
+  const [wasAnyoneInjured, setWasAnyoneInjured] = useState(false);
+  const [injuriesDescription, setInjuriesDescription] = useState("");
+  const [responsibleParty, setResponsibleParty] = useState("");
+  
+  // Form state - Owner/Driver
+  const [ownerAddress, setOwnerAddress] = useState("");
   const [driverName, setDriverName] = useState("");
+  const [driverAddress, setDriverAddress] = useState("");
   const [driverIdNumber, setDriverIdNumber] = useState("");
   const [driverPhone, setDriverPhone] = useState("");
+  const [driverAge, setDriverAge] = useState<number | "">("");
+  const [driverOccupation, setDriverOccupation] = useState("");
   const [driverLicenseNumber, setDriverLicenseNumber] = useState("");
+  const [licenseIssuePlace, setLicenseIssuePlace] = useState("");
+  const [licenseExpiryDate, setLicenseExpiryDate] = useState("");
+  const [firstLicenseDate, setFirstLicenseDate] = useState("");
+  const [vehicleLicenseExpiry, setVehicleLicenseExpiry] = useState("");
+  
+  // Form state - Police
   const [policeReported, setPoliceReported] = useState(false);
   const [policeStation, setPoliceStation] = useState("");
   const [policeReportNumber, setPoliceReportNumber] = useState("");
+  
+  // Form state - Additional
+  const [witnessesInfo, setWitnessesInfo] = useState("");
+  const [passengersInfo, setPassengersInfo] = useState("");
+  const [additionalDetails, setAdditionalDetails] = useState("");
 
   const [activeTab, setActiveTab] = useState("accident");
 
@@ -160,7 +207,7 @@ export default function AccidentReportForm() {
         end_date,
         cancelled,
         clients!inner(id, full_name, id_number, phone_number),
-        cars(id, car_number, manufacturer_name, model, year),
+        cars(id, car_number, manufacturer_name, model, year, color, license_expiry),
         insurance_companies(id, name, name_ar)
       `)
       .eq("id", policyId)
@@ -174,11 +221,15 @@ export default function AccidentReportForm() {
 
     setPolicy(data as Policy);
 
-    // Pre-fill driver info from client
-    if (!reportId) {
+    // Pre-fill driver info from client (only for new reports)
+    if (!reportId || reportId === "new") {
       setDriverName(data.clients.full_name);
       setDriverIdNumber(data.clients.id_number);
       setDriverPhone(data.clients.phone_number || "");
+      // Pre-fill vehicle license expiry from car
+      if (data.cars?.license_expiry) {
+        setVehicleLicenseExpiry(data.cars.license_expiry);
+      }
     }
   }, [policyId, reportId, toast]);
 
@@ -204,13 +255,34 @@ export default function AccidentReportForm() {
     setAccidentTime(data.accident_time || "");
     setAccidentLocation(data.accident_location || "");
     setAccidentDescription(data.accident_description || "");
+    setVehicleUsagePurpose(data.vehicle_usage_purpose || "");
+    setPassengersCount(data.passengers_count ?? "");
+    
+    setOwnCarDamages(data.own_car_damages || "");
+    setWasAnyoneInjured(data.was_anyone_injured || false);
+    setInjuriesDescription(data.injuries_description || "");
+    setResponsibleParty(data.responsible_party || "");
+    
+    setOwnerAddress(data.owner_address || "");
     setDriverName(data.driver_name || "");
+    setDriverAddress(data.driver_address || "");
     setDriverIdNumber(data.driver_id_number || "");
     setDriverPhone(data.driver_phone || "");
+    setDriverAge(data.driver_age ?? "");
+    setDriverOccupation(data.driver_occupation || "");
     setDriverLicenseNumber(data.driver_license_number || "");
+    setLicenseIssuePlace(data.license_issue_place || "");
+    setLicenseExpiryDate(data.license_expiry_date || "");
+    setFirstLicenseDate(data.first_license_date || "");
+    setVehicleLicenseExpiry(data.vehicle_license_expiry || "");
+    
     setPoliceReported(data.police_reported || false);
     setPoliceStation(data.police_station || "");
     setPoliceReportNumber(data.police_report_number || "");
+    
+    setWitnessesInfo(data.witnesses_info || "");
+    setPassengersInfo(data.passengers_info || "");
+    setAdditionalDetails(data.additional_details || "");
 
     // Fetch third parties
     const { data: tpData } = await supabase
@@ -252,13 +324,30 @@ export default function AccidentReportForm() {
         accident_time: accidentTime || null,
         accident_location: accidentLocation || null,
         accident_description: accidentDescription || null,
+        vehicle_usage_purpose: vehicleUsagePurpose || null,
+        passengers_count: passengersCount || null,
+        own_car_damages: ownCarDamages || null,
+        was_anyone_injured: wasAnyoneInjured,
+        injuries_description: injuriesDescription || null,
+        responsible_party: responsibleParty || null,
+        owner_address: ownerAddress || null,
         driver_name: driverName || null,
+        driver_address: driverAddress || null,
         driver_id_number: driverIdNumber || null,
         driver_phone: driverPhone || null,
+        driver_age: driverAge || null,
+        driver_occupation: driverOccupation || null,
         driver_license_number: driverLicenseNumber || null,
+        license_issue_place: licenseIssuePlace || null,
+        license_expiry_date: licenseExpiryDate || null,
+        first_license_date: firstLicenseDate || null,
+        vehicle_license_expiry: vehicleLicenseExpiry || null,
         police_reported: policeReported,
         police_station: policeStation || null,
         police_report_number: policeReportNumber || null,
+        witnesses_info: witnessesInfo || null,
+        passengers_info: passengersInfo || null,
+        additional_details: additionalDetails || null,
       };
 
       let savedReportId = report?.id;
@@ -397,6 +486,11 @@ export default function AccidentReportForm() {
 
       toast({ title: "تم الإنشاء", description: "تم إنشاء ملف PDF بنجاح" });
       await fetchReport();
+      
+      // Open the PDF in new tab for printing
+      if (data?.pdf_url) {
+        window.open(data.pdf_url, "_blank");
+      }
     } catch (error: any) {
       console.error("Error generating PDF:", error);
       toast({ 
@@ -406,6 +500,13 @@ export default function AccidentReportForm() {
       });
     } finally {
       setGeneratingPdf(false);
+    }
+  };
+
+  const handleDownloadPdf = () => {
+    if (report?.generated_pdf_url) {
+      // Open in new tab for viewing/printing
+      window.open(report.generated_pdf_url, "_blank");
     }
   };
 
@@ -560,7 +661,7 @@ export default function AccidentReportForm() {
             </TabsTrigger>
             <TabsTrigger value="driver" className="gap-2">
               <User className="h-4 w-4" />
-              السائق / المؤمن له
+              المالك / السائق
             </TabsTrigger>
             <TabsTrigger value="third-party" className="gap-2">
               <Users className="h-4 w-4" />
@@ -568,6 +669,10 @@ export default function AccidentReportForm() {
               {thirdParties.length > 0 && (
                 <Badge variant="secondary" className="mr-1">{thirdParties.length}</Badge>
               )}
+            </TabsTrigger>
+            <TabsTrigger value="damages" className="gap-2">
+              <Car className="h-4 w-4" />
+              الأضرار والإصابات
             </TabsTrigger>
             <TabsTrigger value="attachments" className="gap-2">
               <FileText className="h-4 w-4" />
@@ -583,7 +688,7 @@ export default function AccidentReportForm() {
                   <CardTitle className="text-lg">تفاصيل الحادث</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label>تاريخ الحادث *</Label>
                       <Input
@@ -600,23 +705,43 @@ export default function AccidentReportForm() {
                         onChange={(e) => setAccidentTime(e.target.value)}
                       />
                     </div>
+                    <div className="space-y-2">
+                      <Label>عدد الركاب بالسيارة</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={passengersCount}
+                        onChange={(e) => setPassengersCount(e.target.value ? parseInt(e.target.value) : "")}
+                        placeholder="عدد الركاب"
+                      />
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>موقع الحادث</Label>
-                    <div className="relative">
-                      <MapPin className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>موقع الحادث</Label>
+                      <div className="relative">
+                        <MapPin className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          value={accidentLocation}
+                          onChange={(e) => setAccidentLocation(e.target.value)}
+                          className="pr-10"
+                          placeholder="العنوان / الموقع بالتفصيل"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>الغرض من استعمال السيارة</Label>
                       <Input
-                        value={accidentLocation}
-                        onChange={(e) => setAccidentLocation(e.target.value)}
-                        className="pr-10"
-                        placeholder="العنوان / الموقع بالتفصيل"
+                        value={vehicleUsagePurpose}
+                        onChange={(e) => setVehicleUsagePurpose(e.target.value)}
+                        placeholder="مثال: شخصي، تجاري، أجرة"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label>وصف الحادث</Label>
+                    <Label>كيف وقع الحادث (بالتفصيل)</Label>
                     <Textarea
                       value={accidentDescription}
                       onChange={(e) => setAccidentDescription(e.target.value)}
@@ -625,10 +750,19 @@ export default function AccidentReportForm() {
                     />
                   </div>
 
+                  <div className="space-y-2">
+                    <Label>من المسؤول عن الحادث (برأيك)</Label>
+                    <Input
+                      value={responsibleParty}
+                      onChange={(e) => setResponsibleParty(e.target.value)}
+                      placeholder="حدد المسؤول عن الحادث"
+                    />
+                  </div>
+
                   {/* Police Section */}
                   <div className="border-t pt-4 mt-4">
                     <div className="flex items-center justify-between mb-4">
-                      <Label className="text-base font-medium">هل تم التبليغ للشرطة؟</Label>
+                      <Label className="text-base font-medium">هل حققت الشرطة بالحادث؟</Label>
                       <Switch
                         checked={policeReported}
                         onCheckedChange={setPoliceReported}
@@ -660,20 +794,57 @@ export default function AccidentReportForm() {
               </Card>
             </TabsContent>
 
-            {/* Driver Tab */}
+            {/* Driver/Owner Tab */}
             <TabsContent value="driver" className="space-y-4 m-0">
+              {/* Owner Info */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">بيانات السائق / المؤمن له</CardTitle>
+                  <CardTitle className="text-lg">بيانات صاحب السيارة</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>الاسم الكامل</Label>
+                      <Label>اسم المالك</Label>
+                      <Input
+                        value={policy.clients.full_name}
+                        disabled
+                        className="bg-muted"
+                      />
+                      <p className="text-xs text-muted-foreground">يتم جلبه من بيانات العميل</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>عنوان المالك</Label>
+                      <Input
+                        value={ownerAddress}
+                        onChange={(e) => setOwnerAddress(e.target.value)}
+                        placeholder="العنوان بالتفصيل"
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Driver Info */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">بيانات السائق وقت الحادث</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>اسم السائق</Label>
                       <Input
                         value={driverName}
                         onChange={(e) => setDriverName(e.target.value)}
                         placeholder="اسم السائق"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>عنوان السائق</Label>
+                      <Input
+                        value={driverAddress}
+                        onChange={(e) => setDriverAddress(e.target.value)}
+                        placeholder="عنوان السائق"
                       />
                     </div>
                     <div className="space-y-2">
@@ -697,12 +868,69 @@ export default function AccidentReportForm() {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label>رقم رخصة القيادة</Label>
+                      <Label>عمر السائق</Label>
                       <Input
-                        value={driverLicenseNumber}
-                        onChange={(e) => setDriverLicenseNumber(e.target.value)}
-                        placeholder="رقم الرخصة"
+                        type="number"
+                        min="16"
+                        max="100"
+                        value={driverAge}
+                        onChange={(e) => setDriverAge(e.target.value ? parseInt(e.target.value) : "")}
+                        placeholder="العمر"
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>مهنة السائق</Label>
+                      <Input
+                        value={driverOccupation}
+                        onChange={(e) => setDriverOccupation(e.target.value)}
+                        placeholder="المهنة"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="border-t pt-4 mt-4">
+                    <h4 className="font-medium mb-4">بيانات رخصة القيادة</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label>رقم رخصة السائق</Label>
+                        <Input
+                          value={driverLicenseNumber}
+                          onChange={(e) => setDriverLicenseNumber(e.target.value)}
+                          placeholder="رقم الرخصة"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>مكان الصدور</Label>
+                        <Input
+                          value={licenseIssuePlace}
+                          onChange={(e) => setLicenseIssuePlace(e.target.value)}
+                          placeholder="مكان إصدار الرخصة"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>تاريخ الانتهاء</Label>
+                        <Input
+                          type="date"
+                          value={licenseExpiryDate}
+                          onChange={(e) => setLicenseExpiryDate(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>تاريخ الحصول الأول على الرخصة</Label>
+                        <Input
+                          type="date"
+                          value={firstLicenseDate}
+                          onChange={(e) => setFirstLicenseDate(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>تاريخ انتهاء رخصة المركبة</Label>
+                        <Input
+                          type="date"
+                          value={vehicleLicenseExpiry}
+                          onChange={(e) => setVehicleLicenseExpiry(e.target.value)}
+                        />
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -712,7 +940,7 @@ export default function AccidentReportForm() {
             {/* Third Party Tab */}
             <TabsContent value="third-party" className="space-y-4 m-0">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium">الأطراف الثالثة</h3>
+                <h3 className="text-lg font-medium">بيانات الطرف الثالث</h3>
                 <Button onClick={addThirdParty} size="sm">
                   <Plus className="h-4 w-4 ml-2" />
                   إضافة طرف ثالث
@@ -745,6 +973,82 @@ export default function AccidentReportForm() {
               )}
             </TabsContent>
 
+            {/* Damages Tab */}
+            <TabsContent value="damages" className="space-y-4 m-0">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">الأضرار التي لحقت بسيارتك من جراء الحادث (بالتفصيل)</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Textarea
+                    value={ownCarDamages}
+                    onChange={(e) => setOwnCarDamages(e.target.value)}
+                    placeholder="وصف تفصيلي للأضرار التي لحقت بسيارتك..."
+                    rows={5}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg">الإصابات الشخصية</CardTitle>
+                    <Switch
+                      checked={wasAnyoneInjured}
+                      onCheckedChange={setWasAnyoneInjured}
+                    />
+                  </div>
+                  <p className="text-sm text-muted-foreground">هل أصيب أحد من جراء الحادث؟</p>
+                </CardHeader>
+                {wasAnyoneInjured && (
+                  <CardContent className="space-y-4">
+                    <Label>تفاصيل الإصابات (اسم المصاب، عمره، عنوانه، طبيعة العمل، نوع الإصابة)</Label>
+                    <Textarea
+                      value={injuriesDescription}
+                      onChange={(e) => setInjuriesDescription(e.target.value)}
+                      placeholder="وصف تفصيلي للإصابات..."
+                      rows={5}
+                    />
+                  </CardContent>
+                )}
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">الشهود والركاب</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>أسماء الشهود وعناوينهم</Label>
+                    <Textarea
+                      value={witnessesInfo}
+                      onChange={(e) => setWitnessesInfo(e.target.value)}
+                      placeholder="اذكر أسماء الشهود وعناوينهم (اذكر إذا كان الشهود ركاب أم لا)"
+                      rows={3}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>أسماء الركاب وعناوينهم</Label>
+                    <Textarea
+                      value={passengersInfo}
+                      onChange={(e) => setPassengersInfo(e.target.value)}
+                      placeholder="اذكر أسماء الركاب وعناوينهم"
+                      rows={3}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>تفاصيل إضافية</Label>
+                    <Textarea
+                      value={additionalDetails}
+                      onChange={(e) => setAdditionalDetails(e.target.value)}
+                      placeholder="أي تفاصيل إضافية تود ذكرها..."
+                      rows={3}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
             {/* Attachments Tab */}
             <TabsContent value="attachments" className="space-y-4 m-0">
               <Card>
@@ -765,10 +1069,10 @@ export default function AccidentReportForm() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => window.open(report.generated_pdf_url!, "_blank")}
+                          onClick={handleDownloadPdf}
                         >
-                          <Download className="h-4 w-4 ml-2" />
-                          تحميل
+                          <Eye className="h-4 w-4 ml-2" />
+                          عرض / طباعة
                         </Button>
                         <Button
                           variant="outline"
@@ -827,7 +1131,7 @@ export default function AccidentReportForm() {
                   {generatingPdf ? (
                     <Loader2 className="h-4 w-4 animate-spin ml-2" />
                   ) : (
-                    <FileText className="h-4 w-4 ml-2" />
+                    <Printer className="h-4 w-4 ml-2" />
                   )}
                   إنشاء PDF
                 </Button>

@@ -142,6 +142,7 @@ export type Database = {
           accident_description: string | null
           accident_location: string | null
           accident_time: string | null
+          additional_details: string | null
           branch_id: string | null
           car_id: string | null
           client_id: string
@@ -149,24 +150,41 @@ export type Database = {
           created_at: string
           created_by_admin_id: string | null
           croquis_url: string | null
+          driver_address: string | null
+          driver_age: number | null
           driver_id_number: string | null
           driver_license_number: string | null
           driver_name: string | null
+          driver_occupation: string | null
           driver_phone: string | null
+          first_license_date: string | null
           generated_pdf_url: string | null
           id: string
+          injuries_description: string | null
+          license_expiry_date: string | null
+          license_issue_place: string | null
+          own_car_damages: string | null
+          owner_address: string | null
+          passengers_count: number | null
+          passengers_info: string | null
           police_report_number: string | null
           police_reported: boolean | null
           police_station: string | null
           policy_id: string
+          responsible_party: string | null
           status: string
           updated_at: string
+          vehicle_license_expiry: string | null
+          vehicle_usage_purpose: string | null
+          was_anyone_injured: boolean | null
+          witnesses_info: string | null
         }
         Insert: {
           accident_date: string
           accident_description?: string | null
           accident_location?: string | null
           accident_time?: string | null
+          additional_details?: string | null
           branch_id?: string | null
           car_id?: string | null
           client_id: string
@@ -174,24 +192,41 @@ export type Database = {
           created_at?: string
           created_by_admin_id?: string | null
           croquis_url?: string | null
+          driver_address?: string | null
+          driver_age?: number | null
           driver_id_number?: string | null
           driver_license_number?: string | null
           driver_name?: string | null
+          driver_occupation?: string | null
           driver_phone?: string | null
+          first_license_date?: string | null
           generated_pdf_url?: string | null
           id?: string
+          injuries_description?: string | null
+          license_expiry_date?: string | null
+          license_issue_place?: string | null
+          own_car_damages?: string | null
+          owner_address?: string | null
+          passengers_count?: number | null
+          passengers_info?: string | null
           police_report_number?: string | null
           police_reported?: boolean | null
           police_station?: string | null
           policy_id: string
+          responsible_party?: string | null
           status?: string
           updated_at?: string
+          vehicle_license_expiry?: string | null
+          vehicle_usage_purpose?: string | null
+          was_anyone_injured?: boolean | null
+          witnesses_info?: string | null
         }
         Update: {
           accident_date?: string
           accident_description?: string | null
           accident_location?: string | null
           accident_time?: string | null
+          additional_details?: string | null
           branch_id?: string | null
           car_id?: string | null
           client_id?: string
@@ -199,18 +234,34 @@ export type Database = {
           created_at?: string
           created_by_admin_id?: string | null
           croquis_url?: string | null
+          driver_address?: string | null
+          driver_age?: number | null
           driver_id_number?: string | null
           driver_license_number?: string | null
           driver_name?: string | null
+          driver_occupation?: string | null
           driver_phone?: string | null
+          first_license_date?: string | null
           generated_pdf_url?: string | null
           id?: string
+          injuries_description?: string | null
+          license_expiry_date?: string | null
+          license_issue_place?: string | null
+          own_car_damages?: string | null
+          owner_address?: string | null
+          passengers_count?: number | null
+          passengers_info?: string | null
           police_report_number?: string | null
           police_reported?: boolean | null
           police_station?: string | null
           policy_id?: string
+          responsible_party?: string | null
           status?: string
           updated_at?: string
+          vehicle_license_expiry?: string | null
+          vehicle_usage_purpose?: string | null
+          was_anyone_injured?: boolean | null
+          witnesses_info?: string | null
         }
         Relationships: [
           {

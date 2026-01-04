@@ -53,43 +53,88 @@ const loadPdfJs = (): Promise<any> => {
   });
 };
 
-// All canonical fields from accident_reports
+// All canonical fields from accident_reports - comprehensive list based on insurance forms
 const CANONICAL_FIELDS = [
+  // Policy & Insurance
   { id: "policy_number", label: "رقم الوثيقة", group: "الوثيقة", sample: "POL-2024-12345" },
   { id: "policy_type", label: "نوع الوثيقة", group: "الوثيقة", sample: "شامل" },
-  { id: "policy_start_date", label: "تاريخ بداية الوثيقة", group: "الوثيقة", sample: "2024-01-01" },
-  { id: "policy_end_date", label: "تاريخ نهاية الوثيقة", group: "الوثيقة", sample: "2025-01-01" },
-  { id: "company_name", label: "اسم شركة التأمين", group: "الوثيقة", sample: "المشرق للتأمين" },
+  { id: "policy_start_date", label: "تاريخ بداية التأمين", group: "الوثيقة", sample: "2024-01-01" },
+  { id: "policy_end_date", label: "تاريخ نهاية التأمين", group: "الوثيقة", sample: "2025-01-01" },
+  { id: "company_name", label: "اسم شركة التأمين", group: "الوثيقة", sample: "ترست للتأمين" },
   
-  { id: "client_name", label: "اسم المؤمن له", group: "المؤمن له", sample: "أحمد محمد علي" },
-  { id: "client_id_number", label: "رقم هوية المؤمن له", group: "المؤمن له", sample: "123456789" },
-  { id: "client_phone", label: "هاتف المؤمن له", group: "المؤمن له", sample: "0501234567" },
+  // Owner (Client) Info
+  { id: "owner_name", label: "اسم صاحب السيارة", group: "المالك", sample: "أحمد محمد علي" },
+  { id: "owner_id_number", label: "رقم هوية المالك", group: "المالك", sample: "123456789" },
+  { id: "owner_phone", label: "هاتف المالك", group: "المالك", sample: "0501234567" },
+  { id: "owner_address", label: "عنوان المالك", group: "المالك", sample: "رام الله - شارع الإرسال" },
   
-  { id: "car_number", label: "رقم السيارة", group: "المركبة", sample: "12-345-67" },
-  { id: "car_manufacturer", label: "الشركة المصنعة", group: "المركبة", sample: "تويوتا" },
-  { id: "car_model", label: "موديل السيارة", group: "المركبة", sample: "كامري" },
+  // Vehicle Info
+  { id: "car_number", label: "رقم المركبة", group: "المركبة", sample: "12-345-67" },
+  { id: "car_chassis", label: "رقم الشاصي", group: "المركبة", sample: "ABC123XYZ456" },
+  { id: "car_manufacturer", label: "الصنع / المصنّع", group: "المركبة", sample: "تويوتا" },
+  { id: "car_model", label: "النوع / الموديل", group: "المركبة", sample: "كامري" },
   { id: "car_year", label: "سنة الصنع", group: "المركبة", sample: "2022" },
-  { id: "car_color", label: "لون السيارة", group: "المركبة", sample: "أبيض" },
+  { id: "car_color", label: "اللون", group: "المركبة", sample: "أبيض" },
+  { id: "car_usage", label: "استعمال السيارة", group: "المركبة", sample: "خصوصي" },
+  { id: "vehicle_license_expiry", label: "تاريخ انتهاء رخصة المركبة", group: "المركبة", sample: "2025-06-15" },
   
+  // Accident Details
   { id: "accident_date", label: "تاريخ الحادث", group: "الحادث", sample: "2024-06-15" },
-  { id: "accident_time", label: "وقت الحادث", group: "الحادث", sample: "14:30" },
-  { id: "accident_location", label: "موقع الحادث", group: "الحادث", sample: "شارع الملك فيصل" },
-  { id: "accident_description", label: "وصف الحادث", group: "الحادث", sample: "اصطدام خلفي" },
+  { id: "accident_time", label: "ساعة الحادث", group: "الحادث", sample: "14:30" },
+  { id: "accident_location", label: "مكان الحادث", group: "الحادث", sample: "شارع الملك فيصل" },
+  { id: "accident_description", label: "كيف وقع الحادث (بالتفصيل)", group: "الحادث", sample: "اصطدام خلفي بسيارة أخرى" },
+  { id: "vehicle_usage_purpose", label: "الغرض من استعمال السيارة وقت الحادث", group: "الحادث", sample: "شخصي" },
+  { id: "passengers_count", label: "عدد الركاب بالسيارة", group: "الحادث", sample: "2" },
+  { id: "responsible_party", label: "من المسؤول عن الحادث", group: "الحادث", sample: "الطرف الآخر" },
   
-  { id: "driver_name", label: "اسم السائق", group: "السائق", sample: "خالد عبدالله" },
+  // Driver Info
+  { id: "driver_name", label: "اسم السائق وقت الحادث", group: "السائق", sample: "خالد عبدالله" },
+  { id: "driver_address", label: "عنوان السائق", group: "السائق", sample: "بيت لحم - وادي معالي" },
   { id: "driver_id_number", label: "رقم هوية السائق", group: "السائق", sample: "987654321" },
   { id: "driver_phone", label: "هاتف السائق", group: "السائق", sample: "0509876543" },
+  { id: "driver_age", label: "عمر السائق", group: "السائق", sample: "35" },
+  { id: "driver_occupation", label: "مهنة السائق", group: "السائق", sample: "موظف" },
   { id: "driver_license_number", label: "رقم رخصة السائق", group: "السائق", sample: "DL-12345" },
+  { id: "license_issue_place", label: "مكان صدور الرخصة", group: "السائق", sample: "رام الله" },
+  { id: "license_expiry_date", label: "تاريخ انتهاء الرخصة", group: "السائق", sample: "2026-03-20" },
+  { id: "first_license_date", label: "تاريخ الحصول الأول على الرخصة", group: "السائق", sample: "2010-05-15" },
   
-  { id: "police_reported", label: "تم التبليغ للشرطة", group: "الشرطة", sample: "نعم" },
+  // Damages
+  { id: "own_car_damages", label: "الأضرار التي لحقت بسيارتك (بالتفصيل)", group: "الأضرار", sample: "كسر في المصد الأمامي وخدوش في غطاء المحرك" },
+  { id: "was_anyone_injured", label: "هل أصيب أحد", group: "الأضرار", sample: "لا" },
+  { id: "injuries_description", label: "تفاصيل الإصابات الشخصية", group: "الأضرار", sample: "-" },
+  
+  // Police
+  { id: "police_reported", label: "هل حققت الشرطة بالحادث", group: "الشرطة", sample: "نعم" },
   { id: "police_station", label: "مخفر الشرطة", group: "الشرطة", sample: "مركز شرطة رام الله" },
   { id: "police_report_number", label: "رقم المحضر", group: "الشرطة", sample: "PR-2024-789" },
   
-  { id: "third_party_1_name", label: "اسم الطرف الثالث 1", group: "الطرف الثالث", sample: "سمير حسن" },
+  // Witnesses & Passengers
+  { id: "witnesses_info", label: "أسماء الشهود وعناوينهم", group: "الشهود والركاب", sample: "محمد أحمد - رام الله" },
+  { id: "passengers_info", label: "أسماء الركاب وعناوينهم", group: "الشهود والركاب", sample: "سامي خالد - القدس" },
+  { id: "additional_details", label: "تفاصيل إضافية", group: "الشهود والركاب", sample: "-" },
+  
+  // Third Party
+  { id: "third_party_1_name", label: "اسم الطرف الثالث 1 وعنوانه", group: "الطرف الثالث", sample: "سمير حسن - نابلس" },
   { id: "third_party_1_id", label: "هوية الطرف الثالث 1", group: "الطرف الثالث", sample: "111222333" },
   { id: "third_party_1_phone", label: "هاتف الطرف الثالث 1", group: "الطرف الثالث", sample: "0521112222" },
   { id: "third_party_1_car_number", label: "رقم سيارة الطرف الثالث 1", group: "الطرف الثالث", sample: "98-765-43" },
-  { id: "third_party_1_insurance", label: "تأمين الطرف الثالث 1", group: "الطرف الثالث", sample: "شركة التأمين الوطنية" },
+  { id: "third_party_1_car_type", label: "نوع سيارة الطرف الثالث 1", group: "الطرف الثالث", sample: "هيونداي توسان 2020" },
+  { id: "third_party_1_insurance", label: "شركة تأمين الطرف الثالث 1", group: "الطرف الثالث", sample: "شركة التأمين الوطنية" },
+  { id: "third_party_1_policy", label: "رقم وثيقة الطرف الثالث 1", group: "الطرف الثالث", sample: "POL-999888" },
+  { id: "third_party_1_damages", label: "أضرار سيارة الطرف الثالث 1", group: "الطرف الثالث", sample: "خدوش في الباب الخلفي" },
+  
+  // Second Third Party (optional)
+  { id: "third_party_2_name", label: "اسم الطرف الثالث 2 وعنوانه", group: "الطرف الثالث 2", sample: "-" },
+  { id: "third_party_2_id", label: "هوية الطرف الثالث 2", group: "الطرف الثالث 2", sample: "-" },
+  { id: "third_party_2_phone", label: "هاتف الطرف الثالث 2", group: "الطرف الثالث 2", sample: "-" },
+  { id: "third_party_2_car_number", label: "رقم سيارة الطرف الثالث 2", group: "الطرف الثالث 2", sample: "-" },
+  { id: "third_party_2_car_type", label: "نوع سيارة الطرف الثالث 2", group: "الطرف الثالث 2", sample: "-" },
+  { id: "third_party_2_insurance", label: "شركة تأمين الطرف الثالث 2", group: "الطرف الثالث 2", sample: "-" },
+  
+  // Report metadata
+  { id: "report_date", label: "تاريخ التقرير", group: "التقرير", sample: "2024-06-16" },
+  { id: "signature_placeholder", label: "مكان التوقيع", group: "التقرير", sample: "_______________" },
 ];
 
 interface FieldMapping {

@@ -20,6 +20,24 @@ interface AccidentReport {
   police_reported: boolean;
   police_station: string | null;
   police_report_number: string | null;
+  // New fields
+  owner_address: string | null;
+  driver_address: string | null;
+  driver_age: number | null;
+  driver_occupation: string | null;
+  license_issue_place: string | null;
+  license_expiry_date: string | null;
+  first_license_date: string | null;
+  vehicle_license_expiry: string | null;
+  passengers_count: number | null;
+  vehicle_usage_purpose: string | null;
+  own_car_damages: string | null;
+  was_anyone_injured: boolean | null;
+  injuries_description: string | null;
+  witnesses_info: string | null;
+  passengers_info: string | null;
+  responsible_party: string | null;
+  additional_details: string | null;
   clients: {
     full_name: string;
     id_number: string;
@@ -48,9 +66,12 @@ interface ThirdParty {
   full_name: string;
   id_number: string | null;
   phone: string | null;
+  address: string | null;
   vehicle_number: string | null;
   vehicle_manufacturer: string | null;
   vehicle_model: string | null;
+  vehicle_year: number | null;
+  vehicle_color: string | null;
   insurance_company: string | null;
   insurance_policy_number: string | null;
   damage_description: string | null;
@@ -99,21 +120,6 @@ serve(async (req) => {
       .select("*")
       .eq("accident_report_id", accident_report_id)
       .order("sort_order");
-
-    // Fetch company template if exists
-    let templateMapping: Record<string, any> = {};
-    if (report.company_id) {
-      const { data: template } = await supabase
-        .from("company_accident_templates")
-        .select("mapping_json, template_pdf_url")
-        .eq("company_id", report.company_id)
-        .eq("is_active", true)
-        .maybeSingle();
-
-      if (template) {
-        templateMapping = template.mapping_json || {};
-      }
-    }
 
     // Generate HTML content for PDF
     const htmlContent = generateHtmlReport(report as AccidentReport, thirdParties || []);
@@ -189,7 +195,7 @@ serve(async (req) => {
 });
 
 function generateHtmlReport(report: AccidentReport, thirdParties: ThirdParty[]): string {
-  const formatDate = (dateStr: string) => {
+  const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "-";
     return new Date(dateStr).toLocaleDateString("ar-EG");
   };
@@ -214,93 +220,120 @@ function generateHtmlReport(report: AccidentReport, thirdParties: ThirdParty[]):
     
     body {
       font-family: 'Tajawal', sans-serif;
-      font-size: 14px;
-      line-height: 1.6;
+      font-size: 13px;
+      line-height: 1.5;
       color: #1a1a1a;
       background: #fff;
-      padding: 20mm;
+      padding: 15mm;
     }
     
     .header {
       text-align: center;
-      margin-bottom: 30px;
-      padding-bottom: 20px;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
       border-bottom: 2px solid #2563eb;
     }
     
     .header h1 {
-      font-size: 24px;
+      font-size: 22px;
       color: #2563eb;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
+    }
+    
+    .header .company-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: #333;
     }
     
     .header p {
       color: #666;
+      font-size: 12px;
     }
     
     .section {
-      margin-bottom: 25px;
+      margin-bottom: 20px;
     }
     
     .section-title {
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 700;
       color: #2563eb;
-      margin-bottom: 15px;
-      padding-bottom: 5px;
+      margin-bottom: 12px;
+      padding-bottom: 4px;
       border-bottom: 1px solid #e5e7eb;
     }
     
     .info-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 15px;
+      gap: 10px;
+    }
+    
+    .info-grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
     }
     
     .info-item {
       background: #f8fafc;
-      padding: 10px 15px;
-      border-radius: 8px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid #e2e8f0;
+    }
+    
+    .info-item.full-width {
+      grid-column: span 2;
+    }
+    
+    .info-item.full-width-3 {
+      grid-column: span 3;
     }
     
     .info-item label {
       display: block;
-      font-size: 12px;
+      font-size: 11px;
       color: #64748b;
-      margin-bottom: 5px;
+      margin-bottom: 3px;
     }
     
     .info-item span {
       font-weight: 500;
       color: #1e293b;
+      font-size: 13px;
     }
     
     .description-box {
       background: #f8fafc;
-      padding: 15px;
-      border-radius: 8px;
+      padding: 12px;
+      border-radius: 6px;
+      border: 1px solid #e2e8f0;
       white-space: pre-wrap;
+      min-height: 60px;
     }
     
     .third-party-card {
       background: #fafafa;
       border: 1px solid #e5e7eb;
       border-radius: 8px;
-      padding: 15px;
-      margin-bottom: 15px;
+      padding: 12px;
+      margin-bottom: 12px;
     }
     
     .third-party-card h4 {
-      font-size: 14px;
+      font-size: 13px;
       color: #2563eb;
       margin-bottom: 10px;
+      padding-bottom: 5px;
+      border-bottom: 1px dashed #cbd5e1;
     }
     
     .badge {
       display: inline-block;
-      padding: 4px 12px;
-      border-radius: 20px;
-      font-size: 12px;
+      padding: 3px 10px;
+      border-radius: 15px;
+      font-size: 11px;
       font-weight: 500;
     }
     
@@ -314,18 +347,45 @@ function generateHtmlReport(report: AccidentReport, thirdParties: ThirdParty[]):
       color: #16a34a;
     }
     
-    .footer {
+    .badge-red {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+    
+    .signatures {
       margin-top: 40px;
-      padding-top: 20px;
+      display: flex;
+      justify-content: space-around;
+    }
+    
+    .signature-box {
+      text-align: center;
+      width: 28%;
+    }
+    
+    .signature-line {
+      border-top: 1px solid #333;
+      padding-top: 8px;
+      margin-top: 50px;
+      font-size: 12px;
+    }
+    
+    .footer {
+      margin-top: 30px;
+      padding-top: 15px;
       border-top: 1px solid #e5e7eb;
       text-align: center;
       color: #64748b;
-      font-size: 12px;
+      font-size: 11px;
     }
     
     @media print {
       body {
         padding: 10mm;
+        font-size: 12px;
+      }
+      .section {
+        page-break-inside: avoid;
       }
     }
   </style>
@@ -333,6 +393,7 @@ function generateHtmlReport(report: AccidentReport, thirdParties: ThirdParty[]):
 <body>
   <div class="header">
     <h1>🚨 بلاغ حادث مروري</h1>
+    <p class="company-name">${companyName}</p>
     <p>تاريخ الإنشاء: ${formatDate(new Date().toISOString())}</p>
   </div>
   
@@ -353,18 +414,18 @@ function generateHtmlReport(report: AccidentReport, thirdParties: ThirdParty[]):
         <span>${companyName}</span>
       </div>
       <div class="info-item">
-        <label>فترة التغطية</label>
-        <span>${formatDate(report.policies.start_date)} - ${formatDate(report.policies.end_date)}</span>
+        <label>مدة التأمين</label>
+        <span>من ${formatDate(report.policies.start_date)} إلى ${formatDate(report.policies.end_date)}</span>
       </div>
     </div>
   </div>
   
-  <!-- Client & Car Info -->
+  <!-- Owner (Client) Info -->
   <div class="section">
-    <h2 class="section-title">بيانات المؤمن له والمركبة</h2>
+    <h2 class="section-title">بيانات صاحب السيارة (المؤمن له)</h2>
     <div class="info-grid">
       <div class="info-item">
-        <label>اسم المؤمن له</label>
+        <label>اسم صاحب السيارة</label>
         <span>${report.clients.full_name}</span>
       </div>
       <div class="info-item">
@@ -376,16 +437,95 @@ function generateHtmlReport(report: AccidentReport, thirdParties: ThirdParty[]):
         <span>${report.clients.phone_number || "-"}</span>
       </div>
       <div class="info-item">
-        <label>رقم السيارة</label>
+        <label>العنوان</label>
+        <span>${report.owner_address || "-"}</span>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Vehicle Info -->
+  <div class="section">
+    <h2 class="section-title">بيانات المركبة</h2>
+    <div class="info-grid-3">
+      <div class="info-item">
+        <label>رقم المركبة</label>
         <span>${report.cars?.car_number || "-"}</span>
       </div>
       <div class="info-item">
-        <label>نوع المركبة</label>
-        <span>${[report.cars?.manufacturer_name, report.cars?.model, report.cars?.year].filter(Boolean).join(" ") || "-"}</span>
+        <label>الصنع / المصنّع</label>
+        <span>${report.cars?.manufacturer_name || "-"}</span>
+      </div>
+      <div class="info-item">
+        <label>النوع / الموديل</label>
+        <span>${report.cars?.model || "-"}</span>
+      </div>
+      <div class="info-item">
+        <label>سنة الصنع</label>
+        <span>${report.cars?.year || "-"}</span>
       </div>
       <div class="info-item">
         <label>اللون</label>
         <span>${report.cars?.color || "-"}</span>
+      </div>
+      <div class="info-item">
+        <label>استعمال السيارة</label>
+        <span>${report.vehicle_usage_purpose || "-"}</span>
+      </div>
+      <div class="info-item">
+        <label>تاريخ انتهاء رخصة المركبة</label>
+        <span>${formatDate(report.vehicle_license_expiry)}</span>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Driver Info -->
+  <div class="section">
+    <h2 class="section-title">بيانات السائق وقت الحادث</h2>
+    <div class="info-grid">
+      <div class="info-item">
+        <label>اسم السائق</label>
+        <span>${report.driver_name || "-"}</span>
+      </div>
+      <div class="info-item">
+        <label>عنوان السائق</label>
+        <span>${report.driver_address || "-"}</span>
+      </div>
+      <div class="info-item">
+        <label>رقم الهوية</label>
+        <span>${report.driver_id_number || "-"}</span>
+      </div>
+      <div class="info-item">
+        <label>رقم الهاتف</label>
+        <span>${report.driver_phone || "-"}</span>
+      </div>
+      <div class="info-item">
+        <label>عمر السائق</label>
+        <span>${report.driver_age || "-"}</span>
+      </div>
+      <div class="info-item">
+        <label>مهنة السائق</label>
+        <span>${report.driver_occupation || "-"}</span>
+      </div>
+    </div>
+    
+    <div style="margin-top: 10px;">
+      <div class="info-grid">
+        <div class="info-item">
+          <label>رقم رخصة السائق</label>
+          <span>${report.driver_license_number || "-"}</span>
+        </div>
+        <div class="info-item">
+          <label>مكان صدور الرخصة</label>
+          <span>${report.license_issue_place || "-"}</span>
+        </div>
+        <div class="info-item">
+          <label>تاريخ انتهاء الرخصة</label>
+          <span>${formatDate(report.license_expiry_date)}</span>
+        </div>
+        <div class="info-item">
+          <label>تاريخ الحصول الأول على الرخصة</label>
+          <span>${formatDate(report.first_license_date)}</span>
+        </div>
       </div>
     </div>
   </div>
@@ -399,54 +539,45 @@ function generateHtmlReport(report: AccidentReport, thirdParties: ThirdParty[]):
         <span>${formatDate(report.accident_date)}</span>
       </div>
       <div class="info-item">
-        <label>وقت الحادث</label>
+        <label>ساعة الحادث</label>
         <span>${report.accident_time || "-"}</span>
       </div>
-      <div class="info-item" style="grid-column: span 2;">
-        <label>موقع الحادث</label>
+      <div class="info-item full-width">
+        <label>مكان الحادث</label>
         <span>${report.accident_location || "-"}</span>
       </div>
+      <div class="info-item">
+        <label>عدد الركاب بالسيارة</label>
+        <span>${report.passengers_count ?? "-"}</span>
+      </div>
+      <div class="info-item">
+        <label>الغرض من استعمال السيارة</label>
+        <span>${report.vehicle_usage_purpose || "-"}</span>
+      </div>
     </div>
-    ${report.accident_description ? `
-    <div style="margin-top: 15px;">
-      <label style="display: block; font-size: 12px; color: #64748b; margin-bottom: 5px;">وصف الحادث</label>
-      <div class="description-box">${report.accident_description}</div>
+    
+    <div style="margin-top: 12px;">
+      <label style="display: block; font-size: 11px; color: #64748b; margin-bottom: 5px;">كيف وقع الحادث (بالتفصيل)</label>
+      <div class="description-box">${report.accident_description || "-"}</div>
     </div>
-    ` : ""}
-  </div>
-  
-  <!-- Driver Info -->
-  <div class="section">
-    <h2 class="section-title">بيانات السائق وقت الحادث</h2>
-    <div class="info-grid">
+    
+    <div style="margin-top: 12px;">
       <div class="info-item">
-        <label>اسم السائق</label>
-        <span>${report.driver_name || "-"}</span>
-      </div>
-      <div class="info-item">
-        <label>رقم الهوية</label>
-        <span>${report.driver_id_number || "-"}</span>
-      </div>
-      <div class="info-item">
-        <label>رقم الهاتف</label>
-        <span>${report.driver_phone || "-"}</span>
-      </div>
-      <div class="info-item">
-        <label>رقم رخصة القيادة</label>
-        <span>${report.driver_license_number || "-"}</span>
+        <label>من المسؤول عن الحادث (برأيك)</label>
+        <span>${report.responsible_party || "-"}</span>
       </div>
     </div>
   </div>
   
   <!-- Police Report -->
-  ${report.police_reported ? `
   <div class="section">
     <h2 class="section-title">بلاغ الشرطة</h2>
-    <div class="info-grid">
+    <div class="info-grid-3">
       <div class="info-item">
-        <label>تم التبليغ للشرطة</label>
-        <span class="badge badge-green">نعم</span>
+        <label>هل حققت الشرطة بالحادث</label>
+        <span class="badge ${report.police_reported ? 'badge-green' : 'badge-red'}">${report.police_reported ? 'نعم' : 'لا'}</span>
       </div>
+      ${report.police_reported ? `
       <div class="info-item">
         <label>مخفر الشرطة</label>
         <span>${report.police_station || "-"}</span>
@@ -455,18 +586,48 @@ function generateHtmlReport(report: AccidentReport, thirdParties: ThirdParty[]):
         <label>رقم المحضر</label>
         <span>${report.police_report_number || "-"}</span>
       </div>
+      ` : ''}
     </div>
   </div>
-  ` : ""}
+  
+  <!-- Damages -->
+  <div class="section">
+    <h2 class="section-title">الأضرار</h2>
+    <div style="margin-bottom: 12px;">
+      <label style="display: block; font-size: 11px; color: #64748b; margin-bottom: 5px;">الأضرار التي لحقت بسيارتك من جراء الحادث (بالتفصيل)</label>
+      <div class="description-box">${report.own_car_damages || "-"}</div>
+    </div>
+  </div>
+  
+  <!-- Injuries -->
+  <div class="section">
+    <h2 class="section-title">الإصابات الشخصية</h2>
+    <div class="info-grid">
+      <div class="info-item">
+        <label>هل أصيب أحد من جراء الحادث</label>
+        <span class="badge ${report.was_anyone_injured ? 'badge-red' : 'badge-green'}">${report.was_anyone_injured ? 'نعم' : 'لا'}</span>
+      </div>
+    </div>
+    ${report.was_anyone_injured && report.injuries_description ? `
+    <div style="margin-top: 12px;">
+      <label style="display: block; font-size: 11px; color: #64748b; margin-bottom: 5px;">تفاصيل الإصابات</label>
+      <div class="description-box">${report.injuries_description}</div>
+    </div>
+    ` : ''}
+  </div>
   
   <!-- Third Parties -->
   ${thirdParties.length > 0 ? `
   <div class="section">
-    <h2 class="section-title">الأطراف الثالثة (${thirdParties.length})</h2>
+    <h2 class="section-title">بيانات الطرف الثالث (${thirdParties.length})</h2>
     ${thirdParties.map((tp, i) => `
     <div class="third-party-card">
       <h4>الطرف الثالث #${i + 1}: ${tp.full_name}</h4>
       <div class="info-grid">
+        <div class="info-item">
+          <label>اسم المالك وعنوانه</label>
+          <span>${tp.full_name}${tp.address ? ' - ' + tp.address : ''}</span>
+        </div>
         <div class="info-item">
           <label>رقم الهوية</label>
           <span>${tp.id_number || "-"}</span>
@@ -480,8 +641,12 @@ function generateHtmlReport(report: AccidentReport, thirdParties: ThirdParty[]):
           <span>${tp.vehicle_number || "-"}</span>
         </div>
         <div class="info-item">
-          <label>نوع المركبة</label>
-          <span>${[tp.vehicle_manufacturer, tp.vehicle_model].filter(Boolean).join(" ") || "-"}</span>
+          <label>نوع السيارة</label>
+          <span>${[tp.vehicle_manufacturer, tp.vehicle_model, tp.vehicle_year].filter(Boolean).join(" ") || "-"}</span>
+        </div>
+        <div class="info-item">
+          <label>لون السيارة</label>
+          <span>${tp.vehicle_color || "-"}</span>
         </div>
         <div class="info-item">
           <label>شركة التأمين</label>
@@ -494,7 +659,7 @@ function generateHtmlReport(report: AccidentReport, thirdParties: ThirdParty[]):
       </div>
       ${tp.damage_description ? `
       <div style="margin-top: 10px;">
-        <label style="display: block; font-size: 12px; color: #64748b; margin-bottom: 5px;">وصف الأضرار</label>
+        <label style="display: block; font-size: 11px; color: #64748b; margin-bottom: 5px;">الأضرار التي لحقت بسيارة الطرف الثالث</label>
         <div class="description-box">${tp.damage_description}</div>
       </div>
       ` : ""}
@@ -503,19 +668,37 @@ function generateHtmlReport(report: AccidentReport, thirdParties: ThirdParty[]):
   </div>
   ` : ""}
   
+  <!-- Witnesses & Passengers -->
+  <div class="section">
+    <h2 class="section-title">الشهود والركاب</h2>
+    <div class="info-grid">
+      <div class="info-item full-width">
+        <label>أسماء الشهود وعناوينهم (اذكر إذا كان الشهود ركاباً أم لا)</label>
+        <span>${report.witnesses_info || "-"}</span>
+      </div>
+      <div class="info-item full-width">
+        <label>أسماء الركاب وعناوينهم</label>
+        <span>${report.passengers_info || "-"}</span>
+      </div>
+    </div>
+    ${report.additional_details ? `
+    <div style="margin-top: 12px;">
+      <label style="display: block; font-size: 11px; color: #64748b; margin-bottom: 5px;">تفاصيل إضافية</label>
+      <div class="description-box">${report.additional_details}</div>
+    </div>
+    ` : ''}
+  </div>
+  
   <!-- Signatures -->
-  <div class="section" style="margin-top: 50px;">
-    <div style="display: flex; justify-content: space-between;">
-      <div style="text-align: center; width: 30%;">
-        <div style="border-top: 1px solid #333; padding-top: 10px;">
-          توقيع المؤمن له
-        </div>
-      </div>
-      <div style="text-align: center; width: 30%;">
-        <div style="border-top: 1px solid #333; padding-top: 10px;">
-          توقيع الوكيل
-        </div>
-      </div>
+  <div class="signatures">
+    <div class="signature-box">
+      <div class="signature-line">توقيع المؤمن له / السائق</div>
+    </div>
+    <div class="signature-box">
+      <div class="signature-line">التاريخ</div>
+    </div>
+    <div class="signature-box">
+      <div class="signature-line">ملاحظات الموظف</div>
     </div>
   </div>
   
