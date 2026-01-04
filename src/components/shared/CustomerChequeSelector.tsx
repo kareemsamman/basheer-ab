@@ -57,23 +57,32 @@ export function CustomerChequeSelector({
       const { data, error } = await supabase
         .from('policy_payments')
         .select(`
-          id, amount, payment_date, cheque_number, cheque_image_url, policy_id,
-          policies!policy_payments_policy_id_fkey(
-            clients!policies_client_id_fkey(full_name, phone_number),
-            cars!policies_car_id_fkey(car_number)
+          id, amount, payment_date, cheque_number, cheque_image_url, policy_id, cheque_status, refused, transferred_to_type,
+          policies:policy_id (
+            id,
+            clients:client_id (full_name, phone_number),
+            cars:car_id (car_number)
           )
         `)
-        .eq('payment_type', 'cheque')
-        .or('cheque_status.is.null,cheque_status.eq.pending')
-        .is('transferred_to_type', null)
-        .or('refused.is.null,refused.eq.false')
-        .order('payment_date', { ascending: true });
+        .eq('payment_type', 'cheque');
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching cheques query:', error);
+        throw error;
+      }
 
-      const formattedCheques: SelectableCheque[] = (data || []).map((c: any) => ({
+      // Filter client-side to ensure correct logic
+      const filteredData = (data || []).filter((c: any) => {
+        const status = c.cheque_status;
+        const isWaiting = status === null || status === 'pending';
+        const notTransferred = c.transferred_to_type === null;
+        const notRefused = c.refused === null || c.refused === false;
+        return isWaiting && notTransferred && notRefused;
+      });
+
+      const formattedCheques: SelectableCheque[] = filteredData.map((c: any) => ({
         id: c.id,
-        amount: c.amount,
+        amount: Number(c.amount) || 0,
         payment_date: c.payment_date,
         cheque_number: c.cheque_number,
         cheque_image_url: c.cheque_image_url,

@@ -128,6 +128,12 @@ const App = () => (
                   <CompanySettlementDetail />
                 </AdminRoute>
               } />
+              <Route path="/reports/company-settlement/:companyId/wallet" element={
+                <AdminRoute>
+                  <CompanyWallet />
+                </AdminRoute>
+              } />
+              {/* Redirect old wallet route to new location */}
               <Route path="/companies/:companyId/wallet" element={
                 <AdminRoute>
                   <CompanyWallet />

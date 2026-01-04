@@ -147,6 +147,7 @@ export default function BrokerWallet() {
   // Policy profit totals
   const [policyOweToBroker, setPolicyOweToBroker] = useState(0); // from_broker policies
   const [policyBrokerOwesMe, setPolicyBrokerOwesMe] = useState(0); // to_broker policies
+  const [policyCount, setPolicyCount] = useState(0);
 
   // New transaction form - direction selection
   const [direction, setDirection] = useState<'we_owe' | 'broker_owes'>('broker_owes');
@@ -211,6 +212,8 @@ export default function BrokerWallet() {
         .eq('cancelled', false);
 
       if (policiesData) {
+        setPolicyCount(policiesData.length);
+        
         // from_broker = broker brought this deal, I owe broker the profit
         const fromBrokerProfit = policiesData
           .filter((p: any) => p.broker_direction === 'from_broker')
@@ -488,8 +491,21 @@ export default function BrokerWallet() {
           </Button>
         </div>
 
-        {/* Summary Cards - 5 cards like BrokerDetails */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        {/* Summary Cards - 6 cards like BrokerDetails */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          {/* عدد الوثائق - Policy count */}
+          <Card className="p-4 border-blue-200 dark:border-blue-800">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-blue-100 dark:bg-blue-900/30">
+                <FileText className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">عدد الوثائق</p>
+                <p className="text-lg font-bold text-blue-600">{policyCount}</p>
+              </div>
+            </div>
+          </Card>
+
           {/* الوسيط مدين لي - Broker owes me (to_broker policies profit) */}
           <Card className="p-4 border-green-200 dark:border-green-800">
             <div className="flex items-center gap-3">

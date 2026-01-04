@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowRight, Building2, Download, TrendingUp, Wallet, FileText, Calculator, Printer, Eye, Pencil, Calendar, RotateCcw, Loader2 } from 'lucide-react';
+import { ArrowRight, Building2, Download, TrendingUp, Wallet, FileText, Calculator, Printer, Eye, Pencil, Calendar, RotateCcw, Loader2, CreditCard, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -418,15 +418,25 @@ export default function CompanySettlementDetail() {
       />
 
       <div className="p-6 space-y-6 print:p-0">
-        {/* Back button */}
-        <Button
-          variant="ghost"
-          onClick={() => navigate('/reports/company-settlement')}
-          className="mb-2 print:hidden"
-        >
-          <ArrowRight className="h-4 w-4 ml-2" />
-          العودة للتقرير الرئيسي
-        </Button>
+        {/* Back button and Wallet access */}
+        <div className="flex items-center justify-between flex-wrap gap-4 print:hidden">
+          <Button
+            variant="ghost"
+            onClick={() => navigate('/reports/company-settlement')}
+          >
+            <ArrowRight className="h-4 w-4 ml-2" />
+            العودة للتقرير الرئيسي
+          </Button>
+          
+          <Button
+            variant="default"
+            onClick={() => navigate(`/reports/company-settlement/${companyId}/wallet`)}
+            className="gap-2"
+          >
+            <CreditCard className="h-4 w-4" />
+            محفظة الشركة / دفعة جديدة
+          </Button>
+        </div>
 
         {/* Filters */}
         <Card className="print:hidden">

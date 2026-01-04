@@ -436,8 +436,23 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
           </CardContent>
         </Card>
 
-        {/* Stats Cards - 5 cards without clients */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 print:grid-cols-5">
+        {/* Stats Cards - 6 cards with policy count */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 print:grid-cols-6">
+          {/* عدد الوثائق - Policy count */}
+          <Card className="print:border print:shadow-none">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30 print:bg-blue-100">
+                  <FileText className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">عدد الوثائق</p>
+                  <p className="text-xl font-bold text-blue-600">{policies.length}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* المحصل - Total collected */}
           <Card className="print:border print:shadow-none">
             <CardContent className="pt-6">

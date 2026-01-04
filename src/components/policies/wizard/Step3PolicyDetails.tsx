@@ -589,18 +589,79 @@ export function Step3PolicyDetails({
         </div>
       </div>
 
-      {/* Price Input - BEFORE extras */}
-      <div>
-        <Label>السعر (₪) *</Label>
-        <Input
-          type="number"
-          value={policy.insurance_price}
-          onChange={(e) => setPolicy({ ...policy, insurance_price: e.target.value })}
-          placeholder="أدخل السعر"
-          className={cn("text-lg", errors.insurance_price ? "border-destructive" : "")}
-        />
-        <FieldError error={errors.insurance_price} />
-      </div>
+      {/* Broker Buy Price - Show when company is linked to a broker */}
+      {(() => {
+        const selectedCompany = companies.find(c => c.id === policy.company_id);
+        const isCompanyLinkedToBroker = !!selectedCompany?.broker_id;
+        
+        if (!isCompanyLinkedToBroker) return null;
+        
+        const brokerBuyPrice = parseFloat(policy.broker_buy_price) || 0;
+        const sellingPrice = parseFloat(policy.insurance_price) || 0;
+        const profit = sellingPrice - brokerBuyPrice;
+        
+        return (
+          <Card className="p-4 space-y-4 bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
+            <div className="flex items-center gap-2 mb-2">
+              <ArrowLeftRight className="h-4 w-4 text-amber-600" />
+              <Label className="font-medium text-amber-700 dark:text-amber-300">تسعير الوسيط</Label>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Broker Buy Price */}
+              <div>
+                <Label className="text-sm">سعر الشراء من الوسيط (₪)</Label>
+                <Input
+                  type="number"
+                  value={policy.broker_buy_price}
+                  onChange={(e) => setPolicy({ ...policy, broker_buy_price: e.target.value })}
+                  placeholder="0"
+                  className="text-lg"
+                />
+              </div>
+              
+              {/* Selling Price */}
+              <div>
+                <Label className="text-sm">سعر البيع للعميل (₪) *</Label>
+                <Input
+                  type="number"
+                  value={policy.insurance_price}
+                  onChange={(e) => setPolicy({ ...policy, insurance_price: e.target.value })}
+                  placeholder="0"
+                  className={cn("text-lg", errors.insurance_price ? "border-destructive" : "")}
+                />
+                <FieldError error={errors.insurance_price} />
+              </div>
+              
+              {/* Profit Display */}
+              <div>
+                <Label className="text-sm">الربح (₪)</Label>
+                <div className={cn(
+                  "h-10 flex items-center justify-center rounded-md text-lg font-bold",
+                  profit >= 0 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                )}>
+                  ₪{profit.toLocaleString()}
+                </div>
+              </div>
+            </div>
+          </Card>
+        );
+      })()}
+
+      {/* Price Input - Only show when NOT linked to broker */}
+      {!companies.find(c => c.id === policy.company_id)?.broker_id && (
+        <div>
+          <Label>السعر (₪) *</Label>
+          <Input
+            type="number"
+            value={policy.insurance_price}
+            onChange={(e) => setPolicy({ ...policy, insurance_price: e.target.value })}
+            placeholder="أدخل السعر"
+            className={cn("text-lg", errors.insurance_price ? "border-destructive" : "")}
+          />
+          <FieldError error={errors.insurance_price} />
+        </div>
+      )}
 
       {/* ELZAMI Commission Display */}
       {policy.policy_type_parent === 'ELZAMI' && policy.company_id && (

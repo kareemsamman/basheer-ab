@@ -127,6 +127,7 @@ export interface PolicyForm {
   start_date: string;
   end_date: string;
   insurance_price: string;
+  broker_buy_price: string; // Price we buy from broker (when company has broker_id)
   cancelled: boolean;
   transferred: boolean;
   notes: string;

@@ -375,7 +375,7 @@ export default function CompanyWallet() {
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/companies')}>
+            <Button variant="ghost" size="icon" onClick={() => navigate(`/reports/company-settlement/${companyId}`)}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
