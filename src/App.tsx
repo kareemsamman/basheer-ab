@@ -44,6 +44,8 @@ import CompanyWallet from "./pages/CompanyWallet";
 import ElzamiCostsReport from "./pages/ElzamiCostsReport";
 import PolicyReports from "./pages/PolicyReports";
 import MarketingSms from "./pages/MarketingSms";
+import AccidentReports from "./pages/AccidentReports";
+import AccidentReportForm from "./pages/AccidentReportForm";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -217,6 +219,16 @@ const App = () => (
               <Route path="/reports/policies" element={
                 <ProtectedRoute>
                   <PolicyReports />
+                </ProtectedRoute>
+              } />
+              <Route path="/accidents" element={
+                <ProtectedRoute>
+                  <AccidentReports />
+                </ProtectedRoute>
+              } />
+              <Route path="/policies/:policyId/accident/:reportId?" element={
+                <ProtectedRoute>
+                  <AccidentReportForm />
                 </ProtectedRoute>
               } />
               <Route path="/admin/marketing-sms" element={

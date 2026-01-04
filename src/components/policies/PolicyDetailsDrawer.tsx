@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -494,6 +495,22 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                       <Pencil className="h-4 w-4 ml-1" />
                       تعديل
                     </Button>
+                    {/* Accident Report Button - only for THIRD/FULL active policies */}
+                    {!policy.cancelled && policy.policy_type_parent === 'THIRD_FULL' && 
+                     (policy.policy_type_child === 'THIRD' || policy.policy_type_child === 'FULL') && (
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="text-orange-600 hover:text-orange-700 hover:bg-orange-500/10"
+                        onClick={() => {
+                          onOpenChange(false);
+                          window.location.href = `/policies/${policy.id}/accident/new`;
+                        }}
+                      >
+                        <AlertTriangle className="h-4 w-4 ml-1" />
+                        بلاغ حادث
+                      </Button>
+                    )}
                     {!policy.cancelled && policy.cars && (
                       <Button 
                         variant="outline" 

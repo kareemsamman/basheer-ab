@@ -28,6 +28,7 @@ import {
   Truck,
   Shield,
   Megaphone,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
@@ -41,6 +42,7 @@ const getNavigation = (isAdmin: boolean) => {
     { name: "السيارات", href: "/cars", icon: Car },
     { name: "الوثائق", href: "/policies", icon: FileText },
     { name: "الشيكات", href: "/cheques", icon: CreditCard },
+    { name: "بلاغات الحوادث", href: "/accidents", icon: AlertTriangle },
     { name: "متابعة الديون", href: "/debt-tracking", icon: DollarSign },
     { name: "الوسائط", href: "/media", icon: Image },
     { name: "التنبيهات", href: "/notifications", icon: Bell },

@@ -136,6 +136,205 @@ export type Database = {
         }
         Relationships: []
       }
+      accident_reports: {
+        Row: {
+          accident_date: string
+          accident_description: string | null
+          accident_location: string | null
+          accident_time: string | null
+          branch_id: string | null
+          car_id: string | null
+          client_id: string
+          company_id: string | null
+          created_at: string
+          created_by_admin_id: string | null
+          croquis_url: string | null
+          driver_id_number: string | null
+          driver_license_number: string | null
+          driver_name: string | null
+          driver_phone: string | null
+          generated_pdf_url: string | null
+          id: string
+          police_report_number: string | null
+          police_reported: boolean | null
+          police_station: string | null
+          policy_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          accident_date: string
+          accident_description?: string | null
+          accident_location?: string | null
+          accident_time?: string | null
+          branch_id?: string | null
+          car_id?: string | null
+          client_id: string
+          company_id?: string | null
+          created_at?: string
+          created_by_admin_id?: string | null
+          croquis_url?: string | null
+          driver_id_number?: string | null
+          driver_license_number?: string | null
+          driver_name?: string | null
+          driver_phone?: string | null
+          generated_pdf_url?: string | null
+          id?: string
+          police_report_number?: string | null
+          police_reported?: boolean | null
+          police_station?: string | null
+          policy_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          accident_date?: string
+          accident_description?: string | null
+          accident_location?: string | null
+          accident_time?: string | null
+          branch_id?: string | null
+          car_id?: string | null
+          client_id?: string
+          company_id?: string | null
+          created_at?: string
+          created_by_admin_id?: string | null
+          croquis_url?: string | null
+          driver_id_number?: string | null
+          driver_license_number?: string | null
+          driver_name?: string | null
+          driver_phone?: string | null
+          generated_pdf_url?: string | null
+          id?: string
+          police_report_number?: string | null
+          police_reported?: boolean | null
+          police_station?: string | null
+          policy_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accident_reports_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accident_reports_car_id_fkey"
+            columns: ["car_id"]
+            isOneToOne: false
+            referencedRelation: "cars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accident_reports_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accident_reports_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accident_reports_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accident_reports_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "policies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accident_reports_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_policies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      accident_third_parties: {
+        Row: {
+          accident_report_id: string
+          address: string | null
+          created_at: string
+          damage_description: string | null
+          full_name: string
+          id: string
+          id_number: string | null
+          insurance_company: string | null
+          insurance_policy_number: string | null
+          phone: string | null
+          sort_order: number
+          updated_at: string
+          vehicle_color: string | null
+          vehicle_manufacturer: string | null
+          vehicle_model: string | null
+          vehicle_number: string | null
+          vehicle_type: string | null
+          vehicle_year: number | null
+        }
+        Insert: {
+          accident_report_id: string
+          address?: string | null
+          created_at?: string
+          damage_description?: string | null
+          full_name: string
+          id?: string
+          id_number?: string | null
+          insurance_company?: string | null
+          insurance_policy_number?: string | null
+          phone?: string | null
+          sort_order?: number
+          updated_at?: string
+          vehicle_color?: string | null
+          vehicle_manufacturer?: string | null
+          vehicle_model?: string | null
+          vehicle_number?: string | null
+          vehicle_type?: string | null
+          vehicle_year?: number | null
+        }
+        Update: {
+          accident_report_id?: string
+          address?: string | null
+          created_at?: string
+          damage_description?: string | null
+          full_name?: string
+          id?: string
+          id_number?: string | null
+          insurance_company?: string | null
+          insurance_policy_number?: string | null
+          phone?: string | null
+          sort_order?: number
+          updated_at?: string
+          vehicle_color?: string | null
+          vehicle_manufacturer?: string | null
+          vehicle_model?: string | null
+          vehicle_number?: string | null
+          vehicle_type?: string | null
+          vehicle_year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accident_third_parties_accident_report_id_fkey"
+            columns: ["accident_report_id"]
+            isOneToOne: false
+            referencedRelation: "accident_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       auth_settings: {
         Row: {
           created_at: string
@@ -759,6 +958,60 @@ export type Database = {
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "insurance_companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_accident_templates: {
+        Row: {
+          company_id: string
+          created_at: string
+          created_by_admin_id: string | null
+          id: string
+          is_active: boolean
+          mapping_json: Json
+          notes: string | null
+          template_pdf_url: string
+          updated_at: string
+          version: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          created_by_admin_id?: string | null
+          id?: string
+          is_active?: boolean
+          mapping_json?: Json
+          notes?: string | null
+          template_pdf_url: string
+          updated_at?: string
+          version?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          created_by_admin_id?: string | null
+          id?: string
+          is_active?: boolean
+          mapping_json?: Json
+          notes?: string | null
+          template_pdf_url?: string
+          updated_at?: string
+          version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_accident_templates_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_accident_templates_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
