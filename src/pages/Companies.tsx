@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Search, Settings, Building2, Truck, Shield, Wallet } from 'lucide-react';
+import { Plus, Search, Settings, Building2, Truck, Shield, Wallet, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -23,6 +23,7 @@ import { CompanyDrawer } from '@/components/companies/CompanyDrawer';
 import { PricingRulesDrawer } from '@/components/companies/PricingRulesDrawer';
 import { RoadServicePricingDrawer } from '@/components/companies/RoadServicePricingDrawer';
 import { AccidentFeePricingDrawer } from '@/components/companies/AccidentFeePricingDrawer';
+import { AccidentTemplateDrawer } from '@/components/companies/AccidentTemplateDrawer';
 import type { Tables } from '@/integrations/supabase/types';
 
 type Company = Tables<'insurance_companies'>;
@@ -50,6 +51,8 @@ export default function Companies() {
   const [roadServicePricingCompany, setRoadServicePricingCompany] = useState<Company | null>(null);
   const [accidentFeePricingOpen, setAccidentFeePricingOpen] = useState(false);
   const [accidentFeePricingCompany, setAccidentFeePricingCompany] = useState<Company | null>(null);
+  const [accidentTemplateOpen, setAccidentTemplateOpen] = useState(false);
+  const [accidentTemplateCompany, setAccidentTemplateCompany] = useState<Company | null>(null);
 
   const fetchCompanies = async () => {
     setLoading(true);
@@ -111,6 +114,11 @@ export default function Companies() {
   const handleManageAccidentFeePricing = (company: Company) => {
     setAccidentFeePricingCompany(company);
     setAccidentFeePricingOpen(true);
+  };
+
+  const handleManageAccidentTemplate = (company: Company) => {
+    setAccidentTemplateCompany(company);
+    setAccidentTemplateOpen(true);
   };
 
   const handleDrawerClose = () => {
@@ -299,6 +307,20 @@ export default function Companies() {
                             إعفاء الحادث
                           </Button>
                         )}
+                        {company.category_parent?.includes('THIRD_FULL') && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-orange-600 hover:text-orange-700"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleManageAccidentTemplate(company);
+                            }}
+                          >
+                            <AlertTriangle className="h-4 w-4 ml-2" />
+                            قالب البلاغ
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -336,6 +358,13 @@ export default function Companies() {
         open={accidentFeePricingOpen}
         onOpenChange={setAccidentFeePricingOpen}
         company={accidentFeePricingCompany}
+      />
+
+      {/* Accident Template Drawer */}
+      <AccidentTemplateDrawer
+        open={accidentTemplateOpen}
+        onOpenChange={setAccidentTemplateOpen}
+        company={accidentTemplateCompany}
       />
     </MainLayout>
   );

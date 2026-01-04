@@ -304,7 +304,19 @@ export function AccidentTemplateTab({ companyId }: AccidentTemplateTabProps) {
       {/* Field Mapping Info */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">تعيين الحقول</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">تعيين الحقول</CardTitle>
+            {templatePdfUrl && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.location.href = `/admin/accident-template-mapper/${companyId}`}
+              >
+                <Settings className="h-4 w-4 ml-2" />
+                فتح أداة التصميم
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <div className="text-sm text-muted-foreground space-y-2">

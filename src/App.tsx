@@ -46,6 +46,7 @@ import PolicyReports from "./pages/PolicyReports";
 import MarketingSms from "./pages/MarketingSms";
 import AccidentReports from "./pages/AccidentReports";
 import AccidentReportForm from "./pages/AccidentReportForm";
+import AccidentTemplateMapper from "./pages/AccidentTemplateMapper";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -230,6 +231,11 @@ const App = () => (
                 <ProtectedRoute>
                   <AccidentReportForm />
                 </ProtectedRoute>
+              } />
+              <Route path="/admin/accident-template-mapper/:companyId" element={
+                <AdminRoute>
+                  <AccidentTemplateMapper />
+                </AdminRoute>
               } />
               <Route path="/admin/marketing-sms" element={
                 <AdminRoute>
