@@ -32,6 +32,7 @@ interface RoadServicePrice {
   road_service_id: string;
   age_band: AgeBand;
   company_cost: number;
+  selling_price: number;
   notes: string | null;
   road_service?: RoadService;
 }
@@ -58,6 +59,7 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
     road_service_id: '',
     age_band: 'ANY' as AgeBand,
     company_cost: 0,
+    selling_price: 0,
   });
 
   const fetchData = useCallback(async () => {
@@ -104,6 +106,7 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
         road_service_id: '',
         age_band: 'ANY',
         company_cost: 0,
+        selling_price: 0,
       });
     }
   }, [open, company, fetchData]);
@@ -121,9 +124,10 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
         .insert({
           company_id: company.id,
           road_service_id: newPrice.road_service_id,
-          car_type: 'car', // Default value since we're not using car_type anymore
+          car_type: 'car',
           age_band: newPrice.age_band,
           company_cost: newPrice.company_cost,
+          selling_price: newPrice.selling_price,
         });
 
       if (error) throw error;
@@ -134,6 +138,7 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
         road_service_id: '',
         age_band: 'ANY',
         company_cost: 0,
+        selling_price: 0,
       });
       fetchData();
     } catch (error: any) {
@@ -148,17 +153,17 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
     }
   };
 
-  const handleUpdatePrice = async (priceId: string, newCost: number) => {
+  const handleUpdatePrice = async (priceId: string, field: 'company_cost' | 'selling_price', value: number) => {
     try {
       const { error } = await supabase
         .from('company_road_service_prices')
-        .update({ company_cost: newCost })
+        .update({ [field]: value })
         .eq('id', priceId);
 
       if (error) throw error;
 
       setPrices(prev => prev.map(p => 
-        p.id === priceId ? { ...p, company_cost: newCost } : p
+        p.id === priceId ? { ...p, [field]: value } : p
       ));
       toast.success('تم تحديث السعر');
     } catch (error) {
@@ -186,7 +191,7 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="left" className="w-full sm:max-w-2xl overflow-y-auto">
+      <SheetContent side="left" className="w-full sm:max-w-3xl overflow-y-auto">
         <SheetHeader>
           <SheetTitle>
             أسعار خدمات الطريق - {company?.name_ar || company?.name}
@@ -199,7 +204,7 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
             <div className="p-4 border rounded-lg bg-muted/50 space-y-4">
               <h3 className="font-medium">إضافة سعر جديد</h3>
               
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>الخدمة</Label>
                   <Select
@@ -245,6 +250,16 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
                     min={0}
                   />
                 </div>
+
+                <div className="space-y-2">
+                  <Label>سعر البيع للعميل (₪)</Label>
+                  <Input
+                    type="number"
+                    value={newPrice.selling_price}
+                    onChange={(e) => setNewPrice(prev => ({ ...prev, selling_price: parseFloat(e.target.value) || 0 }))}
+                    min={0}
+                  />
+                </div>
               </div>
 
               <div className="flex gap-2">
@@ -272,6 +287,8 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
                   <TableHead className="text-right">الخدمة</TableHead>
                   <TableHead className="text-right">الفئة العمرية</TableHead>
                   <TableHead className="text-right">تكلفة الشركة (₪)</TableHead>
+                  <TableHead className="text-right">سعر البيع (₪)</TableHead>
+                  <TableHead className="text-right">الربح (₪)</TableHead>
                   <TableHead className="w-16"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -282,12 +299,14 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
                       <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-8" /></TableCell>
                     </TableRow>
                   ))
                 ) : prices.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       لا توجد أسعار مضافة لهذه الشركة
                     </TableCell>
                   </TableRow>
@@ -306,10 +325,24 @@ export function RoadServicePricingDrawer({ open, onOpenChange, company }: RoadSe
                         <Input
                           type="number"
                           value={price.company_cost}
-                          onChange={(e) => handleUpdatePrice(price.id, parseFloat(e.target.value) || 0)}
+                          onChange={(e) => handleUpdatePrice(price.id, 'company_cost', parseFloat(e.target.value) || 0)}
                           className="w-24"
                           min={0}
                         />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          value={price.selling_price}
+                          onChange={(e) => handleUpdatePrice(price.id, 'selling_price', parseFloat(e.target.value) || 0)}
+                          className="w-24"
+                          min={0}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <span className={price.selling_price - price.company_cost >= 0 ? 'text-success font-medium' : 'text-destructive font-medium'}>
+                          ₪{(price.selling_price - price.company_cost).toLocaleString('ar-EG')}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <Button

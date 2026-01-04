@@ -969,6 +969,7 @@ export function PolicyWizard({
                 crmFiles={crmFiles}
                 setCrmFiles={setCrmFiles}
                 errors={errors}
+                clientLessThan24={selectedClient?.less_than_24 ?? newClient?.under24_type !== 'none'}
               />
             )}
 

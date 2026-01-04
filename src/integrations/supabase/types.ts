@@ -713,6 +713,7 @@ export type Database = {
           effective_to: string | null
           id: string
           notes: string | null
+          selling_price: number
           updated_at: string
         }
         Insert: {
@@ -724,6 +725,7 @@ export type Database = {
           effective_to?: string | null
           id?: string
           notes?: string | null
+          selling_price?: number
           updated_at?: string
         }
         Update: {
@@ -735,6 +737,7 @@ export type Database = {
           effective_to?: string | null
           id?: string
           notes?: string | null
+          selling_price?: number
           updated_at?: string
         }
         Relationships: [
@@ -766,6 +769,7 @@ export type Database = {
           id: string
           notes: string | null
           road_service_id: string
+          selling_price: number
           updated_at: string
         }
         Insert: {
@@ -779,6 +783,7 @@ export type Database = {
           id?: string
           notes?: string | null
           road_service_id: string
+          selling_price?: number
           updated_at?: string
         }
         Update: {
@@ -792,6 +797,7 @@ export type Database = {
           id?: string
           notes?: string | null
           road_service_id?: string
+          selling_price?: number
           updated_at?: string
         }
         Relationships: [

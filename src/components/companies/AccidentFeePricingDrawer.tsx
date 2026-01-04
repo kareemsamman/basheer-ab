@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
@@ -24,6 +23,7 @@ interface AccidentFeePrice {
   accident_fee_service_id: string;
   company_id: string;
   company_cost: number;
+  selling_price: number;
 }
 
 interface AccidentFeePricingDrawerProps {
@@ -37,7 +37,7 @@ export function AccidentFeePricingDrawer({ open, onOpenChange, company }: Accide
   const [prices, setPrices] = useState<Map<string, AccidentFeePrice>>(new Map());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [editedPrices, setEditedPrices] = useState<Map<string, number>>(new Map());
+  const [editedPrices, setEditedPrices] = useState<Map<string, { company_cost: number; selling_price: number }>>(new Map());
 
   const fetchData = useCallback(async () => {
     if (!company) return;
@@ -64,17 +64,20 @@ export function AccidentFeePricingDrawer({ open, onOpenChange, company }: Accide
 
       // Create a map of service_id -> price
       const priceMap = new Map<string, AccidentFeePrice>();
-      const editedMap = new Map<string, number>();
+      const editedMap = new Map<string, { company_cost: number; selling_price: number }>();
       
       pricesData?.forEach((price: any) => {
         priceMap.set(price.accident_fee_service_id, price);
-        editedMap.set(price.accident_fee_service_id, price.company_cost);
+        editedMap.set(price.accident_fee_service_id, { 
+          company_cost: price.company_cost, 
+          selling_price: price.selling_price 
+        });
       });
 
       // Initialize prices for services without existing prices
       servicesData?.forEach((service: AccidentFeeService) => {
         if (!priceMap.has(service.id)) {
-          editedMap.set(service.id, 0);
+          editedMap.set(service.id, { company_cost: 0, selling_price: 0 });
         }
       });
 
@@ -94,9 +97,14 @@ export function AccidentFeePricingDrawer({ open, onOpenChange, company }: Accide
     }
   }, [open, company, fetchData]);
 
-  const handlePriceChange = (serviceId: string, value: string) => {
+  const handlePriceChange = (serviceId: string, field: 'company_cost' | 'selling_price', value: string) => {
     const numValue = parseFloat(value) || 0;
-    setEditedPrices(prev => new Map(prev).set(serviceId, numValue));
+    setEditedPrices(prev => {
+      const newMap = new Map(prev);
+      const current = newMap.get(serviceId) || { company_cost: 0, selling_price: 0 };
+      newMap.set(serviceId, { ...current, [field]: numValue });
+      return newMap;
+    });
   };
 
   const handleSave = async () => {
@@ -105,25 +113,17 @@ export function AccidentFeePricingDrawer({ open, onOpenChange, company }: Accide
     setSaving(true);
     try {
       // Prepare upsert data
-      const upsertData: any[] = [];
-      
-      editedPrices.forEach((cost, serviceId) => {
-        upsertData.push({
-          company_id: company.id,
-          accident_fee_service_id: serviceId,
-          company_cost: cost,
-        });
-      });
-
-      // Use upsert with conflict resolution
-      for (const data of upsertData) {
-        const existingPrice = prices.get(data.accident_fee_service_id);
+      for (const [serviceId, priceData] of editedPrices.entries()) {
+        const existingPrice = prices.get(serviceId);
         
         if (existingPrice?.id) {
           // Update existing
           const { error } = await supabase
             .from('company_accident_fee_prices')
-            .update({ company_cost: data.company_cost })
+            .update({ 
+              company_cost: priceData.company_cost,
+              selling_price: priceData.selling_price,
+            })
             .eq('id', existingPrice.id);
           
           if (error) throw error;
@@ -131,7 +131,12 @@ export function AccidentFeePricingDrawer({ open, onOpenChange, company }: Accide
           // Insert new
           const { error } = await supabase
             .from('company_accident_fee_prices')
-            .insert(data);
+            .insert({
+              company_id: company.id,
+              accident_fee_service_id: serviceId,
+              company_cost: priceData.company_cost,
+              selling_price: priceData.selling_price,
+            });
           
           if (error) throw error;
         }
@@ -183,26 +188,48 @@ export function AccidentFeePricingDrawer({ open, onOpenChange, company }: Accide
                 <TableRow>
                   <TableHead className="text-right">الخدمة</TableHead>
                   <TableHead className="text-right w-40">تكلفة الشركة (₪)</TableHead>
+                  <TableHead className="text-right w-40">سعر البيع (₪)</TableHead>
+                  <TableHead className="text-right w-32">الربح (₪)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {services.map((service) => (
-                  <TableRow key={service.id}>
-                    <TableCell className="font-medium">
-                      {service.name_ar || service.name}
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={editedPrices.get(service.id) || 0}
-                        onChange={(e) => handlePriceChange(service.id, e.target.value)}
-                        className="w-32 ltr-input"
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {services.map((service) => {
+                  const priceData = editedPrices.get(service.id) || { company_cost: 0, selling_price: 0 };
+                  const profit = priceData.selling_price - priceData.company_cost;
+                  
+                  return (
+                    <TableRow key={service.id}>
+                      <TableCell className="font-medium">
+                        {service.name_ar || service.name}
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={priceData.company_cost}
+                          onChange={(e) => handlePriceChange(service.id, 'company_cost', e.target.value)}
+                          className="w-32 ltr-input"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={priceData.selling_price}
+                          onChange={(e) => handlePriceChange(service.id, 'selling_price', e.target.value)}
+                          className="w-32 ltr-input"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <span className={profit >= 0 ? 'text-success font-medium' : 'text-destructive font-medium'}>
+                          ₪{profit.toLocaleString('ar-EG')}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}

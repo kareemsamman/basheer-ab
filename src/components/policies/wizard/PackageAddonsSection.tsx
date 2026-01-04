@@ -1,10 +1,12 @@
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Package, Route, Shield } from "lucide-react";
+import { Package, Route, Shield, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 import type { PackageAddon, Company, RoadService, AccidentFeeService } from "./types";
 
 interface PackageAddonsSectionProps {
@@ -17,6 +19,7 @@ interface PackageAddonsSectionProps {
   carType?: string;
   disabled?: boolean;
   errors?: Record<string, string>;
+  ageBand?: 'UNDER_24' | 'UP_24' | 'ANY';
 }
 
 export function PackageAddonsSection({
@@ -29,9 +32,12 @@ export function PackageAddonsSection({
   carType,
   disabled,
   errors = {},
+  ageBand = 'ANY',
 }: PackageAddonsSectionProps) {
   const roadServiceAddon = addons[0];
   const accidentFeeAddon = addons[1];
+  const [loadingRoadPrice, setLoadingRoadPrice] = useState(false);
+  const [loadingAccidentPrice, setLoadingAccidentPrice] = useState(false);
 
   const updateAddon = (index: number, updates: Partial<PackageAddon>) => {
     const newAddons = [...addons];
@@ -43,6 +49,107 @@ export function PackageAddonsSection({
   const filteredRoadServices = carType
     ? roadServices.filter(rs => rs.allowed_car_types?.includes(carType))
     : roadServices;
+
+  // Auto-fetch road service price when company and service are selected
+  useEffect(() => {
+    const fetchRoadServicePrice = async () => {
+      if (!roadServiceAddon.enabled || !roadServiceAddon.company_id || !roadServiceAddon.road_service_id) {
+        return;
+      }
+
+      setLoadingRoadPrice(true);
+      try {
+        // First try to find a price for the specific age band
+        let query = supabase
+          .from('company_road_service_prices')
+          .select('selling_price, company_cost')
+          .eq('company_id', roadServiceAddon.company_id)
+          .eq('road_service_id', roadServiceAddon.road_service_id);
+
+        // Try specific age band first, then fallback to ANY
+        const { data: specificData } = await query.eq('age_band', ageBand).limit(1);
+        
+        if (specificData && specificData.length > 0) {
+          updateAddon(0, { insurance_price: specificData[0].selling_price.toString() });
+        } else {
+          // Fallback to ANY
+          const { data: anyData } = await supabase
+            .from('company_road_service_prices')
+            .select('selling_price, company_cost')
+            .eq('company_id', roadServiceAddon.company_id)
+            .eq('road_service_id', roadServiceAddon.road_service_id)
+            .eq('age_band', 'ANY')
+            .limit(1);
+
+          if (anyData && anyData.length > 0) {
+            updateAddon(0, { insurance_price: anyData[0].selling_price.toString() });
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching road service price:', error);
+      } finally {
+        setLoadingRoadPrice(false);
+      }
+    };
+
+    fetchRoadServicePrice();
+  }, [roadServiceAddon.enabled, roadServiceAddon.company_id, roadServiceAddon.road_service_id, ageBand]);
+
+  // Auto-fetch accident fee price when company and service are selected
+  useEffect(() => {
+    const fetchAccidentFeePrice = async () => {
+      if (!accidentFeeAddon.enabled || !accidentFeeAddon.company_id || !accidentFeeAddon.accident_fee_service_id) {
+        return;
+      }
+
+      setLoadingAccidentPrice(true);
+      try {
+        const { data } = await supabase
+          .from('company_accident_fee_prices')
+          .select('selling_price, company_cost')
+          .eq('company_id', accidentFeeAddon.company_id)
+          .eq('accident_fee_service_id', accidentFeeAddon.accident_fee_service_id)
+          .limit(1);
+
+        if (data && data.length > 0) {
+          updateAddon(1, { insurance_price: data[0].selling_price.toString() });
+        }
+      } catch (error) {
+        console.error('Error fetching accident fee price:', error);
+      } finally {
+        setLoadingAccidentPrice(false);
+      }
+    };
+
+    fetchAccidentFeePrice();
+  }, [accidentFeeAddon.enabled, accidentFeeAddon.company_id, accidentFeeAddon.accident_fee_service_id]);
+
+  // Find default company (شركة اكس) on mount
+  useEffect(() => {
+    // Auto-select شركة اكس (Company X) as default
+    const defaultCompany = roadServiceCompanies.find(c => 
+      c.name.toLowerCase().includes('اكس') || 
+      c.name.toLowerCase().includes('x') ||
+      c.name_ar?.includes('اكس')
+    ) || (roadServiceCompanies.length > 0 ? roadServiceCompanies[0] : null);
+
+    if (defaultCompany && roadServiceAddon.enabled && !roadServiceAddon.company_id) {
+      updateAddon(0, { company_id: defaultCompany.id });
+    }
+  }, [roadServiceCompanies, roadServiceAddon.enabled]);
+
+  useEffect(() => {
+    // Auto-select شركة اكس (Company X) as default for accident fee
+    const defaultCompany = accidentFeeCompanies.find(c => 
+      c.name.toLowerCase().includes('اكس') || 
+      c.name.toLowerCase().includes('x') ||
+      c.name_ar?.includes('اكس')
+    ) || (accidentFeeCompanies.length > 0 ? accidentFeeCompanies[0] : null);
+
+    if (defaultCompany && accidentFeeAddon.enabled && !accidentFeeAddon.company_id) {
+      updateAddon(1, { company_id: defaultCompany.id });
+    }
+  }, [accidentFeeCompanies, accidentFeeAddon.enabled]);
 
   return (
     <Card className="p-4 border-2 border-dashed border-primary/30 bg-gradient-to-br from-primary/5 to-transparent">
@@ -119,14 +226,19 @@ export function PackageAddonsSection({
 
               <div className="space-y-1.5">
                 <Label className="text-xs">السعر</Label>
-                <Input
-                  type="number"
-                  value={roadServiceAddon.insurance_price}
-                  onChange={(e) => updateAddon(0, { insurance_price: e.target.value })}
-                  placeholder="₪"
-                  className={cn("h-9", errors.addon_road_price && "border-destructive")}
-                  disabled={disabled}
-                />
+                <div className="relative">
+                  <Input
+                    type="number"
+                    value={roadServiceAddon.insurance_price}
+                    onChange={(e) => updateAddon(0, { insurance_price: e.target.value })}
+                    placeholder="₪"
+                    className={cn("h-9", errors.addon_road_price && "border-destructive", loadingRoadPrice && "pr-8")}
+                    disabled={disabled || loadingRoadPrice}
+                  />
+                  {loadingRoadPrice && (
+                    <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
+                </div>
                 {errors.addon_road_price && (
                   <p className="text-xs text-destructive">{errors.addon_road_price}</p>
                 )}
@@ -202,14 +314,19 @@ export function PackageAddonsSection({
 
               <div className="space-y-1.5">
                 <Label className="text-xs">السعر</Label>
-                <Input
-                  type="number"
-                  value={accidentFeeAddon.insurance_price}
-                  onChange={(e) => updateAddon(1, { insurance_price: e.target.value })}
-                  placeholder="₪"
-                  className={cn("h-9", errors.addon_accident_price && "border-destructive")}
-                  disabled={disabled}
-                />
+                <div className="relative">
+                  <Input
+                    type="number"
+                    value={accidentFeeAddon.insurance_price}
+                    onChange={(e) => updateAddon(1, { insurance_price: e.target.value })}
+                    placeholder="₪"
+                    className={cn("h-9", errors.addon_accident_price && "border-destructive", loadingAccidentPrice && "pr-8")}
+                    disabled={disabled || loadingAccidentPrice}
+                  />
+                  {loadingAccidentPrice && (
+                    <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
+                </div>
                 {errors.addon_accident_price && (
                   <p className="text-xs text-destructive">{errors.addon_accident_price}</p>
                 )}

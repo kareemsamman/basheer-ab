@@ -84,6 +84,9 @@ interface Step3Props {
   
   // Errors
   errors: ValidationErrors;
+  
+  // Client age band for pricing
+  clientLessThan24?: boolean;
 }
 
 export function Step3PolicyDetails({
@@ -126,6 +129,7 @@ export function Step3PolicyDetails({
   crmFiles,
   setCrmFiles,
   errors,
+  clientLessThan24,
 }: Step3Props) {
   
   const insuranceInputRef = useRef<HTMLInputElement>(null);
@@ -645,6 +649,7 @@ export function Step3PolicyDetails({
                 accidentFeeCompanies={packageAccidentCompanies}
                 carType={getCarType() || undefined}
                 errors={errors}
+                ageBand={clientLessThan24 ? 'UNDER_24' : 'UP_24'}
               />
             </div>
           )}

@@ -286,7 +286,7 @@ export default function Companies() {
                             خدمات الطريق
                           </Button>
                         )}
-                        {(company.category_parent?.includes('THIRD_FULL') || company.category_parent?.includes('ACCIDENT_FEE_EXEMPTION')) && (
+                        {company.category_parent?.includes('ROAD_SERVICE') && (
                           <Button
                             variant="outline"
                             size="sm"
