@@ -124,13 +124,13 @@ export function PackageAddonsSection({
     fetchAccidentFeePrice();
   }, [accidentFeeAddon.enabled, accidentFeeAddon.company_id, accidentFeeAddon.accident_fee_service_id]);
 
-  // Find default company (شركة اكس) on mount
+  // Find default company (شركة اكس) on mount - must match exact name, not "X Service"
   useEffect(() => {
-    // Auto-select شركة اكس (Company X) as default
+    // Auto-select شركة اكس (Company X) as default - prioritize exact Arabic match
     const defaultCompany = roadServiceCompanies.find(c => 
-      c.name.toLowerCase().includes('اكس') || 
-      c.name.toLowerCase().includes('x') ||
-      c.name_ar?.includes('اكس')
+      c.name === 'شركة اكس' || c.name_ar === 'شركة اكس'
+    ) || roadServiceCompanies.find(c =>
+      c.name.includes('اكس') || c.name_ar?.includes('اكس')
     ) || (roadServiceCompanies.length > 0 ? roadServiceCompanies[0] : null);
 
     if (defaultCompany && roadServiceAddon.enabled && !roadServiceAddon.company_id) {
@@ -139,11 +139,11 @@ export function PackageAddonsSection({
   }, [roadServiceCompanies, roadServiceAddon.enabled]);
 
   useEffect(() => {
-    // Auto-select شركة اكس (Company X) as default for accident fee
+    // Auto-select شركة اكس (Company X) as default for accident fee - prioritize exact Arabic match
     const defaultCompany = accidentFeeCompanies.find(c => 
-      c.name.toLowerCase().includes('اكس') || 
-      c.name.toLowerCase().includes('x') ||
-      c.name_ar?.includes('اكس')
+      c.name === 'شركة اكس' || c.name_ar === 'شركة اكس'
+    ) || accidentFeeCompanies.find(c =>
+      c.name.includes('اكس') || c.name_ar?.includes('اكس')
     ) || (accidentFeeCompanies.length > 0 ? accidentFeeCompanies[0] : null);
 
     if (defaultCompany && accidentFeeAddon.enabled && !accidentFeeAddon.company_id) {

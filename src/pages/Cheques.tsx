@@ -86,6 +86,10 @@ interface ChequeRecord {
   } | null;
   broker_name?: string;
   images?: PaymentImage[];
+  // Transfer info
+  transferred_to_type?: string | null;
+  transferred_to_id?: string | null;
+  transferred_to_name?: string | null;
 }
 
 interface CustomerGroup {
@@ -115,6 +119,7 @@ const statusLabels: Record<string, { label: string; variant: "default" | "second
   cashed: { label: "تم صرفه", variant: "default" },
   returned: { label: "مرتجع", variant: "destructive" },
   cancelled: { label: "ملغي", variant: "outline" },
+  transferred_out: { label: "تم تسليمه", variant: "default" },
 };
 
 export default function Cheques() {
@@ -288,7 +293,7 @@ export default function Cheques() {
         .from('policy_payments')
         .select(`
           id, policy_id, amount, payment_date, cheque_number, cheque_image_url, 
-          cheque_status, refused, notes,
+          cheque_status, refused, notes, transferred_to_type, transferred_to_id,
           policies!policy_payments_policy_id_fkey(
             id, policy_type_parent,
             clients!policies_client_id_fkey(id, full_name, broker_id, phone_number),
@@ -337,25 +342,57 @@ export default function Cheques() {
         brokerMap = (brokers || []).reduce((acc, b) => { acc[b.id] = b.name; return acc; }, {} as Record<string, string>);
       }
 
-      const formattedCheques: ChequeRecord[] = (data || []).map((c: any) => ({
-        id: c.id,
-        policy_id: c.policy_id,
-        amount: c.amount,
-        payment_date: c.payment_date,
-        cheque_number: c.cheque_number,
-        cheque_image_url: c.cheque_image_url,
-        cheque_status: c.cheque_status || 'pending',
-        refused: c.refused,
-        notes: c.notes,
-        policy: c.policies ? {
-          id: c.policies.id,
-          policy_type_parent: c.policies.policy_type_parent,
-          client: c.policies.clients,
-          car: c.policies.cars,
-        } : null,
-        broker_name: c.policies?.clients?.broker_id ? brokerMap[c.policies.clients.broker_id] : undefined,
-        images: imagesMap[c.id] || [],
-      }));
+      // Fetch broker and company names for transferred cheques
+      const transferredToBrokerIds = [...new Set(
+        (data || []).filter((c: any) => c.transferred_to_type === 'broker').map((c: any) => c.transferred_to_id).filter(Boolean)
+      )];
+      const transferredToCompanyIds = [...new Set(
+        (data || []).filter((c: any) => c.transferred_to_type === 'company').map((c: any) => c.transferred_to_id).filter(Boolean)
+      )];
+
+      let transferBrokerMap: Record<string, string> = {};
+      let transferCompanyMap: Record<string, string> = {};
+      
+      if (transferredToBrokerIds.length > 0) {
+        const { data: brokers } = await supabase.from('brokers').select('id, name').in('id', transferredToBrokerIds);
+        transferBrokerMap = (brokers || []).reduce((acc, b) => { acc[b.id] = b.name; return acc; }, {} as Record<string, string>);
+      }
+      if (transferredToCompanyIds.length > 0) {
+        const { data: companies } = await supabase.from('insurance_companies').select('id, name, name_ar').in('id', transferredToCompanyIds);
+        transferCompanyMap = (companies || []).reduce((acc, c) => { acc[c.id] = c.name_ar || c.name; return acc; }, {} as Record<string, string>);
+      }
+
+      const formattedCheques: ChequeRecord[] = (data || []).map((c: any) => {
+        let transferredToName = null;
+        if (c.transferred_to_type === 'broker' && c.transferred_to_id) {
+          transferredToName = transferBrokerMap[c.transferred_to_id];
+        } else if (c.transferred_to_type === 'company' && c.transferred_to_id) {
+          transferredToName = transferCompanyMap[c.transferred_to_id];
+        }
+        
+        return {
+          id: c.id,
+          policy_id: c.policy_id,
+          amount: c.amount,
+          payment_date: c.payment_date,
+          cheque_number: c.cheque_number,
+          cheque_image_url: c.cheque_image_url,
+          cheque_status: c.cheque_status || 'pending',
+          refused: c.refused,
+          notes: c.notes,
+          policy: c.policies ? {
+            id: c.policies.id,
+            policy_type_parent: c.policies.policy_type_parent,
+            client: c.policies.clients,
+            car: c.policies.cars,
+          } : null,
+          broker_name: c.policies?.clients?.broker_id ? brokerMap[c.policies.clients.broker_id] : undefined,
+          images: imagesMap[c.id] || [],
+          transferred_to_type: c.transferred_to_type,
+          transferred_to_id: c.transferred_to_id,
+          transferred_to_name: transferredToName,
+        };
+      });
 
       // Search filter (includes customer name search)
       let filtered = searchQuery 
@@ -750,17 +787,25 @@ export default function Cheques() {
           </div>
         </TableCell>
         <TableCell>
-          <div className="flex items-center gap-1 flex-wrap">
-            <Badge variant={statusLabels[effectiveStatus]?.variant || 'secondary'}>
-              {statusLabels[effectiveStatus]?.label || effectiveStatus}
-            </Badge>
-            {/* Show تلقائي badge if status was auto-changed (pending in DB but cashed now) */}
-            {effectiveStatus === 'cashed' && cheque.cheque_status === 'pending' && (
-              <Badge variant="outline" className="text-[10px] px-1 py-0 border-green-500/50 text-green-600">تلقائي</Badge>
-            )}
-            {/* Show يدوي badge if status was manually set to cashed */}
-            {effectiveStatus === 'cashed' && cheque.cheque_status === 'cashed' && (
-              <Badge variant="outline" className="text-[10px] px-1 py-0 border-blue-500/50 text-blue-600">يدوي</Badge>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-1 flex-wrap">
+              <Badge variant={statusLabels[effectiveStatus]?.variant || 'secondary'}>
+                {statusLabels[effectiveStatus]?.label || effectiveStatus}
+              </Badge>
+              {/* Show تلقائي badge if status was auto-changed (pending in DB but cashed now) */}
+              {effectiveStatus === 'cashed' && cheque.cheque_status === 'pending' && (
+                <Badge variant="outline" className="text-[10px] px-1 py-0 border-green-500/50 text-green-600">تلقائي</Badge>
+              )}
+              {/* Show يدوي badge if status was manually set to cashed */}
+              {effectiveStatus === 'cashed' && cheque.cheque_status === 'cashed' && (
+                <Badge variant="outline" className="text-[10px] px-1 py-0 border-blue-500/50 text-blue-600">يدوي</Badge>
+              )}
+            </div>
+            {/* Show transfer info if transferred */}
+            {cheque.cheque_status === 'transferred_out' && cheque.transferred_to_name && (
+              <span className="text-[10px] text-muted-foreground">
+                → {cheque.transferred_to_type === 'broker' ? 'وسيط' : 'شركة'}: {cheque.transferred_to_name}
+              </span>
             )}
           </div>
         </TableCell>
@@ -800,8 +845,8 @@ export default function Cheques() {
                 </Button>
               </>
             )}
-            {/* Show صرف button if not cashed and not returned */}
-            {cheque.cheque_status !== 'cashed' && cheque.cheque_status !== 'returned' && (
+            {/* Show صرف button if not cashed and not returned and not transferred */}
+            {cheque.cheque_status !== 'cashed' && cheque.cheque_status !== 'returned' && cheque.cheque_status !== 'transferred_out' && (
               <Button
                 variant="outline"
                 size="sm"
@@ -812,8 +857,8 @@ export default function Cheques() {
                 صرف
               </Button>
             )}
-            {/* Show مرتجع button if not already returned - allow even if cashed */}
-            {cheque.cheque_status !== 'returned' && (
+            {/* Show مرتجع button if not already returned and not transferred */}
+            {cheque.cheque_status !== 'returned' && cheque.cheque_status !== 'transferred_out' && (
               <Button
                 variant="outline"
                 size="sm"
@@ -977,6 +1022,7 @@ export default function Cheques() {
                     <SelectItem value="pending">قيد الانتظار</SelectItem>
                     <SelectItem value="cashed">تم صرفه</SelectItem>
                     <SelectItem value="returned">مرتجع</SelectItem>
+                    <SelectItem value="transferred_out">تم تسليمه</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button 

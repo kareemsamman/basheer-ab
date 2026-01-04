@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { FileUploader } from "@/components/media/FileUploader";
 import { BrokerPaymentModal } from "@/components/brokers/BrokerPaymentModal";
+import { CustomerChequeSelector, SelectableCheque } from "@/components/shared/CustomerChequeSelector";
 import { 
   ArrowLeft, 
   Plus, 
@@ -31,6 +32,7 @@ import {
   Split,
   TrendingUp,
   TrendingDown,
+  FileText,
 } from "lucide-react";
 import {
   Dialog,
@@ -84,7 +86,7 @@ interface Transaction {
   installments_count: number | null;
 }
 
-type PaymentType = 'cash' | 'cheque' | 'bank_transfer' | 'visa';
+type PaymentType = 'cash' | 'cheque' | 'bank_transfer' | 'visa' | 'customer_cheque';
 
 interface PaymentLine {
   id: string;
@@ -96,6 +98,7 @@ interface PaymentLine {
   bank_reference?: string;
   notes?: string;
   tranzila_paid?: boolean;
+  selected_cheques?: SelectableCheque[];
 }
 
 const paymentTypeLabels: Record<PaymentType, string> = {
@@ -103,11 +106,13 @@ const paymentTypeLabels: Record<PaymentType, string> = {
   cheque: 'شيك',
   bank_transfer: 'تحويل بنكي',
   visa: 'بطاقة ائتمان',
+  customer_cheque: 'شيك عميل',
 };
 
 const PAYMENT_TYPES = [
   { value: 'cash', label: 'نقداً' },
-  { value: 'cheque', label: 'شيك' },
+  { value: 'cheque', label: 'شيك جديد' },
+  { value: 'customer_cheque', label: 'شيك عميل' },
   { value: 'bank_transfer', label: 'تحويل بنكي' },
   { value: 'visa', label: 'بطاقة ائتمان' },
 ];
@@ -116,6 +121,7 @@ const PaymentTypeIcon = ({ type }: { type: string }) => {
   switch (type) {
     case 'cash': return <Banknote className="h-4 w-4" />;
     case 'cheque': return <Receipt className="h-4 w-4" />;
+    case 'customer_cheque': return <FileText className="h-4 w-4" />;
     case 'bank_transfer': return <Building2 className="h-4 w-4" />;
     case 'visa': return <CreditCard className="h-4 w-4" />;
     default: return <Wallet className="h-4 w-4" />;
@@ -318,10 +324,22 @@ export default function BrokerWallet() {
       return;
     }
 
+    // For customer_cheque, validate that cheques are selected
+    const hasEmptyCustomerCheque = paymentLines.some(
+      p => p.payment_type === 'customer_cheque' && (!p.selected_cheques || p.selected_cheques.length === 0)
+    );
+    if (hasEmptyCustomerCheque) {
+      toast({ title: "خطأ", description: "يجب اختيار شيك واحد على الأقل", variant: "destructive" });
+      return;
+    }
+
     // Filter out visa payments that weren't paid (they're handled separately)
     const paymentsToSave = paymentLines.filter(p => {
       if (p.payment_type === 'visa') {
         return p.tranzila_paid; // Only save visa if already paid via Tranzila
+      }
+      if (p.payment_type === 'customer_cheque') {
+        return p.selected_cheques && p.selected_cheques.length > 0;
       }
       return p.amount > 0;
     });
@@ -338,24 +356,51 @@ export default function BrokerWallet() {
     try {
       // Insert non-visa payments
       for (const payment of nonVisaPayments) {
-        const { error } = await supabase
+        // Calculate amount from selected cheques if customer_cheque
+        const amount = payment.payment_type === 'customer_cheque' && payment.selected_cheques
+          ? payment.selected_cheques.reduce((sum, c) => sum + c.amount, 0)
+          : payment.amount;
+
+        const { data: settlement, error } = await supabase
           .from('broker_settlements')
           .insert({
             broker_id: brokerId,
             direction,
-            total_amount: payment.amount,
+            total_amount: amount,
             settlement_date: payment.payment_date,
             notes: payment.notes || null,
             status: 'completed',
             created_by_admin_id: user?.id,
-            payment_type: payment.payment_type,
+            payment_type: payment.payment_type === 'customer_cheque' ? 'cheque' : payment.payment_type,
             cheque_number: payment.payment_type === 'cheque' ? payment.cheque_number : null,
             cheque_image_url: payment.payment_type === 'cheque' ? payment.cheque_image_url : null,
             bank_reference: payment.payment_type === 'bank_transfer' ? payment.bank_reference : null,
             refused: false,
-          });
+          })
+          .select('id')
+          .single();
 
         if (error) throw error;
+
+        // If customer cheques were used, update them as transferred
+        if (payment.payment_type === 'customer_cheque' && payment.selected_cheques && settlement) {
+          for (const cheque of payment.selected_cheques) {
+            const { error: updateError } = await supabase
+              .from('policy_payments')
+              .update({
+                cheque_status: 'transferred_out',
+                transferred_to_type: 'broker',
+                transferred_to_id: brokerId,
+                transferred_payment_id: settlement.id,
+                transferred_at: new Date().toISOString(),
+              })
+              .eq('id', cheque.id);
+
+            if (updateError) {
+              console.error('Error updating cheque status:', updateError);
+            }
+          }
+        }
       }
 
       toast({ title: "تم الحفظ", description: "تم تسجيل جميع الدفعات بنجاح" });
@@ -769,7 +814,13 @@ export default function BrokerWallet() {
                             <Label className="text-xs mb-1.5 block">نوع الدفع</Label>
                             <Select
                               value={payment.payment_type}
-                              onValueChange={(v) => updatePaymentLine(payment.id, 'payment_type', v)}
+                              onValueChange={(v) => {
+                                updatePaymentLine(payment.id, 'payment_type', v);
+                                // Reset amount when switching to customer_cheque
+                                if (v === 'customer_cheque') {
+                                  updatePaymentLine(payment.id, 'amount', 0);
+                                }
+                              }}
                               disabled={visaPaid}
                             >
                               <SelectTrigger className="h-9">
@@ -785,18 +836,20 @@ export default function BrokerWallet() {
                             </Select>
                           </div>
 
-                          {/* Amount */}
-                          <div>
-                            <Label className="text-xs mb-1.5 block">المبلغ (₪)</Label>
-                            <Input
-                              type="number"
-                              value={payment.amount || ''}
-                              onChange={(e) => updatePaymentLine(payment.id, 'amount', parseFloat(e.target.value) || 0)}
-                              placeholder="0"
-                              disabled={visaPaid}
-                              className="h-9"
-                            />
-                          </div>
+                          {/* Amount - hide for customer_cheque */}
+                          {payment.payment_type !== 'customer_cheque' && (
+                            <div>
+                              <Label className="text-xs mb-1.5 block">المبلغ (₪)</Label>
+                              <Input
+                                type="number"
+                                value={payment.amount || ''}
+                                onChange={(e) => updatePaymentLine(payment.id, 'amount', parseFloat(e.target.value) || 0)}
+                                placeholder="0"
+                                disabled={visaPaid}
+                                className="h-9"
+                              />
+                            </div>
+                          )}
 
                           {/* Date */}
                           <div>
@@ -868,6 +921,25 @@ export default function BrokerWallet() {
                             )}
                           </div>
                         </div>
+
+                        {/* Customer Cheque Selector */}
+                        {payment.payment_type === 'customer_cheque' && !visaPaid && (
+                          <div className="mt-3 pt-3 border-t border-border/50">
+                            <Label className="text-sm font-semibold mb-2 block">اختر شيكات العميل</Label>
+                            <p className="text-xs text-muted-foreground mb-3">
+                              فقط الشيكات بحالة "قيد الانتظار" متاحة للاختيار
+                            </p>
+                            <CustomerChequeSelector
+                              selectedCheques={payment.selected_cheques || []}
+                              onSelectionChange={(cheques) => {
+                                updatePaymentLine(payment.id, 'selected_cheques', cheques);
+                                // Auto-calculate amount from selected cheques
+                                const total = cheques.reduce((sum, c) => sum + c.amount, 0);
+                                updatePaymentLine(payment.id, 'amount', total);
+                              }}
+                            />
+                          </div>
+                        )}
 
                         {/* Cheque Image Upload */}
                         {payment.payment_type === 'cheque' && !visaPaid && (

@@ -348,6 +348,7 @@ export type Database = {
           installments_count: number | null
           notes: string | null
           payment_type: string | null
+          receipt_images: Json | null
           refused: boolean | null
           settlement_date: string
           settlement_number: string | null
@@ -372,6 +373,7 @@ export type Database = {
           installments_count?: number | null
           notes?: string | null
           payment_type?: string | null
+          receipt_images?: Json | null
           refused?: boolean | null
           settlement_date?: string
           settlement_number?: string | null
@@ -396,6 +398,7 @@ export type Database = {
           installments_count?: number | null
           notes?: string | null
           payment_type?: string | null
+          receipt_images?: Json | null
           refused?: boolean | null
           settlement_date?: string
           settlement_number?: string | null
@@ -831,6 +834,7 @@ export type Database = {
           id: string
           notes: string | null
           payment_type: string
+          receipt_images: Json | null
           refused: boolean | null
           settlement_date: string
           status: string
@@ -850,6 +854,7 @@ export type Database = {
           id?: string
           notes?: string | null
           payment_type?: string
+          receipt_images?: Json | null
           refused?: boolean | null
           settlement_date?: string
           status?: string
@@ -869,6 +874,7 @@ export type Database = {
           id?: string
           notes?: string | null
           payment_type?: string
+          receipt_images?: Json | null
           refused?: boolean | null
           settlement_date?: string
           status?: string
@@ -1651,6 +1657,10 @@ export type Database = {
           name: string
           notes: string | null
           refused: boolean | null
+          transferred_at: string | null
+          transferred_payment_id: string | null
+          transferred_to_id: string | null
+          transferred_to_type: string | null
           used: boolean | null
         }
         Insert: {
@@ -1664,6 +1674,10 @@ export type Database = {
           name: string
           notes?: string | null
           refused?: boolean | null
+          transferred_at?: string | null
+          transferred_payment_id?: string | null
+          transferred_to_id?: string | null
+          transferred_to_type?: string | null
           used?: boolean | null
         }
         Update: {
@@ -1677,6 +1691,10 @@ export type Database = {
           name?: string
           notes?: string | null
           refused?: boolean | null
+          transferred_at?: string | null
+          transferred_payment_id?: string | null
+          transferred_to_id?: string | null
+          transferred_to_type?: string | null
           used?: boolean | null
         }
         Relationships: [
@@ -2031,6 +2049,10 @@ export type Database = {
           policy_id: string
           provider: string | null
           refused: boolean | null
+          transferred_at: string | null
+          transferred_payment_id: string | null
+          transferred_to_id: string | null
+          transferred_to_type: string | null
           tranzila_approval_code: string | null
           tranzila_index: string | null
           tranzila_receipt_url: string | null
@@ -2055,6 +2077,10 @@ export type Database = {
           policy_id: string
           provider?: string | null
           refused?: boolean | null
+          transferred_at?: string | null
+          transferred_payment_id?: string | null
+          transferred_to_id?: string | null
+          transferred_to_type?: string | null
           tranzila_approval_code?: string | null
           tranzila_index?: string | null
           tranzila_receipt_url?: string | null
@@ -2079,6 +2105,10 @@ export type Database = {
           policy_id?: string
           provider?: string | null
           refused?: boolean | null
+          transferred_at?: string | null
+          transferred_payment_id?: string | null
+          transferred_to_id?: string | null
+          transferred_to_type?: string | null
           tranzila_approval_code?: string | null
           tranzila_index?: string | null
           tranzila_receipt_url?: string | null

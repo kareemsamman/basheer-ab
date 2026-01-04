@@ -55,8 +55,8 @@ export function getEffectiveChequeStatus(
   paymentDate: string,
   currentStatus: string | null
 ): string {
-  // If already cashed or returned, keep it
-  if (currentStatus === 'cashed' || currentStatus === 'returned' || currentStatus === 'cancelled') {
+  // If already cashed, returned, cancelled, or transferred_out - keep it
+  if (currentStatus === 'cashed' || currentStatus === 'returned' || currentStatus === 'cancelled' || currentStatus === 'transferred_out') {
     return currentStatus;
   }
   
@@ -76,9 +76,10 @@ export function getEffectiveChequeStatus(
 
 /**
  * Checks if a cheque is overdue (pending and date has passed)
+ * transferred_out cheques are never overdue (they're not AB's responsibility)
  */
 export function isChequeOverdue(paymentDate: string, status: string | null): boolean {
-  if (status === 'cashed' || status === 'returned' || status === 'cancelled') {
+  if (status === 'cashed' || status === 'returned' || status === 'cancelled' || status === 'transferred_out') {
     return false;
   }
   

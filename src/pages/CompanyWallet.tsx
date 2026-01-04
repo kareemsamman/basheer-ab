@@ -8,11 +8,13 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
 import { FileUploader } from "@/components/media/FileUploader";
+import { CustomerChequeSelector, SelectableCheque } from "@/components/shared/CustomerChequeSelector";
 import { 
   ArrowLeft, 
   Plus, 
@@ -28,6 +30,7 @@ import {
   Split,
   TrendingDown,
   CheckCircle2,
+  FileText,
 } from "lucide-react";
 import {
   Dialog,
@@ -76,9 +79,10 @@ interface Settlement {
   cheque_image_url: string | null;
   bank_reference: string | null;
   refused: boolean;
+  receipt_images: string[] | null;
 }
 
-type PaymentType = 'cash' | 'cheque' | 'bank_transfer' | 'visa';
+type PaymentType = 'cash' | 'cheque' | 'bank_transfer' | 'visa' | 'customer_cheque';
 
 interface PaymentLine {
   id: string;
@@ -89,6 +93,7 @@ interface PaymentLine {
   cheque_image_url?: string;
   bank_reference?: string;
   notes?: string;
+  selected_cheques?: SelectableCheque[];
 }
 
 const paymentTypeLabels: Record<PaymentType, string> = {
@@ -96,12 +101,14 @@ const paymentTypeLabels: Record<PaymentType, string> = {
   cheque: 'شيك',
   bank_transfer: 'تحويل بنكي',
   visa: 'بطاقة ائتمان',
+  customer_cheque: 'شيك عميل',
 };
 
 const PaymentTypeIcon = ({ type }: { type: string }) => {
   switch (type) {
     case 'cash': return <Banknote className="h-4 w-4" />;
     case 'cheque': return <Receipt className="h-4 w-4" />;
+    case 'customer_cheque': return <FileText className="h-4 w-4" />;
     case 'bank_transfer': return <Building2 className="h-4 w-4" />;
     case 'visa': return <CreditCard className="h-4 w-4" />;
     default: return <Wallet className="h-4 w-4" />;
@@ -247,7 +254,16 @@ export default function CompanyWallet() {
       return;
     }
 
-    const paymentsToSave = paymentLines.filter(p => p.amount > 0);
+    // For customer_cheque, validate that cheques are selected
+    const hasEmptyCustomerCheque = paymentLines.some(
+      p => p.payment_type === 'customer_cheque' && (!p.selected_cheques || p.selected_cheques.length === 0)
+    );
+    if (hasEmptyCustomerCheque) {
+      toast({ title: "خطأ", description: "يجب اختيار شيك واحد على الأقل", variant: "destructive" });
+      return;
+    }
+
+    const paymentsToSave = paymentLines.filter(p => p.amount > 0 || (p.payment_type === 'customer_cheque' && p.selected_cheques?.length));
 
     if (paymentsToSave.length === 0) {
       toast({ title: "تنبيه", description: "لا توجد دفعات لحفظها", variant: "destructive" });
@@ -257,24 +273,52 @@ export default function CompanyWallet() {
     setSaving(true);
     try {
       for (const payment of paymentsToSave) {
-        const { error } = await supabase
+        // Calculate amount from selected cheques if customer_cheque
+        const amount = payment.payment_type === 'customer_cheque' && payment.selected_cheques
+          ? payment.selected_cheques.reduce((sum, c) => sum + c.amount, 0)
+          : payment.amount;
+
+        // Create settlement record
+        const { data: settlement, error } = await supabase
           .from('company_settlements')
           .insert({
             company_id: companyId,
-            total_amount: payment.amount,
+            total_amount: amount,
             settlement_date: payment.payment_date,
             notes: payment.notes || null,
             status: 'completed',
             created_by_admin_id: user?.id,
-            payment_type: payment.payment_type,
+            payment_type: payment.payment_type === 'customer_cheque' ? 'cheque' : payment.payment_type,
             cheque_number: payment.payment_type === 'cheque' ? payment.cheque_number : null,
             cheque_image_url: payment.payment_type === 'cheque' ? payment.cheque_image_url : null,
             bank_reference: payment.payment_type === 'bank_transfer' ? payment.bank_reference : null,
             refused: false,
             branch_id: null,
-          });
+          })
+          .select('id')
+          .single();
 
         if (error) throw error;
+
+        // If customer cheques were used, update them as transferred
+        if (payment.payment_type === 'customer_cheque' && payment.selected_cheques && settlement) {
+          for (const cheque of payment.selected_cheques) {
+            const { error: updateError } = await supabase
+              .from('policy_payments')
+              .update({
+                cheque_status: 'transferred_out',
+                transferred_to_type: 'company',
+                transferred_to_id: companyId,
+                transferred_payment_id: settlement.id,
+                transferred_at: new Date().toISOString(),
+              })
+              .eq('id', cheque.id);
+
+            if (updateError) {
+              console.error('Error updating cheque status:', updateError);
+            }
+          }
+        }
       }
 
       toast({ title: "تم الحفظ", description: "تم تسجيل جميع الدفعات بنجاح" });
@@ -579,14 +623,21 @@ export default function CompanyWallet() {
                           <Label>طريقة الدفع</Label>
                           <Select
                             value={payment.payment_type}
-                            onValueChange={(v) => updatePaymentLine(payment.id, 'payment_type', v)}
+                            onValueChange={(v) => {
+                              updatePaymentLine(payment.id, 'payment_type', v);
+                              // Reset amount when switching to customer_cheque
+                              if (v === 'customer_cheque') {
+                                updatePaymentLine(payment.id, 'amount', 0);
+                              }
+                            }}
                           >
                             <SelectTrigger>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="cash">نقداً</SelectItem>
-                              <SelectItem value="cheque">شيك</SelectItem>
+                              <SelectItem value="cheque">شيك جديد</SelectItem>
+                              <SelectItem value="customer_cheque">شيك عميل</SelectItem>
                               <SelectItem value="bank_transfer">تحويل بنكي</SelectItem>
                               <SelectItem value="visa">بطاقة ائتمان</SelectItem>
                             </SelectContent>
@@ -616,6 +667,25 @@ export default function CompanyWallet() {
                               accept="image/*"
                             />
                           </div>
+                        </div>
+                      )}
+
+                      {/* Customer Cheque Selector */}
+                      {payment.payment_type === 'customer_cheque' && (
+                        <div className="space-y-2 border-t pt-4">
+                          <Label className="text-base font-semibold">اختر شيكات العميل</Label>
+                          <p className="text-xs text-muted-foreground mb-2">
+                            فقط الشيكات بحالة "قيد الانتظار" متاحة للاختيار
+                          </p>
+                          <CustomerChequeSelector
+                            selectedCheques={payment.selected_cheques || []}
+                            onSelectionChange={(cheques) => {
+                              updatePaymentLine(payment.id, 'selected_cheques', cheques);
+                              // Auto-calculate amount from selected cheques
+                              const total = cheques.reduce((sum, c) => sum + c.amount, 0);
+                              updatePaymentLine(payment.id, 'amount', total);
+                            }}
+                          />
                         </div>
                       )}
 
