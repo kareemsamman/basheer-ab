@@ -31,10 +31,27 @@ import {
   Type,
   GripVertical,
 } from "lucide-react";
-import * as pdfjsLib from "pdfjs-dist";
 
-// Set worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs`;
+// Load PDF.js from CDN dynamically
+const loadPdfJs = (): Promise<any> => {
+  return new Promise((resolve, reject) => {
+    if ((window as any).pdfjsLib) {
+      resolve((window as any).pdfjsLib);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    script.onload = () => {
+      const pdfjsLib = (window as any).pdfjsLib;
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      resolve(pdfjsLib);
+    };
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+};
 
 // All canonical fields from accident_reports
 const CANONICAL_FIELDS = [
@@ -101,7 +118,7 @@ export default function AccidentTemplateMapper() {
   const [mappingJson, setMappingJson] = useState<MappingJson>({});
 
   // PDF rendering
-  const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
+  const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [pageImages, setPageImages] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -179,6 +196,9 @@ export default function AccidentTemplateMapper() {
 
     (async () => {
       try {
+        // Load PDF.js from CDN
+        const pdfjsLib = await loadPdfJs();
+
         // Fetch via proxy to avoid CORS
         const { data, error } = await supabase.functions.invoke("proxy-cdn-file", {
           body: { url: templateUrl },
