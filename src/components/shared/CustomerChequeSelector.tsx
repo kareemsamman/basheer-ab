@@ -54,43 +54,76 @@ export function CustomerChequeSelector({
     setLoading(true);
     try {
       // Fetch only waiting cheques (pending status, not transferred, not refused)
-      const { data, error } = await supabase
+      // Use separate queries to avoid complex join issues
+      const { data: paymentsData, error: paymentsError } = await supabase
         .from('policy_payments')
-        .select(`
-          id, amount, payment_date, cheque_number, cheque_image_url, policy_id, cheque_status, refused, transferred_to_type,
-          policies:policy_id (
-            id,
-            clients:client_id (full_name, phone_number),
-            cars:car_id (car_number)
-          )
-        `)
+        .select('id, amount, payment_date, cheque_number, cheque_image_url, policy_id, cheque_status, refused, transferred_to_type')
         .eq('payment_type', 'cheque');
 
-      if (error) {
-        console.error('Error fetching cheques query:', error);
-        throw error;
+      if (paymentsError) {
+        console.error('Error fetching cheques:', paymentsError);
+        throw paymentsError;
       }
 
-      // Filter client-side to ensure correct logic
-      const filteredData = (data || []).filter((c: any) => {
-        const status = c.cheque_status;
+      // Filter client-side for waiting cheques
+      const waitingPayments = (paymentsData || []).filter((p: any) => {
+        const status = p.cheque_status;
         const isWaiting = status === null || status === 'pending';
-        const notTransferred = c.transferred_to_type === null;
-        const notRefused = c.refused === null || c.refused === false;
+        const notTransferred = p.transferred_to_type === null;
+        const notRefused = p.refused === null || p.refused === false;
         return isWaiting && notTransferred && notRefused;
       });
 
-      const formattedCheques: SelectableCheque[] = filteredData.map((c: any) => ({
-        id: c.id,
-        amount: Number(c.amount) || 0,
-        payment_date: c.payment_date,
-        cheque_number: c.cheque_number,
-        cheque_image_url: c.cheque_image_url,
-        policy_id: c.policy_id,
-        client_name: c.policies?.clients?.full_name || 'غير معروف',
-        client_phone: c.policies?.clients?.phone_number || null,
-        car_number: c.policies?.cars?.car_number || null,
-      }));
+      if (waitingPayments.length === 0) {
+        setAvailableCheques([]);
+        setLoading(false);
+        return;
+      }
+
+      // Get policy IDs to fetch client/car info
+      const policyIds = [...new Set(waitingPayments.map((p: any) => p.policy_id))];
+      
+      const { data: policiesData } = await supabase
+        .from('policies')
+        .select('id, client_id, car_id')
+        .in('id', policyIds);
+
+      const clientIds = [...new Set((policiesData || []).map((p: any) => p.client_id).filter(Boolean))];
+      const carIds = [...new Set((policiesData || []).map((p: any) => p.car_id).filter(Boolean))];
+
+      const { data: clientsData } = await supabase
+        .from('clients')
+        .select('id, full_name, phone_number')
+        .in('id', clientIds);
+
+      const { data: carsData } = await supabase
+        .from('cars')
+        .select('id, car_number')
+        .in('id', carIds);
+
+      // Build lookup maps
+      const clientsMap = new Map((clientsData || []).map((c: any) => [c.id, c]));
+      const carsMap = new Map((carsData || []).map((c: any) => [c.id, c]));
+      const policiesMap = new Map((policiesData || []).map((p: any) => [p.id, p]));
+
+      // Format the cheques
+      const formattedCheques: SelectableCheque[] = waitingPayments.map((p: any) => {
+        const policy = policiesMap.get(p.policy_id);
+        const client = policy ? clientsMap.get(policy.client_id) : null;
+        const car = policy?.car_id ? carsMap.get(policy.car_id) : null;
+
+        return {
+          id: p.id,
+          amount: Number(p.amount) || 0,
+          payment_date: p.payment_date,
+          cheque_number: p.cheque_number,
+          cheque_image_url: p.cheque_image_url,
+          policy_id: p.policy_id,
+          client_name: client?.full_name || 'غير معروف',
+          client_phone: client?.phone_number || null,
+          car_number: car?.car_number || null,
+        };
+      });
 
       setAvailableCheques(formattedCheques);
     } catch (error) {

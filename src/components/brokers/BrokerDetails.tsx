@@ -436,8 +436,8 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
           </CardContent>
         </Card>
 
-        {/* Stats Cards - 6 cards with policy count */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 print:grid-cols-6">
+        {/* Stats Cards - 3 cards: policy count, total amount, net balance */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 print:grid-cols-3">
           {/* عدد الوثائق - Policy count */}
           <Card className="print:border print:shadow-none">
             <CardContent className="pt-6">
@@ -453,7 +453,7 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
             </CardContent>
           </Card>
 
-          {/* المحصل - Total collected */}
+          {/* المحصل - Total policy amount */}
           <Card className="print:border print:shadow-none">
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
@@ -461,67 +461,16 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
                   <Wallet className="h-5 w-5 text-green-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">المحصل</p>
+                  <p className="text-sm text-muted-foreground">إجمالي المبالغ</p>
                   <p className="text-xl font-bold text-green-600">
-                    {formatCurrency(stats.totalCollected)}
+                    {formatCurrency(policies.reduce((sum, p) => sum + Number(p.insurance_price), 0))}
                   </p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* المتبقي - Remaining */}
-          <Card className="print:border print:shadow-none">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/30 print:bg-red-100">
-                  <FileText className="h-5 w-5 text-red-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">المتبقي</p>
-                  <p className="text-xl font-bold text-destructive print:text-red-600">
-                    {formatCurrency(stats.totalRemaining)}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* مدين للوسيط - What I owe to broker (from_broker policies) */}
-          <Card className="border-orange-200 dark:border-orange-800 print:border-orange-200">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/30 print:bg-orange-100">
-                  <TrendingDown className="h-5 w-5 text-orange-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">مدين للوسيط</p>
-                  <p className="text-xl font-bold text-orange-600">
-                    {formatCurrency(stats.fromBrokerTotal)}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* الوسيط مدين لي - What broker owes me (to_broker or null) */}
-          <Card className="border-green-200 dark:border-green-800 print:border-green-200">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/30 print:bg-green-100">
-                  <TrendingUp className="h-5 w-5 text-green-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">الوسيط مدين لي</p>
-                  <p className="text-xl font-bold text-green-600">
-                    {formatCurrency(stats.toBrokerTotal)}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Net Balance */}
+          {/* المتبقي - Net Balance (what I owe vs what they owe) */}
           <Card className={cn(
             "border-2 print:border-2",
             netBalance >= 0 ? "border-green-300 dark:border-green-700 print:border-green-300" : "border-red-300 dark:border-red-700 print:border-red-300"
@@ -539,7 +488,7 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">
-                    {netBalance >= 0 ? "الصافي (الوسيط مدين)" : "الصافي (أنا مدين)"}
+                    {netBalance >= 0 ? "المتبقي (الوسيط مدين لي)" : "المتبقي (أنا مدين للوسيط)"}
                   </p>
                   <p className={cn(
                     "text-xl font-bold",
