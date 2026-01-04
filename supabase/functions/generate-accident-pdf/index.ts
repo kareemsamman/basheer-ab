@@ -85,9 +85,9 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const bunnyStorageKey = Deno.env.get("BUNNY_STORAGE_KEY");
-    const bunnyStorageZone = Deno.env.get("BUNNY_STORAGE_ZONE") || "ab-insurance";
-    const bunnyCdnUrl = Deno.env.get("BUNNY_CDN_URL") || "https://ab-insurance.b-cdn.net";
+    const bunnyStorageKey = Deno.env.get("BUNNY_API_KEY");
+    const bunnyStorageZone = Deno.env.get("BUNNY_STORAGE_ZONE") || "basheer-ab";
+    const bunnyCdnUrl = Deno.env.get("BUNNY_CDN_URL") || "https://basheer-ab.b-cdn.net";
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 

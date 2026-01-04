@@ -32,7 +32,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
+  Trash2,
 } from "lucide-react";
+import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 
 interface AccidentReport {
   id: string;
@@ -97,6 +99,9 @@ export default function AccidentReports() {
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingReportId, setDeletingReportId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchCompanies = useCallback(async () => {
     const { data } = await supabase
@@ -171,6 +176,36 @@ export default function AccidentReports() {
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString("ar-EG");
+  };
+
+  const handleDeleteReport = async () => {
+    if (!deletingReportId) return;
+    setDeleting(true);
+    try {
+      // Delete third parties first
+      await supabase
+        .from("accident_third_parties")
+        .delete()
+        .eq("accident_report_id", deletingReportId);
+
+      // Delete the report
+      const { error } = await supabase
+        .from("accident_reports")
+        .delete()
+        .eq("id", deletingReportId);
+
+      if (error) throw error;
+
+      toast({ title: "تم الحذف", description: "تم حذف بلاغ الحادث بنجاح" });
+      setDeleteDialogOpen(false);
+      setDeletingReportId(null);
+      fetchReports();
+    } catch (error: any) {
+      console.error("Error deleting report:", error);
+      toast({ title: "خطأ", description: "فشل في حذف البلاغ", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
@@ -308,16 +343,30 @@ export default function AccidentReports() {
                       {report.profiles?.full_name || report.profiles?.email?.split("@")[0] || "-"}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/policies/${report.policies.id}/accident/${report.id}`);
-                        }}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/policies/${report.policies.id}/accident/${report.id}`);
+                          }}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeletingReportId(report.id);
+                            setDeleteDialogOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -354,6 +403,15 @@ export default function AccidentReports() {
             </div>
           </div>
         )}
+
+        <DeleteConfirmDialog
+          open={deleteDialogOpen}
+          onOpenChange={setDeleteDialogOpen}
+          onConfirm={handleDeleteReport}
+          title="حذف بلاغ الحادث"
+          description="هل أنت متأكد من حذف هذا البلاغ؟ سيتم حذف جميع البيانات المرتبطة به."
+          loading={deleting}
+        />
       </div>
     </MainLayout>
   );
