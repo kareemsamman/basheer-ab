@@ -424,25 +424,31 @@ export default function BrokerWallet() {
 
         if (error) throw error;
 
-        // If customer cheques were used, update them as transferred
-        if (payment.payment_type === 'customer_cheque' && payment.selected_cheques && settlement) {
-          for (const cheque of payment.selected_cheques) {
-            const { error: updateError } = await supabase
-              .from('policy_payments')
-              .update({
-                cheque_status: 'transferred_out',
-                transferred_to_type: 'broker',
-                transferred_to_id: brokerId,
-                transferred_payment_id: settlement.id,
-                transferred_at: new Date().toISOString(),
-              })
-              .eq('id', cheque.id);
+         // If customer cheques were used, update them as transferred
+         if (payment.payment_type === 'customer_cheque' && customerChequeIds.length > 0 && settlement) {
+           const { error: updateError } = await supabase
+             .from('policy_payments')
+             .update({
+               cheque_status: 'transferred_out',
+               transferred_to_type: 'broker',
+               transferred_to_id: brokerId!,
+               transferred_payment_id: settlement.id,
+               transferred_at: new Date().toISOString(),
+               refused: false,
+             })
+             .in('id', customerChequeIds);
 
-            if (updateError) {
-              console.error('Error updating cheque status:', updateError);
-            }
-          }
-        }
+           if (updateError) {
+             console.error('Error updating cheque status:', updateError);
+             // Best-effort cleanup so we don't leave a settlement that didn't actually consume cheques
+             try {
+               await supabase.from('broker_settlements').delete().eq('id', settlement.id);
+             } catch {
+               // ignore
+             }
+             throw updateError;
+           }
+         }
       }
 
       toast({ title: "تم الحفظ", description: "تم تسجيل جميع الدفعات بنجاح" });
@@ -662,7 +668,14 @@ export default function BrokerWallet() {
                   </TableRow>
                 ) : (
                   transactions.map((transaction) => (
-                    <TableRow key={transaction.id} className={cn(transaction.refused && "opacity-50")}>
+                     <TableRow
+                       key={transaction.id}
+                       className={cn(
+                         "cursor-pointer transition-colors hover:bg-muted/40",
+                         transaction.refused && "opacity-50"
+                       )}
+                       onClick={() => handleOpenSettlementDetail(transaction)}
+                     >
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -698,16 +711,12 @@ export default function BrokerWallet() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2 flex-wrap">
-                          {transaction.payment_type === 'customer_cheque' && transaction.customer_cheque_ids && transaction.customer_cheque_ids.length > 0 && (
-                            <Badge 
-                              variant="secondary" 
-                              className="text-xs cursor-pointer hover:bg-muted"
-                              onClick={() => handleOpenSettlementDetail(transaction)}
-                            >
-                              <FileText className="h-3 w-3 ml-1" />
-                              {transaction.customer_cheque_ids.length} شيك عميل
-                            </Badge>
-                          )}
+                           {transaction.payment_type === 'customer_cheque' && transaction.customer_cheque_ids && transaction.customer_cheque_ids.length > 0 && (
+                             <Badge variant="secondary" className="text-xs">
+                               <FileText className="h-3 w-3 ml-1" />
+                               {transaction.customer_cheque_ids.length} شيك عميل
+                             </Badge>
+                           )}
                           {transaction.cheque_number && (
                             <Badge variant="secondary" className="font-mono text-xs">
                               #{transaction.cheque_number}
@@ -718,24 +727,20 @@ export default function BrokerWallet() {
                               ****{transaction.card_last_four}
                             </Badge>
                           )}
-                          {transaction.cheque_image_url && (
-                            <a href={transaction.cheque_image_url} target="_blank" rel="noopener noreferrer">
+                           {transaction.cheque_image_url && (
+                             <a href={transaction.cheque_image_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
                               <Badge variant="outline" className="text-xs cursor-pointer hover:bg-muted">
                                 <Receipt className="h-3 w-3 ml-1" />
                                 صورة الشيك
                               </Badge>
                             </a>
                           )}
-                          {transaction.receipt_images && transaction.receipt_images.length > 0 && (
-                            <Badge 
-                              variant="outline" 
-                              className="text-xs cursor-pointer hover:bg-muted"
-                              onClick={() => handleOpenSettlementDetail(transaction)}
-                            >
-                              <FileText className="h-3 w-3 ml-1" />
-                              سند قبض ({transaction.receipt_images.length})
-                            </Badge>
-                          )}
+                           {transaction.receipt_images && transaction.receipt_images.length > 0 && (
+                             <Badge variant="outline" className="text-xs">
+                               <FileText className="h-3 w-3 ml-1" />
+                               سند قبض ({transaction.receipt_images.length})
+                             </Badge>
+                           )}
                           {transaction.notes && (
                             <span className="text-xs text-muted-foreground truncate max-w-[100px]" title={transaction.notes}>
                               {transaction.notes}
@@ -762,17 +767,20 @@ export default function BrokerWallet() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleToggleRefused(transaction)}
-                          className={cn(
-                            "text-xs",
-                            transaction.refused ? "text-green-600 hover:text-green-700" : "text-red-600 hover:text-red-700"
-                          )}
-                        >
-                          {transaction.refused ? "استعادة" : "رفض"}
-                        </Button>
+                         <Button
+                           variant="ghost"
+                           size="sm"
+                           onClick={(e) => {
+                             e.stopPropagation();
+                             handleToggleRefused(transaction);
+                           }}
+                           className={cn(
+                             "text-xs",
+                             transaction.refused ? "text-green-600 hover:text-green-700" : "text-red-600 hover:text-red-700"
+                           )}
+                         >
+                           {transaction.refused ? "استعادة" : "رفض"}
+                         </Button>
                       </TableCell>
                     </TableRow>
                   ))

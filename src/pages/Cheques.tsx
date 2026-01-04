@@ -90,6 +90,7 @@ interface ChequeRecord {
   transferred_to_type?: string | null;
   transferred_to_id?: string | null;
   transferred_to_name?: string | null;
+  transferred_payment_id?: string | null;
 }
 
 interface CustomerGroup {
@@ -119,7 +120,7 @@ const statusLabels: Record<string, { label: string; variant: "default" | "second
   cashed: { label: "تم صرفه", variant: "default" },
   returned: { label: "مرتجع", variant: "destructive" },
   cancelled: { label: "ملغي", variant: "outline" },
-  transferred_out: { label: "تم تسليمه", variant: "default" },
+  transferred_out: { label: "تم استخدامه", variant: "default" },
 };
 
 export default function Cheques() {
@@ -293,7 +294,7 @@ export default function Cheques() {
         .from('policy_payments')
         .select(`
           id, policy_id, amount, payment_date, cheque_number, cheque_image_url, 
-          cheque_status, refused, notes, transferred_to_type, transferred_to_id,
+          cheque_status, refused, notes, transferred_to_type, transferred_to_id, transferred_payment_id,
           policies!policy_payments_policy_id_fkey(
             id, policy_type_parent,
             clients!policies_client_id_fkey(id, full_name, broker_id, phone_number),
@@ -391,6 +392,7 @@ export default function Cheques() {
           transferred_to_type: c.transferred_to_type,
           transferred_to_id: c.transferred_to_id,
           transferred_to_name: transferredToName,
+          transferred_payment_id: c.transferred_payment_id,
         };
       });
 
@@ -803,9 +805,26 @@ export default function Cheques() {
             </div>
             {/* Show transfer info if transferred */}
             {cheque.cheque_status === 'transferred_out' && cheque.transferred_to_name && (
-              <span className="text-[10px] text-muted-foreground">
-                → {cheque.transferred_to_type === 'broker' ? 'وسيط' : 'شركة'}: {cheque.transferred_to_name}
-              </span>
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                <span>
+                  → {cheque.transferred_to_type === 'broker' ? 'وسيط' : 'شركة'}: {cheque.transferred_to_name}
+                </span>
+                {cheque.transferred_to_type && cheque.transferred_to_id && cheque.transferred_payment_id && (
+                  <button
+                    className="underline hover:text-foreground"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (cheque.transferred_to_type === 'broker') {
+                        navigate(`/brokers/${cheque.transferred_to_id}/wallet?settlement=${cheque.transferred_payment_id}`);
+                      } else {
+                        navigate(`/companies/${cheque.transferred_to_id}/wallet?settlement=${cheque.transferred_payment_id}`);
+                      }
+                    }}
+                  >
+                    عرض في المحفظة
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </TableCell>
@@ -1022,7 +1041,7 @@ export default function Cheques() {
                     <SelectItem value="pending">قيد الانتظار</SelectItem>
                     <SelectItem value="cashed">تم صرفه</SelectItem>
                     <SelectItem value="returned">مرتجع</SelectItem>
-                    <SelectItem value="transferred_out">تم تسليمه</SelectItem>
+                    <SelectItem value="transferred_out">تم استخدامه</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button 

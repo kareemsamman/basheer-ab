@@ -335,22 +335,28 @@ export default function CompanyWallet() {
         if (error) throw error;
 
         // If customer cheques were used, update them as transferred
-        if (payment.payment_type === 'customer_cheque' && payment.selected_cheques && settlement) {
-          for (const cheque of payment.selected_cheques) {
-            const { error: updateError } = await supabase
-              .from('policy_payments')
-              .update({
-                cheque_status: 'transferred_out',
-                transferred_to_type: 'company',
-                transferred_to_id: companyId,
-                transferred_payment_id: settlement.id,
-                transferred_at: new Date().toISOString(),
-              })
-              .eq('id', cheque.id);
+        if (payment.payment_type === 'customer_cheque' && customerChequeIds.length > 0 && settlement) {
+          const { error: updateError } = await supabase
+            .from('policy_payments')
+            .update({
+              cheque_status: 'transferred_out',
+              transferred_to_type: 'company',
+              transferred_to_id: companyId!,
+              transferred_payment_id: settlement.id,
+              transferred_at: new Date().toISOString(),
+              refused: false,
+            })
+            .in('id', customerChequeIds);
 
-            if (updateError) {
-              console.error('Error updating cheque status:', updateError);
+          if (updateError) {
+            console.error('Error updating cheque status:', updateError);
+            // Best-effort cleanup so we don't leave a settlement that didn't actually consume cheques
+            try {
+              await supabase.from('company_settlements').delete().eq('id', settlement.id);
+            } catch {
+              // ignore
             }
+            throw updateError;
           }
         }
       }
@@ -563,7 +569,14 @@ export default function CompanyWallet() {
               </TableHeader>
               <TableBody>
                 {settlements.map((s) => (
-                  <TableRow key={s.id} className={s.refused ? "opacity-50" : ""}>
+                  <TableRow
+                    key={s.id}
+                    className={cn(
+                      "cursor-pointer transition-colors hover:bg-muted/40",
+                      s.refused && "opacity-50"
+                    )}
+                    onClick={() => handleOpenSettlementDetail(s)}
+                  >
                     <TableCell>{new Date(s.settlement_date).toLocaleDateString('ar-EG')}</TableCell>
                     <TableCell className="font-bold">₪{s.total_amount.toLocaleString()}</TableCell>
                     <TableCell>
@@ -575,11 +588,7 @@ export default function CompanyWallet() {
                     <TableCell>
                       <div className="flex items-center gap-2 flex-wrap">
                         {s.payment_type === 'customer_cheque' && s.customer_cheque_ids && s.customer_cheque_ids.length > 0 && (
-                          <Badge 
-                            variant="secondary" 
-                            className="text-xs cursor-pointer hover:bg-muted"
-                            onClick={() => handleOpenSettlementDetail(s)}
-                          >
+                          <Badge variant="secondary" className="text-xs">
                             <FileText className="h-3 w-3 ml-1" />
                             {s.customer_cheque_ids.length} شيك عميل
                           </Badge>
@@ -595,7 +604,7 @@ export default function CompanyWallet() {
                           </Badge>
                         )}
                         {s.cheque_image_url && (
-                          <a href={s.cheque_image_url} target="_blank" rel="noopener noreferrer">
+                          <a href={s.cheque_image_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
                             <Badge variant="outline" className="text-xs cursor-pointer hover:bg-muted">
                               <Receipt className="h-3 w-3 ml-1" />
                               صورة الشيك
@@ -603,11 +612,7 @@ export default function CompanyWallet() {
                           </a>
                         )}
                         {s.receipt_images && s.receipt_images.length > 0 && (
-                          <Badge 
-                            variant="outline" 
-                            className="text-xs cursor-pointer hover:bg-muted"
-                            onClick={() => handleOpenSettlementDetail(s)}
-                          >
+                          <Badge variant="outline" className="text-xs">
                             <FileText className="h-3 w-3 ml-1" />
                             سند قبض ({s.receipt_images.length})
                           </Badge>
@@ -628,17 +633,20 @@ export default function CompanyWallet() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleToggleRefused(s)}
-                      >
-                        {s.refused ? (
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
-                        ) : (
-                          <XCircle className="h-4 w-4 text-red-600" />
-                        )}
-                      </Button>
+                       <Button
+                         variant="ghost"
+                         size="sm"
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           handleToggleRefused(s);
+                         }}
+                       >
+                         {s.refused ? (
+                           <CheckCircle2 className="h-4 w-4 text-green-600" />
+                         ) : (
+                           <XCircle className="h-4 w-4 text-red-600" />
+                         )}
+                       </Button>
                     </TableCell>
                   </TableRow>
                 ))}

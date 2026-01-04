@@ -54,25 +54,21 @@ export function CustomerChequeSelector({
     setLoading(true);
     try {
       // Fetch only waiting cheques (pending status, not transferred, not refused)
-      // Use separate queries to avoid complex join issues
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('policy_payments')
-        .select('id, amount, payment_date, cheque_number, cheque_image_url, policy_id, cheque_status, refused, transferred_to_type')
-        .eq('payment_type', 'cheque');
+        .select('id, amount, payment_date, cheque_number, cheque_image_url, policy_id')
+        .eq('payment_type', 'cheque')
+        .is('transferred_to_type', null)
+        .or('cheque_status.is.null,cheque_status.eq.pending')
+        .or('refused.is.null,refused.eq.false')
+        .order('payment_date', { ascending: true });
 
       if (paymentsError) {
         console.error('Error fetching cheques:', paymentsError);
         throw paymentsError;
       }
 
-      // Filter client-side for waiting cheques
-      const waitingPayments = (paymentsData || []).filter((p: any) => {
-        const status = p.cheque_status;
-        const isWaiting = status === null || status === 'pending';
-        const notTransferred = p.transferred_to_type === null;
-        const notRefused = p.refused === null || p.refused === false;
-        return isWaiting && notTransferred && notRefused;
-      });
+      const waitingPayments = paymentsData || [];
 
       if (waitingPayments.length === 0) {
         setAvailableCheques([]);
