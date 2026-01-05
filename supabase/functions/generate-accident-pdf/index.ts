@@ -354,7 +354,7 @@ function buildFieldValues(report: AccidentReport, thirdParties: ThirdParty[]): R
 }
 
 // Generate HTML that displays the PDF template as a background with text overlays
-// This approach uses the exact same coordinates from the mapper since both use CSS positioning
+// CRITICAL: Uses exact pixel coordinates from the mapper at MAPPER_RENDER_SCALE (1.5)
 function generateHtmlOverlayReport(
   templatePdfUrl: string,
   mapping: MappingJson,
@@ -383,30 +383,8 @@ function generateHtmlOverlayReport(
     }
   }
 
-  // Calculate how many pages we have
-  const maxPage = Math.max(0, ...Object.keys(fieldsByPage).map(Number));
-  
-  // Generate page containers with overlays
-  let pagesHtml = "";
-  for (let pageNum = 0; pageNum <= maxPage; pageNum++) {
-    const pageFields = fieldsByPage[pageNum] || [];
-    
-    // Generate text overlays for this page - BIGGER font sizes
-    const overlaysHtml = pageFields.map(({ id, config, value }) => {
-      // Increase font size significantly - minimum 16px, add 4 to saved size
-      const fontSize = Math.max((config.size || 12) + 4, 16);
-      return `<div class="text-overlay" style="left: ${config.x}px; top: ${config.y}px; font-size: ${fontSize}px;" data-field="${id}">${escapeHtml(value)}</div>`;
-    }).join("\n");
-
-    pagesHtml += `
-    <div class="page-container" data-page="${pageNum}">
-      <div class="pdf-background" id="pdf-bg-${pageNum}"></div>
-      <div class="overlay-container" id="overlay-container-${pageNum}">
-        ${overlaysHtml}
-      </div>
-    </div>
-    `;
-  }
+  // Escape field data for embedding in JS
+  const fieldDataJson = JSON.stringify(fieldsByPage).replace(/'/g, "\\'").replace(/\n/g, "\\n");
 
   return `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -414,15 +392,15 @@ function generateHtmlOverlayReport(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>بلاغ حادث - ${escapeHtml(report.clients.full_name)}</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"><\/script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap');
     
     * { margin: 0; padding: 0; box-sizing: border-box; }
     
     body {
       font-family: 'Tajawal', sans-serif;
-      background: #f5f5f5;
+      background: #e5e7eb;
       direction: rtl;
     }
     
@@ -441,9 +419,9 @@ function generateHtmlOverlayReport(
       background: #2563eb;
       color: white;
       border: none;
-      padding: 10px 18px;
+      padding: 12px 20px;
       border-radius: 8px;
-      font-size: 14px;
+      font-size: 15px;
       font-family: 'Tajawal', sans-serif;
       cursor: pointer;
       display: flex;
@@ -455,7 +433,7 @@ function generateHtmlOverlayReport(
     
     .toolbar select {
       display: none;
-      padding: 10px 12px;
+      padding: 12px 14px;
     }
     
     body.edit-mode .toolbar select {
@@ -484,46 +462,61 @@ function generateHtmlOverlayReport(
       background: #047857;
     }
     
-    /* Print styles - CRITICAL for position accuracy */
+    /* PRINT: Fixed A4 with exact positioning */
     @media print {
+      @page {
+        size: A4 portrait;
+        margin: 0;
+      }
+      
       .toolbar { display: none !important; }
+      
       body { 
         background: white !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
       }
+      
       .page-wrapper {
         padding: 0 !important;
       }
+      
       .page-container { 
+        width: 210mm !important;
+        height: 297mm !important;
         page-break-after: always;
         page-break-inside: avoid;
         margin: 0 !important;
         box-shadow: none !important;
-        break-after: page;
+        overflow: hidden;
       }
+      
       .page-container:last-child { 
         page-break-after: auto;
-        break-after: auto;
       }
-      .pdf-background {
-        width: 100% !important;
-        height: auto !important;
+      
+      .page-container canvas {
+        width: 210mm !important;
+        height: 297mm !important;
+        display: block;
       }
-      .pdf-background img {
-        width: 100% !important;
-        height: auto !important;
+      
+      /* Scale overlays for A4 print */
+      .overlay-container {
+        transform-origin: top left;
       }
+      
       .text-overlay {
         border: none !important;
-        background: none !important;
+        background: transparent !important;
       }
+      
       .delete-btn {
         display: none !important;
       }
-      @page {
-        size: A4 portrait;
-        margin: 0;
+      
+      .page-indicator {
+        display: none !important;
       }
     }
     
@@ -535,7 +528,7 @@ function generateHtmlOverlayReport(
       background: white;
       padding: 30px 50px;
       border-radius: 12px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
       text-align: center;
       z-index: 999;
     }
@@ -546,24 +539,19 @@ function generateHtmlOverlayReport(
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 20px;
+      padding: 30px;
+      gap: 30px;
     }
     
     .page-container {
       position: relative;
-      margin: 20px auto;
       background: white;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.12);
       overflow: visible;
     }
     
-    .pdf-background {
+    .page-container canvas {
       display: block;
-    }
-    
-    .pdf-background img {
-      display: block;
-      max-width: 100%;
     }
     
     .overlay-container {
@@ -583,12 +571,12 @@ function generateHtmlOverlayReport(
       position: absolute;
       color: #000;
       font-family: 'Tajawal', sans-serif;
-      font-weight: 600;
+      font-weight: 700;
       white-space: nowrap;
       direction: rtl;
       text-align: right;
       cursor: default;
-      padding: 2px 6px;
+      padding: 3px 8px;
       border-radius: 3px;
       min-width: 20px;
       transition: all 0.15s;
@@ -598,8 +586,8 @@ function generateHtmlOverlayReport(
     /* Edit mode styles */
     body.edit-mode .text-overlay {
       cursor: move;
-      border: 1px dashed #2563eb;
-      background: rgba(255, 255, 255, 0.9);
+      border: 2px dashed #2563eb;
+      background: rgba(255, 255, 255, 0.95);
     }
     
     body.edit-mode .text-overlay:hover {
@@ -615,7 +603,7 @@ function generateHtmlOverlayReport(
     
     body.edit-mode .text-overlay[contenteditable="true"] {
       border: 2px solid #059669;
-      background: rgba(255, 255, 255, 0.95);
+      background: rgba(255, 255, 255, 0.98);
       cursor: text;
       outline: none;
     }
@@ -624,15 +612,15 @@ function generateHtmlOverlayReport(
     .delete-btn {
       display: none;
       position: absolute;
-      top: -10px;
-      left: -10px;
-      width: 22px;
-      height: 22px;
+      top: -12px;
+      left: -12px;
+      width: 24px;
+      height: 24px;
       background: #ef4444;
       color: white;
       border: none;
       border-radius: 50%;
-      font-size: 14px;
+      font-size: 16px;
       line-height: 1;
       cursor: pointer;
       z-index: 10;
@@ -651,14 +639,15 @@ function generateHtmlOverlayReport(
     
     .page-indicator {
       position: absolute;
-      bottom: -30px;
+      bottom: -35px;
       left: 50%;
       transform: translateX(-50%);
       background: #374151;
       color: white;
-      padding: 4px 12px;
-      border-radius: 4px;
-      font-size: 12px;
+      padding: 6px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
     }
   </style>
 </head>
@@ -676,9 +665,7 @@ function generateHtmlOverlayReport(
       </svg>
       تعديل
     </button>
-    <select id="pageSelect" title="اختر الصفحة">
-      <!-- Pages will be added dynamically -->
-    </select>
+    <select id="pageSelect" title="اختر الصفحة"></select>
     <button class="add-btn" onclick="addNewTextField()">
       <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path d="M12 5v14M5 12h14"/>
@@ -691,74 +678,107 @@ function generateHtmlOverlayReport(
     <p>جاري تحميل التقرير...</p>
   </div>
 
-  <div class="page-wrapper">
-    ${pagesHtml}
-  </div>
+  <div class="page-wrapper" id="pageWrapper"></div>
 
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     
     const TEMPLATE_URL = '${templatePdfUrl}';
     const RENDER_SCALE = ${MAPPER_RENDER_SCALE};
+    const FIELD_DATA = JSON.parse('${fieldDataJson}');
     
     let isEditMode = false;
     let draggedElement = null;
     let dragOffset = { x: 0, y: 0 };
     let newFieldCounter = 0;
     let totalPages = 0;
+    let pageContainers = [];
     
     async function renderPdf() {
       try {
         const pdf = await pdfjsLib.getDocument(TEMPLATE_URL).promise;
         totalPages = pdf.numPages;
         
-        // Populate page selector
+        const pageWrapper = document.getElementById('pageWrapper');
         const pageSelect = document.getElementById('pageSelect');
-        for (let i = 1; i <= totalPages; i++) {
-          const option = document.createElement('option');
-          option.value = i - 1;
-          option.textContent = 'صفحة ' + i;
-          pageSelect.appendChild(option);
-        }
         
-        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        // Create all page containers dynamically
+        for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
           const page = await pdf.getPage(pageNum);
           const viewport = page.getViewport({ scale: RENDER_SCALE });
           
-          // Create an off-screen canvas to render the PDF page
+          // Create page container
+          const container = document.createElement('div');
+          container.className = 'page-container';
+          container.setAttribute('data-page', pageNum - 1);
+          container.style.width = viewport.width + 'px';
+          container.style.height = viewport.height + 'px';
+          
+          // Create canvas for PDF background
           const canvas = document.createElement('canvas');
           canvas.width = viewport.width;
           canvas.height = viewport.height;
+          container.appendChild(canvas);
           
+          // Create overlay container
+          const overlayContainer = document.createElement('div');
+          overlayContainer.className = 'overlay-container';
+          overlayContainer.id = 'overlay-container-' + (pageNum - 1);
+          container.appendChild(overlayContainer);
+          
+          // Add page indicator
+          const indicator = document.createElement('div');
+          indicator.className = 'page-indicator';
+          indicator.textContent = 'صفحة ' + pageNum + ' / ' + totalPages;
+          container.appendChild(indicator);
+          
+          pageWrapper.appendChild(container);
+          pageContainers.push(container);
+          
+          // Render PDF page to canvas
           const ctx = canvas.getContext('2d');
           await page.render({ canvasContext: ctx, viewport: viewport }).promise;
           
-          // Convert canvas to image for better print handling
-          const imgData = canvas.toDataURL('image/png');
-          const img = document.createElement('img');
-          img.src = imgData;
-          img.style.width = viewport.width + 'px';
-          img.style.height = viewport.height + 'px';
+          // Add field overlays for this page
+          const pageIndex = pageNum - 1;
+          const pageFields = FIELD_DATA[pageIndex] || [];
+          pageFields.forEach(field => {
+            const overlay = createOverlay(field);
+            overlayContainer.appendChild(overlay);
+          });
           
-          const bgContainer = document.getElementById('pdf-bg-' + (pageNum - 1));
-          if (bgContainer) {
-            bgContainer.appendChild(img);
-            
-            const container = bgContainer.closest('.page-container');
-            container.style.width = viewport.width + 'px';
-            container.style.height = viewport.height + 'px';
-          }
+          // Add to page selector
+          const option = document.createElement('option');
+          option.value = pageIndex;
+          option.textContent = 'صفحة ' + pageNum;
+          pageSelect.appendChild(option);
         }
         
         document.getElementById('loading').classList.add('hidden');
-        
-        // Add delete buttons to all existing overlays
-        document.querySelectorAll('.text-overlay').forEach(addDeleteButton);
         
       } catch (error) {
         console.error('Error rendering PDF:', error);
         document.getElementById('loading').innerHTML = '<p style="color: red;">فشل في تحميل القالب</p>';
       }
+    }
+    
+    function createOverlay(field) {
+      const config = field.config;
+      const value = field.value;
+      
+      // BIGGER font - minimum 18px, add 6 to saved size
+      const fontSize = Math.max((config.size || 12) + 6, 18);
+      
+      const el = document.createElement('div');
+      el.className = 'text-overlay';
+      el.setAttribute('data-field', field.id);
+      el.style.left = config.x + 'px';
+      el.style.top = config.y + 'px';
+      el.style.fontSize = fontSize + 'px';
+      el.textContent = value;
+      
+      addDeleteButton(el);
+      return el;
     }
     
     function addDeleteButton(el) {
@@ -785,7 +805,6 @@ function generateHtmlOverlayReport(
         ? '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg> حفظ'
         : '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> تعديل';
       
-      // Enable/disable contenteditable on all text overlays
       document.querySelectorAll('.text-overlay').forEach(el => {
         if (isEditMode) {
           el.addEventListener('dblclick', enableTextEdit);
@@ -806,7 +825,6 @@ function generateHtmlOverlayReport(
       el.setAttribute('contenteditable', 'true');
       el.focus();
       
-      // Select all text (exclude delete button)
       const textNode = el.childNodes[0];
       if (textNode && textNode.nodeType === Node.TEXT_NODE) {
         const range = document.createRange();
@@ -845,7 +863,6 @@ function generateHtmlOverlayReport(
       let newX = e.clientX - containerRect.left - dragOffset.x;
       let newY = e.clientY - containerRect.top - dragOffset.y;
       
-      // Keep within bounds
       newX = Math.max(0, Math.min(newX, containerRect.width - draggedElement.offsetWidth));
       newY = Math.max(0, Math.min(newY, containerRect.height - draggedElement.offsetHeight));
       
@@ -875,7 +892,7 @@ function generateHtmlOverlayReport(
       const newField = document.createElement('div');
       newField.className = 'text-overlay';
       newField.setAttribute('data-field', 'custom-' + newFieldCounter);
-      newField.style.cssText = 'left: 100px; top: 100px; font-size: 16px;';
+      newField.style.cssText = 'left: 100px; top: 100px; font-size: 18px;';
       newField.textContent = 'نص جديد';
       
       addDeleteButton(newField);
@@ -885,11 +902,9 @@ function generateHtmlOverlayReport(
       
       container.appendChild(newField);
       
-      // Scroll to the page
       container.closest('.page-container').scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
     
-    // Prevent losing focus when clicking outside
     document.addEventListener('click', (e) => {
       if (isEditMode && !e.target.closest('.text-overlay')) {
         document.querySelectorAll('.text-overlay[contenteditable="true"]').forEach(el => {
@@ -899,7 +914,7 @@ function generateHtmlOverlayReport(
     });
     
     renderPdf();
-  </script>
+  <\/script>
 </body>
 </html>`;
 }
