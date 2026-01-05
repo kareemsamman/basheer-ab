@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -143,8 +142,11 @@ serve(async (req) => {
       .eq("accident_report_id", accident_report_id)
       .order("sort_order");
 
+    // Build field values
+    const fieldValues = buildFieldValues(report as AccidentReport, thirdParties || []);
+
     // Check if company has a template
-    let pdfBytes: Uint8Array | null = null;
+    let htmlContent: string;
     let usedTemplate = false;
 
     if (report.company_id) {
@@ -156,103 +158,39 @@ serve(async (req) => {
         .single();
 
       if (template?.template_pdf_url && template?.mapping_json) {
-        console.log("Found company template, generating filled PDF");
+        console.log("Found company template, generating HTML overlay report");
         
         try {
-          // Fetch the template PDF
-          const pdfResponse = await fetch(template.template_pdf_url);
-          if (!pdfResponse.ok) {
-            throw new Error("Failed to fetch template PDF");
-          }
-          const templatePdfBytes = await pdfResponse.arrayBuffer();
-          
-          // Load the PDF
-          const pdfDoc = await PDFDocument.load(templatePdfBytes);
-          const pages = pdfDoc.getPages();
-          
-          // Get mapping data
-          const mapping = template.mapping_json as MappingJson;
-          
-          // Build field values from report data
-          const fieldValues = buildFieldValues(report as AccidentReport, thirdParties || []);
-          
-          console.log("Mapping fields:", Object.keys(mapping).length);
-          
-          // Apply each mapped field to the PDF
-          for (const [fieldId, fieldConfig] of Object.entries(mapping)) {
-            const pageIndex = fieldConfig.page || 0;
-            if (pageIndex >= pages.length) continue;
-            
-            const page = pages[pageIndex];
-            const { width, height } = page.getSize();
-            
-            let textValue = "";
-            if (fieldConfig.type === "freetext") {
-              textValue = fieldConfig.freeTextValue || "";
-            } else {
-              textValue = fieldValues[fieldId] || "";
-            }
-            
-            if (!textValue) continue;
-            
-            // Convert coordinates from mapper (top-left origin in a rendered image) to PDF points (bottom-left origin).
-            // Mapper stores pixel coordinates from a PDF.js render at MAPPER_RENDER_SCALE.
-            // So we must divide by that scale to get PDF points.
-            const maybeNeedsScale = fieldConfig.x > width + 1 || fieldConfig.y > height + 1;
-            const scale = maybeNeedsScale ? MAPPER_RENDER_SCALE : 1;
-
-            const pdfX = fieldConfig.x / scale;
-            const pdfY = height - fieldConfig.y / scale - (fieldConfig.size || 12);
-
-            try {
-              page.drawText(textValue, {
-                x: pdfX,
-                y: pdfY,
-                size: fieldConfig.size || 12,
-                color: rgb(0, 0, 0),
-              });
-            } catch (drawError) {
-              console.warn(`Failed to draw field ${fieldId}:`, drawError);
-            }
-          }
-          
-          pdfBytes = await pdfDoc.save();
+          // Generate HTML with PDF background and text overlays
+          htmlContent = generateHtmlOverlayReport(
+            template.template_pdf_url,
+            template.mapping_json as MappingJson,
+            fieldValues,
+            report as AccidentReport,
+            thirdParties || []
+          );
           usedTemplate = true;
-          console.log("Successfully generated filled PDF");
-          
+          console.log("Successfully generated HTML overlay report");
         } catch (templateError) {
-          console.error("Error using template, falling back to HTML:", templateError);
+          console.error("Error using template, falling back to standard HTML:", templateError);
+          htmlContent = generateHtmlReport(report as AccidentReport, thirdParties || []);
         }
+      } else {
+        htmlContent = generateHtmlReport(report as AccidentReport, thirdParties || []);
       }
+    } else {
+      htmlContent = generateHtmlReport(report as AccidentReport, thirdParties || []);
     }
 
-    // Generate filename
+    // Generate filename - always HTML now for proper Arabic support
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    let filename: string;
-    let contentType: string;
-    let fileContent: Uint8Array | string;
-    
-    if (pdfBytes && usedTemplate) {
-      filename = `accident-reports/${report.id}/${timestamp}.pdf`;
-      contentType = "application/pdf";
-      fileContent = pdfBytes;
-    } else {
-      // Fallback to HTML report
-      console.log("Using HTML fallback report");
-      filename = `accident-reports/${report.id}/${timestamp}.html`;
-      contentType = "text/html; charset=utf-8";
-      fileContent = generateHtmlReport(report as AccidentReport, thirdParties || []);
-    }
+    const filename = `accident-reports/${report.id}/${timestamp}.html`;
+    const contentType = "text/html; charset=utf-8";
 
     // Upload to Bunny Storage
     let pdfUrl = "";
     if (bunnyStorageKey) {
       const uploadUrl = `https://storage.bunnycdn.com/${bunnyStorageZone}/${filename}`;
-      
-      // Convert to appropriate body type
-      const body: BodyInit = typeof fileContent === 'string' 
-        ? fileContent 
-        : fileContent.buffer as ArrayBuffer;
       
       const uploadResponse = await fetch(uploadUrl, {
         method: "PUT",
@@ -260,17 +198,17 @@ serve(async (req) => {
           "AccessKey": bunnyStorageKey,
           "Content-Type": contentType,
         },
-        body: body,
+        body: htmlContent,
       });
 
       if (!uploadResponse.ok) {
         const errorText = await uploadResponse.text();
         console.error("Bunny upload failed:", errorText);
-        throw new Error("Failed to upload PDF to storage");
+        throw new Error("Failed to upload report to storage");
       }
 
       pdfUrl = `${bunnyCdnUrl}/${filename}`;
-      console.log("Generated PDF URL:", pdfUrl);
+      console.log("Generated report URL:", pdfUrl);
     } else {
       console.warn("No BUNNY_API_KEY configured");
       throw new Error("Storage not configured");
@@ -288,9 +226,9 @@ serve(async (req) => {
 
     // Save to media_files
     await supabase.from("media_files").insert({
-      original_name: `accident-report-${report.id}.${usedTemplate ? 'pdf' : 'html'}`,
-      mime_type: usedTemplate ? "application/pdf" : "text/html",
-      size: typeof fileContent === 'string' ? new TextEncoder().encode(fileContent).length : fileContent.length,
+      original_name: `accident-report-${report.id}.html`,
+      mime_type: "text/html",
+      size: new TextEncoder().encode(htmlContent).length,
       cdn_url: pdfUrl,
       storage_path: filename,
       entity_type: "accident_report",
@@ -303,7 +241,7 @@ serve(async (req) => {
         success: true, 
         pdf_url: pdfUrl,
         used_template: usedTemplate,
-        message: usedTemplate ? "PDF generated from template" : "HTML report generated" 
+        message: usedTemplate ? "HTML overlay report generated from template" : "HTML report generated" 
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -415,6 +353,226 @@ function buildFieldValues(report: AccidentReport, thirdParties: ThirdParty[]): R
   return values;
 }
 
+// Generate HTML that displays the PDF template as a background with text overlays
+// This approach uses the exact same coordinates from the mapper since both use CSS positioning
+function generateHtmlOverlayReport(
+  templatePdfUrl: string,
+  mapping: MappingJson,
+  fieldValues: Record<string, string>,
+  report: AccidentReport,
+  thirdParties: ThirdParty[]
+): string {
+  // Group fields by page
+  const fieldsByPage: Record<number, Array<{ id: string; config: FieldMapping; value: string }>> = {};
+  
+  for (const [fieldId, config] of Object.entries(mapping)) {
+    const pageIndex = config.page || 0;
+    if (!fieldsByPage[pageIndex]) {
+      fieldsByPage[pageIndex] = [];
+    }
+    
+    let value = "";
+    if (config.type === "freetext") {
+      value = config.freeTextValue || "";
+    } else {
+      value = fieldValues[fieldId] || "";
+    }
+    
+    if (value) {
+      fieldsByPage[pageIndex].push({ id: fieldId, config, value });
+    }
+  }
+
+  // Calculate how many pages we have
+  const maxPage = Math.max(0, ...Object.keys(fieldsByPage).map(Number));
+  
+  // Generate page containers with overlays
+  let pagesHtml = "";
+  for (let pageNum = 0; pageNum <= maxPage; pageNum++) {
+    const pageFields = fieldsByPage[pageNum] || [];
+    
+    // Generate text overlays for this page
+    // The coordinates from mapper are in pixels at scale 1.5
+    // We position them absolutely within the page container
+    const overlaysHtml = pageFields.map(({ id, config, value }) => {
+      // Use the exact pixel coordinates from the mapper
+      // No conversion needed - CSS will position at the same pixels
+      return `<div class="text-overlay" style="left: ${config.x}px; top: ${config.y}px; font-size: ${config.size || 12}px;" data-field="${id}">${escapeHtml(value)}</div>`;
+    }).join("\n");
+
+    pagesHtml += `
+    <div class="page-container" data-page="${pageNum}">
+      <canvas class="pdf-canvas" id="pdf-canvas-${pageNum}"></canvas>
+      <div class="overlay-container">
+        ${overlaysHtml}
+      </div>
+    </div>
+    `;
+  }
+
+  return `<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>بلاغ حادث - ${escapeHtml(report.clients.full_name)}</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: 'Tajawal', sans-serif;
+      background: #f5f5f5;
+      direction: rtl;
+    }
+    
+    .print-button {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 1000;
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-family: 'Tajawal', sans-serif;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .print-button:hover {
+      background: #1d4ed8;
+    }
+    
+    @media print {
+      .print-button { display: none; }
+      body { background: white; }
+      .page-container { 
+        page-break-after: always;
+        margin: 0 !important;
+        box-shadow: none !important;
+      }
+      .page-container:last-child { page-break-after: auto; }
+    }
+    
+    .loading {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 30px 50px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      text-align: center;
+      z-index: 999;
+    }
+    
+    .loading.hidden { display: none; }
+    
+    .page-container {
+      position: relative;
+      margin: 20px auto;
+      background: white;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    
+    .pdf-canvas {
+      display: block;
+    }
+    
+    .overlay-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+    }
+    
+    .text-overlay {
+      position: absolute;
+      color: #000;
+      font-family: 'Tajawal', sans-serif;
+      font-weight: 500;
+      white-space: nowrap;
+      direction: rtl;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <button class="print-button" onclick="window.print()">
+    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/>
+    </svg>
+    طباعة
+  </button>
+  
+  <div class="loading" id="loading">
+    <p>جاري تحميل التقرير...</p>
+  </div>
+
+  ${pagesHtml}
+
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    
+    const TEMPLATE_URL = '${templatePdfUrl}';
+    const RENDER_SCALE = ${MAPPER_RENDER_SCALE};
+    
+    async function renderPdf() {
+      try {
+        const pdf = await pdfjsLib.getDocument(TEMPLATE_URL).promise;
+        
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const viewport = page.getViewport({ scale: RENDER_SCALE });
+          
+          const canvas = document.getElementById('pdf-canvas-' + (pageNum - 1));
+          if (!canvas) continue;
+          
+          const container = canvas.closest('.page-container');
+          container.style.width = viewport.width + 'px';
+          container.style.height = viewport.height + 'px';
+          
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          
+          const ctx = canvas.getContext('2d');
+          await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+        }
+        
+        document.getElementById('loading').classList.add('hidden');
+      } catch (error) {
+        console.error('Error rendering PDF:', error);
+        document.getElementById('loading').innerHTML = '<p style="color: red;">فشل في تحميل القالب</p>';
+      }
+    }
+    
+    renderPdf();
+  </script>
+</body>
+</html>`;
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function generateHtmlReport(report: AccidentReport, thirdParties: ThirdParty[]): string {
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "-";
@@ -431,15 +589,15 @@ function generateHtmlReport(report: AccidentReport, thirdParties: ThirdParty[]):
       <h2 class="section-title">بيانات الأطراف الأخرى</h2>
       ${thirdParties.map((tp, i) => `
         <div class="third-party-card">
-          <h4>الطرف الثالث ${i + 1}: ${tp.full_name}</h4>
+          <h4>الطرف الثالث ${i + 1}: ${escapeHtml(tp.full_name)}</h4>
           <div class="info-grid">
-            <div class="info-item"><label>رقم الهوية</label><span>${tp.id_number || "-"}</span></div>
-            <div class="info-item"><label>الهاتف</label><span>${tp.phone || "-"}</span></div>
-            <div class="info-item"><label>رقم السيارة</label><span>${tp.vehicle_number || "-"}</span></div>
-            <div class="info-item"><label>نوع السيارة</label><span>${tp.vehicle_manufacturer || ""} ${tp.vehicle_model || ""} ${tp.vehicle_year || ""}</span></div>
-            <div class="info-item"><label>شركة التأمين</label><span>${tp.insurance_company || "-"}</span></div>
-            <div class="info-item"><label>رقم الوثيقة</label><span>${tp.insurance_policy_number || "-"}</span></div>
-            <div class="info-item full-width"><label>وصف الأضرار</label><span>${tp.damage_description || "-"}</span></div>
+            <div class="info-item"><label>رقم الهوية</label><span>${escapeHtml(tp.id_number || "-")}</span></div>
+            <div class="info-item"><label>الهاتف</label><span>${escapeHtml(tp.phone || "-")}</span></div>
+            <div class="info-item"><label>رقم السيارة</label><span>${escapeHtml(tp.vehicle_number || "-")}</span></div>
+            <div class="info-item"><label>نوع السيارة</label><span>${escapeHtml(tp.vehicle_manufacturer || "")} ${escapeHtml(tp.vehicle_model || "")} ${tp.vehicle_year || ""}</span></div>
+            <div class="info-item"><label>شركة التأمين</label><span>${escapeHtml(tp.insurance_company || "-")}</span></div>
+            <div class="info-item"><label>رقم الوثيقة</label><span>${escapeHtml(tp.insurance_policy_number || "-")}</span></div>
+            <div class="info-item full-width"><label>وصف الأضرار</label><span>${escapeHtml(tp.damage_description || "-")}</span></div>
           </div>
         </div>
       `).join("")}
@@ -451,7 +609,7 @@ function generateHtmlReport(report: AccidentReport, thirdParties: ThirdParty[]):
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>بلاغ حادث - ${report.clients.full_name}</title>
+  <title>بلاغ حادث - ${escapeHtml(report.clients.full_name)}</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -461,87 +619,126 @@ function generateHtmlReport(report: AccidentReport, thirdParties: ThirdParty[]):
     .header .company-name { font-size: 16px; font-weight: 600; color: #333; }
     .header p { color: #666; font-size: 12px; }
     .section { margin-bottom: 20px; }
-    .section-title { font-size: 15px; font-weight: 700; color: #2563eb; margin-bottom: 12px; padding-bottom: 4px; border-bottom: 1px solid #e5e7eb; }
-    .info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-    .info-item { background: #f8fafc; padding: 8px 12px; border-radius: 6px; border: 1px solid #e2e8f0; }
-    .info-item.full-width { grid-column: span 2; }
-    .info-item label { display: block; font-size: 11px; color: #64748b; margin-bottom: 3px; }
-    .info-item span { font-weight: 500; color: #1e293b; font-size: 13px; }
-    .third-party-card { background: #fafafa; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
-    .third-party-card h4 { font-size: 13px; color: #2563eb; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px dashed #cbd5e1; }
-    .badge { display: inline-block; padding: 3px 10px; border-radius: 15px; font-size: 11px; font-weight: 500; background: #dbeafe; color: #1d4ed8; }
-    .footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #e5e7eb; text-align: center; color: #64748b; font-size: 11px; }
-    @media print { body { padding: 10mm; font-size: 12px; } .section { page-break-inside: avoid; } }
+    .section-title { font-size: 15px; font-weight: 700; color: #2563eb; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #e5e7eb; }
+    .info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+    .info-item { display: flex; flex-direction: column; gap: 2px; }
+    .info-item label { font-size: 11px; color: #666; font-weight: 500; }
+    .info-item span { font-size: 13px; color: #1a1a1a; font-weight: 600; }
+    .info-item.full-width { grid-column: 1 / -1; }
+    .third-party-card { background: #f9fafb; padding: 12px; border-radius: 8px; margin-bottom: 12px; }
+    .third-party-card h4 { font-size: 14px; color: #374151; margin-bottom: 10px; }
+    .description-box { background: #f3f4f6; padding: 12px; border-radius: 8px; margin-top: 8px; }
+    .description-box p { font-size: 13px; color: #374151; white-space: pre-wrap; }
+    .print-button { position: fixed; top: 20px; left: 20px; background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-family: 'Tajawal', sans-serif; font-size: 14px; }
+    .print-button:hover { background: #1d4ed8; }
+    @media print {
+      .print-button { display: none; }
+      body { padding: 10mm; }
+    }
+    .signature-area { margin-top: 40px; display: flex; justify-content: space-between; }
+    .signature-box { text-align: center; width: 200px; }
+    .signature-line { border-top: 1px solid #333; margin-top: 50px; padding-top: 5px; font-size: 12px; }
   </style>
 </head>
 <body>
+  <button class="print-button" onclick="window.print()">طباعة</button>
+  
   <div class="header">
-    <h1>🚨 بلاغ حادث مروري</h1>
-    <p class="company-name">${companyName}</p>
-    <p>تاريخ الإنشاء: ${formatDate(new Date().toISOString())}</p>
+    <h1>بلاغ حادث طرق</h1>
+    <div class="company-name">${escapeHtml(companyName)}</div>
+    <p>تاريخ التقرير: ${formatDate(new Date().toISOString())}</p>
   </div>
-  
+
   <div class="section">
-    <h2 class="section-title">بيانات الوثيقة والتأمين</h2>
+    <h2 class="section-title">بيانات الوثيقة</h2>
     <div class="info-grid">
-      <div class="info-item"><label>رقم الوثيقة</label><span>${report.policies.policy_number || "-"}</span></div>
-      <div class="info-item"><label>نوع الوثيقة</label><span class="badge">${policyTypeLabel}</span></div>
-      <div class="info-item"><label>شركة التأمين</label><span>${companyName}</span></div>
-      <div class="info-item"><label>مدة التأمين</label><span>من ${formatDate(report.policies.start_date)} إلى ${formatDate(report.policies.end_date)}</span></div>
+      <div class="info-item"><label>رقم الوثيقة</label><span>${escapeHtml(report.policies.policy_number || "-")}</span></div>
+      <div class="info-item"><label>نوع التأمين</label><span>${policyTypeLabel}</span></div>
+      <div class="info-item"><label>تاريخ البداية</label><span>${formatDate(report.policies.start_date)}</span></div>
+      <div class="info-item"><label>تاريخ النهاية</label><span>${formatDate(report.policies.end_date)}</span></div>
     </div>
   </div>
-  
+
   <div class="section">
-    <h2 class="section-title">بيانات صاحب السيارة (المؤمن له)</h2>
+    <h2 class="section-title">بيانات صاحب السيارة</h2>
     <div class="info-grid">
-      <div class="info-item"><label>اسم صاحب السيارة</label><span>${report.clients.full_name}</span></div>
-      <div class="info-item"><label>رقم الهوية</label><span>${report.clients.id_number}</span></div>
-      <div class="info-item"><label>رقم الهاتف</label><span>${report.clients.phone_number || "-"}</span></div>
-      <div class="info-item"><label>العنوان</label><span>${report.owner_address || "-"}</span></div>
+      <div class="info-item"><label>الاسم الكامل</label><span>${escapeHtml(report.clients.full_name)}</span></div>
+      <div class="info-item"><label>رقم الهوية</label><span>${escapeHtml(report.clients.id_number)}</span></div>
+      <div class="info-item"><label>رقم الهاتف</label><span>${escapeHtml(report.clients.phone_number || "-")}</span></div>
+      <div class="info-item"><label>العنوان</label><span>${escapeHtml(report.owner_address || "-")}</span></div>
     </div>
   </div>
-  
+
   <div class="section">
     <h2 class="section-title">بيانات المركبة</h2>
     <div class="info-grid">
-      <div class="info-item"><label>رقم المركبة</label><span>${report.cars?.car_number || "-"}</span></div>
-      <div class="info-item"><label>الصنع / المصنّع</label><span>${report.cars?.manufacturer_name || "-"}</span></div>
-      <div class="info-item"><label>النوع / الموديل</label><span>${report.cars?.model || "-"}</span></div>
+      <div class="info-item"><label>رقم المركبة</label><span>${escapeHtml(report.cars?.car_number || "-")}</span></div>
+      <div class="info-item"><label>الصنع</label><span>${escapeHtml(report.cars?.manufacturer_name || "-")}</span></div>
+      <div class="info-item"><label>الموديل</label><span>${escapeHtml(report.cars?.model || "-")}</span></div>
       <div class="info-item"><label>سنة الصنع</label><span>${report.cars?.year || "-"}</span></div>
-      <div class="info-item"><label>اللون</label><span>${report.cars?.color || "-"}</span></div>
-      <div class="info-item"><label>استعمال السيارة</label><span>${report.vehicle_usage_purpose || "-"}</span></div>
+      <div class="info-item"><label>اللون</label><span>${escapeHtml(report.cars?.color || "-")}</span></div>
     </div>
   </div>
-  
-  <div class="section">
-    <h2 class="section-title">بيانات السائق وقت الحادث</h2>
-    <div class="info-grid">
-      <div class="info-item"><label>اسم السائق</label><span>${report.driver_name || "-"}</span></div>
-      <div class="info-item"><label>عنوان السائق</label><span>${report.driver_address || "-"}</span></div>
-      <div class="info-item"><label>رقم الهوية</label><span>${report.driver_id_number || "-"}</span></div>
-      <div class="info-item"><label>رقم الهاتف</label><span>${report.driver_phone || "-"}</span></div>
-      <div class="info-item"><label>العمر</label><span>${report.driver_age || "-"}</span></div>
-      <div class="info-item"><label>المهنة</label><span>${report.driver_occupation || "-"}</span></div>
-      <div class="info-item"><label>رقم الرخصة</label><span>${report.driver_license_number || "-"}</span></div>
-      <div class="info-item"><label>مكان الإصدار</label><span>${report.license_issue_place || "-"}</span></div>
-    </div>
-  </div>
-  
+
   <div class="section">
     <h2 class="section-title">تفاصيل الحادث</h2>
     <div class="info-grid">
       <div class="info-item"><label>تاريخ الحادث</label><span>${formatDate(report.accident_date)}</span></div>
-      <div class="info-item"><label>ساعة الحادث</label><span>${report.accident_time || "-"}</span></div>
-      <div class="info-item full-width"><label>مكان الحادث</label><span>${report.accident_location || "-"}</span></div>
-      <div class="info-item full-width"><label>كيف وقع الحادث</label><span>${report.accident_description || "-"}</span></div>
-      <div class="info-item full-width"><label>الأضرار التي لحقت بسيارتك</label><span>${report.own_car_damages || "-"}</span></div>
+      <div class="info-item"><label>ساعة الحادث</label><span>${escapeHtml(report.accident_time || "-")}</span></div>
+      <div class="info-item"><label>مكان الحادث</label><span>${escapeHtml(report.accident_location || "-")}</span></div>
+      <div class="info-item"><label>عدد الركاب</label><span>${report.passengers_count || "-"}</span></div>
+    </div>
+    <div class="description-box">
+      <label style="font-size: 11px; color: #666; display: block; margin-bottom: 4px;">وصف الحادث</label>
+      <p>${escapeHtml(report.accident_description || "-")}</p>
     </div>
   </div>
-  
+
+  <div class="section">
+    <h2 class="section-title">بيانات السائق وقت الحادث</h2>
+    <div class="info-grid">
+      <div class="info-item"><label>اسم السائق</label><span>${escapeHtml(report.driver_name || "-")}</span></div>
+      <div class="info-item"><label>رقم الهوية</label><span>${escapeHtml(report.driver_id_number || "-")}</span></div>
+      <div class="info-item"><label>رقم الهاتف</label><span>${escapeHtml(report.driver_phone || "-")}</span></div>
+      <div class="info-item"><label>العمر</label><span>${report.driver_age || "-"}</span></div>
+      <div class="info-item"><label>المهنة</label><span>${escapeHtml(report.driver_occupation || "-")}</span></div>
+      <div class="info-item"><label>رقم الرخصة</label><span>${escapeHtml(report.driver_license_number || "-")}</span></div>
+      <div class="info-item"><label>تاريخ انتهاء الرخصة</label><span>${formatDate(report.license_expiry_date)}</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2 class="section-title">الأضرار</h2>
+    <div class="description-box">
+      <label style="font-size: 11px; color: #666; display: block; margin-bottom: 4px;">أضرار سيارتك</label>
+      <p>${escapeHtml(report.own_car_damages || "-")}</p>
+    </div>
+    <div class="info-grid" style="margin-top: 10px;">
+      <div class="info-item"><label>هل أصيب أحد</label><span>${report.was_anyone_injured ? "نعم" : "لا"}</span></div>
+    </div>
+    ${report.injuries_description ? `<div class="description-box"><label style="font-size: 11px; color: #666; display: block; margin-bottom: 4px;">تفاصيل الإصابات</label><p>${escapeHtml(report.injuries_description)}</p></div>` : ""}
+  </div>
+
   ${thirdPartiesHtml}
-  
-  <div class="footer">
-    <p>تم إنشاء هذا التقرير آلياً بواسطة نظام AB Insurance CRM</p>
+
+  <div class="section">
+    <h2 class="section-title">الشرطة</h2>
+    <div class="info-grid">
+      <div class="info-item"><label>هل حققت الشرطة</label><span>${report.police_reported ? "نعم" : "لا"}</span></div>
+      ${report.police_reported ? `
+        <div class="info-item"><label>مخفر الشرطة</label><span>${escapeHtml(report.police_station || "-")}</span></div>
+        <div class="info-item"><label>رقم المحضر</label><span>${escapeHtml(report.police_report_number || "-")}</span></div>
+      ` : ""}
+    </div>
+  </div>
+
+  <div class="signature-area">
+    <div class="signature-box">
+      <div class="signature-line">توقيع صاحب السيارة</div>
+    </div>
+    <div class="signature-box">
+      <div class="signature-line">توقيع الوكيل</div>
+    </div>
   </div>
 </body>
 </html>`;
