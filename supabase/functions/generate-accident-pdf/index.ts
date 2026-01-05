@@ -462,7 +462,7 @@ function generateHtmlOverlayReport(
       background: #047857;
     }
     
-    /* PRINT: Fixed A4 with exact positioning */
+    /* PRINT: Keep original pixel dimensions - no scaling */
     @media print {
       @page {
         size: A4 portrait;
@@ -479,31 +479,22 @@ function generateHtmlOverlayReport(
       
       .page-wrapper {
         padding: 0 !important;
+        gap: 0 !important;
       }
       
       .page-container { 
-        width: 210mm !important;
-        height: 297mm !important;
         page-break-after: always;
         page-break-inside: avoid;
         margin: 0 !important;
         box-shadow: none !important;
         overflow: hidden;
+        /* Scale to fit A4 width while maintaining aspect ratio */
+        transform: scale(var(--print-scale, 1));
+        transform-origin: top left;
       }
       
       .page-container:last-child { 
         page-break-after: auto;
-      }
-      
-      .page-container canvas {
-        width: 210mm !important;
-        height: 297mm !important;
-        display: block;
-      }
-      
-      /* Scale overlays for A4 print */
-      .overlay-container {
-        transform-origin: top left;
       }
       
       .text-overlay {
@@ -702,10 +693,19 @@ function generateHtmlOverlayReport(
         const pageWrapper = document.getElementById('pageWrapper');
         const pageSelect = document.getElementById('pageSelect');
         
+        // A4 dimensions in pixels at 96 DPI
+        const A4_WIDTH_MM = 210;
+        const A4_HEIGHT_MM = 297;
+        const MM_TO_PX = 96 / 25.4; // ~3.78 px per mm
+        const A4_WIDTH_PX = A4_WIDTH_MM * MM_TO_PX;
+        
         // Create all page containers dynamically
         for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
           const page = await pdf.getPage(pageNum);
           const viewport = page.getViewport({ scale: RENDER_SCALE });
+          
+          // Calculate print scale to fit A4
+          const printScale = A4_WIDTH_PX / viewport.width;
           
           // Create page container
           const container = document.createElement('div');
@@ -713,6 +713,7 @@ function generateHtmlOverlayReport(
           container.setAttribute('data-page', pageNum - 1);
           container.style.width = viewport.width + 'px';
           container.style.height = viewport.height + 'px';
+          container.style.setProperty('--print-scale', printScale.toFixed(4));
           
           // Create canvas for PDF background
           const canvas = document.createElement('canvas');
@@ -720,10 +721,12 @@ function generateHtmlOverlayReport(
           canvas.height = viewport.height;
           container.appendChild(canvas);
           
-          // Create overlay container
+          // Create overlay container with same dimensions
           const overlayContainer = document.createElement('div');
           overlayContainer.className = 'overlay-container';
           overlayContainer.id = 'overlay-container-' + (pageNum - 1);
+          overlayContainer.style.width = viewport.width + 'px';
+          overlayContainer.style.height = viewport.height + 'px';
           container.appendChild(overlayContainer);
           
           // Add page indicator
@@ -766,8 +769,8 @@ function generateHtmlOverlayReport(
       const config = field.config;
       const value = field.value;
       
-      // BIGGER font - minimum 18px, add 6 to saved size
-      const fontSize = Math.max((config.size || 12) + 6, 18);
+      // Smaller font - minimum 14px, add 2 to saved size
+      const fontSize = Math.max((config.size || 12) + 2, 14);
       
       const el = document.createElement('div');
       el.className = 'text-overlay';
