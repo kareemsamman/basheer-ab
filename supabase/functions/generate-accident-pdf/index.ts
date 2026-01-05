@@ -395,15 +395,15 @@ function generateHtmlOverlayReport(
     // The coordinates from mapper are in pixels at scale 1.5
     // We position them absolutely within the page container
     const overlaysHtml = pageFields.map(({ id, config, value }) => {
-      // Use the exact pixel coordinates from the mapper
-      // No conversion needed - CSS will position at the same pixels
-      return `<div class="text-overlay" style="left: ${config.x}px; top: ${config.y}px; font-size: ${config.size || 12}px;" data-field="${id}">${escapeHtml(value)}</div>`;
+      // Use the exact pixel coordinates from the mapper - increase font size by 2px minimum
+      const fontSize = Math.max((config.size || 12) + 2, 14);
+      return `<div class="text-overlay" style="left: ${config.x}px; top: ${config.y}px; font-size: ${fontSize}px;" data-field="${id}" contenteditable="false">${escapeHtml(value)}</div>`;
     }).join("\n");
 
     pagesHtml += `
     <div class="page-container" data-page="${pageNum}">
       <canvas class="pdf-canvas" id="pdf-canvas-${pageNum}"></canvas>
-      <div class="overlay-container">
+      <div class="overlay-container" id="overlay-container-${pageNum}">
         ${overlaysHtml}
       </div>
     </div>
@@ -428,38 +428,71 @@ function generateHtmlOverlayReport(
       direction: rtl;
     }
     
-    .print-button {
+    .toolbar {
       position: fixed;
       top: 20px;
       left: 20px;
       z-index: 1000;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    
+    .toolbar button {
       background: #2563eb;
       color: white;
       border: none;
-      padding: 12px 24px;
+      padding: 10px 18px;
       border-radius: 8px;
-      font-size: 16px;
+      font-size: 14px;
       font-family: 'Tajawal', sans-serif;
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      transition: all 0.2s;
     }
     
-    .print-button:hover {
+    .toolbar button:hover {
       background: #1d4ed8;
+      transform: translateY(-1px);
+    }
+    
+    .toolbar button.active {
+      background: #059669;
+    }
+    
+    .toolbar button.secondary {
+      background: #6b7280;
     }
     
     @media print {
-      .print-button { display: none; }
-      body { background: white; }
+      .toolbar { display: none !important; }
+      body { background: white !important; }
       .page-container { 
         page-break-after: always;
-        margin: 0 !important;
+        margin: 0 auto !important;
         box-shadow: none !important;
+        width: auto !important;
+        height: auto !important;
       }
       .page-container:last-child { page-break-after: auto; }
+      .pdf-canvas {
+        width: 100% !important;
+        height: auto !important;
+      }
+      .overlay-container {
+        transform: none !important;
+      }
+      .text-overlay {
+        border: none !important;
+        background: none !important;
+      }
+      @page {
+        size: A4;
+        margin: 0;
+      }
     }
     
     .loading {
@@ -477,12 +510,19 @@ function generateHtmlOverlayReport(
     
     .loading.hidden { display: none; }
     
+    .page-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    
     .page-container {
       position: relative;
       margin: 20px auto;
       background: white;
       box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-      overflow: hidden;
+      overflow: visible;
     }
     
     .pdf-canvas {
@@ -495,7 +535,6 @@ function generateHtmlOverlayReport(
       left: 0;
       right: 0;
       bottom: 0;
-      pointer-events: none;
     }
     
     .text-overlay {
@@ -506,28 +545,116 @@ function generateHtmlOverlayReport(
       white-space: nowrap;
       direction: rtl;
       text-align: right;
+      cursor: default;
+      padding: 2px 4px;
+      border-radius: 2px;
+      min-width: 20px;
+      transition: all 0.15s;
+    }
+    
+    /* Edit mode styles */
+    body.edit-mode .text-overlay {
+      cursor: move;
+      border: 1px dashed #2563eb;
+      background: rgba(37, 99, 235, 0.05);
+    }
+    
+    body.edit-mode .text-overlay:hover {
+      background: rgba(37, 99, 235, 0.1);
+      border-color: #1d4ed8;
+    }
+    
+    body.edit-mode .text-overlay.dragging {
+      opacity: 0.8;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    
+    body.edit-mode .text-overlay[contenteditable="true"] {
+      border: 2px solid #059669;
+      background: rgba(5, 150, 105, 0.1);
+      cursor: text;
+      outline: none;
+    }
+    
+    /* Add text field button */
+    .add-text-btn {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      background: #059669;
+      color: white;
+      border: none;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      font-size: 24px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    body.edit-mode .add-text-btn {
+      display: flex;
+    }
+    
+    .add-text-btn:hover {
+      background: #047857;
+      transform: scale(1.05);
+    }
+    
+    /* New field placeholder */
+    .new-field-placeholder {
+      position: absolute;
+      background: #fef3c7;
+      border: 2px dashed #f59e0b;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: move;
+      z-index: 100;
+      font-size: 14px;
     }
   </style>
 </head>
 <body>
-  <button class="print-button" onclick="window.print()">
-    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-      <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/>
-    </svg>
-    طباعة
-  </button>
+  <div class="toolbar">
+    <button onclick="window.print()">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/>
+      </svg>
+      طباعة
+    </button>
+    <button id="editBtn" onclick="toggleEditMode()">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+      </svg>
+      تعديل
+    </button>
+  </div>
+  
+  <button class="add-text-btn" onclick="addNewTextField()" title="إضافة نص جديد">+</button>
   
   <div class="loading" id="loading">
     <p>جاري تحميل التقرير...</p>
   </div>
 
-  ${pagesHtml}
+  <div class="page-wrapper">
+    ${pagesHtml}
+  </div>
 
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     
     const TEMPLATE_URL = '${templatePdfUrl}';
     const RENDER_SCALE = ${MAPPER_RENDER_SCALE};
+    
+    let isEditMode = false;
+    let draggedElement = null;
+    let dragOffset = { x: 0, y: 0 };
+    let newFieldCounter = 0;
     
     async function renderPdf() {
       try {
@@ -557,6 +684,122 @@ function generateHtmlOverlayReport(
         document.getElementById('loading').innerHTML = '<p style="color: red;">فشل في تحميل القالب</p>';
       }
     }
+    
+    function toggleEditMode() {
+      isEditMode = !isEditMode;
+      document.body.classList.toggle('edit-mode', isEditMode);
+      const btn = document.getElementById('editBtn');
+      btn.classList.toggle('active', isEditMode);
+      btn.innerHTML = isEditMode 
+        ? '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg> حفظ'
+        : '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> تعديل';
+      
+      // Enable/disable contenteditable on all text overlays
+      document.querySelectorAll('.text-overlay').forEach(el => {
+        if (isEditMode) {
+          el.addEventListener('dblclick', enableTextEdit);
+          el.addEventListener('mousedown', startDrag);
+        } else {
+          el.removeEventListener('dblclick', enableTextEdit);
+          el.removeEventListener('mousedown', startDrag);
+          el.setAttribute('contenteditable', 'false');
+        }
+      });
+    }
+    
+    function enableTextEdit(e) {
+      if (!isEditMode) return;
+      e.stopPropagation();
+      const el = e.target.closest('.text-overlay');
+      el.setAttribute('contenteditable', 'true');
+      el.focus();
+      
+      // Select all text
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    
+    function startDrag(e) {
+      if (!isEditMode) return;
+      if (e.target.getAttribute('contenteditable') === 'true') return;
+      
+      draggedElement = e.target.closest('.text-overlay');
+      if (!draggedElement) return;
+      
+      const rect = draggedElement.getBoundingClientRect();
+      dragOffset.x = e.clientX - rect.left;
+      dragOffset.y = e.clientY - rect.top;
+      
+      draggedElement.classList.add('dragging');
+      
+      document.addEventListener('mousemove', onDrag);
+      document.addEventListener('mouseup', endDrag);
+      e.preventDefault();
+    }
+    
+    function onDrag(e) {
+      if (!draggedElement) return;
+      
+      const container = draggedElement.closest('.overlay-container');
+      const containerRect = container.getBoundingClientRect();
+      
+      let newX = e.clientX - containerRect.left - dragOffset.x;
+      let newY = e.clientY - containerRect.top - dragOffset.y;
+      
+      // Keep within bounds
+      newX = Math.max(0, Math.min(newX, containerRect.width - draggedElement.offsetWidth));
+      newY = Math.max(0, Math.min(newY, containerRect.height - draggedElement.offsetHeight));
+      
+      draggedElement.style.left = newX + 'px';
+      draggedElement.style.top = newY + 'px';
+    }
+    
+    function endDrag() {
+      if (draggedElement) {
+        draggedElement.classList.remove('dragging');
+        draggedElement = null;
+      }
+      document.removeEventListener('mousemove', onDrag);
+      document.removeEventListener('mouseup', endDrag);
+    }
+    
+    function addNewTextField() {
+      newFieldCounter++;
+      const container = document.querySelector('.overlay-container');
+      if (!container) return;
+      
+      const newField = document.createElement('div');
+      newField.className = 'text-overlay';
+      newField.setAttribute('data-field', 'custom-' + newFieldCounter);
+      newField.setAttribute('contenteditable', 'true');
+      newField.style.cssText = 'left: 50px; top: 50px; font-size: 14px;';
+      newField.textContent = 'نص جديد';
+      
+      newField.addEventListener('dblclick', enableTextEdit);
+      newField.addEventListener('mousedown', startDrag);
+      
+      container.appendChild(newField);
+      newField.focus();
+      
+      // Select all text
+      const range = document.createRange();
+      range.selectNodeContents(newField);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    
+    // Prevent losing focus when clicking outside
+    document.addEventListener('click', (e) => {
+      if (isEditMode && !e.target.closest('.text-overlay')) {
+        document.querySelectorAll('.text-overlay[contenteditable="true"]').forEach(el => {
+          el.setAttribute('contenteditable', 'false');
+        });
+      }
+    });
     
     renderPdf();
   </script>
