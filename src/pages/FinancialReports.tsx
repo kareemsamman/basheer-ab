@@ -110,15 +110,19 @@ export default function FinancialReports() {
       const monthStart = format(startOfMonth(now), 'yyyy-MM-dd');
       const monthEnd = format(endOfMonth(now), 'yyyy-MM-dd');
       
-      // 1. Get total ACTUAL cash in (only payments received from customers, not policy prices)
+      // 1. Get total ACTUAL cash in (only payments from active policies, not cancelled/deleted)
       const { data: customerPayments } = await supabase
         .from('policy_payments')
-        .select('amount, refused')
+        .select('amount, refused, policy_id, policies!inner(cancelled, deleted_at)')
         .neq('refused', true);
       
       let totalCashIn = 0;
       (customerPayments || []).forEach(p => {
-        totalCashIn += Number(p.amount) || 0;
+        const policy = p.policies as any;
+        // Exclude payments from cancelled or deleted policies
+        if (!policy?.cancelled && !policy?.deleted_at) {
+          totalCashIn += Number(p.amount) || 0;
+        }
       });
       
       // 1b. Subtract customer refunds from cash in (money given back to customers)
