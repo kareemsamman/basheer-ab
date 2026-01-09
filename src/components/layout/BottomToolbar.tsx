@@ -178,6 +178,7 @@ export function BottomToolbar({ onPolicyComplete }: BottomToolbarProps) {
         }}
         isCollapsed={wizardCollapsed}
         onCollapsedChange={setWizardCollapsed}
+        preselectedClientId={recentClient?.id}
       />
     </>
   );

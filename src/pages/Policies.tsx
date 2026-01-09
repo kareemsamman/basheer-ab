@@ -606,7 +606,6 @@ export default function Policies() {
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <RowActionsMenu
                             onView={() => handleViewDetails(policy.id)}
-                            onEdit={() => handleEditPolicy(policy)}
                             onDelete={() => {
                               setDeletingPolicy(policy);
                               setDeleteDialogOpen(true);
