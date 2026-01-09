@@ -313,28 +313,20 @@ export function TransferPolicyModal({
         if (groupError) throw groupError;
       }
 
+      // Build mapping of old policy ID -> new policy ID
+      const policyIdMap: Map<string, string> = new Map();
       const newPolicyIds: string[] = [];
 
-      // Process each policy
+      // PHASE 1: Mark all original policies as transferred and create all new policies
+      // This ensures the new group has the full price total before we move payments
       for (const originalPolicy of originalPolicies) {
-        // First, get total payments on this policy (to ensure new policy price >= payments)
-        const { data: existingPayments } = await supabase
-          .from("policy_payments")
-          .select("amount, refused")
-          .eq("policy_id", originalPolicy.id);
-        
-        const totalPayments = (existingPayments || [])
-          .filter(p => !p.refused)
-          .reduce((sum, p) => sum + (p.amount || 0), 0);
-
-        // 1. Mark original policy as transferred, zero out financials (debt moves to new policy)
+        // 1. Mark original policy as transferred, zero out financials
         const { error: updateOriginalError } = await supabase
           .from("policies")
           .update({
             transferred: true,
             end_date: transferDate,
             transferred_to_car_number: selectedCar?.car_number || null,
-            // Zero out financials - the debt/profit moves to the new policy
             payed_for_company: 0,
             profit: 0,
             updated_at: new Date().toISOString(),
@@ -343,14 +335,14 @@ export function TransferPolicyModal({
 
         if (updateOriginalError) throw updateOriginalError;
 
-        // 2. Create new policy for the remaining period
-        // Ensure new insurance_price >= total payments (to pass trigger validation when moving payments)
-        let adjustedInsurancePrice = Math.max(originalPolicy.insurance_price, totalPayments);
+        // 2. Create new policy - keep ORIGINAL insurance_price 
+        // The trigger validates against GROUP total, so all policies must exist first
+        let adjustedInsurancePrice = originalPolicy.insurance_price;
         let adjustedProfit = originalPolicy.profit;
         if (originalPolicy.id === policyId && adjustmentType === "customer_pays" && adjustmentAmount) {
           const adjustAmt = parseFloat(adjustmentAmount);
           adjustedInsurancePrice += adjustAmt;
-          adjustedProfit = (originalPolicy.profit || 0) + adjustAmt; // Extra goes to profit
+          adjustedProfit = (originalPolicy.profit || 0) + adjustAmt;
         }
         
         const newPolicyData = {
@@ -359,9 +351,9 @@ export function TransferPolicyModal({
           company_id: originalPolicy.company_id,
           policy_type_parent: originalPolicy.policy_type_parent,
           policy_type_child: originalPolicy.policy_type_child,
-          policy_number: originalPolicy.policy_number, // Copy policy number
+          policy_number: originalPolicy.policy_number,
           start_date: transferDate,
-          end_date: originalPolicy.end_date, // Original end date
+          end_date: originalPolicy.end_date,
           insurance_price: adjustedInsurancePrice,
           is_under_24: originalPolicy.is_under_24,
           profit: adjustedProfit,
@@ -375,9 +367,9 @@ export function TransferPolicyModal({
           accident_fee_service_id: originalPolicy.accident_fee_service_id,
           company_cost_snapshot: originalPolicy.company_cost_snapshot,
           elzami_cost: originalPolicy.elzami_cost,
-          transferred_car_number: currentCar?.car_number || null, // FROM which car
-          transferred_from_policy_id: originalPolicy.id, // Link to original
-          group_id: newGroupId, // New group_id for package transfers, null for single policy transfers
+          transferred_car_number: currentCar?.car_number || null,
+          transferred_from_policy_id: originalPolicy.id,
+          group_id: newGroupId,
           notes: `تحويل من سيارة ${currentCar?.car_number || "غير محدد"} - ${originalPolicy.notes || ""}`.trim(),
           created_by_admin_id: user?.id,
         };
@@ -389,6 +381,8 @@ export function TransferPolicyModal({
           .single();
 
         if (insertError) throw insertError;
+        
+        policyIdMap.set(originalPolicy.id, newPolicy.id);
         newPolicyIds.push(newPolicy.id);
 
         // 3. Create policy transfer audit record
@@ -411,11 +405,18 @@ export function TransferPolicyModal({
           });
 
         if (transferError) throw transferError;
+      }
 
-        // 4. MOVE payments from old policy to new policy (single UPDATE keeps images intact)
+      // PHASE 2: Now move payments and files (after ALL new policies exist)
+      // This ensures the group total is correct when trigger validates
+      for (const originalPolicy of originalPolicies) {
+        const newPolicyId = policyIdMap.get(originalPolicy.id);
+        if (!newPolicyId) continue;
+
+        // 4. MOVE payments from old policy to new policy
         const { error: movePaymentsError } = await supabase
           .from("policy_payments")
-          .update({ policy_id: newPolicy.id })
+          .update({ policy_id: newPolicyId })
           .eq("policy_id", originalPolicy.id);
 
         if (movePaymentsError) throw movePaymentsError;
@@ -423,7 +424,7 @@ export function TransferPolicyModal({
         // 5. MOVE policy files (insurance + CRM) from old to new policy
         const { error: moveFilesError } = await supabase
           .from("media_files")
-          .update({ entity_id: newPolicy.id })
+          .update({ entity_id: newPolicyId })
           .eq("entity_id", originalPolicy.id)
           .in("entity_type", ["policy", "policy_insurance", "policy_crm"])
           .is("deleted_at", null);
