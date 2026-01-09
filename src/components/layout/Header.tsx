@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, ReactNode } from "react";
 import { Search, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlobalPolicySearch } from "./GlobalPolicySearch";
@@ -9,6 +9,7 @@ interface HeaderProps {
   action?: {
     label: string;
     onClick: () => void;
+    icon?: ReactNode;
   };
 }
 
@@ -53,9 +54,9 @@ export function Header({ title, subtitle, action }: HeaderProps) {
           {/* Action button - only for specific pages like Clients */}
           {action && (
             <Button onClick={action.onClick} size="sm" className="text-xs md:text-sm">
-              <Plus className="h-3 w-3 md:h-4 md:w-4 ml-1 md:ml-2" />
-              <span className="hidden sm:inline">{action.label}</span>
-              <span className="sm:hidden">جديد</span>
+              {action.icon || <Plus className="h-3 w-3 md:h-4 md:w-4 ml-1 md:ml-2" />}
+              {action.label && <span className="hidden sm:inline">{action.label}</span>}
+              {!action.icon && !action.label && <span className="sm:hidden">جديد</span>}
             </Button>
           )}
         </div>

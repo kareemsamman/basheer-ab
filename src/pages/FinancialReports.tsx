@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { useProfitSummary } from "@/hooks/useProfitSummary";
 import { Link } from "react-router-dom";
 import { format, startOfMonth, endOfMonth } from "date-fns";
+import { cn } from "@/lib/utils";
 
 const CACHE_KEY = "ab_financial_reports_cache";
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
@@ -139,10 +140,10 @@ const fetchFinancialData = async () => {
     companiesRes,
     ledgerRes,
   ] = await Promise.all([
-    // Get payments with policy info to filter out deleted policies
-    supabase.from('policy_payments').select('amount, refused, policies(deleted_at)').neq('refused', true),
+    // Get payments with policy info to filter out deleted policies AND ELZAMI
+    supabase.from('policy_payments').select('amount, refused, policies(deleted_at, policy_type_parent)').neq('refused', true),
     supabase.from('customer_wallet_transactions').select('amount, transaction_type').eq('transaction_type', 'refund'),
-    supabase.from('policies').select('payed_for_company, profit, company_id, cancelled, insurance_companies!policies_company_id_fkey(broker_id)').is('deleted_at', null),
+    supabase.from('policies').select('payed_for_company, profit, company_id, cancelled, policy_type_parent, insurance_companies!policies_company_id_fkey(broker_id)').is('deleted_at', null),
     supabase.from('company_settlements').select('total_amount, refused').eq('status', 'completed').neq('refused', true),
     supabase.from('broker_settlements').select('total_amount, direction, status').eq('status', 'completed'),
     supabase.from('policies').select('broker_buy_price, insurance_price, broker_direction').is('deleted_at', null).eq('cancelled', false).eq('broker_direction', 'from_broker'),
@@ -152,11 +153,11 @@ const fetchFinancialData = async () => {
     supabase.from('ab_ledger').select('*').eq('status', 'posted').order('transaction_date', { ascending: false }).order('created_at', { ascending: false }).limit(50),
   ]);
 
-  // Calculate totals - only count payments from non-deleted policies
+  // Calculate totals - exclude ELZAMI and deleted policies from customer payments
   let grossCustomerPayments = 0;
   (paymentsRes.data || []).forEach((p: any) => { 
-    // Only include payments from non-deleted policies
-    if (!p.policies?.deleted_at) {
+    // Exclude payments from deleted policies AND ELZAMI policies (customer pays directly to company)
+    if (!p.policies?.deleted_at && p.policies?.policy_type_parent !== 'ELZAMI') {
       grossCustomerPayments += Number(p.amount) || 0; 
     }
   });
@@ -166,6 +167,7 @@ const fetchFinancialData = async () => {
 
   const totalCashIn = grossCustomerPayments - totalRefunds;
 
+  // Exclude ELZAMI from company debt (customer pays directly to ELZAMI companies)
   let companyDebt = 0;
   let totalProfit = 0;
   (policiesRes.data || []).forEach(p => {
@@ -173,7 +175,8 @@ const fetchFinancialData = async () => {
     const multiplier = isCancelled ? -1 : 1;
     totalProfit += (Number(p.profit) || 0) * multiplier;
     const companyData = p.insurance_companies as any;
-    if (!companyData?.broker_id) {
+    // Exclude broker-linked companies AND ELZAMI policies from company debt
+    if (!companyData?.broker_id && p.policy_type_parent !== 'ELZAMI') {
       companyDebt += (Number(p.payed_for_company) || 0) * multiplier;
     }
   });
@@ -291,7 +294,8 @@ export default function FinancialReports() {
         title="التقارير المالية" 
         subtitle="محفظة AB الموحدة"
         action={{
-          label: isFetching ? "جاري التحديث..." : "تحديث",
+          label: isFetching ? "جاري التحديث..." : "",
+          icon: <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />,
           onClick: handleSync,
         }}
       />
@@ -328,7 +332,7 @@ export default function FinancialReports() {
           ) : (
             <>
               {/* Total Profit */}
-              <Card className="border-l-4 border-l-success">
+              <Card className={cn("border-l-4", profitSummary.netProfit >= 0 ? "border-l-success" : "border-l-destructive")}>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <TrendingUp className="h-4 w-4" />
@@ -336,7 +340,7 @@ export default function FinancialReports() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-success">
+                  <div className={cn("text-2xl font-bold", profitSummary.netProfit >= 0 ? "text-success" : "text-destructive")}>
                     {formatCurrency(profitSummary.netProfit)}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
