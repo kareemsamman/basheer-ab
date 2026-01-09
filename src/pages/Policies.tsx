@@ -47,6 +47,7 @@ interface PolicyRecord {
   insurance_price: number;
   profit: number | null;
   payed_for_company: number | null;
+  elzami_cost: number | null;
   cancelled: boolean | null;
   transferred: boolean | null;
   transferred_car_number: string | null;
@@ -489,9 +490,9 @@ export default function Policies() {
                   <TableHead className="text-muted-foreground font-medium">الشركة</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الفترة</TableHead>
                   <TableHead className="text-muted-foreground font-medium">السعر</TableHead>
-                  {/* Profit column - Admin only */}
+                  {/* Profit/Commission column - Admin only */}
                   {isAdmin && (
-                    <TableHead className="text-muted-foreground font-medium">الربح</TableHead>
+                    <TableHead className="text-muted-foreground font-medium">الربح / العمولة</TableHead>
                   )}
                   <TableHead className="text-muted-foreground font-medium">أنشئ بواسطة</TableHead>
                   <TableHead className="text-muted-foreground font-medium">الفرع</TableHead>
@@ -569,10 +570,17 @@ export default function Policies() {
                         <TableCell className="font-medium">
                           ₪{policy.insurance_price.toLocaleString('ar-EG')}
                         </TableCell>
-                        {/* Profit column - Admin only */}
+                        {/* Profit/Commission column - Admin only */}
                         {isAdmin && (
-                          <TableCell className="font-medium text-success">
-                            ₪{(policy.profit || 0).toLocaleString('ar-EG')}
+                          <TableCell className={cn(
+                            "font-medium ltr-nums",
+                            policy.policy_type_parent === 'ELZAMI' ? "text-destructive" : "text-success"
+                          )}>
+                            {policy.policy_type_parent === 'ELZAMI' ? (
+                              <>-₪{Math.abs(policy.elzami_cost || policy.profit || 0).toLocaleString('ar-EG')}</>
+                            ) : (
+                              <>₪{(policy.profit || 0).toLocaleString('ar-EG')}</>
+                            )}
                           </TableCell>
                         )}
                         <TableCell className="text-sm text-muted-foreground">
