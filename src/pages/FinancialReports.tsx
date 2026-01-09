@@ -110,31 +110,30 @@ export default function FinancialReports() {
       const monthStart = format(startOfMonth(now), 'yyyy-MM-dd');
       const monthEnd = format(endOfMonth(now), 'yyyy-MM-dd');
       
-      // 1. Get total ACTUAL cash in (only payments from active policies, not cancelled/deleted)
+      // 1. Get total customer payments (actual money received)
       const { data: customerPayments } = await supabase
         .from('policy_payments')
-        .select('amount, refused, policy_id, policies!inner(cancelled, deleted_at)')
+        .select('amount, refused')
         .neq('refused', true);
       
-      let totalCashIn = 0;
-      (customerPayments || []).forEach(p => {
-        const policy = p.policies as any;
-        // Exclude payments from cancelled or deleted policies
-        if (!policy?.cancelled && !policy?.deleted_at) {
-          totalCashIn += Number(p.amount) || 0;
-        }
+      let grossCustomerPayments = 0;
+      (customerPayments || []).forEach((p) => {
+        grossCustomerPayments += Number(p.amount) || 0;
       });
       
-      // 1b. Subtract customer refunds from cash in (money given back to customers)
+      // 1b. Customer refunds (money given back)
       const { data: customerRefunds } = await supabase
         .from('customer_wallet_transactions')
         .select('amount, transaction_type')
         .eq('transaction_type', 'refund');
       
       let totalRefunds = 0;
-      (customerRefunds || []).forEach(r => {
+      (customerRefunds || []).forEach((r) => {
         totalRefunds += Number(r.amount) || 0;
       });
+
+      // Net collected from customers = payments - refunds
+      const totalCashIn = grossCustomerPayments - totalRefunds;
       
       // 2. Get company debt from policies (direct companies only, including cancelled with negative)
       const { data: policiesData } = await supabase
@@ -213,8 +212,8 @@ export default function FinancialReports() {
       const monthExpenses = (monthExpensesData || []).reduce((sum, e) => sum + Number(e.amount), 0);
       
       // Calculate net cash
-      // صافي الخزينة = كل الداخل - المرتجعات - المدفوع للشركات - المدفوع للوسطاء - المصاريف
-      const netCash = totalCashIn - totalRefunds - totalCompanyPayments - totalBrokerPayments - totalExpenses;
+      // صافي الخزينة = صافي المحصّل من الزبائن - المدفوع للشركات - المدفوع للوسطاء - المصاريف
+      const netCash = totalCashIn - totalCompanyPayments - totalBrokerPayments - totalExpenses;
       
       // Update company debt to reflect what's remaining
       companyDebt = companyDebt - totalCompanyPayments;
@@ -307,7 +306,8 @@ export default function FinancialReports() {
   };
 
   const formatCurrency = (amount: number) => {
-    return `₪${Math.abs(amount).toLocaleString('ar-EG', { maximumFractionDigits: 0 })}`;
+    const sign = amount < 0 ? "-" : "";
+    return `${sign}₪${Math.abs(amount).toLocaleString("ar-EG", { maximumFractionDigits: 0 })}`;
   };
 
   const formatDate = (dateStr: string) => {
@@ -338,7 +338,7 @@ export default function FinancialReports() {
                   {formatCurrency(abWallet?.netCash || 0)}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  (المدفوعات الفعلية من الزبائن - المدفوع للشركات - المدفوع للوسطاء - المصاريف)
+                  (صافي المحصّل من الزبائن - المدفوع للشركات - المدفوع للوسطاء - المصاريف)
                 </p>
               </div>
             )}
