@@ -139,7 +139,8 @@ const fetchFinancialData = async () => {
     companiesRes,
     ledgerRes,
   ] = await Promise.all([
-    supabase.from('policy_payments').select('amount, refused').neq('refused', true),
+    // Get payments with policy info to filter out deleted policies
+    supabase.from('policy_payments').select('amount, refused, policies(deleted_at)').neq('refused', true),
     supabase.from('customer_wallet_transactions').select('amount, transaction_type').eq('transaction_type', 'refund'),
     supabase.from('policies').select('payed_for_company, profit, company_id, cancelled, insurance_companies!policies_company_id_fkey(broker_id)').is('deleted_at', null),
     supabase.from('company_settlements').select('total_amount, refused').eq('status', 'completed').neq('refused', true),
@@ -151,9 +152,14 @@ const fetchFinancialData = async () => {
     supabase.from('ab_ledger').select('*').eq('status', 'posted').order('transaction_date', { ascending: false }).order('created_at', { ascending: false }).limit(50),
   ]);
 
-  // Calculate totals
+  // Calculate totals - only count payments from non-deleted policies
   let grossCustomerPayments = 0;
-  (paymentsRes.data || []).forEach((p) => { grossCustomerPayments += Number(p.amount) || 0; });
+  (paymentsRes.data || []).forEach((p: any) => { 
+    // Only include payments from non-deleted policies
+    if (!p.policies?.deleted_at) {
+      grossCustomerPayments += Number(p.amount) || 0; 
+    }
+  });
 
   let totalRefunds = 0;
   (refundsRes.data || []).forEach((r) => { totalRefunds += Number(r.amount) || 0; });
