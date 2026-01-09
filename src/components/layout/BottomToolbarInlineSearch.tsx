@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Search, X, User, Car, Phone } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,21 +23,25 @@ export function BottomToolbarInlineSearch({ className }: BottomToolbarInlineSear
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<ClientResult[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const latestRequestRef = useRef(0);
 
   const canShow = location.pathname !== "/login" && location.pathname !== "/no-access";
 
-  const close = useCallback(() => {
-    setOpen(false);
+  const closeDropdown = useCallback(() => {
+    setShowDropdown(false);
+  }, []);
+
+  const clearSearch = useCallback(() => {
     setQuery("");
     setResults([]);
-    setLoading(false);
+    setShowDropdown(false);
   }, []);
 
   const runSearch = useCallback(async (term: string) => {
@@ -125,6 +128,7 @@ export function BottomToolbarInlineSearch({ className }: BottomToolbarInlineSear
       }
 
       setResults(Array.from(map.values()).slice(0, 10));
+      setShowDropdown(true);
     } catch (e) {
       console.error("Inline search error:", e);
       setResults([]);
@@ -133,135 +137,140 @@ export function BottomToolbarInlineSearch({ className }: BottomToolbarInlineSear
     }
   }, []);
 
-  // Debounce
+  // Debounce search
   useEffect(() => {
-    if (!open) return;
-
     const term = query.trim();
     if (term.length < 2) {
       setResults([]);
+      setShowDropdown(false);
       setLoading(false);
       return;
     }
 
+    setLoading(true);
     const t = setTimeout(() => runSearch(term), 250);
     return () => clearTimeout(t);
-  }, [open, query, runSearch]);
+  }, [query, runSearch]);
 
+  // Close dropdown on click outside
   useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 50);
-  }, [open]);
-
-  const popoverOpen = useMemo(() => open && (loading || results.length > 0 || query.trim().length >= 2), [open, loading, results.length, query]);
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        closeDropdown();
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [closeDropdown]);
 
   const handleSelect = (clientId: string) => {
-    close();
+    clearSearch();
     navigate(`/clients?open=${clientId}`);
+  };
+
+  const handleFocus = () => {
+    if (query.trim().length >= 2 && results.length > 0) {
+      setShowDropdown(true);
+    }
   };
 
   if (!canShow) return null;
 
   return (
-    <Popover open={popoverOpen} onOpenChange={(v) => (v ? setOpen(true) : close())}>
-      <div className={cn("flex items-center", className)}>
-        {!open ? (
+    <div ref={containerRef} className={cn("relative flex items-center", className)}>
+      {/* Always visible search input */}
+      <div className="relative">
+        <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <Input
+          ref={inputRef}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onFocus={handleFocus}
+          placeholder="بحث..."
+          className={cn(
+            "h-9 w-[140px] sm:w-[200px] rounded-full pr-9 pl-8",
+            "bg-background/70 border-border/50"
+          )}
+        />
+        {query && (
           <Button
             variant="ghost"
             size="icon"
-            className="rounded-full h-9 w-9"
-            onClick={() => setOpen(true)}
-            aria-label="بحث"
+            className="absolute left-1 top-1/2 -translate-y-1/2 h-7 w-7 rounded-full"
+            onClick={clearSearch}
+            aria-label="مسح"
+            tabIndex={-1}
           >
-            <Search className="h-4 w-4" />
+            <X className="h-4 w-4" />
           </Button>
-        ) : (
-          <PopoverTrigger asChild>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  ref={inputRef}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="بحث سريع..."
-                  className={cn(
-                    "h-9 w-[180px] sm:w-[240px] rounded-full pr-10",
-                    "bg-background/70"
-                  )}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute left-1 top-1/2 -translate-y-1/2 h-7 w-7 rounded-full"
-                  onClick={close}
-                  aria-label="إغلاق"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </PopoverTrigger>
         )}
       </div>
 
-      <PopoverContent
-        side="top"
-        align="center"
-        sideOffset={12}
-        className="w-[min(92vw,420px)] p-2"
-      >
-        {loading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="rounded-md border border-border/60 p-2">
-                <Skeleton className="h-4 w-40" />
-                <Skeleton className="mt-2 h-3 w-56" />
-              </div>
-            ))}
-          </div>
-        ) : results.length ? (
-          <div className="max-h-[320px] overflow-y-auto space-y-1">
-            {results.map((r) => (
-              <button
-                key={r.id}
-                className={cn(
-                  "w-full text-right rounded-md border border-border/60 p-2 transition-colors",
-                  "hover:bg-accent/40 focus:bg-accent/40 focus:outline-none"
-                )}
-                onClick={() => handleSelect(r.id)}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-medium truncate">{r.full_name}</span>
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                      {r.phone_number ? (
-                        <span className="flex items-center gap-1">
-                          <Phone className="h-3.5 w-3.5" />
-                          <bdi className="ltr-nums">{r.phone_number}</bdi>
-                        </span>
-                      ) : null}
-                      {r.cars.length ? (
-                        <span className="flex items-center gap-1">
-                          <Car className="h-3.5 w-3.5" />
-                          <bdi className="ltr-nums">{r.cars.join(", ")}</bdi>
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                  <span className="text-xs text-muted-foreground ltr-nums">{r.id_number}</span>
+      {/* Dropdown results - positioned above */}
+      {showDropdown && (
+        <div
+          className={cn(
+            "absolute bottom-full mb-3 left-1/2 -translate-x-1/2",
+            "w-[min(92vw,400px)] max-h-[360px] overflow-y-auto",
+            "rounded-lg border border-border bg-popover p-2 shadow-lg"
+          )}
+        >
+          {loading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="rounded-md border border-border/60 p-2">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="mt-2 h-3 w-56" />
                 </div>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="py-6 text-center text-sm text-muted-foreground">
-            اكتب حرفين على الأقل للبحث
-          </div>
-        )}
-      </PopoverContent>
-    </Popover>
+              ))}
+            </div>
+          ) : results.length > 0 ? (
+            <div className="space-y-1">
+              {results.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  className={cn(
+                    "w-full text-right rounded-md border border-border/60 p-2 transition-colors",
+                    "hover:bg-accent/40 focus:bg-accent/40 focus:outline-none"
+                  )}
+                  onMouseDown={(e) => {
+                    // Use mouseDown to prevent input blur before navigation
+                    e.preventDefault();
+                    handleSelect(r.id);
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium truncate">{r.full_name}</span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                        {r.phone_number && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3.5 w-3.5" />
+                            <bdi className="ltr-nums">{r.phone_number}</bdi>
+                          </span>
+                        )}
+                        {r.cars.length > 0 && (
+                          <span className="flex items-center gap-1">
+                            <Car className="h-3.5 w-3.5" />
+                            <bdi className="ltr-nums">{r.cars.join(", ")}</bdi>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-xs text-muted-foreground ltr-nums">{r.id_number}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="py-6 text-center text-sm text-muted-foreground">لا توجد نتائج</div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
