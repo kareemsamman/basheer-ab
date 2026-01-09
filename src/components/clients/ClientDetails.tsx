@@ -1062,7 +1062,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                 onTransferPackage={(policyIds) => {
                   if (policyIds.length > 0) {
                     setSelectedPolicyId(policyIds[0]);
-                    setPolicyDetailsOpen(true);
+                    setTransferOpen(true);
                   }
                 }}
                 onCancelPackage={(policyIds) => {

@@ -295,9 +295,23 @@ export function TransferPolicyModal({
       }
 
       // Generate new group_id if transferring package
-      const newGroupId = transferPackage && policiesToTransfer.length > 1 
-        ? crypto.randomUUID() 
-        : null;
+      let newGroupId: string | null = null;
+      
+      if (transferPackage && policiesToTransfer.length > 1) {
+        newGroupId = crypto.randomUUID();
+        
+        // Create entry in policy_groups table for the new package
+        const { error: groupError } = await supabase
+          .from("policy_groups")
+          .insert({
+            id: newGroupId,
+            client_id: clientId,
+            car_id: selectedCarId,
+            name: `باقة محولة - ${selectedCar?.car_number || ""}`,
+          });
+        
+        if (groupError) throw groupError;
+      }
 
       const newPolicyIds: string[] = [];
 
