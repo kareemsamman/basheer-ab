@@ -59,6 +59,7 @@ export function useProfitSummary() {
       const yearStart = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
 
       // Fetch all active policies for the year with profit data and policy type
+      // Include company data to check if company is broker-linked
       const { data: policies, error } = await supabase
         .from('policies')
         .select(`
@@ -70,7 +71,9 @@ export function useProfitSummary() {
           elzami_cost,
           broker_id,
           broker_direction,
-          broker_buy_price
+          broker_buy_price,
+          company_id,
+          insurance_companies!policies_company_id_fkey(broker_id)
         `)
         .is('deleted_at', null)
         .eq('cancelled', false)
@@ -127,7 +130,14 @@ export function useProfitSummary() {
         } else {
           policyProfit = Number(policy.profit) || 0;
           policyRevenue = Number(policy.insurance_price) || 0;
-          totalCompanyPaymentDue += Number(policy.payed_for_company) || 0;
+          
+          // Only add to company payment due if company is NOT broker-linked
+          const companyData = policy.insurance_companies as any;
+          const isCompanyBrokerLinked = companyData?.broker_id != null;
+          if (!isCompanyBrokerLinked) {
+            totalCompanyPaymentDue += Number(policy.payed_for_company) || 0;
+          }
+          
           otherProfit += policyProfit;
           if (policy.start_date >= monthStart) {
             monthOtherProfit += policyProfit;
