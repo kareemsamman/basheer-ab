@@ -12,6 +12,7 @@ interface CalculateProfitParams {
   insurancePrice: number;
   roadServiceId?: string | null; // For ROAD_SERVICE policies
   accidentFeeServiceId?: string | null; // For ACCIDENT_FEE_EXEMPTION policies
+  brokerBuyPrice?: number | null; // When company is linked to broker - this is the cost we pay to broker
 }
 
 interface ProfitResult {
@@ -35,7 +36,19 @@ export async function calculatePolicyProfit(params: CalculateProfitParams): Prom
     carYear,
     insurancePrice,
     roadServiceId,
+    brokerBuyPrice,
   } = params;
+
+  // If broker buy price is provided and > 0, use it for profit calculation
+  // This takes priority over pricing rules when dealing with broker-linked companies
+  if (brokerBuyPrice && brokerBuyPrice > 0) {
+    // Profit = selling price - broker cost
+    const profit = insurancePrice - brokerBuyPrice;
+    return { 
+      companyPayment: brokerBuyPrice, 
+      profit: profit
+    };
+  }
 
   // ELZAMI: لا يوجد ربح، الشركة تأخذ كامل المبلغ + قد تأخذ عمولة منا
   // العمولة هي تكلفة سالبة على AB وليست ربحاً

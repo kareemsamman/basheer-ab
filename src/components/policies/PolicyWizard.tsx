@@ -607,6 +607,13 @@ export function PolicyWizard({
         const carTypeValue = (selectedCar?.car_type || newCar.car_type || 'car') as CarType;
         const ageBandValue = isUnder24 ? 'UNDER_24' as const : 'UP_24' as const;
 
+        // Check if company is linked to a broker and broker_buy_price is provided
+        const selectedCompany = companies.find(c => c.id === policy.company_id);
+        const isCompanyLinkedToBroker = !!selectedCompany?.broker_id;
+        const brokerBuyPriceValue = isCompanyLinkedToBroker && policy.broker_buy_price 
+          ? parseFloat(policy.broker_buy_price) 
+          : null;
+
         const profitData = await calculatePolicyProfit({
           policyTypeParent: policyTypeParentValue,
           policyTypeChild: policyTypeChildValue,
@@ -615,7 +622,8 @@ export function PolicyWizard({
           ageBand: ageBandValue,
           carValue: selectedCar?.car_value || (newCar.car_value ? parseFloat(newCar.car_value) : null),
           carYear: selectedCar?.year || (newCar.year ? parseInt(newCar.year) : null),
-          insurancePrice: pricing.totalPrice,
+          insurancePrice: parseFloat(policy.insurance_price) || pricing.totalPrice,
+          brokerBuyPrice: brokerBuyPriceValue,
         });
 
         // Create policy
@@ -652,10 +660,11 @@ export function PolicyWizard({
             company_id: policy.company_id || null,
             start_date: policy.start_date,
             end_date: policy.end_date,
-            insurance_price: pricing.totalPrice,
+            insurance_price: parseFloat(policy.insurance_price) || pricing.totalPrice,
             profit: profitData.profit,
             payed_for_company: profitData.companyPayment,
             company_cost_snapshot: profitData.companyPayment,
+            broker_buy_price: brokerBuyPriceValue || 0,
             is_under_24: isUnder24,
             broker_id: policyBrokerId || null,
             broker_direction: brokerDir,

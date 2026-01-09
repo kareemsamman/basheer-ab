@@ -2097,6 +2097,7 @@ export type Database = {
       policies: {
         Row: {
           branch_id: string | null
+          broker_buy_price: number | null
           broker_direction:
             | Database["public"]["Enums"]["broker_direction"]
             | null
@@ -2138,6 +2139,7 @@ export type Database = {
         }
         Insert: {
           branch_id?: string | null
+          broker_buy_price?: number | null
           broker_direction?:
             | Database["public"]["Enums"]["broker_direction"]
             | null
@@ -2179,6 +2181,7 @@ export type Database = {
         }
         Update: {
           branch_id?: string | null
+          broker_buy_price?: number | null
           broker_direction?:
             | Database["public"]["Enums"]["broker_direction"]
             | null
