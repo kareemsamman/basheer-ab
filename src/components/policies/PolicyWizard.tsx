@@ -891,9 +891,16 @@ export function PolicyWizard({
       });
 
       onComplete?.(policyIdToUse);
-      onSaved?.();
+      
+      // Close dialog first, then trigger refresh after a brief delay
+      // This ensures the DB commit is complete before fetching
       onOpenChange(false);
       resetForm();
+      
+      // Delay onSaved to ensure DB writes are committed
+      setTimeout(() => {
+        onSaved?.();
+      }, 150);
     } catch (error: unknown) {
       console.error('Save error:', error);
       toast({
