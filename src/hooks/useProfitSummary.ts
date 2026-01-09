@@ -6,16 +6,18 @@ interface ProfitSummary {
   monthProfit: number;
   yearProfit: number;
   totalCompanyPaymentDue: number;
+  totalBrokerDebtOwed: number; // المستحق للوسطاء (ما ندين به للوسيط)
+  totalBrokerDebtOwing: number; // المستحق من الوسطاء (ما يدين به الوسيط لنا)
   todayRevenue: number;
   monthRevenue: number;
   yearRevenue: number;
   // Breakdown for charts
-  elzamiCommission: number;  // تكلفة الإلزامي (سالب)
+  elzamiCommission: number;
   otherProfit: number;
   monthElzamiCommission: number;
   monthOtherProfit: number;
   // ELZAMI costs (new)
-  totalElzamiCost: number;  // إجمالي تكلفة عمولات الإلزامي
+  totalElzamiCost: number;
   monthElzamiCost: number;
   todayElzamiCost: number;
   // Net profit (after ELZAMI costs)
@@ -30,6 +32,8 @@ export function useProfitSummary() {
     monthProfit: 0,
     yearProfit: 0,
     totalCompanyPaymentDue: 0,
+    totalBrokerDebtOwed: 0,
+    totalBrokerDebtOwing: 0,
     todayRevenue: 0,
     monthRevenue: 0,
     yearRevenue: 0,
@@ -63,7 +67,10 @@ export function useProfitSummary() {
           payed_for_company, 
           insurance_price,
           policy_type_parent,
-          elzami_cost
+          elzami_cost,
+          broker_id,
+          broker_direction,
+          broker_buy_price
         `)
         .is('deleted_at', null)
         .eq('cancelled', false)
@@ -71,18 +78,25 @@ export function useProfitSummary() {
 
       if (error) throw error;
 
+      // Fetch broker settlements to calculate net broker debt
+      const { data: brokerSettlements } = await supabase
+        .from('broker_settlements')
+        .select('direction, total_amount, status')
+        .eq('status', 'completed');
+
       let todayProfit = 0;
       let monthProfit = 0;
       let yearProfit = 0;
       let totalCompanyPaymentDue = 0;
+      let totalBrokerDebtOwed = 0; // ما ندين به للوسيط (from_broker)
+      let totalBrokerDebtOwing = 0; // ما يدين به الوسيط لنا (to_broker)
       let todayRevenue = 0;
       let monthRevenue = 0;
       let yearRevenue = 0;
-      let elzamiCommission = 0;  // تكلفة الإلزامي (للتوافق مع القديم)
+      let elzamiCommission = 0;
       let otherProfit = 0;
       let monthElzamiCommission = 0;
       let monthOtherProfit = 0;
-      // New: ELZAMI costs tracking
       let totalElzamiCost = 0;
       let monthElzamiCost = 0;
       let todayElzamiCost = 0;
@@ -118,6 +132,18 @@ export function useProfitSummary() {
           if (policy.start_date >= monthStart) {
             monthOtherProfit += policyProfit;
           }
+          
+          // Calculate broker debts
+          if (policy.broker_id && policy.broker_buy_price) {
+            const buyPrice = Number(policy.broker_buy_price) || 0;
+            if (policy.broker_direction === 'from_broker') {
+              // نشتري من الوسيط = ندين للوسيط
+              totalBrokerDebtOwed += buyPrice;
+            } else if (policy.broker_direction === 'to_broker') {
+              // نبيع للوسيط = الوسيط يدين لنا بالربح
+              totalBrokerDebtOwing += policyProfit;
+            }
+          }
         }
 
         yearProfit += policyProfit;
@@ -139,11 +165,25 @@ export function useProfitSummary() {
       const monthNetProfit = monthProfit - monthElzamiCost;
       const todayNetProfit = todayProfit - todayElzamiCost;
 
+      // Adjust broker debts based on settlements
+      brokerSettlements?.forEach((settlement) => {
+        const amount = Number(settlement.total_amount) || 0;
+        if (settlement.direction === 'to_broker') {
+          // دفعنا للوسيط = نقص من ديننا
+          totalBrokerDebtOwed -= amount;
+        } else if (settlement.direction === 'from_broker') {
+          // استلمنا من الوسيط = نقص من دينه علينا
+          totalBrokerDebtOwing -= amount;
+        }
+      });
+
       setSummary({
         todayProfit,
         monthProfit,
         yearProfit,
         totalCompanyPaymentDue,
+        totalBrokerDebtOwed: Math.max(0, totalBrokerDebtOwed),
+        totalBrokerDebtOwing: Math.max(0, totalBrokerDebtOwing),
         todayRevenue,
         monthRevenue,
         yearRevenue,

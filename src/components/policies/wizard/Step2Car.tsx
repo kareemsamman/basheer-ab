@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Car, Plus, Search, AlertCircle, CheckCircle, Loader2, X } from "lucide-react";
+import { Car, Plus, AlertCircle, CheckCircle, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Client, CarRecord, NewCarForm, ValidationErrors } from "./types";
 import { CAR_TYPES } from "./types";
@@ -59,7 +59,6 @@ export function Step2Car({
   errors,
 }: Step2Props) {
   const { toast } = useToast();
-  const [fetchingCarPrice, setFetchingCarPrice] = useState(false);
 
   // Fetch client cars
   useEffect(() => {
@@ -161,43 +160,6 @@ export function Step2Car({
   const handleCarNumberBlur = () => {
     if (newCar.car_number.length >= 7 && !carDataFetched && !fetchingCarData) {
       fetchCarData(newCar.car_number);
-    }
-  };
-
-  // Auto-fetch car price when manufacturer and year are available
-  useEffect(() => {
-    if (newCar.manufacturer_name && newCar.year && !newCar.car_value && carDataFetched) {
-      fetchCarPrice();
-    }
-  }, [newCar.manufacturer_name, newCar.year, carDataFetched]);
-
-  const fetchCarPrice = async () => {
-    if (!newCar.manufacturer_name || !newCar.year) {
-      return;
-    }
-
-    setFetchingCarPrice(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('fetch-car-price', {
-        body: { 
-          manufacturer: newCar.manufacturer_name,
-          model: newCar.model || '',
-          year: parseInt(newCar.year)
-        }
-      });
-
-      if (error) throw error;
-
-      const priceData = data?.data || data;
-      
-      if (priceData?.price && priceData.price > 0) {
-        setNewCar({ ...newCar, car_value: priceData.price.toString() });
-        toast({ title: "تم جلب سعر السيارة", description: `₪ ${priceData.price.toLocaleString()}` });
-      }
-    } catch {
-      // Silent fail
-    } finally {
-      setFetchingCarPrice(false);
     }
   };
 
@@ -355,8 +317,7 @@ export function Step2Car({
                     placeholder="مثال: 12345678"
                     maxLength={8}
                     inputMode="numeric"
-                    dir="ltr"
-                    className={cn(errors.car_number || carConflict ? "border-destructive" : "")}
+                    className={cn("ltr-nums", errors.car_number || carConflict ? "border-destructive" : "")}
                   />
                   {fetchingCarData && (
                     <div className="absolute left-3 top-1/2 -translate-y-1/2">
@@ -430,22 +391,14 @@ export function Step2Car({
                   </Select>
                 </div>
                 <div>
-                  <Label>قيمة السيارة (₪) - مחיר יבואן</Label>
-                  <div className="relative">
-                    <Input
-                      type="number"
-                      value={newCar.car_value}
-                      onChange={(e) => setNewCar({ ...newCar, car_value: e.target.value })}
-                      placeholder="يتم جلبها تلقائياً"
-                      className="flex-1"
-                    />
-                    {fetchingCarPrice && (
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">سعر مחיר יבואן من وزارة النقل</p>
+                  <Label>قيمة السيارة (₪)</Label>
+                  <Input
+                    type="number"
+                    value={newCar.car_value}
+                    onChange={(e) => setNewCar({ ...newCar, car_value: e.target.value })}
+                    placeholder="أدخل قيمة السيارة"
+                    className="ltr-nums"
+                  />
                 </div>
               </div>
             </Card>

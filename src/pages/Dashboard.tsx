@@ -4,10 +4,9 @@ import { Header } from "@/components/layout/Header";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { ExpiringPolicies } from "@/components/dashboard/ExpiringPolicies";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
-import { ProfitBreakdownChart } from "@/components/dashboard/ProfitBreakdownChart";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Users, FileText, Car, TrendingUp, AlertCircle, Building2, Clock } from "lucide-react";
+import { Users, FileText, Car, TrendingUp, AlertCircle, Building2, Clock, Handshake } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfitSummary } from "@/hooks/useProfitSummary";
 import { useAuth } from "@/hooks/useAuth";
@@ -169,11 +168,11 @@ export default function Dashboard() {
           {isAdmin ? (
             <>
               {/* Admin Financial Stats */}
-              <Card className="p-6 border shadow-sm">
+              <Card className="p-6 border shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">أرباح اليوم</p>
-                    <p className="text-2xl font-bold text-success">
+                    <p className="text-2xl font-bold text-success ltr-nums">
                       {profitLoading ? '...' : `₪${profitSummary.todayProfit.toLocaleString('ar-EG')}`}
                     </p>
                   </div>
@@ -182,11 +181,11 @@ export default function Dashboard() {
                   </div>
                 </div>
               </Card>
-              <Card className="p-6 border shadow-sm">
+              <Card className="p-6 border shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">المستحق للشركات</p>
-                    <p className="text-2xl font-bold text-destructive">
+                    <p className="text-2xl font-bold text-destructive ltr-nums">
                       {profitLoading ? '...' : `₪${profitSummary.totalCompanyPaymentDue.toLocaleString('ar-EG')}`}
                     </p>
                   </div>
@@ -195,28 +194,28 @@ export default function Dashboard() {
                   </div>
                 </div>
               </Card>
-              <Card className="p-6 border shadow-sm">
+              <Card className="p-6 border shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">تنتهي هذا الأسبوع</p>
-                    <p className="text-2xl font-bold text-warning">{stats.expiringThisWeek}</p>
-                    <p className="text-sm text-muted-foreground mt-1">وثيقة تحتاج تجديد</p>
+                    <p className="text-sm font-medium text-muted-foreground">المستحق للوسطاء</p>
+                    <p className="text-2xl font-bold text-orange-500 ltr-nums">
+                      {profitLoading ? '...' : `₪${profitSummary.totalBrokerDebtOwed.toLocaleString('ar-EG')}`}
+                    </p>
                   </div>
-                  <div className="rounded-xl bg-warning/10 p-3">
-                    <AlertCircle className="h-6 w-6 text-warning" />
+                  <div className="rounded-xl bg-orange-500/10 p-3">
+                    <Handshake className="h-6 w-6 text-orange-500" />
                   </div>
                 </div>
               </Card>
-              <Card className="p-6 border shadow-sm">
+              <Card className="p-6 border shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">أرباح السنة</p>
-                    <p className="text-2xl font-bold text-success">
-                      {profitLoading ? '...' : `₪${profitSummary.yearProfit.toLocaleString('ar-EG')}`}
-                    </p>
+                    <p className="text-sm font-medium text-muted-foreground">تنتهي هذا الأسبوع</p>
+                    <p className="text-2xl font-bold text-warning ltr-nums">{stats.expiringThisWeek}</p>
+                    <p className="text-xs text-muted-foreground">وثيقة تحتاج تجديد</p>
                   </div>
-                  <div className="rounded-xl bg-success/10 p-3">
-                    <TrendingUp className="h-6 w-6 text-success" />
+                  <div className="rounded-xl bg-warning/10 p-3">
+                    <AlertCircle className="h-6 w-6 text-warning" />
                   </div>
                 </div>
               </Card>
@@ -272,15 +271,6 @@ export default function Dashboard() {
             </>
           )}
         </div>
-
-        {/* Profit Breakdown Chart - Admin only */}
-        {isAdmin && (
-          <ProfitBreakdownChart
-            elzamiCommission={profitSummary.elzamiCommission}
-            otherProfit={profitSummary.otherProfit}
-            loading={profitLoading}
-          />
-        )}
 
         {/* Bottom Grid */}
         <div className="grid gap-6 lg:grid-cols-2">
