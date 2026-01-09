@@ -317,13 +317,16 @@ export function TransferPolicyModal({
 
       // Process each policy
       for (const originalPolicy of originalPolicies) {
-        // 1. Mark original policy as transferred and set end_date to transfer date
+        // 1. Mark original policy as transferred, zero out financials (debt moves to new policy)
         const { error: updateOriginalError } = await supabase
           .from("policies")
           .update({
             transferred: true,
             end_date: transferDate,
             transferred_to_car_number: selectedCar?.car_number || null,
+            // Zero out financials - the debt/profit moves to the new policy
+            payed_for_company: 0,
+            profit: 0,
             updated_at: new Date().toISOString(),
           })
           .eq("id", originalPolicy.id);
@@ -331,6 +334,15 @@ export function TransferPolicyModal({
         if (updateOriginalError) throw updateOriginalError;
 
         // 2. Create new policy for the remaining period
+        // If customer pays adjustment, add it to insurance_price (only for main policy)
+        let adjustedInsurancePrice = originalPolicy.insurance_price;
+        let adjustedProfit = originalPolicy.profit;
+        if (originalPolicy.id === policyId && adjustmentType === "customer_pays" && adjustmentAmount) {
+          const adjustAmt = parseFloat(adjustmentAmount);
+          adjustedInsurancePrice += adjustAmt;
+          adjustedProfit = (originalPolicy.profit || 0) + adjustAmt; // Extra goes to profit
+        }
+        
         const newPolicyData = {
           client_id: originalPolicy.client_id,
           car_id: selectedCarId,
@@ -339,9 +351,9 @@ export function TransferPolicyModal({
           policy_type_child: originalPolicy.policy_type_child,
           start_date: transferDate,
           end_date: originalPolicy.end_date, // Original end date
-          insurance_price: originalPolicy.insurance_price,
+          insurance_price: adjustedInsurancePrice,
           is_under_24: originalPolicy.is_under_24,
-          profit: originalPolicy.profit,
+          profit: adjustedProfit,
           payed_for_company: originalPolicy.payed_for_company,
           broker_id: originalPolicy.broker_id,
           broker_direction: originalPolicy.broker_direction,
@@ -389,49 +401,65 @@ export function TransferPolicyModal({
 
         if (transferError) throw transferError;
 
-        // 4. Copy payments from old policy to new policy (only for main policy)
-        if (originalPolicy.id === policyId) {
-          const { data: oldPayments } = await supabase
-            .from("policy_payments")
-            .select("*")
-            .eq("policy_id", originalPolicy.id)
-            .eq("refused", false);
+        // 4. Copy payments from old policy to new policy (for all policies in package)
+        const { data: oldPayments } = await supabase
+          .from("policy_payments")
+          .select("*")
+          .eq("policy_id", originalPolicy.id)
+          .eq("refused", false);
 
-          if (oldPayments && oldPayments.length > 0) {
-            const newPaymentsData = oldPayments.map(p => ({
-              policy_id: newPolicy.id,
-              amount: p.amount,
-              payment_type: p.payment_type,
-              payment_date: p.payment_date,
-              cheque_number: p.cheque_number,
-              cheque_image_url: p.cheque_image_url,
-              cheque_status: p.cheque_status,
-              notes: `منقول من الوثيقة المحولة - ${p.notes || ""}`.trim(),
-              branch_id: p.branch_id,
-              created_by_admin_id: user?.id,
-            }));
+        if (oldPayments && oldPayments.length > 0) {
+          const newPaymentsData = oldPayments.map(p => ({
+            policy_id: newPolicy.id,
+            amount: p.amount,
+            payment_type: p.payment_type,
+            payment_date: p.payment_date,
+            cheque_number: p.cheque_number,
+            cheque_image_url: p.cheque_image_url,
+            cheque_status: p.cheque_status,
+            notes: `منقول من الوثيقة المحولة - ${p.notes || ""}`.trim(),
+            branch_id: p.branch_id,
+            created_by_admin_id: user?.id,
+          }));
 
-            await supabase.from("policy_payments").insert(newPaymentsData);
-          }
+          await supabase.from("policy_payments").insert(newPaymentsData);
+        }
+
+        // 5. Copy policy files (insurance documents) from old to new policy
+        const { data: oldFiles } = await supabase
+          .from("media_files")
+          .select("*")
+          .eq("entity_id", originalPolicy.id)
+          .in("entity_type", ["policy", "policy_insurance"])
+          .is("deleted_at", null);
+
+        if (oldFiles && oldFiles.length > 0) {
+          const newFilesData = oldFiles.map(f => ({
+            original_name: f.original_name,
+            cdn_url: f.cdn_url,
+            storage_path: f.storage_path,
+            mime_type: f.mime_type,
+            size: f.size,
+            entity_type: f.entity_type,
+            entity_id: newPolicy.id,
+            branch_id: f.branch_id,
+            uploaded_by: user?.id,
+          }));
+
+          await supabase.from("media_files").insert(newFilesData);
         }
       }
 
-      // 5. Create wallet transaction if money adjustment exists (on new main policy)
-      if (adjustmentType !== "none" && adjustmentAmount && newPolicyIds.length > 0) {
-        const transactionType = adjustmentType === "customer_pays" 
-          ? "transfer_adjustment_due" 
-          : "transfer_refund_owed";
-        
+      // 6. Create wallet transaction only for refunds (customer_pays is already added to insurance_price)
+      if (adjustmentType === "refund" && adjustmentAmount && newPolicyIds.length > 0) {
         const { error: walletError } = await supabase
           .from("customer_wallet_transactions")
           .insert({
             client_id: clientId,
-            policy_id: newPolicyIds[0], // Link to new policy
-            transaction_type: transactionType,
+            policy_id: newPolicyIds[0],
+            transaction_type: "transfer_refund_owed",
             amount: parseFloat(adjustmentAmount),
-            description: adjustmentType === "customer_pays" 
-              ? `فرق تحويل وثيقة ${policyNumber || ""} - مستحق علينا`
-              : `مرتجع تحويل وثيقة ${policyNumber || ""} - مستحق للعميل`,
+            description: `مرتجع تحويل وثيقة ${policyNumber || ""} - مستحق للعميل`,
             notes: adjustmentNote || null,
             created_by_admin_id: user?.id,
             branch_id: branchId,

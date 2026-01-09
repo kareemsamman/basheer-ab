@@ -49,6 +49,8 @@ interface PolicyDetail {
   is_under_24: boolean | null;
   created_at: string;
   cancelled: boolean | null;
+  transferred: boolean | null;
+  transferred_to_car_number: string | null;
   client: {
     id: string;
     full_name: string;
@@ -106,13 +108,17 @@ export default function CompanySettlementDetail() {
   const [includeCancelled, setIncludeCancelled] = useState(false);
   const [generatingReport, setGeneratingReport] = useState(false);
 
-  // Filtered data
+  // Filtered data - exclude transferred policies by default (they have 0 values anyway)
   const filteredPolicies = useMemo(() => {
     return policies.filter(policy => {
       if (selectedPolicyType !== 'all' && policy.policy_type_parent !== selectedPolicyType) {
         return false;
       }
       if (!includeCancelled && policy.cancelled) {
+        return false;
+      }
+      // Transferred policies are excluded from active reporting (their debt moved to new policy)
+      if (policy.transferred) {
         return false;
       }
       return true;
@@ -173,6 +179,8 @@ export default function CompanySettlementDetail() {
           is_under_24,
           created_at,
           cancelled,
+          transferred,
+          transferred_to_car_number,
           created_by_admin_id,
           clients!inner (
             id,
@@ -217,6 +225,8 @@ export default function CompanySettlementDetail() {
         is_under_24: p.is_under_24,
         created_at: p.created_at,
         cancelled: p.cancelled,
+        transferred: p.transferred,
+        transferred_to_car_number: p.transferred_to_car_number,
         client: p.clients ? { id: p.clients.id, full_name: p.clients.full_name } : null,
         car: p.cars ? {
           id: p.cars.id,
@@ -639,13 +649,19 @@ export default function CompanySettlementDetail() {
                         key={policy.id}
                         className={cn(
                           "transition-colors",
-                          policy.cancelled && "opacity-50 bg-muted/30"
+                          policy.cancelled && "opacity-50 bg-muted/30",
+                          policy.transferred && "opacity-50 bg-amber-500/5"
                         )}
                       >
                         <TableCell className="font-medium">
                           {policy.client?.full_name || '-'}
                           {policy.cancelled && (
                             <Badge variant="destructive" className="mr-2 text-xs">ملغية</Badge>
+                          )}
+                          {policy.transferred && (
+                            <Badge variant="warning" className="mr-2 text-xs gap-1">
+                              محولة ← {policy.transferred_to_car_number || ''}
+                            </Badge>
                           )}
                         </TableCell>
                         <TableCell className="font-mono">

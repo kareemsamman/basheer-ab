@@ -143,7 +143,7 @@ const fetchFinancialData = async () => {
     // Get payments with policy info to filter out deleted policies AND ELZAMI
     supabase.from('policy_payments').select('amount, refused, policies(deleted_at, policy_type_parent)').neq('refused', true),
     supabase.from('customer_wallet_transactions').select('amount, transaction_type').eq('transaction_type', 'refund'),
-    supabase.from('policies').select('payed_for_company, profit, company_id, cancelled, policy_type_parent, insurance_companies!policies_company_id_fkey(broker_id)').is('deleted_at', null),
+    supabase.from('policies').select('payed_for_company, profit, company_id, cancelled, transferred, policy_type_parent, insurance_companies!policies_company_id_fkey(broker_id)').is('deleted_at', null),
     supabase.from('company_settlements').select('total_amount, refused').eq('status', 'completed').neq('refused', true),
     supabase.from('broker_settlements').select('total_amount, direction, status').eq('status', 'completed'),
     supabase.from('policies').select('broker_buy_price, insurance_price, broker_direction').is('deleted_at', null).eq('cancelled', false).eq('broker_direction', 'from_broker'),
@@ -167,11 +167,14 @@ const fetchFinancialData = async () => {
 
   const totalCashIn = grossCustomerPayments - totalRefunds;
 
-  // Exclude ELZAMI from company debt (customer pays directly to ELZAMI companies)
+  // Exclude ELZAMI and transferred policies from company debt (transferred debt = 0 anyway)
   let companyDebt = 0;
   let totalProfit = 0;
-  (policiesRes.data || []).forEach(p => {
+  (policiesRes.data || []).forEach((p: any) => {
     const isCancelled = p.cancelled;
+    const isTransferred = p.transferred;
+    // Transferred policies have 0 company payment/profit - skip them
+    if (isTransferred) return;
     const multiplier = isCancelled ? -1 : 1;
     totalProfit += (Number(p.profit) || 0) * multiplier;
     const companyData = p.insurance_companies as any;
