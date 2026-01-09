@@ -55,7 +55,8 @@ const getNavigation = (isAdmin: boolean) => {
     baseNav.splice(6, 0, { name: "الوسطاء", href: "/brokers", icon: Wallet });
     baseNav.push(
       { name: "تقرير الشركات", href: "/reports/company-settlement", icon: BarChart3 },
-      { name: "التقارير المالية", href: "/reports/financial", icon: Wallet }
+      { name: "التقارير المالية", href: "/reports/financial", icon: Wallet },
+      { name: "المصاريف", href: "/expenses", icon: DollarSign }
     );
   }
 

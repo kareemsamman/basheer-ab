@@ -9,33 +9,23 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { 
   TrendingUp, 
-  TrendingDown, 
   Building2, 
   Users, 
   Wallet,
   RefreshCw,
-  AlertTriangle,
   CheckCircle,
-  ArrowUpRight,
-  ArrowDownRight,
   Banknote,
   Receipt,
-  Calculator,
-  FileText
+  FileText,
+  PiggyBank,
+  ArrowDownRight,
+  ArrowUpRight,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useProfitSummary } from "@/hooks/useProfitSummary";
-
-interface LedgerSummary {
-  totalIncome: number;
-  totalExpense: number;
-  netBalance: number;
-  companyPayables: number;
-  brokerPayables: number;
-  brokerReceivables: number;
-  customerRefundsDue: number;
-}
+import { Link } from "react-router-dom";
+import { format, startOfMonth, endOfMonth } from "date-fns";
 
 interface CompanyBalance {
   companyId: string;
@@ -56,6 +46,18 @@ interface LedgerEntry {
   status: string;
   description: string;
   policyType: string;
+}
+
+interface ABWallet {
+  totalCashIn: number; // كل المبالغ الداخلة (insurance_price)
+  totalCompanyPayments: number; // المدفوع للشركات
+  totalBrokerPayments: number; // المدفوع للوسطاء
+  totalExpenses: number; // المصاريف
+  netCash: number; // الصافي في الخزينة
+  totalProfit: number; // إجمالي الربح
+  companyDebt: number; // مستحق للشركات
+  brokerDebt: number; // مستحق للوسطاء
+  monthExpenses: number; // مصاريف الشهر
 }
 
 const referenceTypeLabels: Record<string, string> = {
@@ -95,7 +97,7 @@ const statusBadgeVariant = (status: string): "default" | "secondary" | "destruct
 
 export default function FinancialReports() {
   const { summary: profitSummary, loading: profitLoading, refetch: refetchProfit } = useProfitSummary();
-  const [ledgerSummary, setLedgerSummary] = useState<LedgerSummary | null>(null);
+  const [abWallet, setAbWallet] = useState<ABWallet | null>(null);
   const [companyBalances, setCompanyBalances] = useState<CompanyBalance[]>([]);
   const [recentEntries, setRecentEntries] = useState<LedgerEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,35 +106,110 @@ export default function FinancialReports() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch ledger summary using RPC
-      const { data: summaryData, error: summaryError } = await supabase
-        .rpc('get_ab_balance');
+      const now = new Date();
+      const monthStart = format(startOfMonth(now), 'yyyy-MM-dd');
+      const monthEnd = format(endOfMonth(now), 'yyyy-MM-dd');
       
-      if (summaryError) throw summaryError;
+      // 1. Get total cash in (all insurance_price from policies)
+      const { data: policiesData } = await supabase
+        .from('policies')
+        .select('insurance_price, payed_for_company, profit, company_id, insurance_companies!policies_company_id_fkey(broker_id)')
+        .is('deleted_at', null)
+        .eq('cancelled', false);
       
-      if (summaryData && summaryData.length > 0) {
-        const row = summaryData[0];
-        setLedgerSummary({
-          totalIncome: Number(row.total_income) || 0,
-          totalExpense: Number(row.total_expense) || 0,
-          netBalance: Number(row.net_balance) || 0,
-          companyPayables: Number(row.company_payables) || 0,
-          brokerPayables: Number(row.broker_payables) || 0,
-          brokerReceivables: Number(row.broker_receivables) || 0,
-          customerRefundsDue: Number(row.customer_refunds_due) || 0,
-        });
-      }
+      let totalCashIn = 0;
+      let companyDebt = 0;
+      let totalProfit = 0;
+      
+      (policiesData || []).forEach(p => {
+        totalCashIn += Number(p.insurance_price) || 0;
+        totalProfit += Number(p.profit) || 0;
+        
+        // Only add to company debt if company is not broker-linked
+        const companyData = p.insurance_companies as any;
+        if (!companyData?.broker_id) {
+          companyDebt += Number(p.payed_for_company) || 0;
+        }
+      });
+      
+      // 2. Get company settlements (paid to companies)
+      const { data: companySettlements } = await supabase
+        .from('company_settlements')
+        .select('total_amount, refused')
+        .eq('status', 'completed')
+        .neq('refused', true);
+      
+      const totalCompanyPayments = (companySettlements || []).reduce((sum, s) => sum + Number(s.total_amount), 0);
+      
+      // 3. Get broker settlements (paid to/from brokers)
+      const { data: brokerSettlements } = await supabase
+        .from('broker_settlements')
+        .select('total_amount, direction, status')
+        .eq('status', 'completed');
+      
+      let totalBrokerPayments = 0;
+      (brokerSettlements || []).forEach(s => {
+        if (s.direction === 'to_broker') {
+          totalBrokerPayments += Number(s.total_amount);
+        }
+      });
+      
+      // 4. Get broker debt (from policies with broker_direction = 'from_broker')
+      const { data: brokerPolicies } = await supabase
+        .from('policies')
+        .select('broker_buy_price, insurance_price, broker_direction')
+        .is('deleted_at', null)
+        .eq('cancelled', false)
+        .eq('broker_direction', 'from_broker');
+      
+      let brokerDebt = 0;
+      (brokerPolicies || []).forEach(p => {
+        brokerDebt += Number(p.broker_buy_price) || Number(p.insurance_price) || 0;
+      });
+      brokerDebt -= totalBrokerPayments; // Subtract what we already paid
+      
+      // 5. Get expenses
+      const { data: allExpenses } = await supabase
+        .from('expenses')
+        .select('amount');
+      
+      const { data: monthExpensesData } = await supabase
+        .from('expenses')
+        .select('amount')
+        .gte('expense_date', monthStart)
+        .lte('expense_date', monthEnd);
+      
+      const totalExpenses = (allExpenses || []).reduce((sum, e) => sum + Number(e.amount), 0);
+      const monthExpenses = (monthExpensesData || []).reduce((sum, e) => sum + Number(e.amount), 0);
+      
+      // Calculate net cash
+      // صافي الخزينة = كل الداخل - المدفوع للشركات - المدفوع للوسطاء - المصاريف
+      const netCash = totalCashIn - totalCompanyPayments - totalBrokerPayments - totalExpenses;
+      
+      // Update company debt to reflect what's remaining
+      companyDebt = companyDebt - totalCompanyPayments;
+      
+      setAbWallet({
+        totalCashIn,
+        totalCompanyPayments,
+        totalBrokerPayments,
+        totalExpenses,
+        netCash,
+        totalProfit,
+        companyDebt: Math.max(0, companyDebt),
+        brokerDebt: Math.max(0, brokerDebt),
+        monthExpenses,
+      });
 
       // Fetch company balances - exclude broker-linked companies
       const { data: companies, error: companiesError } = await supabase
         .from('insurance_companies')
         .select('id, name, name_ar, broker_id')
         .eq('active', true)
-        .is('broker_id', null); // Only direct companies, not broker-linked
+        .is('broker_id', null);
       
       if (companiesError) throw companiesError;
       
-      // For each company, get balance
       const balances: CompanyBalance[] = [];
       for (const company of companies || []) {
         const { data: balanceData } = await supabase
@@ -219,7 +296,26 @@ export default function FinancialReports() {
       />
 
       <div className="p-6 space-y-6">
-        {/* Summary Cards - AB Wallet Overview */}
+        {/* Main AB Wallet Card - Full Width */}
+        <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+          <CardContent className="py-6">
+            {loading ? (
+              <Skeleton className="h-24 w-full" />
+            ) : (
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground mb-2">المبلغ الإجمالي مع AB</p>
+                <div className="text-4xl font-bold text-primary mb-2">
+                  {formatCurrency(abWallet?.netCash || 0)}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  (كل الإيرادات - المدفوع للشركات - المدفوع للوسطاء - المصاريف)
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Summary Cards - 4 columns */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {loading || profitLoading ? (
             <>
@@ -230,12 +326,12 @@ export default function FinancialReports() {
             </>
           ) : (
             <>
-              {/* Net Profit (Year) */}
+              {/* Total Profit */}
               <Card className="border-l-4 border-l-success">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <TrendingUp className="h-4 w-4" />
-                    صافي الربح (السنة)
+                    ربح AB الإجمالي
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -248,17 +344,17 @@ export default function FinancialReports() {
                 </CardContent>
               </Card>
 
-              {/* Company Payables - Excluding broker-linked */}
+              {/* Company Debt */}
               <Card className="border-l-4 border-l-destructive">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <Building2 className="h-4 w-4" />
-                    مستحق للشركات
+                    إجمالي مستحق للشركات
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-destructive">
-                    {formatCurrency(profitSummary.totalCompanyPaymentDue)}
+                    {formatCurrency(abWallet?.companyDebt || 0)}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     شركات مباشرة فقط (بدون الوسطاء)
@@ -266,94 +362,107 @@ export default function FinancialReports() {
                 </CardContent>
               </Card>
 
-              {/* Broker Balance */}
+              {/* Broker Debt */}
               <Card className="border-l-4 border-l-primary">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <Users className="h-4 w-4" />
-                    صافي حساب الوسطاء
+                    إجمالي مستحق للوسطاء
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">
-                    {ledgerSummary ? (
-                      ledgerSummary.brokerReceivables - ledgerSummary.brokerPayables >= 0 ? (
-                        <span className="text-success">+{formatCurrency(ledgerSummary.brokerReceivables - ledgerSummary.brokerPayables)}</span>
-                      ) : (
-                        <span className="text-destructive">-{formatCurrency(Math.abs(ledgerSummary.brokerReceivables - ledgerSummary.brokerPayables))}</span>
-                      )
-                    ) : '₪0'}
+                  <div className="text-2xl font-bold text-primary">
+                    {formatCurrency(abWallet?.brokerDebt || 0)}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    + لنا | - علينا
+                    المتبقي للوسطاء
                   </p>
                 </CardContent>
               </Card>
 
-              {/* Customer Refunds */}
+              {/* Total Expenses */}
               <Card className="border-l-4 border-l-warning">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Calculator className="h-4 w-4" />
-                    مرتجعات للعملاء
+                    <Receipt className="h-4 w-4" />
+                    المصاريف الشهرية
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-warning">
-                    {ledgerSummary ? formatCurrency(ledgerSummary.customerRefundsDue) : '₪0'}
+                    {formatCurrency(abWallet?.monthExpenses || 0)}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    مبالغ مستحقة للعملاء
-                  </p>
+                  <Link to="/expenses" className="text-xs text-primary hover:underline mt-1 inline-block">
+                    عرض كل المصاريف →
+                  </Link>
                 </CardContent>
               </Card>
             </>
           )}
         </div>
 
-        {/* Second Row - Monthly Stats */}
-        <div className="grid gap-4 md:grid-cols-3">
+        {/* Cash Flow Summary */}
+        <div className="grid gap-4 md:grid-cols-4">
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Receipt className="h-4 w-4 text-primary" />
-                ربح الشهر الحالي
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold text-success">
-                {formatCurrency(profitSummary.monthNetProfit)}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                بعد خصم: {formatCurrency(profitSummary.monthElzamiCost)}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Banknote className="h-4 w-4 text-success" />
-                إيرادات الشهر
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold">
-                {formatCurrency(profitSummary.monthRevenue)}
+            <CardContent className="py-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-success/10">
+                  <ArrowDownRight className="h-5 w-5 text-success" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">إجمالي الإيرادات</p>
+                  <p className="text-lg font-bold text-success">
+                    {formatCurrency(abWallet?.totalCashIn || 0)}
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>
-
+          
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-warning" />
-                تكلفة الإلزامي (السنة)
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold text-warning">
-                {formatCurrency(profitSummary.totalElzamiCost)}
+            <CardContent className="py-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-destructive/10">
+                  <ArrowUpRight className="h-5 w-5 text-destructive" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">المدفوع للشركات</p>
+                  <p className="text-lg font-bold text-destructive">
+                    {formatCurrency(abWallet?.totalCompanyPayments || 0)}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="py-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <ArrowUpRight className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">المدفوع للوسطاء</p>
+                  <p className="text-lg font-bold text-primary">
+                    {formatCurrency(abWallet?.totalBrokerPayments || 0)}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="py-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-warning/10">
+                  <Receipt className="h-5 w-5 text-warning" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">إجمالي المصاريف</p>
+                  <p className="text-lg font-bold text-warning">
+                    {formatCurrency(abWallet?.totalExpenses || 0)}
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -456,8 +565,7 @@ export default function FinancialReports() {
                         <TableRow>
                           <TableHead>التاريخ</TableHead>
                           <TableHead>النوع</TableHead>
-                          <TableHead>التصنيف</TableHead>
-                          <TableHead>الطرف</TableHead>
+                          <TableHead>الفئة</TableHead>
                           <TableHead className="text-left">المبلغ</TableHead>
                           <TableHead>الحالة</TableHead>
                         </TableRow>
@@ -466,35 +574,16 @@ export default function FinancialReports() {
                         {recentEntries.map((entry) => (
                           <TableRow key={entry.id}>
                             <TableCell>{formatDate(entry.transactionDate)}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline">
-                                {referenceTypeLabels[entry.referenceType] || entry.referenceType}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              {categoryLabels[entry.category] || entry.category}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {entry.counterpartyType === 'insurance_company' && 'شركة تأمين'}
-                              {entry.counterpartyType === 'customer' && 'عميل'}
-                              {entry.counterpartyType === 'broker' && 'وسيط'}
-                              {entry.counterpartyType === 'internal' && 'داخلي'}
-                            </TableCell>
+                            <TableCell>{referenceTypeLabels[entry.referenceType] || entry.referenceType}</TableCell>
+                            <TableCell>{categoryLabels[entry.category] || entry.category}</TableCell>
                             <TableCell className="text-left">
-                              <span className={`flex items-center gap-1 ${entry.amount >= 0 ? 'text-success' : 'text-destructive'}`}>
-                                {entry.amount >= 0 ? (
-                                  <ArrowUpRight className="h-3 w-3" />
-                                ) : (
-                                  <ArrowDownRight className="h-3 w-3" />
-                                )}
-                                {formatCurrency(entry.amount)}
+                              <span className={entry.amount >= 0 ? 'text-success' : 'text-destructive'}>
+                                {entry.amount >= 0 ? '+' : ''}{formatCurrency(entry.amount)}
                               </span>
                             </TableCell>
                             <TableCell>
                               <Badge variant={statusBadgeVariant(entry.status)}>
-                                {entry.status === 'posted' && 'مرحّل'}
-                                {entry.status === 'reversed' && 'معكوس'}
-                                {entry.status === 'pending' && 'معلق'}
+                                {entry.status === 'posted' ? 'مُرحّل' : entry.status === 'reversed' ? 'ملغي' : entry.status}
                               </Badge>
                             </TableCell>
                           </TableRow>
@@ -507,27 +596,6 @@ export default function FinancialReports() {
             </Card>
           </TabsContent>
         </Tabs>
-
-        {/* Info Card */}
-        <Card className="bg-muted/50">
-          <CardContent className="pt-6">
-            <div className="flex gap-3">
-              <div className="rounded-full bg-primary/10 p-2 h-fit">
-                <Wallet className="h-5 w-5 text-primary" />
-              </div>
-              <div className="space-y-1">
-                <h4 className="font-medium">نظام المحفظة الموحد (AB Ledger)</h4>
-                <p className="text-sm text-muted-foreground">
-                  كل حركة مالية في النظام تُسجل تلقائياً كقيد محاسبي. يشمل ذلك:
-                  إنشاء البوالص، استلام الدفعات، إلغاء البوالص، الشيكات الراجعة، تسويات الوسطاء، ومرتجعات العملاء.
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  <strong>ملاحظة:</strong> تأمينات الإلزامي لا تُحسب ضمن الأرباح، بل تُسجل كتكلفة عمولة سالبة.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </MainLayout>
   );

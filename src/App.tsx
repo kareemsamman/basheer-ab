@@ -47,6 +47,7 @@ import MarketingSms from "./pages/MarketingSms";
 import AccidentReports from "./pages/AccidentReports";
 import AccidentReportForm from "./pages/AccidentReportForm";
 import AccidentTemplateMapper from "./pages/AccidentTemplateMapper";
+import Expenses from "./pages/Expenses";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -210,6 +211,11 @@ const App = () => (
               <Route path="/reports/financial" element={
                 <AdminRoute>
                   <FinancialReports />
+                </AdminRoute>
+              } />
+              <Route path="/expenses" element={
+                <AdminRoute>
+                  <Expenses />
                 </AdminRoute>
               } />
               <Route path="/reports/elzami-costs" element={
