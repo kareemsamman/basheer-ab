@@ -123,11 +123,12 @@ export default function FinancialReports() {
         });
       }
 
-      // Fetch company balances
+      // Fetch company balances - exclude broker-linked companies
       const { data: companies, error: companiesError } = await supabase
         .from('insurance_companies')
-        .select('id, name, name_ar')
-        .eq('active', true);
+        .select('id, name, name_ar, broker_id')
+        .eq('active', true)
+        .is('broker_id', null); // Only direct companies, not broker-linked
       
       if (companiesError) throw companiesError;
       
@@ -218,7 +219,7 @@ export default function FinancialReports() {
       />
 
       <div className="p-6 space-y-6">
-        {/* Summary Cards */}
+        {/* Summary Cards - AB Wallet Overview */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {loading || profitLoading ? (
             <>
@@ -229,7 +230,7 @@ export default function FinancialReports() {
             </>
           ) : (
             <>
-              {/* Net Profit */}
+              {/* Net Profit (Year) */}
               <Card className="border-l-4 border-l-success">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -242,17 +243,17 @@ export default function FinancialReports() {
                     {formatCurrency(profitSummary.netProfit)}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    بعد خصم تكلفة الإلزامي: {formatCurrency(profitSummary.totalElzamiCost)}
+                    بعد خصم تكلفة الإلزامي
                   </p>
                 </CardContent>
               </Card>
 
-              {/* Company Payables */}
+              {/* Company Payables - Excluding broker-linked */}
               <Card className="border-l-4 border-l-destructive">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <Building2 className="h-4 w-4" />
-                    مستحق لشركات التأمين
+                    مستحق للشركات
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -260,25 +261,7 @@ export default function FinancialReports() {
                     {formatCurrency(profitSummary.totalCompanyPaymentDue)}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    التزامات غير مسددة
-                  </p>
-                </CardContent>
-              </Card>
-
-              {/* ELZAMI Cost */}
-              <Card className="border-l-4 border-l-warning">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4" />
-                    تكلفة عمولات الإلزامي
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-warning">
-                    {formatCurrency(profitSummary.totalElzamiCost)}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    عمولة سالبة (خصم)
+                    شركات مباشرة فقط (بدون الوسطاء)
                   </p>
                 </CardContent>
               </Card>
@@ -306,26 +289,30 @@ export default function FinancialReports() {
                   </p>
                 </CardContent>
               </Card>
+
+              {/* Customer Refunds */}
+              <Card className="border-l-4 border-l-warning">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Calculator className="h-4 w-4" />
+                    مرتجعات للعملاء
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-warning">
+                    {ledgerSummary ? formatCurrency(ledgerSummary.customerRefundsDue) : '₪0'}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    مبالغ مستحقة للعملاء
+                  </p>
+                </CardContent>
+              </Card>
             </>
           )}
         </div>
 
-        {/* Second Row - More Details */}
+        {/* Second Row - Monthly Stats */}
         <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Banknote className="h-4 w-4 text-success" />
-                إجمالي الإيرادات (السنة)
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold">
-                {formatCurrency(profitSummary.yearRevenue)}
-              </div>
-            </CardContent>
-          </Card>
-
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -346,13 +333,27 @@ export default function FinancialReports() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Calculator className="h-4 w-4 text-warning" />
-                مرتجعات للعملاء
+                <Banknote className="h-4 w-4 text-success" />
+                إيرادات الشهر
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold">
+                {formatCurrency(profitSummary.monthRevenue)}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-warning" />
+                تكلفة الإلزامي (السنة)
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-xl font-bold text-warning">
-                {ledgerSummary ? formatCurrency(ledgerSummary.customerRefundsDue) : '₪0'}
+                {formatCurrency(profitSummary.totalElzamiCost)}
               </div>
             </CardContent>
           </Card>

@@ -71,6 +71,9 @@ export default function Companies() {
         query = query.contains('category_parent', [typeFilter]);
       }
 
+      // Exclude broker-linked companies - they are managed through broker wallet
+      query = query.is('broker_id', null);
+
       const { data, error } = await query;
 
       if (error) throw error;
