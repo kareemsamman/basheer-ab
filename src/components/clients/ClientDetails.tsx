@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { MainLayout } from '@/components/layout/MainLayout';
+import { useRecentClient } from '@/hooks/useRecentClient';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -183,6 +184,7 @@ const carTypeLabels: Record<string, string> = {
 export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps) {
   const { getBranchName } = useBranches();
   const { isAdmin } = useAuth();
+  const { setRecentClient } = useRecentClient();
   const [cars, setCars] = useState<CarRecord[]>([]);
   const [policies, setPolicies] = useState<PolicyRecord[]>([]);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
@@ -382,6 +384,15 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
       setLoadingPayments(false);
     }
   };
+
+  // Set this client as the recent client for quick navigation
+  useEffect(() => {
+    setRecentClient({
+      id: client.id,
+      name: client.full_name,
+      initial: client.full_name.charAt(0),
+    });
+  }, [client.id, client.full_name, setRecentClient]);
 
   useEffect(() => {
     fetchCars();
