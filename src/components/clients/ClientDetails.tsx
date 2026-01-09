@@ -47,6 +47,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { CarDrawer } from '@/components/cars/CarDrawer';
 import { PolicyDetailsDrawer } from '@/components/policies/PolicyDetailsDrawer';
+import { TransferPolicyModal } from '@/components/policies/TransferPolicyModal';
 import { PolicyWizard } from '@/components/policies/PolicyWizard';
 import { ClientDrawer } from '@/components/clients/ClientDrawer';
 import { ClientSignatureSection } from '@/components/clients/ClientSignatureSection';
@@ -203,6 +204,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
   const [policyWizardOpen, setPolicyWizardOpen] = useState(false);
   const [clientDrawerOpen, setClientDrawerOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   
   // Notes editing
   const [editingNotes, setEditingNotes] = useState(false);
@@ -1357,6 +1359,40 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
         broker={broker}
         branchName={client.branch_id ? getBranchName(client.branch_id) : null}
       />
+
+      {/* Transfer Policy Modal - for package/policy transfer from timeline */}
+      {selectedPolicyId && (() => {
+        const selectedPolicy = policies.find(p => p.id === selectedPolicyId);
+        const selectedCar = selectedPolicy?.car ? cars.find(c => c.id === selectedPolicy.car?.id) : null;
+        return (
+          <TransferPolicyModal
+            open={transferOpen}
+            onOpenChange={setTransferOpen}
+            policyId={selectedPolicyId}
+            policyNumber={selectedPolicy?.policy_number || null}
+            policyType={selectedPolicy?.policy_type_parent || ''}
+            groupId={selectedPolicy?.group_id || null}
+            clientId={client.id}
+            clientName={client.full_name}
+            clientPhone={client.phone_number}
+            branchId={client.branch_id}
+            currentCar={selectedCar ? {
+              id: selectedCar.id,
+              car_number: selectedCar.car_number,
+              model: selectedCar.model || null,
+              year: selectedCar.year || null,
+              manufacturer_name: selectedCar.manufacturer_name || null,
+            } : null}
+            onTransferred={() => {
+              setTransferOpen(false);
+              fetchPolicies();
+              fetchPaymentSummary();
+              fetchPayments();
+              onRefresh();
+            }}
+          />
+        );
+      })()}
     </MainLayout>
   );
 }
