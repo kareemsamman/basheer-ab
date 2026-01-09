@@ -602,7 +602,7 @@ export function PolicyWizard({
                           newClient.under24_type === 'client' ||
                           newClient.under24_type === 'additional_driver';
 
-        const policyTypeParentValue = (selectedCategory?.slug || policy.policy_type_parent) as PolicyTypeParent;
+        const policyTypeParentValue = policy.policy_type_parent as PolicyTypeParent;
         const policyTypeChildValue = (policy.policy_type_child || null) as PolicyTypeChild | null;
         const carTypeValue = (selectedCar?.car_type || newCar.car_type || 'car') as CarType;
         const ageBandValue = isUnder24 ? 'UNDER_24' as const : 'UP_24' as const;
@@ -627,7 +627,7 @@ export function PolicyWizard({
         });
 
         // Create policy
-        const policyTypeParent = (selectedCategory?.slug || policy.policy_type_parent) as PolicyTypeParent;
+        const policyTypeParent = policy.policy_type_parent as PolicyTypeParent;
         const policyTypeChild = policy.policy_type_child ? policy.policy_type_child as PolicyTypeChild : null;
         const brokerDir = brokerDirection || null;
 
