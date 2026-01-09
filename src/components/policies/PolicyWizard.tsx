@@ -280,6 +280,25 @@ export function PolicyWizard({
   const handleNext = () => {
     if (!validateStep(currentStep)) return;
     const nextStep = Math.min(currentStep + 1, steps.length);
+    
+    // Auto-fill payment for ELZAMI when entering Step 4
+    if (nextStep === 4 && policy.policy_type_parent === 'ELZAMI') {
+      // Only auto-fill if payments are empty or have no amount
+      const hasPayments = payments.some(p => p.amount > 0);
+      if (!hasPayments) {
+        const totalPrice = parseFloat(policy.insurance_price) || pricing.totalPrice;
+        if (totalPrice > 0) {
+          setPayments([{
+            id: crypto.randomUUID(),
+            payment_type: 'cash',
+            amount: totalPrice,
+            payment_date: new Date().toISOString().split('T')[0],
+            refused: false,
+          }]);
+        }
+      }
+    }
+    
     goToStep(nextStep);
   };
 
