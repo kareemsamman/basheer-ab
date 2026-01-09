@@ -108,7 +108,7 @@ export default function Brokers() {
           // Get policies for this broker with date filter
           let policyQuery = supabase
             .from('policies')
-            .select('id, insurance_price, broker_direction')
+            .select('id, insurance_price, broker_direction, broker_buy_price')
             .eq('broker_id', broker.id)
             .is('deleted_at', null);
 
@@ -135,15 +135,17 @@ export default function Brokers() {
           }
 
           // Calculate broker balance based on direction
-          // to_broker or null = I made for broker (he owes me)
-          // from_broker = broker made for me (I owe him)
-          const toBrokerPolicies = policies?.filter(p => p.broker_direction === 'to_broker' || p.broker_direction === null) || [];
+          // to_broker = I made for broker (he owes me the insurance_price)
+          // from_broker = broker made for me (I owe him the broker_buy_price)
+          const toBrokerPolicies = policies?.filter(p => p.broker_direction === 'to_broker') || [];
           const fromBrokerPolicies = policies?.filter(p => p.broker_direction === 'from_broker') || [];
           
+          // For to_broker: use insurance_price (what broker owes me)
           const toBrokerTotal = toBrokerPolicies.reduce((sum, p) => sum + Number(p.insurance_price), 0);
-          const fromBrokerTotal = fromBrokerPolicies.reduce((sum, p) => sum + Number(p.insurance_price), 0);
+          // For from_broker: use broker_buy_price (what I owe broker)
+          const fromBrokerTotal = fromBrokerPolicies.reduce((sum, p) => sum + (Number(p.broker_buy_price) || Number(p.insurance_price)), 0);
           
-          // Net balance: what broker owes me
+          // Net balance: what broker owes me (positive) or what I owe broker (negative)
           const netBalance = toBrokerTotal - fromBrokerTotal;
 
           return {
