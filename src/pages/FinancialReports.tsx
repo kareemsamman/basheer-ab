@@ -269,6 +269,9 @@ export default function FinancialReports() {
   const loading = isLoading && !cachedData;
 
   const handleSync = async () => {
+    // Clear cache to force fresh data
+    localStorage.removeItem(CACHE_KEY);
+    queryClient.invalidateQueries({ queryKey: ['financial-reports'] });
     await Promise.all([refetch(), refetchProfit()]);
     toast.success('تم تحديث البيانات');
   };
