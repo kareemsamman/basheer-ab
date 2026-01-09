@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Plus, FileText, ChevronUp, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,48 @@ export function BottomToolbar({ onPolicyComplete }: BottomToolbarProps) {
 
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardCollapsed, setWizardCollapsed] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isOverContent, setIsOverContent] = useState(false);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+
+  // Detect if toolbar is overlapping content
+  useEffect(() => {
+    const checkOverlap = () => {
+      if (!toolbarRef.current) return;
+      
+      const rect = toolbarRef.current.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const checkY = rect.top - 10; // Check just above the toolbar
+      
+      // Temporarily hide toolbar to check what's underneath
+      toolbarRef.current.style.visibility = 'hidden';
+      const elementBelow = document.elementFromPoint(centerX, checkY);
+      toolbarRef.current.style.visibility = '';
+      
+      // Check if there's meaningful content (not just body/main/html)
+      if (elementBelow) {
+        const tagName = elementBelow.tagName.toLowerCase();
+        const isContent = !['body', 'html', 'main'].includes(tagName);
+        setIsOverContent(isContent);
+      } else {
+        setIsOverContent(false);
+      }
+    };
+
+    checkOverlap();
+    window.addEventListener('scroll', checkOverlap, { passive: true });
+    window.addEventListener('resize', checkOverlap);
+    
+    // Re-check after content changes
+    const observer = new MutationObserver(checkOverlap);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      window.removeEventListener('scroll', checkOverlap);
+      window.removeEventListener('resize', checkOverlap);
+      observer.disconnect();
+    };
+  }, [location.pathname]);
 
   const handleWizardOpenChange = (open: boolean) => {
     setWizardOpen(open);
@@ -30,11 +72,25 @@ export function BottomToolbar({ onPolicyComplete }: BottomToolbarProps) {
   const showRecentClient =
     !!recentClient && location.pathname !== "/clients" && location.pathname !== "/login" && location.pathname !== "/no-access";
 
+  // Calculate opacity: transparent when over content and not hovered
+  const shouldFade = isOverContent && !isHovered;
+
   return (
     <>
       {/* Sticky bottom toolbar with glassy style */}
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-full border border-border/50 bg-background/80 backdrop-blur-xl shadow-lg">
+      <div 
+        ref={toolbarRef}
+        className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        <div 
+          className={cn(
+            "flex items-center gap-2 px-4 py-2.5 rounded-full border border-border/50 bg-background/80 backdrop-blur-xl shadow-lg",
+            "transition-opacity duration-300",
+            shouldFade ? "opacity-30 hover:opacity-100" : "opacity-100"
+          )}
+        >
           {/* Recent client quick access (appears after you open a client profile then go to another page) */}
           {showRecentClient && (
             <div className="flex items-center gap-1">
