@@ -104,11 +104,12 @@ serve(async (req) => {
     // If no profile found, create a pending one
     if (profileError || !existingProfile) {
       console.log("No profile found for email, creating pending profile:", normalizedEmail);
-      
+
       // Create pending profile for admin approval (no role column - roles are in separate table)
       const { error: createError } = await supabase
         .from("profiles")
         .insert({
+          id: crypto.randomUUID(),
           email: normalizedEmail,
           full_name: normalizedEmail.split("@")[0], // Use email prefix as initial name
           status: "pending",
@@ -116,6 +117,10 @@ serve(async (req) => {
 
       if (createError) {
         console.error("Error creating pending profile:", createError);
+        return new Response(
+          JSON.stringify({ success: false, error: "فشل تسجيل الطلب. حاول مرة أخرى أو تواصل مع المدير." }),
+          { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
       }
 
       // Log the login attempt
@@ -126,13 +131,14 @@ serve(async (req) => {
         success: false,
       });
 
+      // Return 200 so the client can show the message (supabase.functions.invoke treats non-2xx as an exception)
       return new Response(
-        JSON.stringify({ 
-          success: false, 
+        JSON.stringify({
+          success: false,
           error: "تم تسجيل طلبك. يرجى انتظار موافقة المدير للحصول على صلاحية الدخول.",
-          pending: true 
+          pending: true,
         }),
-        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
@@ -140,19 +146,19 @@ serve(async (req) => {
     if (existingProfile.status === "blocked") {
       return new Response(
         JSON.stringify({ success: false, error: "تم حظر هذا الحساب. تواصل مع المدير." }),
-        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
     // Check if user is still pending
     if (existingProfile.status === "pending") {
       return new Response(
-        JSON.stringify({ 
-          success: false, 
+        JSON.stringify({
+          success: false,
           error: "حسابك قيد المراجعة. يرجى انتظار موافقة المدير.",
-          pending: true 
+          pending: true,
         }),
-        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
