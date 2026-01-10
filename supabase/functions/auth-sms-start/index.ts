@@ -101,6 +101,13 @@ async function sendSmsOTP(
   }
 }
 
+// Generate a random password
+function generatePassword(): string {
+  const array = new Uint8Array(24);
+  crypto.getRandomValues(array);
+  return Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -129,28 +136,119 @@ serve(async (req) => {
       );
     }
 
-    // IMPORTANT: Check if user exists and has access BEFORE sending OTP
-    // Check by phone in profiles table
+    // Check if user exists by phone in profiles table
     const { data: existingProfile, error: profileError } = await supabase
       .from("profiles")
-      .select("id, status, phone")
+      .select("id, status, phone, full_name")
       .eq("phone", normalizedPhone)
       .single();
 
-    if (profileError || !existingProfile) {
-      console.log("No profile found for phone:", normalizedPhone);
+    // Case 1: Profile exists
+    if (existingProfile) {
+      // Check if blocked
+      if (existingProfile.status === "blocked") {
+        return new Response(
+          JSON.stringify({ success: false, error: "تم حظر هذا الحساب. تواصل مع المدير." }),
+          { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
+      // Check if pending approval
+      if (existingProfile.status === "pending") {
+        console.log("Profile is pending approval:", normalizedPhone);
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            pending: true,
+            message: "طلبك قيد المراجعة. سيتم إبلاغك عند الموافقة." 
+          }),
+          { headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
+      // User is active - proceed with OTP
+      console.log("Profile found and active, sending OTP:", normalizedPhone);
+    } else {
+      // Case 2: No profile - create new pending registration
+      console.log("No profile found, creating pending registration:", normalizedPhone);
+
+      // Create auth user with phone-based email
+      const fakeEmail = `${normalizedPhone}@phone.local`;
+      const tempPassword = generatePassword();
+
+      const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+        email: fakeEmail,
+        password: tempPassword,
+        email_confirm: true,
+        user_metadata: {
+          phone: normalizedPhone,
+          registration_method: 'sms'
+        }
+      });
+
+      if (authError) {
+        // Check if user already exists (email conflict)
+        if (authError.message?.includes('already') || authError.message?.includes('duplicate')) {
+          console.log("Auth user already exists for phone:", normalizedPhone);
+          // Profile might have been deleted, try to get auth user
+          return new Response(
+            JSON.stringify({ 
+              success: true, 
+              pending: true,
+              message: "طلبك قيد المراجعة. سيتم إبلاغك عند الموافقة." 
+            }),
+            { headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        }
+        console.error("Auth user creation error:", authError);
+        return new Response(
+          JSON.stringify({ success: false, error: "فشل في إنشاء الحساب" }),
+          { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
+      // Create pending profile
+      const { error: profileCreateError } = await supabase
+        .from("profiles")
+        .insert({
+          id: authUser.user.id,
+          full_name: `مستخدم ${normalizedPhone}`,
+          phone: normalizedPhone,
+          status: "pending"
+        });
+
+      if (profileCreateError) {
+        console.error("Profile creation error:", profileCreateError);
+        // Try to clean up auth user
+        await supabase.auth.admin.deleteUser(authUser.user.id);
+        return new Response(
+          JSON.stringify({ success: false, error: "فشل في إنشاء الملف الشخصي" }),
+          { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
+      // Log the registration attempt
+      await supabase.from("login_attempts").insert({
+        email: fakeEmail,
+        identifier: normalizedPhone,
+        method: "sms_registration",
+        success: true,
+        user_id: authUser.user.id
+      });
+
+      console.log("Created pending profile for phone:", normalizedPhone);
+
       return new Response(
-        JSON.stringify({ success: false, error: "رقم الهاتف هذا غير مسجل في النظام. تواصل مع المدير للحصول على صلاحية الدخول." }),
-        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        JSON.stringify({ 
+          success: true, 
+          pending: true,
+          message: "تم تسجيل طلبك بنجاح. سيتم إبلاغك عند موافقة المدير." 
+        }),
+        { headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
-    if (existingProfile.status === "blocked") {
-      return new Response(
-        JSON.stringify({ success: false, error: "تم حظر هذا الحساب. تواصل مع المدير." }),
-        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
+    // If we reach here, user is active - send OTP
 
     // Check rate limiting - max 3 OTPs per phone per 10 minutes
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
