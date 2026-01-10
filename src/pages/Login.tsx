@@ -149,7 +149,20 @@ export default function Login() {
       });
 
       if (response.error) {
-        throw new Error(response.error.message);
+        // Try to extract the real error message from the function response body
+        let message = response.error.message;
+        const ctx = (response as any).response ?? (response.error as any).context;
+
+        if (ctx && typeof ctx.json === "function") {
+          try {
+            const body = await ctx.json();
+            if (body?.error) message = body.error;
+          } catch {
+            // ignore JSON parsing errors
+          }
+        }
+
+        throw new Error(message);
       }
 
       if (!response.data?.success) {

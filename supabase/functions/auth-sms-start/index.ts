@@ -207,18 +207,22 @@ serve(async (req) => {
         );
       }
 
-      // Create pending profile
-      const { error: profileCreateError } = await supabase
+      // Create/Update pending profile (a trigger may already create a profile row on user creation)
+      const { error: profileUpsertError } = await supabase
         .from("profiles")
-        .insert({
-          id: authUser.user.id,
-          full_name: `مستخدم ${normalizedPhone}`,
-          phone: normalizedPhone,
-          status: "pending"
-        });
+        .upsert(
+          {
+            id: authUser.user.id,
+            email: fakeEmail,
+            full_name: `مستخدم ${normalizedPhone}`,
+            phone: normalizedPhone,
+            status: "pending",
+          },
+          { onConflict: "id" }
+        );
 
-      if (profileCreateError) {
-        console.error("Profile creation error:", profileCreateError);
+      if (profileUpsertError) {
+        console.error("Profile creation error:", profileUpsertError);
         // Try to clean up auth user
         await supabase.auth.admin.deleteUser(authUser.user.id);
         return new Response(
