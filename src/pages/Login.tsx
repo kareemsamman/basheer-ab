@@ -157,6 +157,13 @@ export default function Login() {
         return;
       }
 
+      // Check if this is a pending registration
+      if (response.data?.pending) {
+        toast.info(response.data.message || "طلبك قيد المراجعة");
+        navigate("/no-access", { replace: true });
+        return;
+      }
+
       toast.success("تم إرسال رمز التحقق إلى هاتفك");
       setAuthStep("otp");
       setAuthMethod("sms");
