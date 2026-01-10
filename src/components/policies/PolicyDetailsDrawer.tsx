@@ -377,7 +377,9 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
 
   const formatCurrency = (amount: number | null) => {
     if (amount === null || amount === undefined) return "₪0";
-    return `₪${amount.toLocaleString("ar-EG", { maximumFractionDigits: 0 })}`;
+    const isNegative = amount < 0;
+    const absAmount = Math.abs(amount);
+    return `${isNegative ? '-' : ''}₪${absAmount.toLocaleString("ar-EG", { maximumFractionDigits: 0 })}`;
   };
 
   const getStatus = () => {
@@ -439,7 +441,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="max-w-3xl max-h-[90vh] p-0 overflow-hidden"
+          className="max-w-4xl max-h-[95vh] p-0 overflow-hidden"
           dir="rtl"
         >
           {loading ? (
@@ -449,29 +451,31 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
               <Skeleton className="h-24 w-full" />
             </div>
           ) : policy ? (
-            <div className="flex flex-col h-full max-h-[90vh]">
-              {/* Header - Insurance Focus */}
-              <div className="p-6 bg-gradient-to-l from-primary/5 to-transparent border-b">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="text-right">
-                    <DialogTitle className="text-xl font-bold mb-2">تفاصيل الوثيقة</DialogTitle>
-                    <div className="flex flex-wrap gap-2 justify-end">
-                      <Badge className={cn("border text-sm", policyTypeColors[policy.policy_type_parent])}>
+            <div className="flex flex-col h-full max-h-[95vh]">
+              {/* Header - Clean Redesign */}
+              <div className="px-8 py-6 bg-gradient-to-l from-primary/5 via-primary/3 to-transparent border-b">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="text-right flex-1">
+                    <DialogTitle className="text-2xl font-bold mb-3 flex items-center gap-3">
+                      تفاصيل الوثيقة
+                      <Badge variant={status.variant} className="gap-1.5 text-sm px-3 py-1">
+                        <StatusIcon className="h-4 w-4" />
+                        {status.label}
+                      </Badge>
+                    </DialogTitle>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <Badge className={cn("border text-sm px-3 py-1", policyTypeColors[policy.policy_type_parent])}>
                         {policyTypeLabels[policy.policy_type_parent]}
                         {policy.policy_type_child && ` - ${policyChildLabels[policy.policy_type_child]}`}
                       </Badge>
                       {/* Show service name for Road Service */}
                       {policy.policy_type_parent === 'ROAD_SERVICE' && policy.road_services && (
-                        <Badge variant="outline" className="text-xs">
+                        <Badge variant="outline" className="text-sm">
                           {policy.road_services.name_ar || policy.road_services.name}
                         </Badge>
                       )}
-                      <Badge variant={status.variant} className="gap-1">
-                        <StatusIcon className="h-3 w-3" />
-                        {status.label}
-                      </Badge>
                       {(policy.is_under_24 || policy.clients.under24_type !== 'none') && (
-                        <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+                        <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-sm">
                           {policy.clients.under24_type === 'additional_driver' ? 'سائق إضافي -24' : 'أقل من 24'}
                         </Badge>
                       )}
@@ -497,9 +501,9 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                         </Button>
                       </div>
                     )}
-                    {creatorName && <p className="text-xs text-muted-foreground mt-1">أنشئ بواسطة: {creatorName}</p>}
+                    {creatorName && <p className="text-sm text-muted-foreground mt-3">أنشئ بواسطة: {creatorName}</p>}
                   </div>
-                  <div className="flex gap-2 ml-[20px]">
+                  <div className="flex flex-wrap gap-2 items-start shrink-0">
                     {remaining > 0 && (
                       <Button
                         size="sm"
@@ -556,48 +560,69 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                   </div>
                 </div>
 
-                {/* Main Insurance Info - Hero Section */}
+                {/* Main Insurance Info - Hero Stats Cards */}
                 <div
                   className={cn(
-                    "grid gap-4 mt-4",
-                    isElzami ? "grid-cols-2 md:grid-cols-3" : "grid-cols-2 md:grid-cols-4",
+                    "grid gap-4 mt-6",
+                    isElzami ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-2 sm:grid-cols-4",
                   )}
                 >
                   {/* Price */}
-                  <div className="bg-background rounded-xl p-4 text-center border shadow-sm">
-                    <p className="text-xs text-muted-foreground mb-1">سعر التأمين</p>
-                    <p className="text-2xl font-bold text-primary">{formatCurrency(policy.insurance_price)}</p>
+                  <div className="bg-background rounded-2xl p-5 text-center border-2 shadow-md hover:shadow-lg transition-shadow">
+                    <p className="text-sm text-muted-foreground mb-2 font-medium">سعر التأمين</p>
+                    <p className="text-3xl font-bold text-primary ltr-nums">{formatCurrency(policy.insurance_price)}</p>
                   </div>
 
                   {/* Paid */}
-                  <div className="bg-background rounded-xl p-4 text-center border shadow-sm">
-                    <p className="text-xs text-muted-foreground mb-1">المدفوع</p>
-                    <p
-                      className={cn("text-2xl font-bold", paymentStatus === "paid" ? "text-success" : "text-amber-600")}
-                    >
+                  <div className={cn(
+                    "rounded-2xl p-5 text-center border-2 shadow-md hover:shadow-lg transition-shadow",
+                    paymentStatus === "paid" 
+                      ? "bg-success/5 border-success/30" 
+                      : "bg-amber-500/5 border-amber-500/30"
+                  )}>
+                    <p className="text-sm text-muted-foreground mb-2 font-medium">المدفوع</p>
+                    <p className={cn(
+                      "text-3xl font-bold ltr-nums", 
+                      paymentStatus === "paid" ? "text-success" : "text-amber-600"
+                    )}>
                       {formatCurrency(totalPaid)}
                     </p>
                   </div>
 
                   {/* Remaining */}
-                  <div className="bg-background rounded-xl p-4 text-center border shadow-sm">
-                    <p className="text-xs text-muted-foreground mb-1">المتبقي</p>
-                    <p className={cn("text-2xl font-bold", remaining > 0 ? "text-destructive" : "text-success")}>
+                  <div className={cn(
+                    "rounded-2xl p-5 text-center border-2 shadow-md hover:shadow-lg transition-shadow",
+                    remaining > 0 
+                      ? "bg-destructive/5 border-destructive/30" 
+                      : remaining < 0 
+                        ? "bg-destructive/10 border-destructive/40"
+                        : "bg-success/5 border-success/30"
+                  )}>
+                    <p className="text-sm text-muted-foreground mb-2 font-medium">المتبقي</p>
+                    <p className={cn(
+                      "text-3xl font-bold ltr-nums", 
+                      remaining !== 0 ? "text-destructive" : "text-success"
+                    )}>
                       {formatCurrency(remaining)}
                     </p>
+                    {remaining < 0 && (
+                      <p className="text-xs text-destructive mt-1">رصيد زائد</p>
+                    )}
                   </div>
 
                   {/* Profit - Only show if not ELZAMI and user is Admin */}
                   {!isElzami && isAdmin && (
                     <div className={cn(
-                      "rounded-xl p-4 text-center border shadow-sm",
-                      (policy.cancelled || isTransferred) ? "bg-muted" : "bg-success/10 border-success/20"
+                      "rounded-2xl p-5 text-center border-2 shadow-md hover:shadow-lg transition-shadow",
+                      (policy.cancelled || isTransferred) 
+                        ? "bg-muted border-muted-foreground/20" 
+                        : "bg-success/10 border-success/40"
                     )}>
-                      <p className="text-xs text-muted-foreground mb-1">
+                      <p className="text-sm text-muted-foreground mb-2 font-medium">
                         {hasPackage ? 'ربح هذه الوثيقة' : 'الربح'}
                       </p>
                       <p className={cn(
-                        "text-2xl font-bold",
+                        "text-3xl font-bold ltr-nums",
                         (policy.cancelled || isTransferred) ? "text-muted-foreground line-through" : "text-success"
                       )}>
                         {(policy.cancelled || isTransferred) ? formatCurrency(0) : formatCurrency(policy.profit)}
@@ -615,31 +640,32 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                 {/* Package Total - Only show if part of a package and user is Admin */}
                 {hasPackage && !isElzami && isAdmin && (
                   <div className="grid grid-cols-2 gap-4 mt-4">
-                    <div className="bg-primary/10 rounded-xl p-4 text-center border border-primary/20 shadow-sm">
-                      <div className="flex items-center justify-center gap-1.5 mb-1">
-                        <Package className="h-3.5 w-3.5 text-primary" />
-                        <p className="text-xs text-muted-foreground">مجموع الباقة</p>
+                    <div className="bg-primary/10 rounded-2xl p-5 text-center border-2 border-primary/30 shadow-md">
+                      <div className="flex items-center justify-center gap-2 mb-2">
+                        <Package className="h-4 w-4 text-primary" />
+                        <p className="text-sm text-muted-foreground font-medium">مجموع الباقة</p>
                       </div>
-                      <p className="text-xl font-bold text-primary">{formatCurrency(packageTotalPrice)}</p>
+                      <p className="text-2xl font-bold text-primary ltr-nums">{formatCurrency(packageTotalPrice)}</p>
                     </div>
-                    <div className="bg-success/15 rounded-xl p-4 text-center border border-success/30 shadow-sm">
-                      <div className="flex items-center justify-center gap-1.5 mb-1">
-                        <Package className="h-3.5 w-3.5 text-success" />
-                        <p className="text-xs text-muted-foreground">ربح الباقة</p>
+                    <div className="bg-success/15 rounded-2xl p-5 text-center border-2 border-success/40 shadow-md">
+                      <div className="flex items-center justify-center gap-2 mb-2">
+                        <Package className="h-4 w-4 text-success" />
+                        <p className="text-sm text-muted-foreground font-medium">ربح الباقة</p>
                       </div>
-                      <p className="text-xl font-bold text-success">{formatCurrency(packageTotalProfit)}</p>
+                      <p className="text-2xl font-bold text-success ltr-nums">{formatCurrency(packageTotalProfit)}</p>
                     </div>
                   </div>
                 )}
 
                 {/* Payment Progress */}
-                <div className="mt-4 bg-background rounded-xl p-4 border shadow-sm">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">حالة الدفع</span>
+                <div className="mt-5 bg-background rounded-2xl p-5 border-2 shadow-md">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-base font-semibold">حالة الدفع</span>
                     <Badge
                       variant={
                         paymentStatus === "paid" ? "success" : paymentStatus === "partial" ? "warning" : "destructive"
                       }
+                      className="text-sm px-3 py-1"
                     >
                       {paymentStatus === "paid"
                         ? "مدفوع بالكامل"
@@ -648,7 +674,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                           : "غير مدفوع"}
                     </Badge>
                   </div>
-                  <Progress value={percentagePaid} className="h-2" />
+                  <Progress value={percentagePaid} className="h-3" />
                 </div>
 
                 {/* Returned Cheques Warning */}
@@ -734,28 +760,28 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                 className="flex-1 flex flex-col overflow-hidden"
                 dir="rtl"
               >
-                <TabsList className="mx-6 mt-4 grid grid-cols-4 h-10" dir="rtl">
-                  <TabsTrigger value="insurance" className="text-xs gap-1">
-                    <Banknote className="h-3 w-3" />
+                <TabsList className="mx-8 mt-5 grid grid-cols-4 h-12 p-1" dir="rtl">
+                  <TabsTrigger value="insurance" className="text-sm gap-2 font-medium">
+                    <Banknote className="h-4 w-4" />
                     التأمين
                   </TabsTrigger>
-                  <TabsTrigger value="payments" className="text-xs gap-1">
-                    <CreditCard className="h-3 w-3" />
+                  <TabsTrigger value="payments" className="text-sm gap-2 font-medium">
+                    <CreditCard className="h-4 w-4" />
                     الدفعات ({payments.length})
                   </TabsTrigger>
-                  <TabsTrigger value="customer" className="text-xs gap-1">
-                    <User className="h-3 w-3" />
+                  <TabsTrigger value="customer" className="text-sm gap-2 font-medium">
+                    <User className="h-4 w-4" />
                     العميل
                   </TabsTrigger>
-                  <TabsTrigger value="files" className="text-xs gap-1">
-                    <ImageIcon className="h-3 w-3" />
+                  <TabsTrigger value="files" className="text-sm gap-2 font-medium">
+                    <ImageIcon className="h-4 w-4" />
                     الملفات
                   </TabsTrigger>
                 </TabsList>
 
                 <ScrollArea className="flex-1">
                   {/* Insurance Tab */}
-                  <TabsContent value="insurance" className="p-6 space-y-4 m-0">
+                  <TabsContent value="insurance" className="px-8 py-6 space-y-5 m-0">
                     {/* Company */}
                     {policy.insurance_companies ? (
                       <Card className="p-4">
@@ -782,22 +808,22 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
 
                     {/* Package / Related Policies */}
                     {relatedPolicies.length > 0 && (
-                      <Card className="p-4 border-primary/30 bg-primary/5">
-                        <div className="flex items-center gap-2 text-primary font-semibold mb-3">
-                          <Package className="h-4 w-4" />
-                          <span>الوثائق المرتبطة (باقة)</span>
+                      <Card className="p-5 border-2 border-primary/30 bg-primary/5">
+                        <div className="flex items-center gap-2 text-primary font-semibold mb-4">
+                          <Package className="h-5 w-5" />
+                          <span className="text-base">الوثائق المرتبطة (باقة)</span>
                         </div>
-                        <div className="overflow-hidden rounded-md border border-border/50 bg-background">
+                        <div className="overflow-hidden rounded-lg border-2 border-border/50 bg-background">
                           <table className="w-full text-sm">
-                            <thead className="bg-muted/50">
+                            <thead className="bg-muted/60">
                               <tr>
-                                <th className="text-right py-2 px-3 font-medium text-muted-foreground">النوع</th>
-                                <th className="text-right py-2 px-3 font-medium text-muted-foreground">الخدمة</th>
-                                <th className="text-right py-2 px-3 font-medium text-muted-foreground">الشركة</th>
-                                <th className="text-left py-2 px-3 font-medium text-muted-foreground">السعر</th>
+                                <th className="text-right py-3 px-4 font-semibold text-muted-foreground">النوع</th>
+                                <th className="text-right py-3 px-4 font-semibold text-muted-foreground">الخدمة</th>
+                                <th className="text-right py-3 px-4 font-semibold text-muted-foreground">الشركة</th>
+                                <th className="text-left py-3 px-4 font-semibold text-muted-foreground">السعر</th>
                                 {/* Profit column - Admin only */}
                                 {isAdmin && (
-                                  <th className="text-left py-2 px-3 font-medium text-muted-foreground">الربح</th>
+                                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">الربح</th>
                                 )}
                               </tr>
                             </thead>
@@ -805,54 +831,57 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                               {relatedPolicies.map((rp) => (
                                 <tr 
                                   key={rp.id} 
-                                  className="border-t border-border/30 hover:bg-muted/30 cursor-pointer transition-colors"
+                                  className="border-t border-border/30 hover:bg-primary/10 cursor-pointer transition-all group"
                                   onClick={() => {
                                     if (onViewRelatedPolicy) {
                                       onOpenChange(false);
                                       setTimeout(() => {
                                         onViewRelatedPolicy(rp.id);
-                                      }, 150);
+                                      }, 100);
                                     }
                                   }}
                                 >
-                                  <td className="py-2 px-3">
-                                    <Badge className={cn("text-xs", policyTypeColors[rp.policy_type_parent])}>
+                                  <td className="py-3 px-4">
+                                    <Badge className={cn("text-xs group-hover:scale-105 transition-transform", policyTypeColors[rp.policy_type_parent])}>
                                       {policyTypeLabels[rp.policy_type_parent]}
                                     </Badge>
                                   </td>
-                                  <td className="py-2 px-3 text-muted-foreground">
+                                  <td className="py-3 px-4 text-muted-foreground group-hover:text-foreground transition-colors">
                                     {rp.policy_type_parent === 'ROAD_SERVICE' && rp.road_services
                                       ? (rp.road_services.name_ar || rp.road_services.name)
                                       : rp.policy_type_parent === 'ACCIDENT_FEE_EXEMPTION' && rp.accident_fee_services
                                         ? (rp.accident_fee_services.name_ar || rp.accident_fee_services.name)
                                         : '-'}
                                   </td>
-                                  <td className="py-2 px-3 text-muted-foreground">
+                                  <td className="py-3 px-4 text-muted-foreground group-hover:text-foreground transition-colors">
                                     {rp.insurance_companies?.name_ar || rp.insurance_companies?.name || '-'}
                                   </td>
-                                  <td className="py-2 px-3 text-left font-semibold">
+                                  <td className="py-3 px-4 text-left font-bold ltr-nums">
                                     {formatCurrency(rp.insurance_price)}
                                   </td>
                                   {/* Profit column - Admin only */}
                                   {isAdmin && (
-                                    <td className="py-2 px-3 text-left text-success font-medium">
+                                    <td className="py-3 px-4 text-left text-success font-semibold ltr-nums">
                                       {formatCurrency(rp.profit)}
                                     </td>
                                   )}
                                 </tr>
                               ))}
                             </tbody>
-                            <tfoot className="bg-muted/30 border-t border-border/50">
+                            <tfoot className="bg-muted/40 border-t-2 border-border/50">
                               <tr>
-                                <td colSpan={isAdmin ? 3 : 2} className="py-2 px-3 font-semibold text-right">مجموع الباقة:</td>
-                                <td colSpan={isAdmin ? 2 : 2} className="py-2 px-3 text-left font-bold text-primary">
+                                <td colSpan={isAdmin ? 3 : 2} className="py-3 px-4 font-bold text-right">مجموع الباقة:</td>
+                                <td colSpan={isAdmin ? 2 : 2} className="py-3 px-4 text-left font-bold text-primary text-lg ltr-nums">
                                   {formatCurrency(policy.insurance_price + relatedPolicies.reduce((sum, rp) => sum + rp.insurance_price, 0))}
                                 </td>
                               </tr>
                             </tfoot>
                           </table>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-2 text-center">اضغط على أي صف لعرض تفاصيل الوثيقة</p>
+                        <p className="text-sm text-muted-foreground mt-3 text-center flex items-center justify-center gap-2">
+                          <span className="text-primary">←</span>
+                          اضغط على أي صف لعرض تفاصيل الوثيقة
+                        </p>
                       </Card>
                     )}
 
