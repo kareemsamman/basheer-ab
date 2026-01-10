@@ -94,24 +94,65 @@ serve(async (req) => {
 
     const normalizedEmail = email.toLowerCase().trim();
 
-    // IMPORTANT: Check if user exists and has access BEFORE sending OTP
+    // Check if user exists in profiles
     const { data: existingProfile, error: profileError } = await supabase
       .from("profiles")
-      .select("id, status, email")
+      .select("id, status, email, full_name")
       .eq("email", normalizedEmail)
       .single();
 
+    // If no profile found, create a pending one
     if (profileError || !existingProfile) {
-      console.log("No profile found for email:", normalizedEmail);
+      console.log("No profile found for email, creating pending profile:", normalizedEmail);
+      
+      // Create pending profile for admin approval
+      const { error: createError } = await supabase
+        .from("profiles")
+        .insert({
+          email: normalizedEmail,
+          full_name: normalizedEmail.split("@")[0], // Use email prefix as initial name
+          status: "pending",
+          role: "worker", // Default role
+        });
+
+      if (createError) {
+        console.error("Error creating pending profile:", createError);
+      }
+
+      // Log the login attempt
+      await supabase.from("login_attempts").insert({
+        email: normalizedEmail,
+        identifier: normalizedEmail,
+        method: "email_otp",
+        success: false,
+      });
+
       return new Response(
-        JSON.stringify({ success: false, error: "هذا البريد الإلكتروني غير مسجل في النظام. تواصل مع المدير للحصول على صلاحية الدخول." }),
+        JSON.stringify({ 
+          success: false, 
+          error: "تم تسجيل طلبك. يرجى انتظار موافقة المدير للحصول على صلاحية الدخول.",
+          pending: true 
+        }),
         { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
+    // Check if user is blocked
     if (existingProfile.status === "blocked") {
       return new Response(
         JSON.stringify({ success: false, error: "تم حظر هذا الحساب. تواصل مع المدير." }),
+        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Check if user is still pending
+    if (existingProfile.status === "pending") {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: "حسابك قيد المراجعة. يرجى انتظار موافقة المدير.",
+          pending: true 
+        }),
         { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
