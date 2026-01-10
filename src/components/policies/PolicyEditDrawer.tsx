@@ -534,37 +534,6 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
               )}
             </div>
 
-            {/* Status Checkboxes - Compact */}
-            <div className="flex flex-wrap gap-4 py-2 px-3 bg-muted/30 rounded-lg">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="cancelled"
-                  checked={formData.cancelled}
-                  onCheckedChange={(c) => setFormData(f => ({ ...f, cancelled: !!c }))}
-                />
-                <Label htmlFor="cancelled" className="cursor-pointer text-sm">ملغاة</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="transferred"
-                  checked={formData.transferred}
-                  onCheckedChange={(c) => setFormData(f => ({ ...f, transferred: !!c }))}
-                />
-                <Label htmlFor="transferred" className="cursor-pointer text-sm">محوّلة</Label>
-              </div>
-            </div>
-
-            {formData.transferred && (
-              <div className="space-y-1.5">
-                <Label className="text-right block text-sm">رقم السيارة السابقة</Label>
-                <Input
-                  value={formData.transferred_car_number}
-                  onChange={(e) => setFormData(f => ({ ...f, transferred_car_number: e.target.value }))}
-                  placeholder="رقم السيارة"
-                  className="h-9 ltr-input"
-                />
-              </div>
-            )}
 
             {/* Notes */}
             <div className="space-y-1.5">
