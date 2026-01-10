@@ -42,13 +42,14 @@ export function RecentActivity() {
       // Build branch filter
       const branchFilter = branchId ? { branch_id: branchId } : {};
 
-      // Fetch recent policies (last 5)
+      // Fetch recent policies (last 5) - exclude cancelled/deleted
       const { data: policies } = await supabase
         .from("policies")
-        .select("id, created_at, policy_type_parent, clients(full_name)")
+        .select("id, created_at, policy_type_parent, cancelled, clients(full_name, deleted_at)")
         .order("created_at", { ascending: false })
         .match(branchFilter)
-        .limit(5);
+        .eq("cancelled", false)
+        .limit(10);
 
       if (policies) {
         const typeLabels: Record<string, string> = {
@@ -64,6 +65,9 @@ export function RecentActivity() {
           OTHER: "أخرى",
         };
         for (const p of policies) {
+          // Skip if client is deleted
+          if ((p.clients as any)?.deleted_at) continue;
+          
           const clientName = (p.clients as any)?.full_name || "عميل";
           const policyLabel = typeLabels[p.policy_type_parent] || p.policy_type_parent || "وثيقة";
           results.push({
@@ -77,16 +81,20 @@ export function RecentActivity() {
         }
       }
 
-      // Fetch recent payments (last 5)
+      // Fetch recent payments (last 10) - filter out cancelled policies
       const { data: payments } = await supabase
         .from("policy_payments")
-        .select("id, created_at, amount, policies(clients(full_name))")
+        .select("id, created_at, amount, policies(cancelled, clients(full_name, deleted_at))")
         .order("created_at", { ascending: false })
         .match(branchFilter)
-        .limit(5);
+        .limit(10);
 
       if (payments) {
         for (const pay of payments) {
+          // Skip if policy is cancelled or client is deleted
+          if ((pay.policies as any)?.cancelled) continue;
+          if ((pay.policies as any)?.clients?.deleted_at) continue;
+          
           const clientName = (pay.policies as any)?.clients?.full_name || "عميل";
           results.push({
             id: `payment-${pay.id}`,

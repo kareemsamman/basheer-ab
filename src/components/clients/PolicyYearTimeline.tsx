@@ -398,7 +398,11 @@ export function PolicyYearTimeline({
 
       const { data, error } = await supabase.functions.invoke(functionName, { body });
       
-      if (error) throw new Error('فشل في الإرسال');
+      if (error) {
+        // Try to get the actual error message from the response
+        const errorMsg = error.message || 'فشل في الإرسال';
+        throw new Error(errorMsg);
+      }
       if (data?.error) throw new Error(data.error);
       
       toast.success(policyIds.length > 1 ? 'تم إرسال الفواتير' : 'تم إرسال الفاتورة');
