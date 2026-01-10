@@ -116,10 +116,10 @@ serve(async (req) => {
       });
     }
 
-    // Check if user is active
+    // Check if user is active and get their branch
     const { data: profile } = await supabase
       .from('profiles')
-      .select('status')
+      .select('status, branch_id')
       .eq('id', user.id)
       .single();
 
@@ -129,6 +129,8 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    const userBranchId = profile.branch_id;
 
     // Rate limiting - check uploads in last hour
     const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
@@ -259,7 +261,7 @@ serve(async (req) => {
     // Construct CDN URL - hardcoded to prevent misconfiguration
     const cdnUrl = `https://basheer-ab.b-cdn.net/${storagePath}`;
 
-    // Save to database
+    // Save to database with user's branch_id
     const { data: mediaFile, error: dbError } = await supabase
       .from('media_files')
       .insert({
@@ -271,6 +273,7 @@ serve(async (req) => {
         entity_type: entityType,
         entity_id: entityId,
         uploaded_by: user.id,
+        branch_id: userBranchId,
       })
       .select()
       .single();
