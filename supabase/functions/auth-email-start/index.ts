@@ -105,21 +105,69 @@ serve(async (req) => {
     if (profileError || !existingProfile) {
       console.log("No profile found for email, creating pending profile:", normalizedEmail);
 
-      // Create pending profile for admin approval (no role column - roles are in separate table)
-      const { error: createError } = await supabase
-        .from("profiles")
-        .insert({
-          id: crypto.randomUUID(),
-          email: normalizedEmail,
-          full_name: normalizedEmail.split("@")[0], // Use email prefix as initial name
-          status: "pending",
+      const requestedName = normalizedEmail.split("@")[0];
+
+      // profiles.id has a FK to the auth users table, so we must create (or find) an auth user first.
+      let userId: string | null = null;
+
+      const { data: createdUserRes, error: createUserError } = await supabase.auth.admin.createUser({
+        email: normalizedEmail,
+        email_confirm: true,
+        user_metadata: { full_name: requestedName },
+      });
+
+      if (createUserError) {
+        console.error("Auth user create error:", createUserError);
+
+        // If user already exists, find the user id by listing users (rare path)
+        const { data: usersPage, error: listError } = await supabase.auth.admin.listUsers({
+          page: 1,
+          perPage: 1000,
         });
 
-      if (createError) {
-        console.error("Error creating pending profile:", createError);
+        if (listError) {
+          console.error("Auth list users error:", listError);
+        } else {
+          const found = usersPage?.users?.find(
+            (u: any) => (u.email ?? "").toLowerCase() === normalizedEmail
+          );
+          userId = found?.id ?? null;
+        }
+      } else {
+        userId = createdUserRes.user?.id ?? null;
+      }
+
+      if (!userId) {
+        // Return 200 so the client can show the real message instead of a generic non-2xx error.
         return new Response(
-          JSON.stringify({ success: false, error: "فشل تسجيل الطلب. حاول مرة أخرى أو تواصل مع المدير." }),
-          { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          JSON.stringify({
+            success: false,
+            error: "تعذر تسجيل الطلب حالياً. حاول لاحقاً أو تواصل مع المدير.",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
+      const { error: upsertError } = await supabase
+        .from("profiles")
+        .upsert(
+          {
+            id: userId,
+            email: normalizedEmail,
+            full_name: requestedName,
+            status: "pending",
+          },
+          { onConflict: "id" }
+        );
+
+      if (upsertError) {
+        console.error("Error upserting pending profile:", upsertError);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "تعذر تسجيل الطلب حالياً. حاول لاحقاً أو تواصل مع المدير.",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
         );
       }
 
