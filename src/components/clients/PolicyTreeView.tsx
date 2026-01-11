@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import {
   DropdownMenu,
@@ -336,14 +335,10 @@ export function PolicyTreeView({
   }, [groupedPolicies.length]);
 
   const toggleGroup = (groupKey: string) => {
+    // Accordion behavior: open one package at a time
     setExpandedGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(groupKey)) {
-        next.delete(groupKey);
-      } else {
-        next.add(groupKey);
-      }
-      return next;
+      if (prev.has(groupKey)) return new Set<string>();
+      return new Set<string>([groupKey]);
     });
   };
 
@@ -635,11 +630,8 @@ function UnifiedPolicyCard({
     ? (packagePaymentStatus?.totalPrice ?? policy.insurance_price)
     : policy.insurance_price;
   
-  // Use Collapsible component for packages with proper props
-  const handleOpenChange = (open: boolean) => {
-    if (onToggle) {
-      onToggle();
-    }
+  const handleToggle = () => {
+    onToggle?.();
   };
 
   return (
@@ -655,36 +647,48 @@ function UnifiedPolicyCard({
       )}
     >
       {isPackage ? (
-        <Collapsible open={isExpanded} onOpenChange={handleOpenChange}>
-          <CollapsibleTrigger asChild>
-            <div className="p-4 cursor-pointer">
-              <PolicyCardHeader
-                policy={policy}
-                isPackage={true}
-                addons={addons}
-                status={status}
-                isPaid={isPaid}
-                remaining={remaining}
-                totalPrice={totalPrice}
-                percentage={packagePaymentStatus?.percentage}
-                groupKey={groupKey}
-                isExpanded={isExpanded}
-                isSending={isSending}
-                isSendingPackage={isSendingPackage}
-                onPolicyClick={onPolicyClick}
-                onSendInvoice={onSendInvoice}
-                onSendPackageInvoice={onSendPackageInvoice}
-                allPolicyIds={allPolicyIds}
-                onPackagePayment={onPackagePayment}
-                onTransfer={onTransfer}
-                onCancel={onCancel}
-                onTransferPackage={onTransferPackage}
-                onCancelPackage={onCancelPackage}
-                hasFiles={hasFiles}
-              />
-            </div>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
+        <div>
+          {/* Package Header (click to expand/collapse) */}
+          <div
+            className="p-4 cursor-pointer"
+            onClick={handleToggle}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleToggle();
+              }
+            }}
+          >
+            <PolicyCardHeader
+              policy={policy}
+              isPackage={true}
+              addons={addons}
+              status={status}
+              isPaid={isPaid}
+              remaining={remaining}
+              totalPrice={totalPrice}
+              percentage={packagePaymentStatus?.percentage}
+              groupKey={groupKey}
+              isExpanded={isExpanded}
+              isSending={isSending}
+              isSendingPackage={isSendingPackage}
+              onPolicyClick={onPolicyClick}
+              onSendInvoice={onSendInvoice}
+              onSendPackageInvoice={onSendPackageInvoice}
+              allPolicyIds={allPolicyIds}
+              onPackagePayment={onPackagePayment}
+              onTransfer={onTransfer}
+              onCancel={onCancel}
+              onTransferPackage={onTransferPackage}
+              onCancelPackage={onCancelPackage}
+              hasFiles={hasFiles}
+            />
+          </div>
+
+          {/* Package Content */}
+          {isExpanded && (
             <div className="border-t">
               {/* Main Policy Row */}
               <div 
@@ -720,7 +724,7 @@ function UnifiedPolicyCard({
                   <Eye className="h-4 w-4" />
                 </Button>
               </div>
-              
+
               {/* Add-on Rows */}
               {addons.map((addon, addonIndex) => (
                 <div 
@@ -764,8 +768,8 @@ function UnifiedPolicyCard({
                 </div>
               ))}
             </div>
-          </CollapsibleContent>
-        </Collapsible>
+          )}
+        </div>
       ) : (
         <div className="p-4">
           <PolicyCardHeader
