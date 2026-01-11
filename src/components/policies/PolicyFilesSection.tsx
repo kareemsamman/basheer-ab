@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,10 +11,8 @@ import {
   ImageIcon, Plus, Trash2, Download, X, Loader2, FileText, FolderOpen, 
   Save, Hash, CheckCircle2, Send, AlertTriangle, Printer
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { Badge } from "@/components/ui/badge";
-import { ScannerDialog } from "@/components/shared/ScannerDialog";
 import { Progress } from "@/components/ui/progress";
 
 interface MediaFile {
@@ -67,9 +65,8 @@ export function PolicyFilesSection({
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
   const autoSendRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Scanner dialog state
-  const [scannerOpen, setScannerOpen] = useState(false);
-  const [scannerFileType, setScannerFileType] = useState<'insurance' | 'crm'>('crm');
+  // Scanner state
+  const [scanning, setScanning] = useState<'insurance' | 'crm' | null>(null);
 
   useEffect(() => {
     setPolicyNumber(initialPolicyNumber || "");
@@ -259,72 +256,140 @@ export function PolicyFilesSection({
     setShowSendPopup(false);
   };
 
-  const handleScannerSave = async (images: Blob[]) => {
-    if (images.length === 0) return;
-
-    setUploading(scannerFileType);
-    try {
-      for (const blob of images) {
-        const file = new File([blob], `scan_${Date.now()}.jpg`, { type: 'image/jpeg' });
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('entity_type', scannerFileType === 'insurance' ? 'policy_insurance' : 'policy_crm');
-        formData.append('entity_id', policyId);
-
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-media`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${session?.access_token}`,
-            },
-            body: formData,
-          }
-        );
-
-        if (!response.ok) {
-          const err = await response.json();
-          throw new Error(err.error || 'Upload failed');
-        }
-      }
-
-      toast({ title: "تم الحفظ", description: `تم حفظ ${images.length} صورة بنجاح` });
-      fetchFiles();
-
-      // Show auto-send popup only for insurance files and if client has phone
-      if (scannerFileType === 'insurance' && clientPhoneNumber) {
-        setCountdown(5);
-        setShowSendPopup(true);
-        countdownRef.current = setInterval(() => {
-          setCountdown(prev => {
-            if (prev <= 1) {
-              clearInterval(countdownRef.current!);
-              return 0;
-            }
-            return prev - 1;
-          });
-        }, 1000);
-        autoSendRef.current = setTimeout(() => {
-          handleSendToClient();
-        }, 5000);
-      }
-    } catch (error: any) {
-      console.error('Error saving scanned images:', error);
-      toast({ 
-        title: "خطأ", 
-        description: error.message || "فشل في حفظ الصور", 
-        variant: "destructive" 
-      });
-    } finally {
-      setUploading(null);
+  // Convert base64 to Blob
+  const base64ToBlob = (base64: string): Blob => {
+    // Remove data URL prefix if present
+    const base64Data = base64.includes(',') ? base64.split(',')[1] : base64;
+    const byteCharacters = atob(base64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
     }
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: 'image/jpeg' });
   };
 
-  const openScanner = (fileType: 'insurance' | 'crm') => {
-    setScannerFileType(fileType);
-    setScannerOpen(true);
+  // Direct scan function - no dialog, auto-upload
+  const handleDirectScan = async (fileType: 'insurance' | 'crm') => {
+    if (!window.scanner) {
+      toast({ 
+        title: "خطأ", 
+        description: "مكتبة السكانر غير محملة. يرجى تحديث الصفحة.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    setScanning(fileType);
+
+    const scanRequest = {
+      use_asprise_dialog: false,
+      show_scanner_ui: false,
+      twain_cap_setting: {
+        ICAP_PIXELTYPE: 'TWPT_RGB',
+        ICAP_XRESOLUTION: '200',
+        ICAP_YRESOLUTION: '200',
+      },
+      output_settings: [{
+        type: 'return-base64',
+        format: 'jpg',
+        jpeg_quality: 85,
+      }],
+    };
+
+    window.scanner.scan(
+      async (successful, mesg, response) => {
+        if (!successful) {
+          setScanning(null);
+          // Don't show error for user cancellation
+          if (mesg && !mesg.toLowerCase().includes('cancel')) {
+            // Check if ScanApp not installed
+            if (mesg.includes('Scanner.js') || mesg.includes('localhost')) {
+              toast({ 
+                title: "تثبيت مطلوب", 
+                description: "يرجى تثبيت برنامج ScanApp من asprise.com",
+                variant: "destructive" 
+              });
+            } else {
+              toast({ title: "خطأ في المسح", description: mesg, variant: "destructive" });
+            }
+          }
+          return;
+        }
+
+        const scannedImages = window.scanner.getScannedImages(response, true, false);
+        if (!scannedImages || scannedImages.length === 0) {
+          setScanning(null);
+          toast({ title: "تنبيه", description: "لم يتم العثور على صور ممسوحة" });
+          return;
+        }
+
+        // Auto-upload all scanned images
+        setUploading(fileType);
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          
+          for (let i = 0; i < scannedImages.length; i++) {
+            const img = scannedImages[i];
+            const blob = base64ToBlob(img.src);
+            const file = new File([blob], `scan_${Date.now()}_${i}.jpg`, { type: 'image/jpeg' });
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('entity_type', fileType === 'insurance' ? 'policy_insurance' : 'policy_crm');
+            formData.append('entity_id', policyId);
+
+            const uploadResponse = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-media`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session?.access_token}`,
+                },
+                body: formData,
+              }
+            );
+
+            if (!uploadResponse.ok) {
+              const err = await uploadResponse.json();
+              throw new Error(err.error || 'Upload failed');
+            }
+          }
+
+          toast({ title: "تم", description: `تم مسح ورفع ${scannedImages.length} صورة بنجاح` });
+          fetchFiles();
+
+          // Show auto-send popup only for insurance files and if client has phone
+          if (fileType === 'insurance' && clientPhoneNumber) {
+            setCountdown(5);
+            setShowSendPopup(true);
+            countdownRef.current = setInterval(() => {
+              setCountdown(prev => {
+                if (prev <= 1) {
+                  clearInterval(countdownRef.current!);
+                  return 0;
+                }
+                return prev - 1;
+              });
+            }, 1000);
+            autoSendRef.current = setTimeout(() => {
+              handleSendToClient();
+            }, 5000);
+          }
+        } catch (error: any) {
+          console.error('Error uploading scanned images:', error);
+          toast({ 
+            title: "خطأ", 
+            description: error.message || "فشل في رفع الصور الممسوحة", 
+            variant: "destructive" 
+          });
+        } finally {
+          setUploading(null);
+          setScanning(null);
+        }
+      },
+      scanRequest
+    );
   };
 
   const handleSavePolicyNumber = async () => {
@@ -460,16 +525,20 @@ export function PolicyFilesSection({
 
   const renderUploadButton = (fileType: 'insurance' | 'crm') => (
     <div className="flex items-center gap-2">
-      {/* Scan button */}
+      {/* Direct Scan button - no dialog */}
       <Button 
         size="sm" 
         variant="outline" 
-        disabled={uploading !== null}
-        onClick={() => openScanner(fileType)}
+        disabled={uploading !== null || scanning !== null}
+        onClick={() => handleDirectScan(fileType)}
         className="gap-1"
       >
-        <Printer className="h-4 w-4" />
-        مسح من السكانر
+        {scanning === fileType ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Printer className="h-4 w-4" />
+        )}
+        {scanning === fileType ? 'جاري المسح...' : 'مسح'}
       </Button>
       
       {/* Upload button */}
@@ -480,9 +549,9 @@ export function PolicyFilesSection({
           accept="image/*,.pdf,video/*"
           onChange={(e) => handleUpload(e, fileType)}
           className="absolute inset-0 opacity-0 cursor-pointer"
-          disabled={uploading !== null}
+          disabled={uploading !== null || scanning !== null}
         />
-        <Button size="sm" variant="outline" disabled={uploading !== null}>
+        <Button size="sm" variant="outline" disabled={uploading !== null || scanning !== null}>
           {uploading === fileType ? (
             <Loader2 className="h-4 w-4 ml-1 animate-spin" />
           ) : (
@@ -662,13 +731,6 @@ export function PolicyFilesSection({
         </DialogContent>
       </Dialog>
 
-      {/* Scanner Dialog */}
-      <ScannerDialog
-        open={scannerOpen}
-        onOpenChange={setScannerOpen}
-        onSave={handleScannerSave}
-        title={scannerFileType === 'insurance' ? 'مسح ملفات التأمين' : 'مسح ملفات النظام'}
-      />
     </>
   );
 }
