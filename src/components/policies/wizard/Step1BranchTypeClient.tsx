@@ -111,6 +111,10 @@ export function Step1BranchTypeClient({
   const handleCreateNewClick = () => {
     setSelectedClient(null);
     setCreateNewClient(true);
+    // Pre-fill the full_name with the search query
+    if (clientSearch.trim()) {
+      setNewClient({ ...newClient, full_name: clientSearch.trim() });
+    }
     setClientSearch("");
     setClients([]);
   };

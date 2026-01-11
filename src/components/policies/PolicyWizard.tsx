@@ -570,6 +570,7 @@ export function PolicyWizard({
 
     try {
       let policyIdToUse = tempPolicyId;
+      let newlyCreatedClientId: string | null = null; // Track if we created a new client
 
       if (!useTempPolicy) {
         // Create new policy (normal flow without Tranzila)
@@ -602,6 +603,7 @@ export function PolicyWizard({
 
           if (clientError) throw clientError;
           clientId = newClientData.id;
+          newlyCreatedClientId = newClientData.id; // Store the new client ID
         }
 
         if (!clientId) throw new Error('Client ID is required');
@@ -901,10 +903,17 @@ export function PolicyWizard({
       onOpenChange(false);
       resetForm();
       
-      // Delay onSaved to ensure DB writes are committed
-      setTimeout(() => {
-        onSaved?.();
-      }, 150);
+      // If we created a new client, navigate to the clients page with that client open
+      if (newlyCreatedClientId) {
+        setTimeout(() => {
+          window.location.href = `/clients?open=${newlyCreatedClientId}`;
+        }, 100);
+      } else {
+        // Delay onSaved to ensure DB writes are committed
+        setTimeout(() => {
+          onSaved?.();
+        }, 150);
+      }
     } catch (error: unknown) {
       console.error('Save error:', error);
       toast({
