@@ -240,13 +240,11 @@ serve(async (req) => {
       f.cdn_url.replace('https://basheer-ab.b-cdn.net/', 'https://cdn.basheer-ab.com/')
     );
     
-    // PRIORITY: Prefer PDF files over images for the main policy link
-    const pdfFiles = insuranceFiles.filter(f => f.mime_type === 'application/pdf');
-    const primaryFile = pdfFiles[0] || insuranceFiles[0];
-    const primaryPolicyUrl = primaryFile?.cdn_url?.replace('https://basheer-ab.b-cdn.net/', 'https://cdn.basheer-ab.com/') || "";
+    // Build all policy URLs with labels for SMS - include ALL files
+    const allPolicyUrlsText = policyFileUrls.map((url, i) => `البوليصة ${url}`).join('\n');
 
-    // Build SMS message - use primary file (PDF preferred)
-    let smsMessage = `مرحباً ${client.full_name}، تم إصدار وثيقة التأمين\n\nالبوليصة ${primaryPolicyUrl}`;
+    // Build SMS message with ALL files included
+    let smsMessage = `مرحباً ${client.full_name}، تم إصدار وثيقة التأمين\n\n${allPolicyUrlsText}`;
     
     // Add AB invoice URL
     smsMessage += `\n\nفاتورة شركة التأمين: ${packageInvoiceUrl}`;

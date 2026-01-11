@@ -238,28 +238,21 @@ serve(async (req) => {
       f.cdn_url.replace('https://basheer-ab.b-cdn.net/', 'https://cdn.basheer-ab.com/')
     );
     
-    // PRIORITY: Prefer PDF files over images for the main policy link
-    const pdfFiles = insuranceFiles.filter(f => f.mime_type === 'application/pdf');
-    const imageFiles = insuranceFiles.filter(f => f.mime_type?.startsWith('image/'));
-    
-    // Use PDF first if available, otherwise use first file
-    const primaryFile = pdfFiles[0] || insuranceFiles[0];
-    const primaryPolicyUrl = primaryFile?.cdn_url?.replace('https://basheer-ab.b-cdn.net/', 'https://cdn.basheer-ab.com/') || "";
-    
-    // Build list of all policy files for SMS (if multiple)
-    const allPolicyUrls = policyFileUrls.join('\n');
+    // Build all policy URLs with labels for SMS
+    const allPolicyUrlsText = policyFileUrls.map((url, i) => `البوليصة ${url}`).join('\n');
 
-    // Build SMS message using template
+    // Build SMS message with ALL files included
+    // Default template now includes all files
     let smsMessage = smsSettings.invoice_sms_template || 
-      "مرحباً {{client_name}}، وثيقة التأمين جاهزة.\nالبوليصة: {{policy_url}}\nفاتورة AB: {{ab_invoice_url}}";
+      "مرحباً {{client_name}}، تم إصدار وثيقة التأمين\n\n{{all_policy_urls}}\n\nفاتورة شركة التأمين: {{ab_invoice_url}}";
 
     smsMessage = smsMessage
       .replace(/\{\{client_name\}\}/g, policy.client?.full_name || "عميل")
       .replace(/\{\{policy_number\}\}/g, policy.policy_number || "")
-      .replace(/\{\{policy_url\}\}/g, primaryPolicyUrl)
-      .replace(/\{\{all_policy_urls\}\}/g, allPolicyUrls)
+      .replace(/\{\{policy_url\}\}/g, policyFileUrls[0] || "") // First file for backward compatibility
+      .replace(/\{\{all_policy_urls\}\}/g, allPolicyUrlsText)
       .replace(/\{\{ab_invoice_url\}\}/g, abInvoiceUrl)
-      .replace(/\{\{insurance_invoice_url\}\}/g, primaryPolicyUrl); // Legacy placeholder
+      .replace(/\{\{insurance_invoice_url\}\}/g, policyFileUrls[0] || ""); // Legacy placeholder
 
     const escapeXml = (value: string) =>
       value
