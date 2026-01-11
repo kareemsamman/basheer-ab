@@ -9,11 +9,12 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { 
   ImageIcon, Plus, Trash2, Download, X, Loader2, FileText, FolderOpen, 
-  Save, Hash, CheckCircle2, Send, AlertTriangle
+  Save, Hash, CheckCircle2, Send, AlertTriangle, Camera
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { Badge } from "@/components/ui/badge";
+import { ScannerDialog } from "@/components/shared/ScannerDialog";
 import { Progress } from "@/components/ui/progress";
 
 interface MediaFile {
@@ -65,6 +66,10 @@ export function PolicyFilesSection({
   const [countdown, setCountdown] = useState(5);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
   const autoSendRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Scanner dialog state
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerFileType, setScannerFileType] = useState<'insurance' | 'crm'>('crm');
 
   useEffect(() => {
     setPolicyNumber(initialPolicyNumber || "");
@@ -254,6 +259,74 @@ export function PolicyFilesSection({
     setShowSendPopup(false);
   };
 
+  const handleScannerSave = async (images: Blob[]) => {
+    if (images.length === 0) return;
+
+    setUploading(scannerFileType);
+    try {
+      for (const blob of images) {
+        const file = new File([blob], `scan_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('entity_type', scannerFileType === 'insurance' ? 'policy_insurance' : 'policy_crm');
+        formData.append('entity_id', policyId);
+
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-media`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session?.access_token}`,
+            },
+            body: formData,
+          }
+        );
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Upload failed');
+        }
+      }
+
+      toast({ title: "تم الحفظ", description: `تم حفظ ${images.length} صورة بنجاح` });
+      fetchFiles();
+
+      // Show auto-send popup only for insurance files and if client has phone
+      if (scannerFileType === 'insurance' && clientPhoneNumber) {
+        setCountdown(5);
+        setShowSendPopup(true);
+        countdownRef.current = setInterval(() => {
+          setCountdown(prev => {
+            if (prev <= 1) {
+              clearInterval(countdownRef.current!);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+        autoSendRef.current = setTimeout(() => {
+          handleSendToClient();
+        }, 5000);
+      }
+    } catch (error: any) {
+      console.error('Error saving scanned images:', error);
+      toast({ 
+        title: "خطأ", 
+        description: error.message || "فشل في حفظ الصور", 
+        variant: "destructive" 
+      });
+    } finally {
+      setUploading(null);
+    }
+  };
+
+  const openScanner = (fileType: 'insurance' | 'crm') => {
+    setScannerFileType(fileType);
+    setScannerOpen(true);
+  };
+
   const handleSavePolicyNumber = async () => {
     if (!policyNumber.trim()) {
       toast({ title: "خطأ", description: "يرجى إدخال رقم البوليصة", variant: "destructive" });
@@ -386,23 +459,38 @@ export function PolicyFilesSection({
   };
 
   const renderUploadButton = (fileType: 'insurance' | 'crm') => (
-    <div className="relative">
-      <input
-        type="file"
-        multiple
-        accept="image/*,.pdf,video/*"
-        onChange={(e) => handleUpload(e, fileType)}
-        className="absolute inset-0 opacity-0 cursor-pointer"
+    <div className="flex items-center gap-2">
+      {/* Scan button */}
+      <Button 
+        size="sm" 
+        variant="outline" 
         disabled={uploading !== null}
-      />
-      <Button size="sm" variant="outline" disabled={uploading !== null}>
-        {uploading === fileType ? (
-          <Loader2 className="h-4 w-4 ml-1 animate-spin" />
-        ) : (
-          <Plus className="h-4 w-4 ml-1" />
-        )}
-        رفع ملف
+        onClick={() => openScanner(fileType)}
+        className="gap-1"
+      >
+        <Camera className="h-4 w-4" />
+        مسح ضوئي
       </Button>
+      
+      {/* Upload button */}
+      <div className="relative">
+        <input
+          type="file"
+          multiple
+          accept="image/*,.pdf,video/*"
+          onChange={(e) => handleUpload(e, fileType)}
+          className="absolute inset-0 opacity-0 cursor-pointer"
+          disabled={uploading !== null}
+        />
+        <Button size="sm" variant="outline" disabled={uploading !== null}>
+          {uploading === fileType ? (
+            <Loader2 className="h-4 w-4 ml-1 animate-spin" />
+          ) : (
+            <Plus className="h-4 w-4 ml-1" />
+          )}
+          رفع ملف
+        </Button>
+      </div>
     </div>
   );
 
@@ -573,6 +661,14 @@ export function PolicyFilesSection({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Scanner Dialog */}
+      <ScannerDialog
+        open={scannerOpen}
+        onOpenChange={setScannerOpen}
+        onSave={handleScannerSave}
+        title={scannerFileType === 'insurance' ? 'مسح ملفات التأمين' : 'مسح ملفات النظام'}
+      />
     </>
   );
 }
