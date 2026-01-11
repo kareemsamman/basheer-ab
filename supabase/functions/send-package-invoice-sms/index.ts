@@ -110,10 +110,10 @@ serve(async (req) => {
       );
     }
 
-    // Get insurance files for all policies
+    // Get insurance files for all policies (main + add-ons)
     const { data: insuranceFiles, error: filesError } = await supabase
       .from("media_files")
-      .select("id, cdn_url, original_name, entity_id")
+      .select("id, cdn_url, original_name, mime_type, entity_id")
       .in("entity_id", policy_ids)
       .in("entity_type", ["policy", "policy_insurance"])
       .is("deleted_at", null)
@@ -123,17 +123,37 @@ serve(async (req) => {
       console.error("[send-package-invoice-sms] Error fetching files:", filesError);
     }
 
-    // Check which policies are missing files
+    // For packages: Check if at least the MAIN policy (ELZAMI or THIRD_FULL) has files
+    // Add-ons (ROAD_SERVICE, ACCIDENT_FEE_EXEMPTION) typically don't have separate files
+    const MAIN_POLICY_TYPES = ['ELZAMI', 'THIRD_FULL', 'HEALTH', 'LIFE', 'PROPERTY', 'TRAVEL', 'BUSINESS', 'OTHER'];
+    const mainPolicies = policies.filter(p => MAIN_POLICY_TYPES.includes(p.policy_type_parent));
     const policyIdsWithFiles = new Set(insuranceFiles?.map(f => f.entity_id) || []);
-    const policiesWithoutFiles = policies.filter(p => !policyIdsWithFiles.has(p.id));
-
-    if (!insuranceFiles || insuranceFiles.length === 0 || policiesWithoutFiles.length > 0) {
-      const missingPolicyNumbers = policiesWithoutFiles.map(p => p.policy_number || p.id.slice(0, 8)).join('، ');
+    
+    // Check if at least one main policy has files (or if no main policy, check any has files)
+    const hasMainPolicyWithFiles = mainPolicies.some(p => policyIdsWithFiles.has(p.id));
+    const hasAnyFiles = insuranceFiles && insuranceFiles.length > 0;
+    
+    if (!hasAnyFiles) {
+      // No files at all in the package
+      const mainPolicyNumbers = mainPolicies.map(p => p.policy_number || p.id.slice(0, 8)).join('، ');
+      console.error(`[send-package-invoice-sms] No files found for any policy in package`);
       return new Response(
-        JSON.stringify({ error: `لا يوجد ملفات بوليصة للوثائق التالية: ${missingPolicyNumbers}، يجب رفع الملفات أولاً` }),
+        JSON.stringify({ error: `لا يوجد ملفات بوليصة، يجب رفع ملفات البوليصة الأساسية (${mainPolicyNumbers}) أولاً` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    
+    if (!hasMainPolicyWithFiles && mainPolicies.length > 0) {
+      // Has files but not for the main policy
+      const mainPolicyNumbers = mainPolicies.map(p => p.policy_number || POLICY_TYPE_LABELS[p.policy_type_parent] || p.id.slice(0, 8)).join('، ');
+      console.error(`[send-package-invoice-sms] Main policies missing files: ${mainPolicyNumbers}`);
+      return new Response(
+        JSON.stringify({ error: `يجب رفع ملفات البوليصة الأساسية (${mainPolicyNumbers}) أولاً` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
+    console.log(`[send-package-invoice-sms] Found ${insuranceFiles?.length || 0} files for ${policies.length} policies`);
 
     // Get SMS settings
     const { data: smsSettings, error: smsSettingsError } = await supabase
@@ -178,8 +198,8 @@ serve(async (req) => {
     const totalPaid = (allPayments || []).reduce((sum, p) => sum + (p.amount || 0), 0);
     const totalRemaining = totalPrice - totalPaid;
 
-    // Generate Package Invoice HTML
-    const packageInvoiceHtml = buildPackageInvoiceHtml(policies, paymentsByPolicy, totalPrice, totalPaid, totalRemaining);
+    // Generate Package Invoice HTML with files
+    const packageInvoiceHtml = buildPackageInvoiceHtml(policies, paymentsByPolicy, totalPrice, totalPaid, totalRemaining, insuranceFiles || []);
     
     const now = new Date();
     const year = now.getFullYear();
@@ -339,10 +359,45 @@ function buildPackageInvoiceHtml(
   paymentsByPolicy: Record<string, any[]>,
   totalPrice: number,
   totalPaid: number,
-  remaining: number
+  remaining: number,
+  policyFiles: { cdn_url: string; original_name: string; mime_type: string; entity_id: string }[]
 ): string {
   const client = policies[0]?.client || {};
   const isPaid = remaining <= 0;
+
+  // Build files HTML section
+  const filesHtml = policyFiles.length > 0 ? `
+    <div class="section">
+      <div class="section-title">📄 ملفات البوليصة</div>
+      <div class="section-content">
+        <div class="files-grid">
+          ${policyFiles.map((file) => {
+            const isImage = file.mime_type?.startsWith('image/');
+            const isPdf = file.mime_type === 'application/pdf';
+            return `
+              <div class="file-item">
+                ${isImage ? `
+                  <a href="${file.cdn_url}" target="_blank" class="file-link">
+                    <img src="${file.cdn_url}" alt="${file.original_name}" class="file-preview-image" />
+                  </a>
+                ` : isPdf ? `
+                  <a href="${file.cdn_url}" target="_blank" class="file-link pdf-link">
+                    <div class="pdf-icon">📄</div>
+                    <span class="pdf-label">PDF</span>
+                  </a>
+                ` : `
+                  <a href="${file.cdn_url}" target="_blank" class="file-link">
+                    <div class="file-icon">📎</div>
+                  </a>
+                `}
+                <a href="${file.cdn_url}" target="_blank" class="file-name">${file.original_name}</a>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+  ` : '';
 
   // Build policy rows
   const policyRows = policies.map((p, i) => {
@@ -516,6 +571,63 @@ function buildPackageInvoiceHtml(
       font-size: 12px;
     }
     .signature { text-align: left; margin-top: 15px; font-style: italic; color: #1e3a5f; font-weight: 600; }
+    .files-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin-top: 15px;
+    }
+    .file-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      transition: all 0.2s;
+    }
+    .file-item:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      transform: translateY(-2px);
+    }
+    .file-link {
+      display: block;
+      width: 100%;
+      text-align: center;
+    }
+    .file-preview-image {
+      max-width: 100%;
+      max-height: 120px;
+      object-fit: contain;
+      border-radius: 6px;
+      border: 1px solid #e2e8f0;
+    }
+    .pdf-link {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 80px;
+      background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+      border-radius: 8px;
+      color: white;
+      text-decoration: none;
+    }
+    .pdf-icon { font-size: 28px; }
+    .pdf-label { font-size: 12px; font-weight: 700; margin-top: 4px; }
+    .file-name {
+      font-size: 10px;
+      color: #1e3a5f;
+      text-align: center;
+      word-break: break-word;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .file-name:hover { text-decoration: underline; }
+    .file-icon { font-size: 28px; }
     @media (max-width: 600px) {
       body { padding: 12px; }
       .header { padding: 20px 15px; }
@@ -526,6 +638,7 @@ function buildPackageInvoiceHtml(
       .info-grid { grid-template-columns: 1fr; }
       .section-content { padding: 12px; }
       .section-title { padding: 8px 12px; font-size: 14px; }
+      .files-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
     }
   </style>
 </head>
@@ -621,6 +734,8 @@ function buildPackageInvoiceHtml(
       </div>
     </div>
     ` : ''}
+
+    ${filesHtml}
 
     <div class="section">
       <div class="section-title">📊 حالة الدفع</div>
