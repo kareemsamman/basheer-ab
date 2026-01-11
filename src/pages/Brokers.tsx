@@ -19,7 +19,6 @@ import {
 import {
   Search,
   Filter,
-  Download,
   ChevronLeft,
   ChevronRight,
   Phone,
@@ -288,10 +287,6 @@ export default function Brokers() {
               {(startDate || endDate) && (
                 <span className="mr-1 bg-primary-foreground text-primary rounded-full px-1.5 text-xs">!</span>
               )}
-            </Button>
-            <Button variant="outline" size="sm">
-              <Download className="ml-2 h-4 w-4" />
-              تصدير
             </Button>
           </div>
         </div>

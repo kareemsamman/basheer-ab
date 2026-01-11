@@ -39,7 +39,6 @@ import {
   AlertCircle,
   CheckCircle,
   CreditCard,
-  Download,
   BarChart3,
   Building2,
 } from 'lucide-react';
@@ -450,52 +449,6 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
   const CHART_COLORS = ['#3b82f6', '#8b5cf6', '#f97316', '#22c55e', '#ef4444', '#06b6d4', '#f59e0b', '#ec4899'];
 
   // Export functionality
-  const exportToCSV = () => {
-    const csvRows: string[] = [];
-    
-    // Client info
-    csvRows.push('بيانات العميل');
-    csvRows.push(`الاسم,${client.full_name}`);
-    csvRows.push(`رقم الهوية,${client.id_number}`);
-    csvRows.push(`رقم الهاتف,${client.phone_number || ''}`);
-    csvRows.push(`رقم الملف,${client.file_number || ''}`);
-    csvRows.push(`الوسيط,${broker?.name || 'لا يوجد'}`);
-    csvRows.push('');
-    
-    // Policies
-    csvRows.push('الوثائق');
-    csvRows.push('نوع التأمين,الشركة,السيارة,تاريخ البداية,تاريخ الانتهاء,السعر,الحالة');
-    policies.forEach(p => {
-      const status = getPolicyStatus(p);
-      csvRows.push(`${policyTypeLabels[p.policy_type_parent] || p.policy_type_parent},${p.company?.name_ar || p.company?.name || ''},${p.car?.car_number || ''},${p.start_date},${p.end_date},${p.insurance_price},${status.label}`);
-    });
-    csvRows.push('');
-    
-    // Cars
-    csvRows.push('السيارات');
-    csvRows.push('رقم السيارة,الشركة المصنعة,الموديل,السنة,اللون,النوع');
-    cars.forEach(c => {
-      csvRows.push(`${c.car_number},${c.manufacturer_name || ''},${c.model || ''},${c.year || ''},${c.color || ''},${carTypeLabels[c.car_type || ''] || c.car_type || ''}`);
-    });
-    csvRows.push('');
-    
-    // Payments
-    csvRows.push('الدفعات');
-    csvRows.push('المبلغ,التاريخ,طريقة الدفع,الحالة');
-    payments.forEach(p => {
-      const paymentTypeLabel = p.payment_type === 'cash' ? 'نقدي' : p.payment_type === 'cheque' ? 'شيك' : p.payment_type === 'visa' ? 'بطاقة' : 'تحويل';
-      csvRows.push(`${p.amount},${p.payment_date},${paymentTypeLabel},${p.refused ? 'راجع' : 'مقبول'}`);
-    });
-
-    const csvContent = '\ufeff' + csvRows.join('\n'); // BOM for Arabic support
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `client_${client.id_number}_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-    toast.success('تم تصدير البيانات بنجاح');
-  };
-
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '-';
     return new Date(dateStr).toLocaleDateString('en-GB');
@@ -677,10 +630,6 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                 <Button variant="outline" onClick={() => setReportModalOpen(true)}>
                   <FileText className="h-4 w-4 ml-2" />
                   تقرير
-                </Button>
-                <Button variant="outline" onClick={exportToCSV}>
-                  <Download className="h-4 w-4 ml-2" />
-                  تصدير
                 </Button>
                 <Button onClick={() => setClientDrawerOpen(true)}>
                   <Edit className="h-4 w-4 ml-2" />

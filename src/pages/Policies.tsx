@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/table";
 import {
   Search,
-  Download,
   ChevronLeft,
   ChevronRight,
   RefreshCw,
@@ -471,10 +470,6 @@ export default function Policies() {
                 </Button>
               )
             )}
-            <Button variant="outline" size="sm">
-              <Download className="ml-1 md:ml-2 h-4 w-4" />
-              <span className="hidden sm:inline">تصدير</span>
-            </Button>
           </div>
         </div>
 

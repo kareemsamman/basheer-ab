@@ -17,7 +17,6 @@ import {
 import {
   Search,
   Filter,
-  Download,
   ChevronLeft,
   ChevronRight,
   Car as CarIcon,
@@ -193,10 +192,6 @@ export default function Cars() {
             <Button variant="outline" size="sm">
               <Filter className="ml-2 h-4 w-4" />
               فلترة
-            </Button>
-            <Button variant="outline" size="sm">
-              <Download className="ml-2 h-4 w-4" />
-              تصدير
             </Button>
           </div>
         </div>
