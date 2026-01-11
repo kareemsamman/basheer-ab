@@ -165,7 +165,10 @@ export function BottomToolbarInlineSearch({ className }: BottomToolbarInlineSear
 
   const handleSelect = (clientId: string) => {
     clearSearch();
-    navigate(`/clients?open=${clientId}`);
+    // Force navigation with state reset by using replace
+    navigate(`/clients?open=${clientId}`, { replace: false });
+    // Force page reload to reset any existing viewingClient state
+    window.location.href = `/clients?open=${clientId}`;
   };
 
   const handleFocus = () => {
