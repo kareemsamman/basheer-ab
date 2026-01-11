@@ -40,6 +40,8 @@ interface ArabicDatePickerProps {
   max?: string;
   className?: string;
   disabled?: boolean;
+  /** For birthday fields - extends year range back to 1920 */
+  isBirthDate?: boolean;
 }
 
 export function ArabicDatePicker({
@@ -50,6 +52,7 @@ export function ArabicDatePicker({
   max,
   className,
   disabled,
+  isBirthDate = false,
 }: ArabicDatePickerProps) {
   const [open, setOpen] = React.useState(false);
   const [viewDate, setViewDate] = React.useState(() => {
@@ -80,15 +83,17 @@ export function ArabicDatePicker({
   const currentYear = viewDate.getFullYear();
   const currentMonth = viewDate.getMonth();
 
-  // Generate years range (current year ± 10 years)
+  // Generate years range - for birth dates go back to 1920, otherwise ± 10 years
   const years = React.useMemo(() => {
     const current = new Date().getFullYear();
     const result: number[] = [];
-    for (let y = current - 10; y <= current + 10; y++) {
+    const startYear = isBirthDate ? 1920 : current - 10;
+    const endYear = isBirthDate ? current : current + 10;
+    for (let y = startYear; y <= endYear; y++) {
       result.push(y);
     }
     return result;
-  }, []);
+  }, [isBirthDate]);
 
   // Get days in month
   const getDaysInMonth = (year: number, month: number) => {
