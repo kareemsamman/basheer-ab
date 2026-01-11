@@ -62,6 +62,7 @@ export function CreateClientForm({ form, onChange, errors, checkingDuplicate }: 
             value={form.birth_date}
             onChange={(date) => onChange('birth_date', date)}
             placeholder="اختر التاريخ"
+            isBirthDate
           />
         </div>
         
