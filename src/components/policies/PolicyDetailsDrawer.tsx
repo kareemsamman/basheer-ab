@@ -305,7 +305,8 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
         body: { 
           policy_id: policy.id,
           phone_number: policy.clients.phone_number,
-          client_name: policy.clients.full_name
+          client_name: policy.clients.full_name,
+          force_resend: true  // Always allow resend from drawer
         },
       });
 

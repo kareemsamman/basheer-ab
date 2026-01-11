@@ -239,20 +239,34 @@ serve(async (req) => {
     );
     
     // Build all policy URLs with labels for SMS
-    const allPolicyUrlsText = policyFileUrls.map((url, i) => `البوليصة ${url}`).join('\n');
+    // PDFs first, then images
+    const pdfUrls = insuranceFiles
+      .filter(f => f.mime_type === 'application/pdf')
+      .map(f => f.cdn_url.replace('https://basheer-ab.b-cdn.net/', 'https://cdn.basheer-ab.com/'));
+    const imageUrls = insuranceFiles
+      .filter(f => f.mime_type !== 'application/pdf')
+      .map(f => f.cdn_url.replace('https://basheer-ab.b-cdn.net/', 'https://cdn.basheer-ab.com/'));
+    
+    // Combined: PDFs first, then images
+    const sortedPolicyUrls = [...pdfUrls, ...imageUrls];
+    
+    // Build all policy URLs text - each file on separate line with label
+    const allPolicyUrlsText = sortedPolicyUrls.map((url, i) => `البوليصة ${url}`).join('\n');
 
     // Build SMS message with ALL files included
     // Default template now includes all files
     let smsMessage = smsSettings.invoice_sms_template || 
       "مرحباً {{client_name}}، تم إصدار وثيقة التأمين\n\n{{all_policy_urls}}\n\nفاتورة شركة التأمين: {{ab_invoice_url}}";
 
+    // Replace {{insurance_invoice_url}} with ALL policy URLs (user expects all files, not just one)
+    // This ensures backward compatibility with existing templates that use this placeholder
     smsMessage = smsMessage
       .replace(/\{\{client_name\}\}/g, policy.client?.full_name || "عميل")
       .replace(/\{\{policy_number\}\}/g, policy.policy_number || "")
-      .replace(/\{\{policy_url\}\}/g, policyFileUrls[0] || "") // First file for backward compatibility
+      .replace(/\{\{policy_url\}\}/g, sortedPolicyUrls[0] || "") // First file for backward compatibility
       .replace(/\{\{all_policy_urls\}\}/g, allPolicyUrlsText)
       .replace(/\{\{ab_invoice_url\}\}/g, abInvoiceUrl)
-      .replace(/\{\{insurance_invoice_url\}\}/g, policyFileUrls[0] || ""); // Legacy placeholder
+      .replace(/\{\{insurance_invoice_url\}\}/g, allPolicyUrlsText); // Now sends ALL files, not just first
 
     const escapeXml = (value: string) =>
       value
@@ -280,7 +294,7 @@ serve(async (req) => {
       `</sms>`;
 
     console.log(`[send-invoice-sms] Sending SMS to ${cleanPhone}`);
-    console.log(`[send-invoice-sms] Policy URLs: ${policyFileUrls.length} files`);
+    console.log(`[send-invoice-sms] Policy URLs: ${sortedPolicyUrls.length} files (${pdfUrls.length} PDFs, ${imageUrls.length} images)`);
     console.log(`[send-invoice-sms] AB Invoice URL: ${abInvoiceUrl}`);
 
     const smsResponse = await fetch("https://019sms.co.il/api", {
@@ -329,7 +343,7 @@ serve(async (req) => {
         success: true, 
         message: "تم إرسال الوثائق عبر الرسائل",
         sent_to: cleanPhone,
-        policy_urls: policyFileUrls,
+        policy_urls: sortedPolicyUrls,
         ab_invoice_url: abInvoiceUrl,
         duration_ms: duration
       }),
