@@ -169,8 +169,40 @@ export function ClientReportModal({
     return { label: 'سارية', icon: CheckCircle, color: 'text-success', bg: 'bg-success/10' };
   };
 
-  const handlePrint = () => {
-    window.print();
+  const [isPrinting, setIsPrinting] = useState(false);
+
+  const handlePrint = async () => {
+    setIsPrinting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('يرجى تسجيل الدخول');
+        return;
+      }
+
+      const reportResponse = await supabase.functions.invoke('generate-client-report', {
+        body: { client_id: client.id },
+      });
+
+      if (reportResponse.error) throw reportResponse.error;
+      
+      const reportUrl = reportResponse.data?.url;
+      if (!reportUrl) throw new Error('Failed to generate report URL');
+
+      // Open the HTML report in a new tab for printing
+      const printWindow = window.open(reportUrl, '_blank');
+      if (printWindow) {
+        // Wait for page to load then trigger print
+        printWindow.addEventListener('load', () => {
+          setTimeout(() => printWindow.print(), 500);
+        });
+      }
+    } catch (error) {
+      console.error('Error generating print report:', error);
+      toast.error('فشل في تحضير التقرير للطباعة');
+    } finally {
+      setIsPrinting(false);
+    }
   };
 
   const handleSendSms = async () => {
@@ -281,8 +313,18 @@ export function ClientReportModal({
                 )}
                 <span className="hidden sm:inline">SMS</span>
               </Button>
-              <Button variant="secondary" size="sm" onClick={handlePrint} className="gap-1.5">
-                <Printer className="h-4 w-4" />
+              <Button 
+                variant="secondary" 
+                size="sm" 
+                onClick={handlePrint} 
+                disabled={isPrinting}
+                className="gap-1.5"
+              >
+                {isPrinting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Printer className="h-4 w-4" />
+                )}
                 <span className="hidden sm:inline">طباعة</span>
               </Button>
             </div>
