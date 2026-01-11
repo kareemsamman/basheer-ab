@@ -254,6 +254,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
   const [refundAmount, setRefundAmount] = useState<number>(0);
   const [policyFilesCount, setPolicyFilesCount] = useState<number>(0);
   const [sendingPolicySms, setSendingPolicySms] = useState(false);
+  const [packageTotalPaid, setPackageTotalPaid] = useState<number>(0);
 
   const handleSendSignatureSms = async () => {
     if (!policy || !policy.clients.phone_number) {
@@ -349,6 +350,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
           setRefundAmount(cachedData.refundAmount || 0);
           setCreatorName(cachedData.creatorName || null);
           setPolicyFilesCount(cachedData.filesCount || 0);
+          setPackageTotalPaid(cachedData.packageTotalPaid || 0);
           setLoading(false);
           return;
         }
@@ -454,6 +456,30 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
       } else {
         setPayments([]);
       }
+
+      // For packages, fetch ALL payments across all policies in the group
+      let pkgTotalPaid = 0;
+      if (policyData.group_id) {
+        // Get all policy IDs in this package
+        const allPackagePolicyIds = [policyId, ...relatedData.map(rp => rp.id)];
+        
+        // Fetch all payments for the entire package
+        const { data: allPackagePayments } = await supabase
+          .from("policy_payments")
+          .select("amount, refused, cheque_status")
+          .in("policy_id", allPackagePolicyIds);
+        
+        if (allPackagePayments) {
+          pkgTotalPaid = allPackagePayments
+            .filter(p => !p.refused && p.cheque_status !== 'returned')
+            .reduce((sum, p) => sum + p.amount, 0);
+        }
+        setPackageTotalPaid(pkgTotalPaid);
+      } else {
+        // For single policies, package total paid = this policy's paid
+        const singlePaid = paymentsData?.filter((p: any) => !p.refused && p.cheque_status !== 'returned').reduce((sum: number, p: any) => sum + p.amount, 0) || 0;
+        setPackageTotalPaid(singlePaid);
+      }
       
       // Fetch refund amount for cancelled policies
       let refund = 0;
@@ -490,6 +516,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
         refundAmount: refund,
         creatorName: creatorName,
         filesCount: filesCount || 0,
+        packageTotalPaid: pkgTotalPaid,
         timestamp: Date.now(),
       };
       sessionStorage.setItem(cacheKey, JSON.stringify(cacheData));
@@ -541,10 +568,64 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
 
   // Payment calculations - for transferred policies, show 0 paid/remaining (payments moved to new policy)
   const isTransferred = policy?.transferred === true;
-  const totalPaid = isTransferred ? 0 : payments.filter((p) => !p.refused && p.cheque_status !== 'returned').reduce((sum, p) => sum + p.amount, 0);
-  const remaining = policy ? (isTransferred ? 0 : policy.insurance_price - totalPaid) : 0;
-  const percentagePaid = policy ? (isTransferred ? 100 : Math.min(100, Math.round((totalPaid / policy.insurance_price) * 100))) : 0;
-  const paymentStatus = isTransferred ? "paid" : remaining <= 0 ? "paid" : totalPaid > 0 ? "partial" : "unpaid";
+  
+  // Calculate package totals first (needed for distributed payment calculation)
+  const hasPackage = relatedPolicies.length > 0;
+  const packageTotalPrice = hasPackage 
+    ? (policy?.insurance_price || 0) + relatedPolicies.reduce((sum, rp) => sum + rp.insurance_price, 0)
+    : 0;
+  const packageTotalProfit = hasPackage 
+    ? (policy?.profit || 0) + relatedPolicies.reduce((sum, rp) => sum + (rp.profit || 0), 0)
+    : 0;
+
+  // For packages, calculate distributed payment for THIS policy
+  // Distribution logic: fill each policy in order until its price is met, then move to next
+  const calculateDistributedPayment = () => {
+    if (!policy || isTransferred) return { paid: 0, remaining: 0, percentage: 100, status: 'paid' as const };
+    
+    if (!hasPackage) {
+      // Single policy - use direct payments
+      const paid = payments.filter((p) => !p.refused && p.cheque_status !== 'returned').reduce((sum, p) => sum + p.amount, 0);
+      const rem = policy.insurance_price - paid;
+      const pct = Math.min(100, Math.round((paid / policy.insurance_price) * 100));
+      const status = rem <= 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+      return { paid, remaining: rem, percentage: pct, status };
+    }
+
+    // Package: distribute packageTotalPaid across all policies
+    // Get all policies in the package (current + related), sorted by creation order (current first)
+    const allPolicies = [
+      { id: policy.id, price: policy.insurance_price, type: policy.policy_type_parent },
+      ...relatedPolicies.map(rp => ({ id: rp.id, price: rp.insurance_price, type: rp.policy_type_parent }))
+    ];
+
+    let remainingPayment = packageTotalPaid;
+    let thisPolicyPaid = 0;
+
+    for (const p of allPolicies) {
+      if (remainingPayment <= 0) break;
+      
+      const amountForThis = Math.min(p.price, remainingPayment);
+      remainingPayment -= amountForThis;
+
+      if (p.id === policy.id) {
+        thisPolicyPaid = amountForThis;
+        break; // Found this policy, stop
+      }
+    }
+
+    const rem = policy.insurance_price - thisPolicyPaid;
+    const pct = Math.min(100, Math.round((thisPolicyPaid / policy.insurance_price) * 100));
+    const status = rem <= 0 ? 'paid' : thisPolicyPaid > 0 ? 'partial' : 'unpaid';
+    
+    return { paid: thisPolicyPaid, remaining: rem, percentage: pct, status };
+  };
+
+  const distributedPayment = calculateDistributedPayment();
+  const totalPaid = distributedPayment.paid;
+  const remaining = distributedPayment.remaining;
+  const percentagePaid = distributedPayment.percentage;
+  const paymentStatus = distributedPayment.status;
 
   // Returned cheques calculation
   const returnedCheques = isTransferred ? [] : payments.filter((p) => p.payment_type === 'cheque' && (p.refused || p.cheque_status === 'returned'));
@@ -554,14 +635,36 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
   // Check if ELZAMI (no profit)
   const isElzami = policy?.policy_type_parent === "ELZAMI";
 
-  // Calculate package totals
-  const hasPackage = relatedPolicies.length > 0;
-  const packageTotalPrice = hasPackage 
-    ? (policy?.insurance_price || 0) + relatedPolicies.reduce((sum, rp) => sum + rp.insurance_price, 0)
-    : 0;
-  const packageTotalProfit = hasPackage 
-    ? (policy?.profit || 0) + relatedPolicies.reduce((sum, rp) => sum + (rp.profit || 0), 0)
-    : 0;
+  // Helper function to get payment status for any policy in the package
+  const getRelatedPolicyPaymentStatus = (rpId: string, rpPrice: number) => {
+    if (!hasPackage) return { paid: 0, remaining: rpPrice, status: 'unpaid' as const };
+    
+    // Build all policies array (current + related)
+    const allPolicies = [
+      { id: policy!.id, price: policy!.insurance_price },
+      ...relatedPolicies.map(rp => ({ id: rp.id, price: rp.insurance_price }))
+    ];
+
+    let remainingPayment = packageTotalPaid;
+    let thisPolicyPaid = 0;
+
+    for (const p of allPolicies) {
+      if (remainingPayment <= 0) break;
+      
+      const amountForThis = Math.min(p.price, remainingPayment);
+      remainingPayment -= amountForThis;
+
+      if (p.id === rpId) {
+        thisPolicyPaid = amountForThis;
+        break;
+      }
+    }
+
+    const rem = rpPrice - thisPolicyPaid;
+    const status = rem <= 0 ? 'paid' : thisPolicyPaid > 0 ? 'partial' : 'unpaid';
+    
+    return { paid: thisPolicyPaid, remaining: rem, status };
+  };
 
   const handleEditComplete = () => {
     fetchPolicyDetails();
@@ -1089,6 +1192,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                             const rpConfig = policyTypeConfig[rp.policy_type_parent] || policyTypeConfig.ELZAMI;
                             const RpIcon = rpConfig.icon;
                             const serviceName = getServiceName(rp);
+                            const rpPaymentStatus = getRelatedPolicyPaymentStatus(rp.id, rp.insurance_price);
                             
                             // Handle click - navigate to related policy WITHOUT closing
                             const handleClick = (e: React.MouseEvent) => {
@@ -1111,7 +1215,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                                   rpConfig.bg, rpConfig.border
                                 )}
                               >
-                                {/* Icon & Type */}
+                                {/* Icon & Type + Payment Badge */}
                                 <div className="flex items-center gap-2 mb-2">
                                   <div className={cn(
                                     "w-8 h-8 rounded-lg flex items-center justify-center bg-gradient-to-br shrink-0",
@@ -1119,9 +1223,18 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                                   )}>
                                     <RpIcon className="h-4 w-4 text-white" />
                                   </div>
-                                  <p className={cn("font-bold text-sm truncate", rpConfig.text)}>
+                                  <p className={cn("font-bold text-sm truncate flex-1", rpConfig.text)}>
                                     {policyTypeLabels[rp.policy_type_parent]}
                                   </p>
+                                  {/* Payment status badge */}
+                                  <span className={cn(
+                                    "text-[10px] px-1.5 py-0.5 rounded-full font-semibold shrink-0",
+                                    rpPaymentStatus.status === 'paid' ? "bg-emerald-100 text-emerald-700" :
+                                    rpPaymentStatus.status === 'partial' ? "bg-amber-100 text-amber-700" :
+                                    "bg-red-100 text-red-700"
+                                  )}>
+                                    {rpPaymentStatus.status === 'paid' ? '✓' : rpPaymentStatus.status === 'partial' ? '◐' : '○'}
+                                  </span>
                                 </div>
                                 
                                 {/* Service & Company */}
@@ -1156,7 +1269,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                           })}
                         </div>
                         
-                        {/* Package Total */}
+                        {/* Package Total with Payment Status */}
                         <div className="bg-gradient-to-l from-teal-50 to-cyan-50 border-2 border-teal-200 rounded-xl p-4 mt-3">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -1170,9 +1283,16 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                             </div>
                             <div className="text-left">
                               <p className="text-xl font-bold text-teal-700 ltr-nums">{formatCurrency(packageTotalPrice)}</p>
+                              <p className={cn(
+                                "text-sm font-semibold ltr-nums",
+                                packageTotalPaid >= packageTotalPrice ? "text-emerald-600" :
+                                packageTotalPaid > 0 ? "text-amber-600" : "text-red-600"
+                              )}>
+                                مدفوع: {formatCurrency(packageTotalPaid)}
+                              </p>
                               {isAdmin && (
                                 <p className={cn(
-                                  "text-sm font-semibold ltr-nums",
+                                  "text-xs font-semibold ltr-nums",
                                   packageTotalProfit < 0 ? "text-red-600" : "text-emerald-600"
                                 )}>
                                   إجمالي الربح: {formatCurrency(packageTotalProfit)}
