@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
 import { BottomToolbar } from "./BottomToolbar";
+import { AnnouncementPopup } from "./AnnouncementPopup";
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -22,6 +23,9 @@ export function MainLayout({ children, onPolicyComplete }: MainLayoutProps) {
 
       {/* Sticky bottom toolbar */}
       <BottomToolbar onPolicyComplete={onPolicyComplete} />
+
+      {/* Announcement popup */}
+      <AnnouncementPopup />
     </div>
   );
 }

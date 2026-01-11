@@ -49,6 +49,7 @@ import AccidentReports from "./pages/AccidentReports";
 import AccidentReportForm from "./pages/AccidentReportForm";
 import AccidentTemplateMapper from "./pages/AccidentTemplateMapper";
 import Expenses from "./pages/Expenses";
+import AnnouncementSettings from "./pages/AnnouncementSettings";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -249,6 +250,12 @@ const App = () => (
                 <AdminRoute>
                   <MarketingSms />
                 </AdminRoute>
+              } />
+              {/* Super admin announcement settings */}
+              <Route path="/admin/announcements" element={
+                <ProtectedRoute>
+                  <AnnouncementSettings />
+                </ProtectedRoute>
               } />
               {/* Public payment callback routes (loaded in iframe) */}
               <Route path="/payment/success" element={<PaymentSuccess />} />

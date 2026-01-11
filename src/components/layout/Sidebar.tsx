@@ -79,6 +79,8 @@ const adminNav = [
   { name: "استيراد WordPress", href: "/admin/wordpress-import", icon: Upload },
 ];
 
+const SUPER_ADMIN_EMAIL = "morshed500@gmail.com";
+
 function SidebarContent({ collapsed, onCollapse, onNavigate }: { 
   collapsed: boolean; 
   onCollapse?: (val: boolean) => void;
@@ -88,6 +90,8 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
   const location = useLocation();
   const navigate = useNavigate();
   const { profile, signOut, isAdmin, branchName } = useAuth();
+
+  const isSuperAdmin = profile?.email === SUPER_ADMIN_EMAIL;
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -187,6 +191,24 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
                 </NavLink>
               );
             })}
+
+            {/* Super admin only - Announcements */}
+            {isSuperAdmin && (
+              <NavLink
+                to="/admin/announcements"
+                onClick={handleNavClick}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
+                  location.pathname === "/admin/announcements"
+                    ? "bg-primary/10 text-primary"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  collapsed && "justify-center px-2"
+                )}
+              >
+                <Megaphone className={cn("h-5 w-5 flex-shrink-0", location.pathname === "/admin/announcements" && "text-primary")} />
+                {!collapsed && <span>إعلانات النظام</span>}
+              </NavLink>
+            )}
           </>
         )}
       </nav>
