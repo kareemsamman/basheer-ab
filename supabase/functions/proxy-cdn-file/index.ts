@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 
-const ALLOWED_PREFIX = "https://basheer-ab.b-cdn.net/";
+const ALLOWED_PREFIX = "https://cdn.basheer-ab.com/";
 
 function corsHeaders(origin: string | null) {
   const allowOrigin = origin ?? "*";

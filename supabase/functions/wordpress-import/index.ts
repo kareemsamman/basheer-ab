@@ -159,7 +159,7 @@ async function uploadToBunnyCDN(
       return null;
     }
     
-    const cdnUrl = `https://basheer-ab.b-cdn.net/${storagePath}`;
+    const cdnUrl = `https://cdn.basheer-ab.com/${storagePath}`;
     console.log(`Uploaded to CDN: ${cdnUrl}`);
     
     return { cdnUrl, storagePath, mimeType, size };

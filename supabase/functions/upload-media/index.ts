@@ -259,7 +259,7 @@ serve(async (req) => {
     }
 
     // Construct CDN URL - hardcoded to prevent misconfiguration
-    const cdnUrl = `https://basheer-ab.b-cdn.net/${storagePath}`;
+    const cdnUrl = `https://cdn.basheer-ab.com/${storagePath}`;
 
     // Save to database with user's branch_id
     const { data: mediaFile, error: dbError } = await supabase
