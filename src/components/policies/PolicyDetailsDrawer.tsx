@@ -32,6 +32,10 @@ import {
   Package,
   ArrowLeftRight,
   History,
+  Shield,
+  TrendingUp,
+  Wallet,
+  ChevronLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PolicyEditDrawer } from "./PolicyEditDrawer";
@@ -169,16 +173,23 @@ const policyChildLabels: Record<string, string> = {
 };
 
 const policyTypeColors: Record<string, string> = {
-  ELZAMI: "bg-blue-500/10 text-blue-700 border-blue-500/20",
-  THIRD_FULL: "bg-purple-500/10 text-purple-700 border-purple-500/20",
-  ROAD_SERVICE: "bg-orange-500/10 text-orange-700 border-orange-500/20",
-  ACCIDENT_FEE_EXEMPTION: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20",
-  HEALTH: "bg-rose-500/10 text-rose-700 border-rose-500/20",
-  LIFE: "bg-teal-500/10 text-teal-700 border-teal-500/20",
-  PROPERTY: "bg-amber-500/10 text-amber-700 border-amber-500/20",
-  TRAVEL: "bg-cyan-500/10 text-cyan-700 border-cyan-500/20",
-  BUSINESS: "bg-indigo-500/10 text-indigo-700 border-indigo-500/20",
-  OTHER: "bg-slate-500/10 text-slate-700 border-slate-500/20",
+  ELZAMI: "bg-blue-500/10 text-blue-700 border-blue-500/30",
+  THIRD_FULL: "bg-purple-500/10 text-purple-700 border-purple-500/30",
+  ROAD_SERVICE: "bg-orange-500/10 text-orange-700 border-orange-500/30",
+  ACCIDENT_FEE_EXEMPTION: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30",
+  HEALTH: "bg-rose-500/10 text-rose-700 border-rose-500/30",
+  LIFE: "bg-teal-500/10 text-teal-700 border-teal-500/30",
+  PROPERTY: "bg-amber-500/10 text-amber-700 border-amber-500/30",
+  TRAVEL: "bg-cyan-500/10 text-cyan-700 border-cyan-500/30",
+  BUSINESS: "bg-indigo-500/10 text-indigo-700 border-indigo-500/30",
+  OTHER: "bg-slate-500/10 text-slate-700 border-slate-500/30",
+};
+
+const policyTypeIcons: Record<string, React.ElementType> = {
+  ELZAMI: Shield,
+  THIRD_FULL: Car,
+  ROAD_SERVICE: Car,
+  ACCIDENT_FEE_EXEMPTION: Shield,
 };
 
 const carTypeLabels: Record<string, string> = {
@@ -437,6 +448,30 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
   const remainingDays = getRemainingDays();
   const StatusIcon = status.icon;
 
+  // Get display name for policy type with child
+  const getPolicyTypeName = () => {
+    if (!policy) return "";
+    let name = policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent;
+    if (policy.policy_type_child) {
+      name += ` (${policyChildLabels[policy.policy_type_child] || policy.policy_type_child})`;
+    }
+    return name;
+  };
+
+  // Get service name for display
+  const getServiceName = (rp: RelatedPolicy) => {
+    if (rp.policy_type_parent === 'ROAD_SERVICE' && rp.road_services) {
+      return rp.road_services.name_ar || rp.road_services.name;
+    }
+    if (rp.policy_type_parent === 'ACCIDENT_FEE_EXEMPTION' && rp.accident_fee_services) {
+      return rp.accident_fee_services.name_ar || rp.accident_fee_services.name;
+    }
+    if (rp.policy_type_parent === 'THIRD_FULL' && rp.policy_type_child) {
+      return policyChildLabels[rp.policy_type_child] || rp.policy_type_child;
+    }
+    return null;
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -452,138 +487,141 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
             </div>
           ) : policy ? (
             <div className="flex flex-col h-full max-h-[95vh]">
-              {/* Header - Clean Redesign */}
-              <div className="px-8 py-6 bg-gradient-to-l from-primary/5 via-primary/3 to-transparent border-b">
+              {/* Header - Premium Redesign */}
+              <div className="px-6 py-5 border-b bg-gradient-to-l from-muted/40 via-background to-background">
                 <div className="flex items-start justify-between gap-4">
-                  <div className="text-right flex-1">
-                    <DialogTitle className="text-2xl font-bold mb-3 flex items-center gap-3">
-                      تفاصيل الوثيقة
-                      <Badge variant={status.variant} className="gap-1.5 text-sm px-3 py-1">
-                        <StatusIcon className="h-4 w-4" />
+                  {/* Right side - Title and type */}
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-3">
+                      <DialogTitle className="text-xl font-bold">تفاصيل الوثيقة</DialogTitle>
+                      <Badge variant={status.variant} className="gap-1.5 px-3 py-1">
+                        <StatusIcon className="h-3.5 w-3.5" />
                         {status.label}
                       </Badge>
-                    </DialogTitle>
-                    <div className="flex flex-wrap gap-2 items-center">
-                      <Badge className={cn("border text-sm px-3 py-1", policyTypeColors[policy.policy_type_parent])}>
-                        {policyTypeLabels[policy.policy_type_parent]}
-                        {policy.policy_type_child && ` - ${policyChildLabels[policy.policy_type_child]}`}
+                    </div>
+                    
+                    {/* Policy Type Badge - Large and Clear */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge className={cn("text-sm px-4 py-1.5 font-semibold border-2", policyTypeColors[policy.policy_type_parent])}>
+                        {getPolicyTypeName()}
                       </Badge>
-                      {/* Show service name for Road Service */}
+                      
+                      {/* Service name for Road Service */}
                       {policy.policy_type_parent === 'ROAD_SERVICE' && policy.road_services && (
-                        <Badge variant="outline" className="text-sm">
+                        <Badge variant="outline" className="text-sm px-3 py-1">
                           {policy.road_services.name_ar || policy.road_services.name}
                         </Badge>
                       )}
+                      
+                      {/* Under 24 badge */}
                       {(policy.is_under_24 || policy.clients.under24_type !== 'none') && (
-                        <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-sm">
+                        <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">
                           {policy.clients.under24_type === 'additional_driver' ? 'سائق إضافي -24' : 'أقل من 24'}
                         </Badge>
                       )}
+                      
+                      {/* Package indicator */}
+                      {hasPackage && (
+                        <Badge variant="outline" className="gap-1 bg-primary/5 text-primary border-primary/30">
+                          <Package className="h-3 w-3" />
+                          باقة ({relatedPolicies.length + 1} وثائق)
+                        </Badge>
+                      )}
                     </div>
-                    {/* Signature Warning */}
-                    {!policy.clients.signature_url && (
-                      <div className="flex items-center gap-2 mt-2 text-amber-600 bg-amber-500/10 rounded-md px-3 py-1.5 text-xs">
-                        <AlertTriangle className="h-4 w-4" />
-                        <span>العميل لم يوقّع بعد</span>
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
-                          className="h-6 px-2 text-amber-700 hover:text-amber-800 hover:bg-amber-500/20"
-                          onClick={handleSendSignatureSms}
-                          disabled={sendingSignatureSms || !policy.clients.phone_number}
-                        >
-                          {sendingSignatureSms ? (
-                            <Loader2 className="h-3 w-3 animate-spin ml-1" />
-                          ) : (
-                            <Send className="h-3 w-3 ml-1" />
-                          )}
-                          إرسال طلب توقيع
-                        </Button>
-                      </div>
+                    
+                    {/* Creator info */}
+                    {creatorName && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        أنشئ بواسطة: {creatorName}
+                      </p>
                     )}
-                    {creatorName && <p className="text-sm text-muted-foreground mt-3">أنشئ بواسطة: {creatorName}</p>}
                   </div>
-                  <div className="flex flex-wrap gap-2 items-start shrink-0">
-                    {remaining > 0 && (
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          setActiveTab("payments");
-                          setShowQuickPayment(true);
-                        }}
-                      >
-                        <Plus className="h-4 w-4 ml-1" />
-                        دفعة جديدة
-                      </Button>
-                    )}
-                    <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-                      <Pencil className="h-4 w-4 ml-1" />
+                  
+                  {/* Left side - Actions */}
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditOpen(true)}
+                      className="gap-1.5"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
                       تعديل
                     </Button>
-                    {/* Accident Report Button - only for THIRD/FULL active policies */}
-                    {!policy.cancelled && policy.policy_type_parent === 'THIRD_FULL' && 
-                     (policy.policy_type_child === 'THIRD' || policy.policy_type_child === 'FULL') && (
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        className="text-orange-600 hover:text-orange-700 hover:bg-orange-500/10"
-                        onClick={() => {
-                          onOpenChange(false);
-                          window.location.href = `/policies/${policy.id}/accident/new`;
-                        }}
-                      >
-                        <AlertTriangle className="h-4 w-4 ml-1" />
-                        بلاغ حادث
-                      </Button>
-                    )}
-                    {!policy.cancelled && policy.cars && (
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => setTransferOpen(true)}
-                      >
-                        <ArrowLeftRight className="h-4 w-4 ml-1" />
-                        تحويل
-                      </Button>
-                    )}
-                    {!policy.cancelled && (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => setCancelOpen(true)}
-                      >
-                        <XCircle className="h-4 w-4 ml-1" />
-                        إلغاء
-                      </Button>
+                    {!policy.cancelled && !policy.transferred && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setTransferOpen(true)}
+                          className="gap-1.5"
+                        >
+                          <ArrowLeftRight className="h-3.5 w-3.5" />
+                          تحويل
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setCancelOpen(true)}
+                          className="gap-1.5 text-destructive hover:text-destructive"
+                        >
+                          <XCircle className="h-3.5 w-3.5" />
+                          إلغاء
+                        </Button>
+                      </>
                     )}
                   </div>
                 </div>
+                
+                {/* Signature Warning */}
+                {!policy.clients.signature_url && (
+                  <div className="flex items-center gap-2 mt-3 text-amber-600 bg-amber-500/10 rounded-lg px-3 py-2 text-xs">
+                    <AlertTriangle className="h-4 w-4" />
+                    <span>العميل لم يوقّع بعد</span>
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      className="h-7 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-500/20 mr-auto"
+                      onClick={handleSendSignatureSms}
+                      disabled={sendingSignatureSms}
+                    >
+                      {sendingSignatureSms ? (
+                        <Loader2 className="h-3 w-3 animate-spin ml-1" />
+                      ) : (
+                        <Send className="h-3 w-3 ml-1" />
+                      )}
+                      إرسال طلب توقيع
+                    </Button>
+                  </div>
+                )}
+              </div>
 
-                {/* Main Insurance Info - Hero Stats Cards */}
-                <div
-                  className={cn(
-                    "grid gap-4 mt-6",
-                    isElzami ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-2 sm:grid-cols-4",
-                  )}
-                >
-                  {/* Price */}
-                  <div className="bg-background rounded-2xl p-5 text-center border-2 shadow-md hover:shadow-lg transition-shadow">
-                    <p className="text-sm text-muted-foreground mb-2 font-medium">سعر التأمين</p>
-                    <p className="text-3xl font-bold text-primary ltr-nums">{formatCurrency(policy.insurance_price)}</p>
+              {/* Financial Summary Cards - Clean Grid */}
+              <div className="px-6 py-5 bg-muted/20">
+                <div className="grid grid-cols-3 gap-4">
+                  {/* Insurance Price */}
+                  <div className="bg-background rounded-xl p-4 border shadow-sm">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <Wallet className="h-4 w-4" />
+                      <span className="text-xs font-medium">سعر التأمين</span>
+                    </div>
+                    <p className="text-2xl font-bold text-primary ltr-nums">
+                      {formatCurrency(policy.insurance_price)}
+                    </p>
                   </div>
 
-                  {/* Paid */}
+                  {/* Paid Amount */}
                   <div className={cn(
-                    "rounded-2xl p-5 text-center border-2 shadow-md hover:shadow-lg transition-shadow",
-                    paymentStatus === "paid" 
-                      ? "bg-success/5 border-success/30" 
-                      : "bg-amber-500/5 border-amber-500/30"
+                    "rounded-xl p-4 border shadow-sm",
+                    paymentStatus === 'paid' ? "bg-success/5 border-success/30" : "bg-background"
                   )}>
-                    <p className="text-sm text-muted-foreground mb-2 font-medium">المدفوع</p>
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <CreditCard className="h-4 w-4" />
+                      <span className="text-xs font-medium">المدفوع</span>
+                    </div>
                     <p className={cn(
-                      "text-3xl font-bold ltr-nums", 
-                      paymentStatus === "paid" ? "text-success" : "text-amber-600"
+                      "text-2xl font-bold ltr-nums",
+                      paymentStatus === 'paid' ? "text-success" : "text-foreground"
                     )}>
                       {formatCurrency(totalPaid)}
                     </p>
@@ -591,17 +629,20 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
 
                   {/* Remaining */}
                   <div className={cn(
-                    "rounded-2xl p-5 text-center border-2 shadow-md hover:shadow-lg transition-shadow",
-                    remaining > 0 
-                      ? "bg-destructive/5 border-destructive/30" 
-                      : remaining < 0 
-                        ? "bg-destructive/10 border-destructive/40"
-                        : "bg-success/5 border-success/30"
+                    "rounded-xl p-4 border shadow-sm",
+                    remaining > 0 ? "bg-destructive/5 border-destructive/30" : 
+                    remaining < 0 ? "bg-destructive/10 border-destructive/40" : 
+                    "bg-success/5 border-success/30"
                   )}>
-                    <p className="text-sm text-muted-foreground mb-2 font-medium">المتبقي</p>
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <Banknote className="h-4 w-4" />
+                      <span className="text-xs font-medium">المتبقي</span>
+                    </div>
                     <p className={cn(
-                      "text-3xl font-bold ltr-nums", 
-                      remaining !== 0 ? "text-destructive" : "text-success"
+                      "text-2xl font-bold ltr-nums",
+                      remaining > 0 ? "text-destructive" : 
+                      remaining < 0 ? "text-destructive" : 
+                      "text-success"
                     )}>
                       {formatCurrency(remaining)}
                     </p>
@@ -609,63 +650,54 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                       <p className="text-xs text-destructive mt-1">رصيد زائد</p>
                     )}
                   </div>
+                </div>
 
-                  {/* Profit - Only show if not ELZAMI and user is Admin */}
-                  {!isElzami && isAdmin && (
+                {/* Profit Row - Admin Only */}
+                {!isElzami && isAdmin && (
+                  <div className="mt-4 grid grid-cols-2 gap-4">
                     <div className={cn(
-                      "rounded-2xl p-5 text-center border-2 shadow-md hover:shadow-lg transition-shadow",
+                      "rounded-xl p-4 border shadow-sm",
                       (policy.cancelled || isTransferred) 
                         ? "bg-muted border-muted-foreground/20" 
-                        : "bg-success/10 border-success/40"
+                        : "bg-success/5 border-success/30"
                     )}>
-                      <p className="text-sm text-muted-foreground mb-2 font-medium">
-                        {hasPackage ? 'ربح هذه الوثيقة' : 'الربح'}
-                      </p>
+                      <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                        <TrendingUp className="h-4 w-4" />
+                        <span className="text-xs font-medium">
+                          {hasPackage ? 'ربح هذه الوثيقة' : 'الربح'}
+                        </span>
+                      </div>
                       <p className={cn(
-                        "text-3xl font-bold ltr-nums",
+                        "text-2xl font-bold ltr-nums",
                         (policy.cancelled || isTransferred) ? "text-muted-foreground line-through" : "text-success"
                       )}>
                         {(policy.cancelled || isTransferred) ? formatCurrency(0) : formatCurrency(policy.profit)}
                       </p>
-                      {policy.cancelled && (
-                        <p className="text-xs text-destructive mt-1">ملغى</p>
-                      )}
-                      {isTransferred && !policy.cancelled && (
-                        <p className="text-xs text-amber-600 mt-1">محوّلة</p>
-                      )}
                     </div>
-                  )}
-                </div>
-
-                {/* Package Total - Only show if part of a package and user is Admin */}
-                {hasPackage && !isElzami && isAdmin && (
-                  <div className="grid grid-cols-2 gap-4 mt-4">
-                    <div className="bg-primary/10 rounded-2xl p-5 text-center border-2 border-primary/30 shadow-md">
-                      <div className="flex items-center justify-center gap-2 mb-2">
-                        <Package className="h-4 w-4 text-primary" />
-                        <p className="text-sm text-muted-foreground font-medium">مجموع الباقة</p>
+                    
+                    {hasPackage && (
+                      <div className="rounded-xl p-4 border shadow-sm bg-primary/5 border-primary/30">
+                        <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                          <Package className="h-4 w-4" />
+                          <span className="text-xs font-medium">ربح الباقة الكامل</span>
+                        </div>
+                        <p className="text-2xl font-bold text-primary ltr-nums">
+                          {formatCurrency(packageTotalProfit)}
+                        </p>
                       </div>
-                      <p className="text-2xl font-bold text-primary ltr-nums">{formatCurrency(packageTotalPrice)}</p>
-                    </div>
-                    <div className="bg-success/15 rounded-2xl p-5 text-center border-2 border-success/40 shadow-md">
-                      <div className="flex items-center justify-center gap-2 mb-2">
-                        <Package className="h-4 w-4 text-success" />
-                        <p className="text-sm text-muted-foreground font-medium">ربح الباقة</p>
-                      </div>
-                      <p className="text-2xl font-bold text-success ltr-nums">{formatCurrency(packageTotalProfit)}</p>
-                    </div>
+                    )}
                   </div>
                 )}
 
-                {/* Payment Progress */}
-                <div className="mt-5 bg-background rounded-2xl p-5 border-2 shadow-md">
+                {/* Payment Progress Bar */}
+                <div className="mt-4 bg-background rounded-xl p-4 border shadow-sm">
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-base font-semibold">حالة الدفع</span>
+                    <span className="text-sm font-medium">حالة الدفع</span>
                     <Badge
                       variant={
                         paymentStatus === "paid" ? "success" : paymentStatus === "partial" ? "warning" : "destructive"
                       }
-                      className="text-sm px-3 py-1"
+                      className="px-3"
                     >
                       {paymentStatus === "paid"
                         ? "مدفوع بالكامل"
@@ -674,25 +706,22 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                           : "غير مدفوع"}
                     </Badge>
                   </div>
-                  <Progress value={percentagePaid} className="h-3" />
+                  <Progress value={percentagePaid} className="h-2.5" />
                 </div>
 
                 {/* Returned Cheques Warning */}
                 {hasReturnedCheques && (
-                  <div className="mt-4 bg-destructive/10 rounded-xl p-4 border border-destructive/20 shadow-sm">
+                  <div className="mt-4 bg-destructive/10 rounded-xl p-4 border border-destructive/20">
                     <div className="flex items-center gap-2 mb-2">
                       <AlertTriangle className="h-4 w-4 text-destructive" />
-                      <span className="text-sm font-semibold text-destructive">شيكات مرتجعة</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-destructive/80">
-                        {returnedCheques.length} شيك مرتجع
+                      <span className="text-sm font-semibold text-destructive">
+                        شيكات مرتجعة ({returnedCheques.length})
                       </span>
-                      <span className="text-lg font-bold text-destructive">
+                      <span className="text-lg font-bold text-destructive mr-auto ltr-nums">
                         {formatCurrency(returnedChequesTotal)}-
                       </span>
                     </div>
-                    <p className="text-xs text-destructive/70 mt-2">
+                    <p className="text-xs text-destructive/70">
                       هذا المبلغ مخصوم من رصيد العميل ويجب تحصيله
                     </p>
                   </div>
@@ -700,7 +729,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
 
                 {/* Cancellation Info */}
                 {policy.cancelled && (
-                  <div className="mt-4 bg-destructive/10 rounded-xl p-4 border border-destructive/20 shadow-sm">
+                  <div className="mt-4 bg-destructive/10 rounded-xl p-4 border border-destructive/20">
                     <div className="flex items-center gap-2 mb-2">
                       <XCircle className="h-4 w-4 text-destructive" />
                       <span className="text-sm font-semibold text-destructive">وثيقة ملغاة</span>
@@ -711,30 +740,20 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                       )}
                     </div>
                     {policy.cancellation_note && (
-                      <p className="text-sm text-destructive/80 mt-2 whitespace-pre-wrap">
-                        {policy.cancellation_note}
-                      </p>
+                      <p className="text-sm text-destructive/80 whitespace-pre-wrap">{policy.cancellation_note}</p>
                     )}
-                    {/* Refund Amount */}
                     {refundAmount > 0 && (
-                      <div className="mt-3 pt-3 border-t border-destructive/20">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-destructive/80">مرتجع للعميل</span>
-                          <span className="text-lg font-bold text-destructive">{formatCurrency(refundAmount)}</span>
-                        </div>
+                      <div className="mt-3 pt-3 border-t border-destructive/20 flex justify-between">
+                        <span className="text-sm text-destructive/80">مرتجع للعميل</span>
+                        <span className="text-lg font-bold text-destructive ltr-nums">{formatCurrency(refundAmount)}</span>
                       </div>
                     )}
-                    {/* Company Payment Note */}
-                    <div className="mt-3 pt-3 border-t border-destructive/20 text-xs text-destructive/70">
-                      <p>• الربح: تم إلغاؤه</p>
-                      <p>• المستحق للشركة: تم إلغاؤه ({formatCurrency(policy.payed_for_company)}-)</p>
-                    </div>
                   </div>
                 )}
 
                 {/* Transferred Info */}
                 {isTransferred && !policy.cancelled && (
-                  <div className="mt-4 bg-amber-500/10 rounded-xl p-4 border border-amber-500/20 shadow-sm">
+                  <div className="mt-4 bg-amber-500/10 rounded-xl p-4 border border-amber-500/20">
                     <div className="flex items-center gap-2 mb-2">
                       <ArrowLeftRight className="h-4 w-4 text-amber-600" />
                       <span className="text-sm font-semibold text-amber-700">وثيقة محوّلة</span>
@@ -744,11 +763,9 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                         </Badge>
                       )}
                     </div>
-                    <div className="mt-2 text-xs text-amber-700/80 space-y-1">
-                      <p>• الدفعات والملفات تم نقلها للوثيقة الجديدة</p>
-                      <p>• المستحق للشركة: ₪0 (محولة)</p>
-                      <p>• الربح: ₪0 (محولة)</p>
-                    </div>
+                    <p className="text-xs text-amber-700/80">
+                      الدفعات والملفات تم نقلها للوثيقة الجديدة
+                    </p>
                   </div>
                 )}
               </div>
@@ -760,9 +777,9 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                 className="flex-1 flex flex-col overflow-hidden"
                 dir="rtl"
               >
-                <TabsList className="mx-8 mt-5 grid grid-cols-4 h-12 p-1" dir="rtl">
+                <TabsList className="mx-6 mt-4 grid grid-cols-4 h-11 p-1" dir="rtl">
                   <TabsTrigger value="insurance" className="text-sm gap-2 font-medium">
-                    <Banknote className="h-4 w-4" />
+                    <Shield className="h-4 w-4" />
                     التأمين
                   </TabsTrigger>
                   <TabsTrigger value="payments" className="text-sm gap-2 font-medium">
@@ -781,11 +798,11 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
 
                 <ScrollArea className="flex-1">
                   {/* Insurance Tab */}
-                  <TabsContent value="insurance" className="px-8 py-6 space-y-5 m-0">
-                    {/* Company */}
+                  <TabsContent value="insurance" className="px-6 py-5 space-y-4 m-0">
+                    {/* Company Card */}
                     {policy.insurance_companies ? (
                       <Card className="p-4">
-                        <div className="flex items-center gap-2 text-primary font-semibold mb-3">
+                        <div className="flex items-center gap-2 text-primary font-semibold mb-2">
                           <Building2 className="h-4 w-4" />
                           <span>شركة التأمين</span>
                         </div>
@@ -798,7 +815,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                       </Card>
                     ) : policy.brokers ? (
                       <Card className="p-4">
-                        <div className="flex items-center gap-2 text-primary font-semibold mb-3">
+                        <div className="flex items-center gap-2 text-primary font-semibold mb-2">
                           <Building2 className="h-4 w-4" />
                           <span>الوسيط</span>
                         </div>
@@ -806,83 +823,102 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                       </Card>
                     ) : null}
 
-                    {/* Package / Related Policies */}
+                    {/* Package / Related Policies - REDESIGNED AS CARDS */}
                     {relatedPolicies.length > 0 && (
-                      <Card className="p-5 border-2 border-primary/30 bg-primary/5">
-                        <div className="flex items-center gap-2 text-primary font-semibold mb-4">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-primary font-semibold">
                           <Package className="h-5 w-5" />
-                          <span className="text-base">الوثائق المرتبطة (باقة)</span>
+                          <span className="text-base">وثائق الباقة الأخرى</span>
+                          <Badge variant="outline" className="mr-auto bg-primary/5">
+                            {relatedPolicies.length} وثائق إضافية
+                          </Badge>
                         </div>
-                        <div className="overflow-hidden rounded-lg border-2 border-border/50 bg-background">
-                          <table className="w-full text-sm">
-                            <thead className="bg-muted/60">
-                              <tr>
-                                <th className="text-right py-3 px-4 font-semibold text-muted-foreground">النوع</th>
-                                <th className="text-right py-3 px-4 font-semibold text-muted-foreground">الخدمة</th>
-                                <th className="text-right py-3 px-4 font-semibold text-muted-foreground">الشركة</th>
-                                <th className="text-left py-3 px-4 font-semibold text-muted-foreground">السعر</th>
-                                {/* Profit column - Admin only */}
-                                {isAdmin && (
-                                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">الربح</th>
+                        
+                        <div className="grid gap-3">
+                          {relatedPolicies.map((rp) => {
+                            const TypeIcon = policyTypeIcons[rp.policy_type_parent] || Shield;
+                            const serviceName = getServiceName(rp);
+                            
+                            return (
+                              <div
+                                key={rp.id}
+                                onClick={() => {
+                                  if (onViewRelatedPolicy) {
+                                    onOpenChange(false);
+                                    setTimeout(() => {
+                                      onViewRelatedPolicy(rp.id);
+                                    }, 100);
+                                  }
+                                }}
+                                className={cn(
+                                  "rounded-xl border-2 p-4 cursor-pointer transition-all group",
+                                  "hover:shadow-md hover:border-primary/40 hover:bg-primary/5",
+                                  policyTypeColors[rp.policy_type_parent].replace('text-', 'border-').replace('border-', 'border-')
                                 )}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {relatedPolicies.map((rp) => (
-                                <tr 
-                                  key={rp.id} 
-                                  className="border-t border-border/30 hover:bg-primary/10 cursor-pointer transition-all group"
-                                  onClick={() => {
-                                    if (onViewRelatedPolicy) {
-                                      onOpenChange(false);
-                                      setTimeout(() => {
-                                        onViewRelatedPolicy(rp.id);
-                                      }, 100);
-                                    }
-                                  }}
-                                >
-                                  <td className="py-3 px-4">
-                                    <Badge className={cn("text-xs group-hover:scale-105 transition-transform", policyTypeColors[rp.policy_type_parent])}>
-                                      {policyTypeLabels[rp.policy_type_parent]}
-                                    </Badge>
-                                  </td>
-                                  <td className="py-3 px-4 text-muted-foreground group-hover:text-foreground transition-colors">
-                                    {rp.policy_type_parent === 'ROAD_SERVICE' && rp.road_services
-                                      ? (rp.road_services.name_ar || rp.road_services.name)
-                                      : rp.policy_type_parent === 'ACCIDENT_FEE_EXEMPTION' && rp.accident_fee_services
-                                        ? (rp.accident_fee_services.name_ar || rp.accident_fee_services.name)
-                                        : '-'}
-                                  </td>
-                                  <td className="py-3 px-4 text-muted-foreground group-hover:text-foreground transition-colors">
-                                    {rp.insurance_companies?.name_ar || rp.insurance_companies?.name || '-'}
-                                  </td>
-                                  <td className="py-3 px-4 text-left font-bold ltr-nums">
-                                    {formatCurrency(rp.insurance_price)}
-                                  </td>
-                                  {/* Profit column - Admin only */}
-                                  {isAdmin && (
-                                    <td className="py-3 px-4 text-left text-success font-semibold ltr-nums">
-                                      {formatCurrency(rp.profit)}
-                                    </td>
-                                  )}
-                                </tr>
-                              ))}
-                            </tbody>
-                            <tfoot className="bg-muted/40 border-t-2 border-border/50">
-                              <tr>
-                                <td colSpan={isAdmin ? 3 : 2} className="py-3 px-4 font-bold text-right">مجموع الباقة:</td>
-                                <td colSpan={isAdmin ? 2 : 2} className="py-3 px-4 text-left font-bold text-primary text-lg ltr-nums">
-                                  {formatCurrency(policy.insurance_price + relatedPolicies.reduce((sum, rp) => sum + rp.insurance_price, 0))}
-                                </td>
-                              </tr>
-                            </tfoot>
-                          </table>
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <div className={cn(
+                                      "w-10 h-10 rounded-lg flex items-center justify-center",
+                                      policyTypeColors[rp.policy_type_parent]
+                                    )}>
+                                      <TypeIcon className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                      <p className="font-semibold flex items-center gap-2">
+                                        {policyTypeLabels[rp.policy_type_parent]}
+                                        {rp.policy_type_child && (
+                                          <span className="text-sm font-normal text-muted-foreground">
+                                            ({policyChildLabels[rp.policy_type_child]})
+                                          </span>
+                                        )}
+                                      </p>
+                                      {serviceName && (
+                                        <p className="text-sm text-muted-foreground">{serviceName}</p>
+                                      )}
+                                      {rp.insurance_companies && (
+                                        <p className="text-xs text-muted-foreground mt-0.5">
+                                          {rp.insurance_companies.name_ar || rp.insurance_companies.name}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="text-left flex items-center gap-4">
+                                    <div>
+                                      <p className="text-lg font-bold ltr-nums">{formatCurrency(rp.insurance_price)}</p>
+                                      {isAdmin && (
+                                        <p className="text-sm text-success font-medium ltr-nums">
+                                          ربح: {formatCurrency(rp.profit)}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <ChevronLeft className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                        <p className="text-sm text-muted-foreground mt-3 text-center flex items-center justify-center gap-2">
-                          <span className="text-primary">←</span>
-                          اضغط على أي صف لعرض تفاصيل الوثيقة
-                        </p>
-                      </Card>
+                        
+                        {/* Package Total Summary */}
+                        <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4 mt-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Package className="h-5 w-5 text-primary" />
+                              <span className="font-semibold text-primary">مجموع الباقة الكامل</span>
+                            </div>
+                            <div className="text-left">
+                              <p className="text-xl font-bold text-primary ltr-nums">{formatCurrency(packageTotalPrice)}</p>
+                              {isAdmin && (
+                                <p className="text-sm text-success font-medium ltr-nums">
+                                  إجمالي الربح: {formatCurrency(packageTotalProfit)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     )}
 
                     {/* Period */}
@@ -918,34 +954,35 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                       </div>
                     </Card>
 
-                    {/* Pricing Details */}
-                    <Card className="p-4">
-                      <div className="flex items-center gap-2 text-primary font-semibold mb-3">
-                        <Banknote className="h-4 w-4" />
-                        <span>تفاصيل الأسعار</span>
-                      </div>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between py-2 border-b">
-                          <span className="text-muted-foreground">سعر التأمين</span>
-                          <span className="font-bold">{formatCurrency(policy.insurance_price)}</span>
+                    {/* Pricing Details - Admin only */}
+                    {isAdmin && (
+                      <Card className="p-4">
+                        <div className="flex items-center gap-2 text-primary font-semibold mb-3">
+                          <Banknote className="h-4 w-4" />
+                          <span>تفاصيل الأسعار</span>
                         </div>
-                        {/* Company payment and profit - Admin only */}
-                        {!isElzami && isAdmin && (
-                          <>
-                            <div className="flex justify-between py-2 border-b">
-                              <span className="text-muted-foreground">مدفوع للشركة</span>
-                              <span className="font-bold text-orange-600">
-                                {formatCurrency(policy.payed_for_company)}
-                              </span>
-                            </div>
-                            <div className="flex justify-between py-2">
-                              <span className="text-muted-foreground">الربح</span>
-                              <span className="font-bold text-success">{formatCurrency(policy.profit)}</span>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </Card>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between py-2 border-b">
+                            <span className="text-muted-foreground">سعر التأمين</span>
+                            <span className="font-bold ltr-nums">{formatCurrency(policy.insurance_price)}</span>
+                          </div>
+                          {!isElzami && (
+                            <>
+                              <div className="flex justify-between py-2 border-b">
+                                <span className="text-muted-foreground">مدفوع للشركة</span>
+                                <span className="font-bold text-orange-600 ltr-nums">
+                                  {formatCurrency(policy.payed_for_company)}
+                                </span>
+                              </div>
+                              <div className="flex justify-between py-2">
+                                <span className="text-muted-foreground">الربح</span>
+                                <span className="font-bold text-success ltr-nums">{formatCurrency(policy.profit)}</span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </Card>
+                    )}
 
                     {/* Notes */}
                     {policy.notes && (
@@ -1072,7 +1109,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                           </div>
                           <div>
                             <span className="text-muted-foreground text-xs">قيمة السيارة</span>
-                            <p className="font-semibold">
+                            <p className="font-semibold ltr-nums">
                               {policy.cars.car_value ? formatCurrency(policy.cars.car_value) : "-"}
                             </p>
                           </div>
