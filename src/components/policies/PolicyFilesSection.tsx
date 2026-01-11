@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,11 +9,12 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { 
   ImageIcon, Plus, Trash2, Download, X, Loader2, FileText, FolderOpen, 
-  Save, Hash, CheckCircle2, Send, AlertTriangle, Printer
+  Save, Hash, CheckCircle2, Send, AlertTriangle, Printer, ChevronLeft, ChevronRight
 } from "lucide-react";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { FilePreviewGallery } from "./FilePreviewGallery";
 
 interface MediaFile {
   id: string;
@@ -704,51 +705,13 @@ export function PolicyFilesSection({
         </TabsContent>
       </Tabs>
 
-      {/* File Preview Dialog (Images & PDFs) */}
-      {selectedFile && (
-        <Dialog open={!!selectedFile} onOpenChange={() => setSelectedFile(null)}>
-          <DialogContent className={`p-2 ${isPdf(selectedFile.mime_type) ? 'sm:max-w-5xl h-[90vh]' : 'sm:max-w-3xl'}`} dir="rtl">
-            <DialogHeader className="sr-only">
-              <DialogTitle>معاينة الملف</DialogTitle>
-            </DialogHeader>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-2 left-2 z-10 bg-background/80"
-              onClick={() => setSelectedFile(null)}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-            {isImage(selectedFile.mime_type) ? (
-              <img
-                src={selectedFile.cdn_url}
-                alt={selectedFile.original_name}
-                className="w-full h-auto rounded-lg"
-              />
-            ) : isPdf(selectedFile.mime_type) ? (
-              <iframe
-                src={selectedFile.cdn_url}
-                className="w-full h-full rounded-lg border-0"
-                title={selectedFile.original_name}
-              />
-            ) : null}
-            <div className="flex items-center justify-between mt-2 px-2">
-              <p className="text-sm text-muted-foreground truncate flex-1">
-                {selectedFile.original_name}
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => window.open(selectedFile.cdn_url, '_blank')}
-                className="gap-1 shrink-0"
-              >
-                <Download className="h-3 w-3" />
-                تحميل
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
+      {/* File Preview Dialog - Gallery for images, PDF viewer for PDFs */}
+      <FilePreviewGallery 
+        file={selectedFile}
+        allFiles={activeTab === 'insurance' ? insuranceFiles : crmFiles}
+        onClose={() => setSelectedFile(null)}
+        onNavigate={(file) => setSelectedFile(file)}
+      />
 
       {/* Delete Confirm Dialog */}
       <DeleteConfirmDialog
