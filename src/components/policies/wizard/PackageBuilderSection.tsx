@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Package, Route, Shield, FileCheck, Loader2, Check, AlertCircle } from "lucide-react";
+import { Package, Route, Shield, FileCheck, Loader2, Check, AlertCircle, Car } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import type { PackageAddon, Company, RoadService, AccidentFeeService } from "./types";
@@ -20,6 +20,7 @@ interface PackageBuilderSectionProps {
   roadServiceCompanies: Company[];
   accidentFeeCompanies: Company[];
   elzamiCompanies: Company[];
+  thirdFullCompanies: Company[];
   carType?: string;
   disabled?: boolean;
   errors?: Record<string, string>;
@@ -35,6 +36,7 @@ export function PackageBuilderSection({
   roadServiceCompanies,
   accidentFeeCompanies,
   elzamiCompanies,
+  thirdFullCompanies,
   carType,
   disabled,
   errors = {},
@@ -45,11 +47,12 @@ export function PackageBuilderSection({
   const [loadingElzamiCommission, setLoadingElzamiCommission] = useState(false);
 
   // Find addons by type
-  const elzamiAddon = addons.find(a => a.type === 'elzami') || addons[0];
-  const roadServiceAddon = addons.find(a => a.type === 'road_service') || addons[1];
-  const accidentFeeAddon = addons.find(a => a.type === 'accident_fee_exemption') || addons[2];
+  const elzamiAddon = addons.find(a => a.type === 'elzami') || { type: 'elzami' as const, enabled: false, company_id: '', insurance_price: '', elzami_commission: 0 };
+  const thirdFullAddon = addons.find(a => a.type === 'third_full') || { type: 'third_full' as const, enabled: false, company_id: '', insurance_price: '', policy_type_child: 'THIRD' as const, broker_buy_price: '' };
+  const roadServiceAddon = addons.find(a => a.type === 'road_service') || { type: 'road_service' as const, enabled: false, road_service_id: '', company_id: '', insurance_price: '' };
+  const accidentFeeAddon = addons.find(a => a.type === 'accident_fee_exemption') || { type: 'accident_fee_exemption' as const, enabled: false, accident_fee_service_id: '', company_id: '', insurance_price: '' };
 
-  const updateAddon = (type: 'elzami' | 'road_service' | 'accident_fee_exemption', updates: Partial<PackageAddon>) => {
+  const updateAddon = (type: 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption', updates: Partial<PackageAddon>) => {
     const newAddons = addons.map(addon => 
       addon.type === type ? { ...addon, ...updates } : addon
     );
@@ -63,6 +66,7 @@ export function PackageBuilderSection({
 
   // Determine which addons can be shown based on main policy type
   const showElzamiAddon = mainPolicyType === 'THIRD_FULL';
+  const showThirdFullAddon = mainPolicyType === 'ELZAMI';
   const showRoadServiceAddon = true;
   const showAccidentFeeAddon = true;
 
@@ -167,7 +171,7 @@ export function PackageBuilderSection({
     fetchAccidentFeePrice();
   }, [accidentFeeAddon.enabled, accidentFeeAddon.company_id, accidentFeeAddon.accident_fee_service_id]);
 
-  // Auto-select Company X as default
+  // Auto-select Company X as default for road service
   useEffect(() => {
     const defaultCompany = roadServiceCompanies.find(c => c.id === COMPANY_X_ID) 
       || roadServiceCompanies.find(c => c.name === 'شركة اكس' || c.name_ar === 'شركة اكس')
@@ -178,6 +182,7 @@ export function PackageBuilderSection({
     }
   }, [roadServiceCompanies, roadServiceAddon.enabled]);
 
+  // Auto-select Company X as default for accident fee
   useEffect(() => {
     const defaultCompany = accidentFeeCompanies.find(c => c.id === COMPANY_X_ID)
       || accidentFeeCompanies.find(c => c.name === 'شركة اكس' || c.name_ar === 'شركة اكس')
@@ -197,94 +202,110 @@ export function PackageBuilderSection({
     bgColor, 
     borderColor,
     addon,
+    isCost = false,
     children 
   }: {
-    type: 'elzami' | 'road_service' | 'accident_fee_exemption';
+    type: 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption';
     title: string;
     icon: typeof FileCheck;
     iconColor: string;
     bgColor: string;
     borderColor: string;
     addon: PackageAddon;
+    isCost?: boolean;
     children: React.ReactNode;
   }) => {
-    const isElzami = type === 'elzami';
-    
     return (
       <Card 
         className={cn(
-          "relative p-4 cursor-pointer transition-all duration-200 border-2",
+          "relative p-4 cursor-pointer transition-all duration-200 border-2 min-h-[180px]",
           addon.enabled 
-            ? `${bgColor} ${borderColor} shadow-sm` 
-            : "bg-muted/30 border-dashed border-muted-foreground/30 hover:border-muted-foreground/50"
+            ? `${bgColor} ${borderColor} shadow-md` 
+            : "bg-muted/20 border-dashed border-muted-foreground/20 hover:border-muted-foreground/40 hover:bg-muted/30"
         )}
         onClick={() => !disabled && updateAddon(type, { enabled: !addon.enabled })}
       >
         {/* Selection Indicator */}
         <div className={cn(
-          "absolute top-2 left-2 w-5 h-5 rounded-full flex items-center justify-center transition-all",
+          "absolute top-3 left-3 w-6 h-6 rounded-full flex items-center justify-center transition-all shadow-sm",
           addon.enabled 
-            ? `${isElzami ? 'bg-red-500' : 'bg-primary'} text-white` 
-            : "bg-muted border-2 border-muted-foreground/30"
+            ? `${isCost ? 'bg-destructive' : 'bg-primary'} text-white` 
+            : "bg-background border-2 border-muted-foreground/30"
         )}>
-          {addon.enabled && <Check className="h-3 w-3" />}
+          {addon.enabled && <Check className="h-3.5 w-3.5" />}
         </div>
 
         {/* Header */}
-        <div className="flex items-center gap-2 mb-3">
-          <Icon className={cn("h-5 w-5", iconColor)} />
-          <span className="font-semibold text-sm">{title}</span>
-          {isElzami && addon.enabled && (
-            <span className="text-xs text-red-500 font-medium">(تكلفة)</span>
+        <div className="flex items-center gap-2 mb-3 pr-2">
+          <div className={cn("p-1.5 rounded-md", addon.enabled ? bgColor : "bg-muted/50")}>
+            <Icon className={cn("h-4 w-4", addon.enabled ? iconColor : "text-muted-foreground")} />
+          </div>
+          <span className={cn("font-semibold text-sm", addon.enabled ? "text-foreground" : "text-muted-foreground")}>{title}</span>
+          {isCost && addon.enabled && (
+            <span className="text-xs text-destructive font-bold mr-auto">(تكلفة)</span>
           )}
         </div>
 
         {/* Content */}
         <div onClick={(e) => e.stopPropagation()}>
           {addon.enabled ? children : (
-            <p className="text-xs text-muted-foreground">اضغط لإضافة</p>
+            <p className="text-xs text-muted-foreground text-center py-6">اضغط لإضافة</p>
           )}
         </div>
       </Card>
     );
   };
 
+  // Count enabled addons to show which ones to display
+  const activeAddonCount = addons.filter(a => a.enabled).length;
+  const gridCols = showThirdFullAddon ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-1 md:grid-cols-3";
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-2">
         <Package className="h-5 w-5 text-primary" />
         <h4 className="font-semibold">إضافات الباقة</h4>
+        {activeAddonCount > 0 && (
+          <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
+            {activeAddonCount} مفعّلة
+          </span>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className={cn("grid gap-3", gridCols)}>
         {/* ELZAMI Addon - Only show when main policy is THIRD_FULL */}
         {showElzamiAddon && (
           <AddonCard
             type="elzami"
             title="إلزامي"
             icon={FileCheck}
-            iconColor="text-red-600"
-            bgColor="bg-red-50 dark:bg-red-950/30"
-            borderColor="border-red-300 dark:border-red-800"
+            iconColor="text-destructive"
+            bgColor="bg-destructive/5"
+            borderColor="border-destructive/40"
             addon={elzamiAddon}
+            isCost={true}
           >
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               <div>
-                <Label className="text-xs">الشركة</Label>
+                <Label className="text-xs mb-1 block">الشركة</Label>
                 <Select
-                  value={elzamiAddon.company_id}
+                  value={elzamiAddon.company_id || ""}
                   onValueChange={(v) => updateAddon('elzami', { company_id: v })}
                   disabled={disabled}
                 >
-                  <SelectTrigger className={cn("h-9", errors.addon_elzami_company && "border-destructive")}>
+                  <SelectTrigger className={cn("h-8 text-xs", errors.addon_elzami_company && "border-destructive")}>
                     <SelectValue placeholder="اختر الشركة" />
                   </SelectTrigger>
                   <SelectContent>
-                    {elzamiCompanies.map(c => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name_ar || c.name}
-                      </SelectItem>
-                    ))}
+                    {elzamiCompanies.length === 0 ? (
+                      <div className="p-2 text-center text-sm text-muted-foreground">لا توجد شركات</div>
+                    ) : (
+                      elzamiCompanies.map(c => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name_ar || c.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
                 {errors.addon_elzami_company && (
@@ -295,27 +316,97 @@ export function PackageBuilderSection({
                 )}
               </div>
               <div>
-                <Label className="text-xs">السعر (₪)</Label>
+                <Label className="text-xs mb-1 block">السعر (₪)</Label>
                 <div className="relative">
                   <Input
                     type="number"
                     value={elzamiAddon.insurance_price}
                     onChange={(e) => updateAddon('elzami', { insurance_price: e.target.value })}
                     placeholder="0"
-                    className={cn("h-9 text-red-600 font-bold", errors.addon_elzami_price && "border-destructive")}
+                    className={cn("h-8 text-xs text-destructive font-bold", errors.addon_elzami_price && "border-destructive")}
                     disabled={disabled || loadingElzamiCommission}
                   />
                   {loadingElzamiCommission && (
-                    <Loader2 className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                    <Loader2 className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 animate-spin text-muted-foreground" />
                   )}
                 </div>
-                {elzamiAddon.elzami_commission && (
-                  <p className="text-xs text-red-500 mt-1">العمولة: ₪{elzamiAddon.elzami_commission}</p>
-                )}
-                {errors.addon_elzami_price && (
+              </div>
+            </div>
+          </AddonCard>
+        )}
+
+        {/* THIRD_FULL Addon - Only show when main policy is ELZAMI */}
+        {showThirdFullAddon && (
+          <AddonCard
+            type="third_full"
+            title="ثالث/شامل"
+            icon={Car}
+            iconColor="text-blue-600"
+            bgColor="bg-blue-50 dark:bg-blue-950/30"
+            borderColor="border-blue-300 dark:border-blue-800"
+            addon={thirdFullAddon}
+          >
+            <div className="space-y-2.5">
+              <div>
+                <Label className="text-xs mb-1 block">النوع</Label>
+                <Select
+                  value={thirdFullAddon.policy_type_child || "THIRD"}
+                  onValueChange={(v) => updateAddon('third_full', { policy_type_child: v as 'THIRD' | 'FULL' })}
+                  disabled={disabled}
+                >
+                  <SelectTrigger className={cn("h-8 text-xs", errors.addon_thirdfull_child && "border-destructive")}>
+                    <SelectValue placeholder="اختر النوع" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="THIRD">ثالث</SelectItem>
+                    <SelectItem value="FULL">شامل</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs mb-1 block">الشركة</Label>
+                <Select
+                  value={thirdFullAddon.company_id || ""}
+                  onValueChange={(v) => updateAddon('third_full', { company_id: v })}
+                  disabled={disabled}
+                >
+                  <SelectTrigger className={cn("h-8 text-xs", errors.addon_thirdfull_company && "border-destructive")}>
+                    <SelectValue placeholder="اختر الشركة" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {thirdFullCompanies.length === 0 ? (
+                      <div className="p-2 text-center text-sm text-muted-foreground">لا توجد شركات</div>
+                    ) : (
+                      thirdFullCompanies.map(c => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name_ar || c.name}
+                          {c.broker_id && <span className="text-muted-foreground text-xs mr-1">(وسيط)</span>}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                {errors.addon_thirdfull_company && (
                   <p className="text-xs text-destructive flex items-center gap-1 mt-1">
                     <AlertCircle className="h-3 w-3" />
-                    {errors.addon_elzami_price}
+                    {errors.addon_thirdfull_company}
+                  </p>
+                )}
+              </div>
+              <div>
+                <Label className="text-xs mb-1 block">السعر (₪)</Label>
+                <Input
+                  type="number"
+                  value={thirdFullAddon.insurance_price}
+                  onChange={(e) => updateAddon('third_full', { insurance_price: e.target.value })}
+                  placeholder="0"
+                  className={cn("h-8 text-xs font-bold", errors.addon_thirdfull_price && "border-destructive")}
+                  disabled={disabled}
+                />
+                {errors.addon_thirdfull_price && (
+                  <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.addon_thirdfull_price}
                   </p>
                 )}
               </div>
@@ -334,15 +425,15 @@ export function PackageBuilderSection({
             borderColor="border-orange-300 dark:border-orange-800"
             addon={roadServiceAddon}
           >
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               <div>
-                <Label className="text-xs">نوع الخدمة</Label>
+                <Label className="text-xs mb-1 block">نوع الخدمة</Label>
                 <Select
-                  value={roadServiceAddon.road_service_id}
+                  value={roadServiceAddon.road_service_id || ""}
                   onValueChange={(v) => updateAddon('road_service', { road_service_id: v })}
                   disabled={disabled}
                 >
-                  <SelectTrigger className={cn("h-9", errors.addon_road_service && "border-destructive")}>
+                  <SelectTrigger className={cn("h-8 text-xs", errors.addon_road_service && "border-destructive")}>
                     <SelectValue placeholder="اختر الخدمة" />
                   </SelectTrigger>
                   <SelectContent>
@@ -361,21 +452,25 @@ export function PackageBuilderSection({
                 )}
               </div>
               <div>
-                <Label className="text-xs">الشركة</Label>
+                <Label className="text-xs mb-1 block">الشركة</Label>
                 <Select
-                  value={roadServiceAddon.company_id}
+                  value={roadServiceAddon.company_id || ""}
                   onValueChange={(v) => updateAddon('road_service', { company_id: v })}
                   disabled={disabled}
                 >
-                  <SelectTrigger className={cn("h-9", errors.addon_road_company && "border-destructive")}>
+                  <SelectTrigger className={cn("h-8 text-xs", errors.addon_road_company && "border-destructive")}>
                     <SelectValue placeholder="اختر الشركة" />
                   </SelectTrigger>
                   <SelectContent>
-                    {roadServiceCompanies.map(c => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name_ar || c.name}
-                      </SelectItem>
-                    ))}
+                    {roadServiceCompanies.length === 0 ? (
+                      <div className="p-2 text-center text-sm text-muted-foreground">لا توجد شركات</div>
+                    ) : (
+                      roadServiceCompanies.map(c => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name_ar || c.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
                 {errors.addon_road_company && (
@@ -386,18 +481,18 @@ export function PackageBuilderSection({
                 )}
               </div>
               <div>
-                <Label className="text-xs">السعر (₪)</Label>
+                <Label className="text-xs mb-1 block">السعر (₪)</Label>
                 <div className="relative">
                   <Input
                     type="number"
                     value={roadServiceAddon.insurance_price}
                     onChange={(e) => updateAddon('road_service', { insurance_price: e.target.value })}
                     placeholder="0"
-                    className={cn("h-9", errors.addon_road_price && "border-destructive")}
+                    className={cn("h-8 text-xs font-bold", errors.addon_road_price && "border-destructive")}
                     disabled={disabled || loadingRoadPrice}
                   />
                   {loadingRoadPrice && (
-                    <Loader2 className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                    <Loader2 className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 animate-spin text-muted-foreground" />
                   )}
                 </div>
                 {errors.addon_road_price && (
@@ -422,15 +517,15 @@ export function PackageBuilderSection({
             borderColor="border-emerald-300 dark:border-emerald-800"
             addon={accidentFeeAddon}
           >
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               <div>
-                <Label className="text-xs">نوع الخدمة</Label>
+                <Label className="text-xs mb-1 block">نوع الخدمة</Label>
                 <Select
-                  value={accidentFeeAddon.accident_fee_service_id}
+                  value={accidentFeeAddon.accident_fee_service_id || ""}
                   onValueChange={(v) => updateAddon('accident_fee_exemption', { accident_fee_service_id: v })}
                   disabled={disabled}
                 >
-                  <SelectTrigger className={cn("h-9", errors.addon_accident_service && "border-destructive")}>
+                  <SelectTrigger className={cn("h-8 text-xs", errors.addon_accident_service && "border-destructive")}>
                     <SelectValue placeholder="اختر الخدمة" />
                   </SelectTrigger>
                   <SelectContent>
@@ -449,21 +544,25 @@ export function PackageBuilderSection({
                 )}
               </div>
               <div>
-                <Label className="text-xs">الشركة</Label>
+                <Label className="text-xs mb-1 block">الشركة</Label>
                 <Select
-                  value={accidentFeeAddon.company_id}
+                  value={accidentFeeAddon.company_id || ""}
                   onValueChange={(v) => updateAddon('accident_fee_exemption', { company_id: v })}
                   disabled={disabled}
                 >
-                  <SelectTrigger className={cn("h-9", errors.addon_accident_company && "border-destructive")}>
+                  <SelectTrigger className={cn("h-8 text-xs", errors.addon_accident_company && "border-destructive")}>
                     <SelectValue placeholder="اختر الشركة" />
                   </SelectTrigger>
                   <SelectContent>
-                    {accidentFeeCompanies.map(c => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name_ar || c.name}
-                      </SelectItem>
-                    ))}
+                    {accidentFeeCompanies.length === 0 ? (
+                      <div className="p-2 text-center text-sm text-muted-foreground">لا توجد شركات</div>
+                    ) : (
+                      accidentFeeCompanies.map(c => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name_ar || c.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
                 {errors.addon_accident_company && (
@@ -474,18 +573,18 @@ export function PackageBuilderSection({
                 )}
               </div>
               <div>
-                <Label className="text-xs">السعر (₪)</Label>
+                <Label className="text-xs mb-1 block">السعر (₪)</Label>
                 <div className="relative">
                   <Input
                     type="number"
                     value={accidentFeeAddon.insurance_price}
                     onChange={(e) => updateAddon('accident_fee_exemption', { insurance_price: e.target.value })}
                     placeholder="0"
-                    className={cn("h-9", errors.addon_accident_price && "border-destructive")}
+                    className={cn("h-8 text-xs font-bold", errors.addon_accident_price && "border-destructive")}
                     disabled={disabled || loadingAccidentPrice}
                   />
                   {loadingAccidentPrice && (
-                    <Loader2 className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                    <Loader2 className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 animate-spin text-muted-foreground" />
                   )}
                 </div>
                 {errors.addon_accident_price && (

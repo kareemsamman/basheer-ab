@@ -67,7 +67,7 @@ export interface AccidentFeeService {
 }
 
 export interface PackageAddon {
-  type: 'elzami' | 'road_service' | 'accident_fee_exemption';
+  type: 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption';
   enabled: boolean;
   road_service_id?: string;
   accident_fee_service_id?: string;
@@ -75,6 +75,9 @@ export interface PackageAddon {
   insurance_price: string;
   // ELZAMI specific fields
   elzami_commission?: number;
+  // THIRD_FULL specific fields
+  policy_type_child?: 'THIRD' | 'FULL';
+  broker_buy_price?: string;
 }
 
 export interface PendingPaymentImages {
@@ -149,6 +152,7 @@ export interface WizardStep {
 export interface PricingBreakdown {
   basePrice: number;
   elzamiPrice: number;
+  thirdFullPrice: number;
   roadServicePrice: number;
   accidentFeePrice: number;
   totalPrice: number;

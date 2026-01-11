@@ -1048,6 +1048,10 @@ export function PolicyWizard({
                 setPackageAccidentCompanies={setPackageAccidentCompanies}
                 packageAccidentFeeServices={packageAccidentFeeServices}
                 setPackageAccidentFeeServices={setPackageAccidentFeeServices}
+                packageElzamiCompanies={packageElzamiCompanies}
+                setPackageElzamiCompanies={setPackageElzamiCompanies}
+                packageThirdFullCompanies={packageThirdFullCompanies}
+                setPackageThirdFullCompanies={setPackageThirdFullCompanies}
                 pricing={pricing}
                 selectedCar={selectedCar}
                 existingCar={existingCar}

@@ -69,6 +69,10 @@ interface Step3Props {
   setPackageAccidentCompanies: (companies: Company[]) => void;
   packageAccidentFeeServices: AccidentFeeService[];
   setPackageAccidentFeeServices: (services: AccidentFeeService[]) => void;
+  packageElzamiCompanies: Company[];
+  setPackageElzamiCompanies: (companies: Company[]) => void;
+  packageThirdFullCompanies: Company[];
+  setPackageThirdFullCompanies: (companies: Company[]) => void;
   
   // Pricing
   pricing: PricingBreakdown;
@@ -122,6 +126,10 @@ export function Step3PolicyDetails({
   setPackageAccidentCompanies,
   packageAccidentFeeServices,
   setPackageAccidentFeeServices,
+  packageElzamiCompanies,
+  setPackageElzamiCompanies,
+  packageThirdFullCompanies,
+  setPackageThirdFullCompanies,
   pricing,
   selectedCar,
   existingCar,
@@ -406,9 +414,34 @@ export function Step3PolicyDetails({
   };
 
   const fetchPackageCompanies = async () => {
+    // Fetch ELZAMI companies
+    const { data: elzamiData } = await supabase
+      .from('insurance_companies')
+      .select('id, name, name_ar, category_parent, elzami_commission, broker_id')
+      .eq('active', true)
+      .contains('category_parent', ['ELZAMI'])
+      .order('name');
+    
+    if (elzamiData) {
+      setPackageElzamiCompanies(elzamiData as Company[]);
+    }
+
+    // Fetch THIRD_FULL companies  
+    const { data: thirdFullData } = await supabase
+      .from('insurance_companies')
+      .select('id, name, name_ar, category_parent, elzami_commission, broker_id')
+      .eq('active', true)
+      .contains('category_parent', ['THIRD_FULL'])
+      .order('name');
+    
+    if (thirdFullData) {
+      setPackageThirdFullCompanies(thirdFullData as Company[]);
+    }
+
+    // Fetch Road Service companies
     const { data: rsCompanies } = await supabase
       .from('insurance_companies')
-      .select('id, name, name_ar, category_parent, elzami_commission')
+      .select('id, name, name_ar, category_parent, elzami_commission, broker_id')
       .eq('active', true)
       .contains('category_parent', ['ROAD_SERVICE'])
       .order('name');
@@ -417,9 +450,10 @@ export function Step3PolicyDetails({
       setPackageRoadServiceCompanies(rsCompanies as Company[]);
     }
 
+    // Fetch Accident Fee companies
     const { data: afeCompanies } = await supabase
       .from('insurance_companies')
-      .select('id, name, name_ar, category_parent, elzami_commission')
+      .select('id, name, name_ar, category_parent, elzami_commission, broker_id')
       .eq('active', true)
       .order('name');
     
@@ -427,6 +461,7 @@ export function Step3PolicyDetails({
       setPackageAccidentCompanies(afeCompanies as Company[]);
     }
 
+    // Fetch services
     const { data: services } = await supabase
       .from('road_services')
       .select('*')
@@ -846,7 +881,8 @@ export function Step3PolicyDetails({
                 accidentFeeServices={packageAccidentFeeServices}
                 roadServiceCompanies={packageRoadServiceCompanies}
                 accidentFeeCompanies={packageAccidentCompanies}
-                elzamiCompanies={companies.filter(c => c.category_parent?.includes('ELZAMI'))}
+                elzamiCompanies={packageElzamiCompanies}
+                thirdFullCompanies={packageThirdFullCompanies}
                 carType={getCarType() || undefined}
                 errors={errors}
                 ageBand={clientLessThan24 ? 'UNDER_24' : 'UP_24'}

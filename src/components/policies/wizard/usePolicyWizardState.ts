@@ -153,6 +153,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
   const [packageMode, setPackageMode] = useState(false);
   const [packageAddons, setPackageAddons] = useState<PackageAddon[]>([
     { type: "elzami", enabled: false, company_id: "", insurance_price: "", elzami_commission: 0 },
+    { type: "third_full", enabled: false, company_id: "", insurance_price: "", policy_type_child: "THIRD", broker_buy_price: "" },
     { type: "road_service", enabled: false, road_service_id: "", company_id: "", insurance_price: "" },
     { type: "accident_fee_exemption", enabled: false, accident_fee_service_id: "", company_id: "", insurance_price: "" },
   ]);
@@ -160,6 +161,8 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
   const [packageRoadServiceCompanies, setPackageRoadServiceCompanies] = useState<Company[]>([]);
   const [packageAccidentCompanies, setPackageAccidentCompanies] = useState<Company[]>([]);
   const [packageAccidentFeeServices, setPackageAccidentFeeServices] = useState<AccidentFeeService[]>([]);
+  const [packageElzamiCompanies, setPackageElzamiCompanies] = useState<Company[]>([]);
+  const [packageThirdFullCompanies, setPackageThirdFullCompanies] = useState<Company[]>([]);
 
   // Payments
   const [payments, setPayments] = useState<PaymentLine[]>([]);
@@ -168,36 +171,44 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
   const [insuranceFiles, setInsuranceFiles] = useState<File[]>([]);
   const [crmFiles, setCrmFiles] = useState<File[]>([]);
 
-  // Pricing calculation - updated to support ELZAMI in package
+  // Pricing calculation - updated to support ELZAMI and THIRD_FULL in package
   const pricing: PricingBreakdown = useMemo(() => {
     const basePrice = parseFloat(policy.insurance_price) || 0;
     
-    // ELZAMI addon (index 0)
+    // ELZAMI addon
     const elzamiAddon = packageAddons.find(a => a.type === 'elzami');
     const elzamiPrice = packageMode && elzamiAddon?.enabled ? parseFloat(elzamiAddon.insurance_price) || 0 : 0;
     
-    // Road service addon (index 1)
+    // THIRD_FULL addon (when ELZAMI is main)
+    const thirdFullAddon = packageAddons.find(a => a.type === 'third_full');
+    const thirdFullPrice = packageMode && thirdFullAddon?.enabled ? parseFloat(thirdFullAddon.insurance_price) || 0 : 0;
+    
+    // Road service addon
     const roadAddon = packageAddons.find(a => a.type === 'road_service');
     const roadServicePrice = packageMode && roadAddon?.enabled ? parseFloat(roadAddon.insurance_price) || 0 : 0;
     
-    // Accident fee addon (index 2)
+    // Accident fee addon
     const accidentAddon = packageAddons.find(a => a.type === 'accident_fee_exemption');
     const accidentFeePrice = packageMode && accidentAddon?.enabled ? parseFloat(accidentAddon.insurance_price) || 0 : 0;
     
-    const totalPrice = basePrice + elzamiPrice + roadServicePrice + accidentFeePrice;
+    const totalPrice = basePrice + elzamiPrice + thirdFullPrice + roadServicePrice + accidentFeePrice;
     
-    // Payable price excludes ELZAMI (goes directly to company)
-    const payablePrice = totalPrice - elzamiPrice;
+    // If main policy is ELZAMI, its price doesn't go to client wallet
+    // If ELZAMI is an addon, addon price doesn't go to client wallet
+    const mainIsElzami = policy.policy_type_parent === 'ELZAMI';
+    const elzamiTotal = mainIsElzami ? basePrice : elzamiPrice;
+    const payablePrice = totalPrice - elzamiTotal;
     
     return {
       basePrice,
       elzamiPrice,
+      thirdFullPrice,
       roadServicePrice,
       accidentFeePrice,
       totalPrice,
       payablePrice,
     };
-  }, [policy.insurance_price, packageMode, packageAddons]);
+  }, [policy.insurance_price, policy.policy_type_parent, packageMode, packageAddons]);
 
   // Payment validation
   const totalPaidPayments = payments.filter((p) => !p.refused).reduce((sum, p) => sum + (p.amount || 0), 0);
@@ -211,17 +222,20 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     
     // Package addons validation - find by type instead of index
     const elzamiAddon = packageAddons.find(a => a.type === 'elzami');
+    const thirdFullAddon = packageAddons.find(a => a.type === 'third_full');
     const roadServiceAddon = packageAddons.find(a => a.type === 'road_service');
     const accidentFeeAddon = packageAddons.find(a => a.type === 'accident_fee_exemption');
     
     const elzamiAddonValid = !packageMode || !elzamiAddon?.enabled || 
       (elzamiAddon.company_id && parseFloat(elzamiAddon.insurance_price) > 0);
+    const thirdFullAddonValid = !packageMode || !thirdFullAddon?.enabled ||
+      (thirdFullAddon.company_id && thirdFullAddon.policy_type_child && parseFloat(thirdFullAddon.insurance_price) > 0);
     const roadServiceAddonValid = !packageMode || !roadServiceAddon?.enabled || 
       (roadServiceAddon.road_service_id && roadServiceAddon.company_id && parseFloat(roadServiceAddon.insurance_price) > 0);
     const accidentFeeAddonValid = !packageMode || !accidentFeeAddon?.enabled || 
       (accidentFeeAddon.accident_fee_service_id && accidentFeeAddon.company_id && parseFloat(accidentFeeAddon.insurance_price) > 0);
     
-    const step3Valid = !!(policy.company_id && policy.start_date && policy.end_date && policy.insurance_price && elzamiAddonValid && roadServiceAddonValid && accidentFeeAddonValid);
+    const step3Valid = !!(policy.company_id && policy.start_date && policy.end_date && policy.insurance_price && elzamiAddonValid && thirdFullAddonValid && roadServiceAddonValid && accidentFeeAddonValid);
     const step4Valid = !paymentsExceedPrice;
 
     if (isLightMode) {
@@ -286,6 +300,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     setPackageMode(false);
     setPackageAddons([
       { type: "elzami", enabled: false, company_id: "", insurance_price: "", elzami_commission: 0 },
+      { type: "third_full", enabled: false, company_id: "", insurance_price: "", policy_type_child: "THIRD", broker_buy_price: "" },
       { type: "road_service", enabled: false, road_service_id: "", company_id: "", insurance_price: "" },
       { type: "accident_fee_exemption", enabled: false, accident_fee_service_id: "", company_id: "", insurance_price: "" },
     ]);
@@ -382,6 +397,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
         }
         // Package addons validation - find by type
         const elzamiAddon = packageAddons.find(a => a.type === 'elzami');
+        const thirdFullAddon = packageAddons.find(a => a.type === 'third_full');
         const roadAddon = packageAddons.find(a => a.type === 'road_service');
         const accidentAddon = packageAddons.find(a => a.type === 'accident_fee_exemption');
         
@@ -389,6 +405,13 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
           if (!elzamiAddon.company_id) newErrors.addon_elzami_company = "الرجاء اختيار الشركة";
           if (!elzamiAddon.insurance_price || parseFloat(elzamiAddon.insurance_price) <= 0) {
             newErrors.addon_elzami_price = "السعر مطلوب";
+          }
+        }
+        if (packageMode && thirdFullAddon?.enabled) {
+          if (!thirdFullAddon.company_id) newErrors.addon_thirdfull_company = "الرجاء اختيار الشركة";
+          if (!thirdFullAddon.policy_type_child) newErrors.addon_thirdfull_child = "الرجاء اختيار النوع الفرعي";
+          if (!thirdFullAddon.insurance_price || parseFloat(thirdFullAddon.insurance_price) <= 0) {
+            newErrors.addon_thirdfull_price = "السعر مطلوب";
           }
         }
         if (packageMode && roadAddon?.enabled) {
@@ -535,6 +558,10 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     setPackageAccidentCompanies,
     packageAccidentFeeServices,
     setPackageAccidentFeeServices,
+    packageElzamiCompanies,
+    setPackageElzamiCompanies,
+    packageThirdFullCompanies,
+    setPackageThirdFullCompanies,
 
     // Payments
     payments,
