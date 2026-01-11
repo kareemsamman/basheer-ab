@@ -234,10 +234,10 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error generating report:", error);
     return new Response(
-      JSON.stringify({ error: error?.message || "Failed to generate report" }),
+      JSON.stringify({ error: "An error occurred while generating the report." }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
