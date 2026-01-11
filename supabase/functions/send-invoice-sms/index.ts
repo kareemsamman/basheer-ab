@@ -196,7 +196,7 @@ serve(async (req) => {
     const remaining = (policy.insurance_price || 0) - totalPaid;
 
     // Generate AB Invoice HTML and upload to Bunny CDN
-    const abInvoiceHtml = buildAbInvoiceHtml(policy, payments || [], paymentType, totalPaid, remaining);
+    const abInvoiceHtml = buildAbInvoiceHtml(policy, payments || [], paymentType, totalPaid, remaining, insuranceFiles);
     
     const now = new Date();
     const year = now.getFullYear();
@@ -368,7 +368,8 @@ function buildAbInvoiceHtml(
   payments: any[],
   paymentType: string,
   totalPaid: number,
-  remaining: number
+  remaining: number,
+  policyFiles: { cdn_url: string; original_name: string; mime_type: string }[]
 ): string {
   const client = policy.client || {};
   const car = policy.car || {};
@@ -390,6 +391,40 @@ function buildAbInvoiceHtml(
       <td style="padding: 8px; border: 1px solid #ddd;">₪${p.amount?.toLocaleString() || 0}</td>
     </tr>
   `).join('');
+
+  // Build policy files/documents section
+  const filesHtml = policyFiles.length > 0 ? `
+    <div class="section" style="margin-top: 25px;">
+      <div class="section-title">ملفات البوليصة</div>
+      <div class="section-content">
+        <div class="files-grid">
+          ${policyFiles.map((file, index) => {
+            const isImage = file.mime_type.startsWith('image/');
+            const isPdf = file.mime_type === 'application/pdf';
+            return `
+              <div class="file-item">
+                ${isImage ? `
+                  <a href="${file.cdn_url}" target="_blank" class="file-link">
+                    <img src="${file.cdn_url}" alt="${file.original_name}" class="file-preview-image" />
+                  </a>
+                ` : isPdf ? `
+                  <a href="${file.cdn_url}" target="_blank" class="file-link pdf-link">
+                    <div class="pdf-icon">📄</div>
+                    <span class="pdf-label">PDF</span>
+                  </a>
+                ` : `
+                  <a href="${file.cdn_url}" target="_blank" class="file-link">
+                    <div class="file-icon">📎</div>
+                  </a>
+                `}
+                <a href="${file.cdn_url}" target="_blank" class="file-name">${file.original_name}</a>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+  ` : '';
 
   return `
 <!DOCTYPE html>
@@ -533,7 +568,65 @@ function buildAbInvoiceHtml(
     @media (max-width: 600px) {
       .info-grid { grid-template-columns: 1fr; }
       .summary-grid { grid-template-columns: 1fr; gap: 12px; }
+      .files-grid { grid-template-columns: repeat(2, 1fr); }
     }
+    .files-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin-top: 15px;
+    }
+    .file-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      transition: all 0.2s;
+    }
+    .file-item:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      transform: translateY(-2px);
+    }
+    .file-link {
+      display: block;
+      width: 100%;
+      text-align: center;
+    }
+    .file-preview-image {
+      max-width: 100%;
+      max-height: 150px;
+      object-fit: contain;
+      border-radius: 6px;
+      border: 1px solid #e2e8f0;
+    }
+    .pdf-link {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100px;
+      background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+      border-radius: 8px;
+      color: white;
+      text-decoration: none;
+    }
+    .pdf-icon { font-size: 36px; }
+    .pdf-label { font-size: 14px; font-weight: 700; margin-top: 5px; }
+    .file-name {
+      font-size: 11px;
+      color: #1e3a5f;
+      text-align: center;
+      word-break: break-word;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .file-name:hover { text-decoration: underline; }
+    .file-icon { font-size: 36px; }
   </style>
 </head>
 <body>
@@ -686,6 +779,8 @@ function buildAbInvoiceHtml(
         </div>
       </div>
     </div>
+
+    ${filesHtml}
 
     ${policy.notes ? `
     <div class="section" style="margin-top: 25px;">
