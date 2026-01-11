@@ -751,6 +751,9 @@ export default function CompanySettlement() {
         onOpenChange={setDetailsDrawerOpen}
         policyId={selectedPolicyId}
         onUpdated={handlePolicyUpdated}
+        onViewRelatedPolicy={(newPolicyId) => {
+          setSelectedPolicyId(newPolicyId);
+        }}
       />
     </MainLayout>
   );

@@ -638,6 +638,9 @@ export default function DebtTracking() {
         open={policyDrawerOpen}
         onOpenChange={setPolicyDrawerOpen}
         onUpdated={fetchDebtData}
+        onViewRelatedPolicy={(newPolicyId) => {
+          setSelectedPolicyId(newPolicyId);
+        }}
       />
 
       {/* Debt Payment Modal */}

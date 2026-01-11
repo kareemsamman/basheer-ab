@@ -1319,6 +1319,9 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
           fetchPaymentSummary();
           fetchPayments();
         }}
+        onViewRelatedPolicy={(newPolicyId) => {
+          setSelectedPolicyId(newPolicyId);
+        }}
       />
 
       {/* Policy Wizard for creating new policy */}

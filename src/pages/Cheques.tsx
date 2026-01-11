@@ -1351,6 +1351,9 @@ export default function Cheques() {
         open={policyDrawerOpen}
         onOpenChange={setPolicyDrawerOpen}
         policyId={selectedPolicyId}
+        onViewRelatedPolicy={(newPolicyId) => {
+          setSelectedPolicyId(newPolicyId);
+        }}
       />
     </MainLayout>
   );

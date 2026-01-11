@@ -640,6 +640,9 @@ export function BrokerDetails({ broker, onBack, onEdit, onRefresh }: BrokerDetai
           fetchData();
           onRefresh();
         }}
+        onViewRelatedPolicy={(newPolicyId) => {
+          setViewingPolicyId(newPolicyId);
+        }}
       />
 
       {/* SMS Modal */}
