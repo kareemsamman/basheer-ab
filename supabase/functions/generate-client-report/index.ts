@@ -141,7 +141,7 @@ serve(async (req) => {
       const { data: files } = await supabase
         .from("media_files")
         .select("id, cdn_url, original_name, mime_type, entity_id")
-        .eq("entity_type", "policy")
+        .in("entity_type", ["policy", "policy_insurance"])
         .in("entity_id", policyIds)
         .is("deleted_at", null);
       policyFiles = files || [];
