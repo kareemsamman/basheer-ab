@@ -152,6 +152,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
   // Package mode
   const [packageMode, setPackageMode] = useState(false);
   const [packageAddons, setPackageAddons] = useState<PackageAddon[]>([
+    { type: "elzami", enabled: false, company_id: "", insurance_price: "", elzami_commission: 0 },
     { type: "road_service", enabled: false, road_service_id: "", company_id: "", insurance_price: "" },
     { type: "accident_fee_exemption", enabled: false, accident_fee_service_id: "", company_id: "", insurance_price: "" },
   ]);
@@ -167,16 +168,34 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
   const [insuranceFiles, setInsuranceFiles] = useState<File[]>([]);
   const [crmFiles, setCrmFiles] = useState<File[]>([]);
 
-  // Pricing calculation
+  // Pricing calculation - updated to support ELZAMI in package
   const pricing: PricingBreakdown = useMemo(() => {
     const basePrice = parseFloat(policy.insurance_price) || 0;
-    const roadServicePrice = packageMode && packageAddons[0].enabled ? parseFloat(packageAddons[0].insurance_price) || 0 : 0;
-    const accidentFeePrice = packageMode && packageAddons[1].enabled ? parseFloat(packageAddons[1].insurance_price) || 0 : 0;
+    
+    // ELZAMI addon (index 0)
+    const elzamiAddon = packageAddons.find(a => a.type === 'elzami');
+    const elzamiPrice = packageMode && elzamiAddon?.enabled ? parseFloat(elzamiAddon.insurance_price) || 0 : 0;
+    
+    // Road service addon (index 1)
+    const roadAddon = packageAddons.find(a => a.type === 'road_service');
+    const roadServicePrice = packageMode && roadAddon?.enabled ? parseFloat(roadAddon.insurance_price) || 0 : 0;
+    
+    // Accident fee addon (index 2)
+    const accidentAddon = packageAddons.find(a => a.type === 'accident_fee_exemption');
+    const accidentFeePrice = packageMode && accidentAddon?.enabled ? parseFloat(accidentAddon.insurance_price) || 0 : 0;
+    
+    const totalPrice = basePrice + elzamiPrice + roadServicePrice + accidentFeePrice;
+    
+    // Payable price excludes ELZAMI (goes directly to company)
+    const payablePrice = totalPrice - elzamiPrice;
+    
     return {
       basePrice,
+      elzamiPrice,
       roadServicePrice,
       accidentFeePrice,
-      totalPrice: basePrice + roadServicePrice + accidentFeePrice,
+      totalPrice,
+      payablePrice,
     };
   }, [policy.insurance_price, packageMode, packageAddons]);
 
@@ -190,13 +209,19 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     const step1Valid = !!(selectedClient || (createNewClient && newClient.full_name.trim() && digitsOnly(newClient.id_number).length === 9));
     const step2Valid = isLightMode ? true : !!(selectedCar || existingCar || (createNewCar && newCar.car_number && !carConflict));
     
-    // Package addons validation
-    const roadServiceAddonValid = !packageMode || !packageAddons[0].enabled || 
-      (packageAddons[0].road_service_id && packageAddons[0].company_id && parseFloat(packageAddons[0].insurance_price) > 0);
-    const accidentFeeAddonValid = !packageMode || !packageAddons[1].enabled || 
-      (packageAddons[1].accident_fee_service_id && packageAddons[1].company_id && parseFloat(packageAddons[1].insurance_price) > 0);
+    // Package addons validation - find by type instead of index
+    const elzamiAddon = packageAddons.find(a => a.type === 'elzami');
+    const roadServiceAddon = packageAddons.find(a => a.type === 'road_service');
+    const accidentFeeAddon = packageAddons.find(a => a.type === 'accident_fee_exemption');
     
-    const step3Valid = !!(policy.company_id && policy.start_date && policy.end_date && policy.insurance_price && roadServiceAddonValid && accidentFeeAddonValid);
+    const elzamiAddonValid = !packageMode || !elzamiAddon?.enabled || 
+      (elzamiAddon.company_id && parseFloat(elzamiAddon.insurance_price) > 0);
+    const roadServiceAddonValid = !packageMode || !roadServiceAddon?.enabled || 
+      (roadServiceAddon.road_service_id && roadServiceAddon.company_id && parseFloat(roadServiceAddon.insurance_price) > 0);
+    const accidentFeeAddonValid = !packageMode || !accidentFeeAddon?.enabled || 
+      (accidentFeeAddon.accident_fee_service_id && accidentFeeAddon.company_id && parseFloat(accidentFeeAddon.insurance_price) > 0);
+    
+    const step3Valid = !!(policy.company_id && policy.start_date && policy.end_date && policy.insurance_price && elzamiAddonValid && roadServiceAddonValid && accidentFeeAddonValid);
     const step4Valid = !paymentsExceedPrice;
 
     if (isLightMode) {
@@ -260,6 +285,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     setBrokerDirection("");
     setPackageMode(false);
     setPackageAddons([
+      { type: "elzami", enabled: false, company_id: "", insurance_price: "", elzami_commission: 0 },
       { type: "road_service", enabled: false, road_service_id: "", company_id: "", insurance_price: "" },
       { type: "accident_fee_exemption", enabled: false, accident_fee_service_id: "", company_id: "", insurance_price: "" },
     ]);
@@ -354,18 +380,28 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
         if (policyBrokerId && policyBrokerId !== "none" && !brokerDirection) {
           newErrors.broker_direction = "الرجاء اختيار نوع التعامل مع الوسيط";
         }
-        // Package addons validation
-        if (packageMode && packageAddons[0].enabled) {
-          if (!packageAddons[0].road_service_id) newErrors.addon_road_service = "الرجاء اختيار نوع الخدمة";
-          if (!packageAddons[0].company_id) newErrors.addon_road_company = "الرجاء اختيار الشركة";
-          if (!packageAddons[0].insurance_price || parseFloat(packageAddons[0].insurance_price) <= 0) {
+        // Package addons validation - find by type
+        const elzamiAddon = packageAddons.find(a => a.type === 'elzami');
+        const roadAddon = packageAddons.find(a => a.type === 'road_service');
+        const accidentAddon = packageAddons.find(a => a.type === 'accident_fee_exemption');
+        
+        if (packageMode && elzamiAddon?.enabled) {
+          if (!elzamiAddon.company_id) newErrors.addon_elzami_company = "الرجاء اختيار الشركة";
+          if (!elzamiAddon.insurance_price || parseFloat(elzamiAddon.insurance_price) <= 0) {
+            newErrors.addon_elzami_price = "السعر مطلوب";
+          }
+        }
+        if (packageMode && roadAddon?.enabled) {
+          if (!roadAddon.road_service_id) newErrors.addon_road_service = "الرجاء اختيار نوع الخدمة";
+          if (!roadAddon.company_id) newErrors.addon_road_company = "الرجاء اختيار الشركة";
+          if (!roadAddon.insurance_price || parseFloat(roadAddon.insurance_price) <= 0) {
             newErrors.addon_road_price = "السعر مطلوب";
           }
         }
-        if (packageMode && packageAddons[1].enabled) {
-          if (!packageAddons[1].accident_fee_service_id) newErrors.addon_accident_service = "الرجاء اختيار نوع الخدمة";
-          if (!packageAddons[1].company_id) newErrors.addon_accident_company = "الرجاء اختيار الشركة";
-          if (!packageAddons[1].insurance_price || parseFloat(packageAddons[1].insurance_price) <= 0) {
+        if (packageMode && accidentAddon?.enabled) {
+          if (!accidentAddon.accident_fee_service_id) newErrors.addon_accident_service = "الرجاء اختيار نوع الخدمة";
+          if (!accidentAddon.company_id) newErrors.addon_accident_company = "الرجاء اختيار الشركة";
+          if (!accidentAddon.insurance_price || parseFloat(accidentAddon.insurance_price) <= 0) {
             newErrors.addon_accident_price = "السعر مطلوب";
           }
         }

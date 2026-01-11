@@ -67,12 +67,14 @@ export interface AccidentFeeService {
 }
 
 export interface PackageAddon {
-  type: 'road_service' | 'accident_fee_exemption';
+  type: 'elzami' | 'road_service' | 'accident_fee_exemption';
   enabled: boolean;
   road_service_id?: string;
   accident_fee_service_id?: string;
   company_id?: string;
   insurance_price: string;
+  // ELZAMI specific fields
+  elzami_commission?: number;
 }
 
 export interface PendingPaymentImages {
@@ -146,9 +148,12 @@ export interface WizardStep {
 
 export interface PricingBreakdown {
   basePrice: number;
+  elzamiPrice: number;
   roadServicePrice: number;
   accidentFeePrice: number;
   totalPrice: number;
+  /** Amount that goes through client wallet/debt (excludes ELZAMI) */
+  payablePrice: number;
 }
 
 // Constants

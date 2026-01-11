@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Package } from "lucide-react";
+import { Package, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PricingBreakdown } from "./types";
 
@@ -11,7 +11,8 @@ interface PricingCardProps {
 }
 
 export function PricingCard({ pricing, showAddons = true, className }: PricingCardProps) {
-  const hasAddons = pricing.roadServicePrice > 0 || pricing.accidentFeePrice > 0;
+  const hasAddons = pricing.roadServicePrice > 0 || pricing.accidentFeePrice > 0 || pricing.elzamiPrice > 0;
+  const hasElzami = pricing.elzamiPrice > 0;
   
   return (
     <Card className={cn(
@@ -34,27 +35,46 @@ export function PricingCard({ pricing, showAddons = true, className }: PricingCa
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
           <span className="text-muted-foreground">السعر الأساسي:</span>
-          <span className="font-medium">₪{pricing.basePrice.toLocaleString()}</span>
+          <span className="font-medium ltr-nums">₪{pricing.basePrice.toLocaleString()}</span>
         </div>
+        
+        {/* ELZAMI shown in red as it's a cost */}
+        {showAddons && pricing.elzamiPrice > 0 && (
+          <div className="flex justify-between text-red-600">
+            <span className="flex items-center gap-1">
+              <AlertCircle className="h-3 w-3" />
+              + إلزامي (تكلفة):
+            </span>
+            <span className="font-medium ltr-nums">₪{pricing.elzamiPrice.toLocaleString()}</span>
+          </div>
+        )}
         
         {showAddons && pricing.roadServicePrice > 0 && (
           <div className="flex justify-between text-muted-foreground">
             <span>+ خدمات الطريق:</span>
-            <span>₪{pricing.roadServicePrice.toLocaleString()}</span>
+            <span className="ltr-nums">₪{pricing.roadServicePrice.toLocaleString()}</span>
           </div>
         )}
         
         {showAddons && pricing.accidentFeePrice > 0 && (
           <div className="flex justify-between text-muted-foreground">
             <span>+ إعفاء رسوم حادث:</span>
-            <span>₪{pricing.accidentFeePrice.toLocaleString()}</span>
+            <span className="ltr-nums">₪{pricing.accidentFeePrice.toLocaleString()}</span>
           </div>
         )}
         
         <div className="flex justify-between pt-2 border-t font-semibold text-lg">
           <span>الإجمالي:</span>
-          <span className="text-primary">₪{pricing.totalPrice.toLocaleString()}</span>
+          <span className="text-primary ltr-nums">₪{pricing.totalPrice.toLocaleString()}</span>
         </div>
+        
+        {/* Show payable amount when ELZAMI is included */}
+        {hasElzami && (
+          <div className="flex justify-between pt-2 border-t border-dashed">
+            <span className="text-sm font-medium text-emerald-600">المبلغ للدفع (بدون إلزامي):</span>
+            <span className="text-lg font-bold text-emerald-600 ltr-nums">₪{pricing.payablePrice.toLocaleString()}</span>
+          </div>
+        )}
       </div>
     </Card>
   );

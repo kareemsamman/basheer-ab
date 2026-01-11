@@ -7,6 +7,7 @@ export * from './InsuranceTypeCards';
 export * from './CreateClientForm';
 export * from './ResetWarningDialog';
 export * from './PackageAddonsSection';
+export * from './PackageBuilderSection';
 export * from './usePolicyWizardState';
 export * from './Step1BranchTypeClient';
 export * from './Step2Car';

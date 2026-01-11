@@ -11,7 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { AlertCircle, Package, ArrowLeftRight, ImageIcon, FolderOpen, Upload, X, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PricingCard } from "./PricingCard";
-import { PackageAddonsSection } from "./PackageAddonsSection";
+import { PackageBuilderSection } from "./PackageBuilderSection";
 import type {
   InsuranceCategory,
   Company,
@@ -811,8 +811,8 @@ export function Step3PolicyDetails({
         </div>
       )}
 
-      {/* Package Mode - Only for THIRD_FULL - AFTER price */}
-      {policy.policy_type_parent === 'THIRD_FULL' && (
+      {/* Package Mode - For THIRD_FULL and ELZAMI */}
+      {(policy.policy_type_parent === 'THIRD_FULL' || policy.policy_type_parent === 'ELZAMI') && (
         <Card className={cn(
           "p-4 transition-colors",
           packageMode ? "border-primary bg-primary/5" : "bg-secondary/30"
@@ -822,7 +822,12 @@ export function Step3PolicyDetails({
               <Package className="h-5 w-5 text-primary" />
               <div>
                 <Label className="text-base font-medium">إضافات الباقة</Label>
-                <p className="text-sm text-muted-foreground">خدمات الطريق، إعفاء رسوم حادث</p>
+                <p className="text-sm text-muted-foreground">
+                  {policy.policy_type_parent === 'ELZAMI' 
+                    ? 'ثالث/شامل، خدمات الطريق، إعفاء رسوم حادث'
+                    : 'إلزامي، خدمات الطريق، إعفاء رسوم حادث'
+                  }
+                </p>
               </div>
             </div>
             <Switch
@@ -833,13 +838,15 @@ export function Step3PolicyDetails({
 
           {packageMode && (
             <div className="mt-4 pt-4 border-t">
-              <PackageAddonsSection
+              <PackageBuilderSection
                 addons={packageAddons}
                 onAddonsChange={setPackageAddons}
+                mainPolicyType={policy.policy_type_parent}
                 roadServices={packageRoadServices}
                 accidentFeeServices={packageAccidentFeeServices}
                 roadServiceCompanies={packageRoadServiceCompanies}
                 accidentFeeCompanies={packageAccidentCompanies}
+                elzamiCompanies={companies.filter(c => c.category_parent?.includes('ELZAMI'))}
                 carType={getCarType() || undefined}
                 errors={errors}
                 ageBand={clientLessThan24 ? 'UNDER_24' : 'UP_24'}
