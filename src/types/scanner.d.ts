@@ -19,7 +19,13 @@ interface TwainCapSetting {
 interface ScanRequest {
   use_asprise_dialog?: boolean;
   show_scanner_ui?: boolean;
+
+  // Device selection (docs: `source_name` = 'select' | 'default' | exact source name)
+  source_name?: string;
+  // Keep legacy name for compatibility with some examples
   scanner_name?: string;
+
+  prompt_scan_more?: boolean;
   twain_cap_setting?: TwainCapSetting;
   output_settings?: ScanOutput[];
 }

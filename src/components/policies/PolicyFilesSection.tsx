@@ -288,7 +288,9 @@ export function PolicyFilesSection({
     const scanRequest = {
       use_asprise_dialog: false,
       show_scanner_ui: false,
-      scanner: savedScanner || 'select', // 'select' shows dialog first time only
+      // Scanner.js uses `source_name` (docs). Keep `scanner_name` as fallback for compatibility.
+      source_name: savedScanner || 'select',
+      scanner_name: savedScanner || 'select',
       prompt_scan_more: false, // Don't ask to scan more pages
       twain_cap_setting: {
         ICAP_PIXELTYPE: 'TWPT_RGB',
@@ -323,10 +325,27 @@ export function PolicyFilesSection({
         }
 
         // Save the used scanner name for next time (skip dialog on future scans)
-        const responseObj = typeof response === 'string' ? JSON.parse(response) : response;
-        const usedScanner = responseObj?.scanner || responseObj?.source;
-        if (usedScanner) {
-          localStorage.setItem('preferred_scanner', usedScanner);
+        let responseObj: any = null;
+        try {
+          responseObj = typeof response === 'string' ? JSON.parse(response) : response;
+        } catch {
+          responseObj = null;
+        }
+
+        const usedScanner =
+          responseObj?.source_name ??
+          responseObj?.sourceName ??
+          responseObj?.source ??
+          responseObj?.scanner_name ??
+          responseObj?.scanner ??
+          null;
+
+        const normalizedUsedScanner = typeof usedScanner === 'string' ? usedScanner.trim() : '';
+        if (normalizedUsedScanner && normalizedUsedScanner !== 'select') {
+          localStorage.setItem('preferred_scanner', normalizedUsedScanner);
+        } else if (!savedScanner) {
+          // Fallback: at least avoid showing selection dialogs next time
+          localStorage.setItem('preferred_scanner', 'default');
         }
 
         const scannedImages = window.scanner.getScannedImages(response, true, false);
