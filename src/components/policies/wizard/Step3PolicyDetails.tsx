@@ -659,6 +659,52 @@ export function Step3PolicyDetails({
         </div>
       )}
 
+      {/* Package Mode - For THIRD_FULL and ELZAMI - BEFORE BROKER */}
+      {(policy.policy_type_parent === 'THIRD_FULL' || policy.policy_type_parent === 'ELZAMI') && (
+        <Card className={cn(
+          "p-4 transition-colors",
+          packageMode ? "border-primary bg-primary/5" : "bg-secondary/30"
+        )}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Package className="h-5 w-5 text-primary" />
+              <div>
+                <Label className="text-base font-medium">إضافات الباقة</Label>
+                <p className="text-sm text-muted-foreground">
+                  {policy.policy_type_parent === 'ELZAMI' 
+                    ? 'ثالث/شامل، خدمات الطريق، إعفاء رسوم حادث'
+                    : 'إلزامي، خدمات الطريق، إعفاء رسوم حادث'
+                  }
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={packageMode}
+              onCheckedChange={setPackageMode}
+            />
+          </div>
+
+          {packageMode && (
+            <div className="mt-4 pt-4 border-t">
+              <PackageBuilderSection
+                addons={packageAddons}
+                onAddonsChange={setPackageAddons}
+                mainPolicyType={policy.policy_type_parent}
+                roadServices={packageRoadServices}
+                accidentFeeServices={packageAccidentFeeServices}
+                roadServiceCompanies={packageRoadServiceCompanies}
+                accidentFeeCompanies={packageAccidentCompanies}
+                elzamiCompanies={packageElzamiCompanies}
+                thirdFullCompanies={packageThirdFullCompanies}
+                carType={getCarType() || undefined}
+                errors={errors}
+                ageBand={clientLessThan24 ? 'UNDER_24' : 'UP_24'}
+              />
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* Broker Section - Auto-detection or manual selection */}
       {requiresBroker && (() => {
         const selectedCompany = companies.find(c => c.id === policy.company_id);
@@ -844,52 +890,6 @@ export function Step3PolicyDetails({
             هذا المبلغ سيُخصم من رصيد AB
           </p>
         </div>
-      )}
-
-      {/* Package Mode - For THIRD_FULL and ELZAMI */}
-      {(policy.policy_type_parent === 'THIRD_FULL' || policy.policy_type_parent === 'ELZAMI') && (
-        <Card className={cn(
-          "p-4 transition-colors",
-          packageMode ? "border-primary bg-primary/5" : "bg-secondary/30"
-        )}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Package className="h-5 w-5 text-primary" />
-              <div>
-                <Label className="text-base font-medium">إضافات الباقة</Label>
-                <p className="text-sm text-muted-foreground">
-                  {policy.policy_type_parent === 'ELZAMI' 
-                    ? 'ثالث/شامل، خدمات الطريق، إعفاء رسوم حادث'
-                    : 'إلزامي، خدمات الطريق، إعفاء رسوم حادث'
-                  }
-                </p>
-              </div>
-            </div>
-            <Switch
-              checked={packageMode}
-              onCheckedChange={setPackageMode}
-            />
-          </div>
-
-          {packageMode && (
-            <div className="mt-4 pt-4 border-t">
-              <PackageBuilderSection
-                addons={packageAddons}
-                onAddonsChange={setPackageAddons}
-                mainPolicyType={policy.policy_type_parent}
-                roadServices={packageRoadServices}
-                accidentFeeServices={packageAccidentFeeServices}
-                roadServiceCompanies={packageRoadServiceCompanies}
-                accidentFeeCompanies={packageAccidentCompanies}
-                elzamiCompanies={packageElzamiCompanies}
-                thirdFullCompanies={packageThirdFullCompanies}
-                carType={getCarType() || undefined}
-                errors={errors}
-                ageBand={clientLessThan24 ? 'UNDER_24' : 'UP_24'}
-              />
-            </div>
-          )}
-        </Card>
       )}
 
       {/* Pricing Breakdown Card - AFTER extras */}
