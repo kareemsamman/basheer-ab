@@ -635,8 +635,12 @@ function UnifiedPolicyCard({
     ? (packagePaymentStatus?.totalPrice ?? policy.insurance_price)
     : policy.insurance_price;
   
-  const CardWrapper = isPackage ? Collapsible : 'div';
-  const cardWrapperProps = isPackage ? { open: isExpanded, onOpenChange: onToggle } : {};
+  // Use Collapsible component for packages with proper props
+  const handleOpenChange = (open: boolean) => {
+    if (onToggle) {
+      onToggle();
+    }
+  };
 
   return (
     <Card 
@@ -650,72 +654,45 @@ function UnifiedPolicyCard({
         !isPaid && status.isActive && "border-l-4 border-l-destructive"
       )}
     >
-      <CardWrapper {...cardWrapperProps}>
-        {/* Main Header Row - Same for both */}
-        <div 
-          className={cn(
-            "p-4",
-            isPackage && "cursor-pointer"
-          )}
-        >
-          {isPackage && (
-            <CollapsibleTrigger asChild>
-              <div className="w-full">
-                <PolicyCardHeader
-                  policy={policy}
-                  isPackage={isPackage}
-                  addons={addons}
-                  status={status}
-                  isPaid={isPaid}
-                  remaining={remaining}
-                  totalPrice={totalPrice}
-                  percentage={packagePaymentStatus?.percentage}
-                  groupKey={groupKey}
-                  isExpanded={isExpanded}
-                  isSending={isSending}
-                  isSendingPackage={isSendingPackage}
-                  onPolicyClick={onPolicyClick}
-                  onSendInvoice={onSendInvoice}
-                  onSendPackageInvoice={onSendPackageInvoice}
-                  allPolicyIds={allPolicyIds}
-                  onPackagePayment={onPackagePayment}
-                  onTransfer={onTransfer}
-                  onCancel={onCancel}
-                  onTransferPackage={onTransferPackage}
-                  onCancelPackage={onCancelPackage}
-                  hasFiles={hasFiles}
-                />
-              </div>
-            </CollapsibleTrigger>
-          )}
-          
-          {!isPackage && (
-            <PolicyCardHeader
-              policy={policy}
-              isPackage={isPackage}
-              addons={addons}
-              status={status}
-              isPaid={isPaid}
-              remaining={remaining}
-              totalPrice={totalPrice}
-              isSending={isSending}
-              onPolicyClick={onPolicyClick}
-              onSendInvoice={onSendInvoice}
-              onTransfer={onTransfer}
-              onCancel={onCancel}
-              hasFiles={hasFiles}
-            />
-          )}
-        </div>
-        
-        {/* Package Expanded Content */}
-        {isPackage && (
+      {isPackage ? (
+        <Collapsible open={isExpanded} onOpenChange={handleOpenChange}>
+          <CollapsibleTrigger asChild>
+            <div className="p-4 cursor-pointer">
+              <PolicyCardHeader
+                policy={policy}
+                isPackage={true}
+                addons={addons}
+                status={status}
+                isPaid={isPaid}
+                remaining={remaining}
+                totalPrice={totalPrice}
+                percentage={packagePaymentStatus?.percentage}
+                groupKey={groupKey}
+                isExpanded={isExpanded}
+                isSending={isSending}
+                isSendingPackage={isSendingPackage}
+                onPolicyClick={onPolicyClick}
+                onSendInvoice={onSendInvoice}
+                onSendPackageInvoice={onSendPackageInvoice}
+                allPolicyIds={allPolicyIds}
+                onPackagePayment={onPackagePayment}
+                onTransfer={onTransfer}
+                onCancel={onCancel}
+                onTransferPackage={onTransferPackage}
+                onCancelPackage={onCancelPackage}
+                hasFiles={hasFiles}
+              />
+            </div>
+          </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="border-t">
               {/* Main Policy Row */}
               <div 
                 className="flex items-center gap-3 p-4 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors border-b"
-                onClick={() => onPolicyClick(policy.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPolicyClick(policy.id);
+                }}
               >
                 <div className="w-5" />
                 <FileText className="h-4 w-4 text-primary shrink-0" />
@@ -752,7 +729,10 @@ function UnifiedPolicyCard({
                     "flex items-center gap-3 p-4 pr-12 cursor-pointer hover:bg-muted/30 transition-colors",
                     addonIndex < addons.length - 1 && "border-b border-dashed"
                   )}
-                  onClick={() => onPolicyClick(addon.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPolicyClick(addon.id);
+                  }}
                 >
                   <div className="w-5 flex justify-center">
                     <div className="w-px h-full bg-border" />
@@ -785,8 +765,26 @@ function UnifiedPolicyCard({
               ))}
             </div>
           </CollapsibleContent>
-        )}
-      </CardWrapper>
+        </Collapsible>
+      ) : (
+        <div className="p-4">
+          <PolicyCardHeader
+            policy={policy}
+            isPackage={false}
+            addons={[]}
+            status={status}
+            isPaid={isPaid}
+            remaining={remaining}
+            totalPrice={totalPrice}
+            isSending={isSending}
+            onPolicyClick={onPolicyClick}
+            onSendInvoice={onSendInvoice}
+            onTransfer={onTransfer}
+            onCancel={onCancel}
+            hasFiles={hasFiles}
+          />
+        </div>
+      )}
     </Card>
   );
 }
@@ -871,14 +869,14 @@ function PolicyCardHeader({
             <Badge className={cn("border text-xs", policyTypeColors[policy.policy_type_parent])}>
               {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
             </Badge>
-            {/* All addon types - show as chips */}
+            {/* All addon types - show as chips with + between them */}
             {addons.map((addon) => (
-              <span key={addon.id} className="text-muted-foreground">+</span>
-            ))}
-            {addons.map((addon) => (
-              <Badge key={addon.id} className={cn("border text-xs", policyTypeColors[addon.policy_type_parent])}>
-                {policyTypeLabels[addon.policy_type_parent] || addon.policy_type_parent}
-              </Badge>
+              <span key={addon.id} className="flex items-center gap-1">
+                <span className="text-muted-foreground">+</span>
+                <Badge className={cn("border text-xs", policyTypeColors[addon.policy_type_parent])}>
+                  {policyTypeLabels[addon.policy_type_parent] || addon.policy_type_parent}
+                </Badge>
+              </span>
             ))}
           </div>
         ) : (
