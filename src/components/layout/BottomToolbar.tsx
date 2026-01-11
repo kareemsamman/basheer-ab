@@ -69,6 +69,9 @@ export function BottomToolbar({ onPolicyComplete }: BottomToolbarProps) {
     }
   };
 
+  // Check if user is on a client profile page (viewing client details)
+  const isOnClientProfilePage = location.pathname === "/clients" && location.search.includes("open=");
+  
   const showRecentClient =
     !!recentClient && location.pathname !== "/clients" && location.pathname !== "/login" && location.pathname !== "/no-access";
 
@@ -178,7 +181,7 @@ export function BottomToolbar({ onPolicyComplete }: BottomToolbarProps) {
         }}
         isCollapsed={wizardCollapsed}
         onCollapsedChange={setWizardCollapsed}
-        preselectedClientId={recentClient?.id}
+        preselectedClientId={isOnClientProfilePage ? recentClient?.id : undefined}
       />
     </>
   );
