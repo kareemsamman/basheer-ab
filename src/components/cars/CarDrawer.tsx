@@ -227,6 +227,17 @@ export function CarDrawer({ open, onOpenChange, clientId, car, onSaved }: CarDra
     }
   };
 
+  // Fetch on Enter key press
+  const handleCarNumberKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const carNumber = form.getValues('car_number');
+      if (carNumber && carNumber.length >= 7 && !fetching && !isEditMode) {
+        fetchVehicleData();
+      }
+    }
+  };
+
   const onSubmit = async (data: CarFormData) => {
     setSaving(true);
     try {
@@ -308,7 +319,8 @@ export function CarDrawer({ open, onOpenChange, clientId, car, onSaved }: CarDra
                             field.onBlur();
                             handleCarNumberBlur();
                           }}
-                          className="text-right ltr-input"
+                          onKeyDown={handleCarNumberKeyDown}
+                          className="text-right"
                           disabled={isEditMode}
                           maxLength={8}
                           inputMode="numeric"
