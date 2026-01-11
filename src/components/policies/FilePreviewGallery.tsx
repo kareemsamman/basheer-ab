@@ -132,15 +132,17 @@ export function FilePreviewGallery({ file, allFiles, onClose, onNavigate }: File
                 </Button>
               </>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-white hover:bg-white/20 gap-1"
-              onClick={() => window.open(file.cdn_url, '_blank')}
+            {/* Download using native anchor to avoid ad blocker issues */}
+            <a
+              href={file.cdn_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              download={file.original_name}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-white hover:bg-white/20 rounded-md transition-colors"
             >
               <Download className="h-4 w-4" />
               تحميل
-            </Button>
+            </a>
           </div>
         </div>
 

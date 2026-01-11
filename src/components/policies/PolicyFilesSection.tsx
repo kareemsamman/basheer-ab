@@ -534,21 +534,25 @@ export function PolicyFilesSection({
               </div>
             )}
             
-            {/* Overlay actions */}
-            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-              <Button
-                size="icon"
-                variant="secondary"
-                className="h-8 w-8"
-                onClick={() => window.open(file.cdn_url, '_blank')}
+            {/* Overlay actions - pointer-events-none on overlay, enabled on buttons */}
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 pointer-events-none">
+              {/* Download using native anchor to avoid ad blocker issues */}
+              <a
+                href={file.cdn_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                download={file.original_name}
+                className="pointer-events-auto inline-flex items-center justify-center h-8 w-8 rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 z-10"
+                onClick={(e) => e.stopPropagation()}
               >
                 <Download className="h-4 w-4" />
-              </Button>
+              </a>
               <Button
                 size="icon"
                 variant="destructive"
-                className="h-8 w-8"
-                onClick={() => {
+                className="h-8 w-8 pointer-events-auto z-10"
+                onClick={(e) => {
+                  e.stopPropagation();
                   setDeletingImage(file);
                   setDeleteDialogOpen(true);
                 }}
