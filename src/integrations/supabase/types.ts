@@ -3495,6 +3495,7 @@ export type Database = {
         Returns: string
       }
       is_active_user: { Args: { _user_id: string }; Returns: boolean }
+      is_super_admin: { Args: { _user_id: string }; Returns: boolean }
       report_client_debts: {
         Args: {
           p_filter_days?: number
