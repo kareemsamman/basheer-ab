@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, memo } from "react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,75 @@ import { Package, Route, Shield, FileCheck, Loader2, Check, AlertCircle, Car } f
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import type { PackageAddon, Company, RoadService, AccidentFeeService } from "./types";
+
+// Addon Card Component - extracted outside to prevent re-creation on parent re-render
+interface AddonCardProps {
+  type: 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption';
+  title: string;
+  icon: typeof FileCheck;
+  iconColor: string;
+  bgColor: string;
+  borderColor: string;
+  addon: PackageAddon;
+  isCost?: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}
+
+const AddonCard = memo(function AddonCard({ 
+  type, 
+  title, 
+  icon: Icon, 
+  iconColor, 
+  bgColor, 
+  borderColor,
+  addon,
+  isCost = false,
+  disabled,
+  onToggle,
+  children 
+}: AddonCardProps) {
+  return (
+    <Card 
+      className={cn(
+        "relative p-4 cursor-pointer transition-all duration-200 border-2 min-h-[180px]",
+        addon.enabled 
+          ? `${bgColor} ${borderColor} shadow-md` 
+          : "bg-muted/20 border-dashed border-muted-foreground/20 hover:border-muted-foreground/40 hover:bg-muted/30"
+      )}
+      onClick={() => !disabled && onToggle()}
+    >
+      {/* Selection Indicator */}
+      <div className={cn(
+        "absolute top-3 left-3 w-6 h-6 rounded-full flex items-center justify-center transition-all shadow-sm",
+        addon.enabled 
+          ? `${isCost ? 'bg-destructive' : 'bg-primary'} text-white` 
+          : "bg-background border-2 border-muted-foreground/30"
+      )}>
+        {addon.enabled && <Check className="h-3.5 w-3.5" />}
+      </div>
+
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-3 pr-2">
+        <div className={cn("p-1.5 rounded-md", addon.enabled ? bgColor : "bg-muted/50")}>
+          <Icon className={cn("h-4 w-4", addon.enabled ? iconColor : "text-muted-foreground")} />
+        </div>
+        <span className={cn("font-semibold text-sm", addon.enabled ? "text-foreground" : "text-muted-foreground")}>{title}</span>
+        {isCost && addon.enabled && (
+          <span className="text-xs text-destructive font-bold mr-auto">(تكلفة)</span>
+        )}
+      </div>
+
+      {/* Content */}
+      <div onClick={(e) => e.stopPropagation()}>
+        {addon.enabled ? children : (
+          <p className="text-xs text-muted-foreground text-center py-6">اضغط لإضافة</p>
+        )}
+      </div>
+    </Card>
+  );
+});
 
 // Company X ID - default for road service and accident fee
 const COMPANY_X_ID = "0014273c-78fc-4945-920c-6c8ce653f64a";
@@ -48,7 +117,7 @@ export function PackageBuilderSection({
 
   // Find addons by type
   const elzamiAddon = addons.find(a => a.type === 'elzami') || { type: 'elzami' as const, enabled: false, company_id: '', insurance_price: '', elzami_commission: 0 };
-  const thirdFullAddon = addons.find(a => a.type === 'third_full') || { type: 'third_full' as const, enabled: false, company_id: '', insurance_price: '', policy_type_child: 'THIRD' as const, broker_buy_price: '' };
+  const thirdFullAddon = addons.find(a => a.type === 'third_full') || { type: 'third_full' as const, enabled: false, company_id: '', insurance_price: '', policy_type_child: '' as '' | 'THIRD' | 'FULL', broker_buy_price: '' };
   const roadServiceAddon = addons.find(a => a.type === 'road_service') || { type: 'road_service' as const, enabled: false, road_service_id: '', company_id: '', insurance_price: '' };
   const accidentFeeAddon = addons.find(a => a.type === 'accident_fee_exemption') || { type: 'accident_fee_exemption' as const, enabled: false, accident_fee_service_id: '', company_id: '', insurance_price: '' };
 
@@ -193,69 +262,6 @@ export function PackageBuilderSection({
     }
   }, [accidentFeeCompanies, accidentFeeAddon.enabled]);
 
-  // Addon Card Component
-  const AddonCard = ({ 
-    type, 
-    title, 
-    icon: Icon, 
-    iconColor, 
-    bgColor, 
-    borderColor,
-    addon,
-    isCost = false,
-    children 
-  }: {
-    type: 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption';
-    title: string;
-    icon: typeof FileCheck;
-    iconColor: string;
-    bgColor: string;
-    borderColor: string;
-    addon: PackageAddon;
-    isCost?: boolean;
-    children: React.ReactNode;
-  }) => {
-    return (
-      <Card 
-        className={cn(
-          "relative p-4 cursor-pointer transition-all duration-200 border-2 min-h-[180px]",
-          addon.enabled 
-            ? `${bgColor} ${borderColor} shadow-md` 
-            : "bg-muted/20 border-dashed border-muted-foreground/20 hover:border-muted-foreground/40 hover:bg-muted/30"
-        )}
-        onClick={() => !disabled && updateAddon(type, { enabled: !addon.enabled })}
-      >
-        {/* Selection Indicator */}
-        <div className={cn(
-          "absolute top-3 left-3 w-6 h-6 rounded-full flex items-center justify-center transition-all shadow-sm",
-          addon.enabled 
-            ? `${isCost ? 'bg-destructive' : 'bg-primary'} text-white` 
-            : "bg-background border-2 border-muted-foreground/30"
-        )}>
-          {addon.enabled && <Check className="h-3.5 w-3.5" />}
-        </div>
-
-        {/* Header */}
-        <div className="flex items-center gap-2 mb-3 pr-2">
-          <div className={cn("p-1.5 rounded-md", addon.enabled ? bgColor : "bg-muted/50")}>
-            <Icon className={cn("h-4 w-4", addon.enabled ? iconColor : "text-muted-foreground")} />
-          </div>
-          <span className={cn("font-semibold text-sm", addon.enabled ? "text-foreground" : "text-muted-foreground")}>{title}</span>
-          {isCost && addon.enabled && (
-            <span className="text-xs text-destructive font-bold mr-auto">(تكلفة)</span>
-          )}
-        </div>
-
-        {/* Content */}
-        <div onClick={(e) => e.stopPropagation()}>
-          {addon.enabled ? children : (
-            <p className="text-xs text-muted-foreground text-center py-6">اضغط لإضافة</p>
-          )}
-        </div>
-      </Card>
-    );
-  };
-
   // Count enabled addons to show which ones to display
   const activeAddonCount = addons.filter(a => a.enabled).length;
   const gridCols = showThirdFullAddon ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-1 md:grid-cols-3";
@@ -284,6 +290,8 @@ export function PackageBuilderSection({
             borderColor="border-destructive/40"
             addon={elzamiAddon}
             isCost={true}
+            disabled={disabled}
+            onToggle={() => updateAddon('elzami', { enabled: !elzamiAddon.enabled })}
           >
             <div className="space-y-2.5">
               <div>
@@ -345,12 +353,14 @@ export function PackageBuilderSection({
             bgColor="bg-blue-50 dark:bg-blue-950/30"
             borderColor="border-blue-300 dark:border-blue-800"
             addon={thirdFullAddon}
+            disabled={disabled}
+            onToggle={() => updateAddon('third_full', { enabled: !thirdFullAddon.enabled })}
           >
             <div className="space-y-2.5">
               <div>
                 <Label className="text-xs mb-1 block">النوع</Label>
                 <Select
-                  value={thirdFullAddon.policy_type_child || "THIRD"}
+                  value={thirdFullAddon.policy_type_child || ""}
                   onValueChange={(v) => updateAddon('third_full', { policy_type_child: v as 'THIRD' | 'FULL' })}
                   disabled={disabled}
                 >
@@ -362,6 +372,12 @@ export function PackageBuilderSection({
                     <SelectItem value="FULL">شامل</SelectItem>
                   </SelectContent>
                 </Select>
+                {errors.addon_thirdfull_child && (
+                  <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.addon_thirdfull_child}
+                  </p>
+                )}
               </div>
               <div>
                 <Label className="text-xs mb-1 block">الشركة</Label>
@@ -424,6 +440,8 @@ export function PackageBuilderSection({
             bgColor="bg-orange-50 dark:bg-orange-950/30"
             borderColor="border-orange-300 dark:border-orange-800"
             addon={roadServiceAddon}
+            disabled={disabled}
+            onToggle={() => updateAddon('road_service', { enabled: !roadServiceAddon.enabled })}
           >
             <div className="space-y-2.5">
               <div>
@@ -516,6 +534,8 @@ export function PackageBuilderSection({
             bgColor="bg-emerald-50 dark:bg-emerald-950/30"
             borderColor="border-emerald-300 dark:border-emerald-800"
             addon={accidentFeeAddon}
+            disabled={disabled}
+            onToggle={() => updateAddon('accident_fee_exemption', { enabled: !accidentFeeAddon.enabled })}
           >
             <div className="space-y-2.5">
               <div>
