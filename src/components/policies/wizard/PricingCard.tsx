@@ -11,8 +11,9 @@ interface PricingCardProps {
 }
 
 export function PricingCard({ pricing, showAddons = true, className }: PricingCardProps) {
-  const hasAddons = pricing.roadServicePrice > 0 || pricing.accidentFeePrice > 0 || pricing.elzamiPrice > 0;
+  const hasAddons = pricing.roadServicePrice > 0 || pricing.accidentFeePrice > 0 || pricing.elzamiPrice > 0 || pricing.thirdFullPrice > 0;
   const hasElzami = pricing.elzamiPrice > 0;
+  const hasThirdFull = pricing.thirdFullPrice > 0;
   
   return (
     <Card className={cn(
@@ -48,6 +49,14 @@ export function PricingCard({ pricing, showAddons = true, className }: PricingCa
             <span className="font-medium ltr-nums">₪{pricing.elzamiPrice.toLocaleString()}</span>
           </div>
         )}
+
+        {/* THIRD_FULL addon when ELZAMI is main policy */}
+        {showAddons && pricing.thirdFullPrice > 0 && (
+          <div className="flex justify-between text-muted-foreground">
+            <span>+ ثالث/شامل:</span>
+            <span className="ltr-nums">₪{pricing.thirdFullPrice.toLocaleString()}</span>
+          </div>
+        )}
         
         {showAddons && pricing.roadServicePrice > 0 && (
           <div className="flex justify-between text-muted-foreground">
@@ -68,7 +77,7 @@ export function PricingCard({ pricing, showAddons = true, className }: PricingCa
           <span className="text-primary ltr-nums">₪{pricing.totalPrice.toLocaleString()}</span>
         </div>
         
-        {/* Show payable amount when ELZAMI is included */}
+        {/* Show payable amount when ELZAMI is included (main or addon) */}
         {hasElzami && (
           <div className="flex justify-between pt-2 border-t border-dashed">
             <span className="text-sm font-medium text-emerald-600">المبلغ للدفع (بدون إلزامي):</span>
