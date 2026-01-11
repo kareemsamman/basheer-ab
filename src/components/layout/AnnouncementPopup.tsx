@@ -24,46 +24,71 @@ export function AnnouncementPopup() {
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   const [open, setOpen] = useState(false);
 
+  const fetchAnnouncement = async () => {
+    if (!user?.id) return;
+
+    // Get active announcements
+    const { data: announcements, error } = await supabase
+      .from("announcements")
+      .select("id, title, content, show_once")
+      .eq("is_active", true)
+      .lte("start_date", new Date().toISOString())
+      .gte("end_date", new Date().toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (error || !announcements?.length) return;
+
+    const ann = announcements[0];
+
+    // Check if user dismissed this announcement
+    const { data: dismissal } = await supabase
+      .from("announcement_dismissals")
+      .select("id")
+      .eq("announcement_id", ann.id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    // If show_once and already dismissed, don't show
+    if (ann.show_once && dismissal) return;
+
+    // For recurring announcements, check if dismissed today
+    if (!ann.show_once && dismissal) {
+      return;
+    }
+
+    setAnnouncement(ann);
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!user?.id) return;
+    fetchAnnouncement();
+  }, [user?.id]);
+
+  // Real-time subscription for new announcements
   useEffect(() => {
     if (!user?.id) return;
 
-    const fetchAnnouncement = async () => {
-      // Get active announcements
-      const { data: announcements, error } = await supabase
-        .from("announcements")
-        .select("id, title, content, show_once")
-        .eq("is_active", true)
-        .lte("start_date", new Date().toISOString())
-        .gte("end_date", new Date().toISOString())
-        .order("created_at", { ascending: false })
-        .limit(1);
+    const channel = supabase
+      .channel("announcements-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "announcements",
+        },
+        () => {
+          // Refetch when announcements change
+          fetchAnnouncement();
+        }
+      )
+      .subscribe();
 
-      if (error || !announcements?.length) return;
-
-      const ann = announcements[0];
-
-      // Check if user dismissed this announcement
-      const { data: dismissal } = await supabase
-        .from("announcement_dismissals")
-        .select("id")
-        .eq("announcement_id", ann.id)
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      // If show_once and already dismissed, don't show
-      if (ann.show_once && dismissal) return;
-
-      // For recurring announcements, check if dismissed today
-      if (!ann.show_once && dismissal) {
-        // Already dismissed, don't show again (per session handled by state)
-        return;
-      }
-
-      setAnnouncement(ann);
-      setOpen(true);
+    return () => {
+      supabase.removeChannel(channel);
     };
-
-    fetchAnnouncement();
   }, [user?.id]);
 
   const handleDismiss = async () => {
