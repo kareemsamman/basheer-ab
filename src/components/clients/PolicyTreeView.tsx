@@ -138,6 +138,10 @@ interface PaymentInfo {
   [policyId: string]: { paid: number; remaining: number };
 }
 
+interface PolicyFilesInfo {
+  [policyId: string]: boolean; // true if policy has files
+}
+
 export function PolicyTreeView({ 
   policies, 
   onPolicyClick, 
@@ -154,12 +158,14 @@ export function PolicyTreeView({
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [sendingPackage, setSendingPackage] = useState<string | null>(null);
   const [sendingPolicy, setSendingPolicy] = useState<string | null>(null);
+  const [policyFilesInfo, setPolicyFilesInfo] = useState<PolicyFilesInfo>({});
 
-  // Fetch payment info for all policies
+  // Fetch payment info and file info for all policies
   useEffect(() => {
-    const fetchPaymentInfo = async () => {
+    const fetchPaymentAndFilesInfo = async () => {
       if (policies.length === 0) {
         setPaymentInfo({});
+        setPolicyFilesInfo({});
         setLoadingPayments(false);
         return;
       }
@@ -168,6 +174,7 @@ export function PolicyTreeView({
       const policyIds = policies.map(p => p.id);
       
       try {
+        // Fetch payments
         const { data: paymentsData } = await supabase
           .from('policy_payments')
           .select('policy_id, amount, refused')
@@ -183,16 +190,30 @@ export function PolicyTreeView({
             remaining: p.insurance_price - paid,
           };
         });
-
         setPaymentInfo(info);
+
+        // Fetch files info - check which policies have files
+        const { data: filesData } = await supabase
+          .from('media_files')
+          .select('entity_id')
+          .in('entity_id', policyIds)
+          .in('entity_type', ['policy', 'policy_insurance', 'policy_file'])
+          .is('deleted_at', null);
+
+        const filesInfo: PolicyFilesInfo = {};
+        policyIds.forEach(id => {
+          filesInfo[id] = (filesData || []).some(f => f.entity_id === id);
+        });
+        setPolicyFilesInfo(filesInfo);
+
       } catch (error) {
-        console.error('Error fetching payment info:', error);
+        console.error('Error fetching payment/files info:', error);
       } finally {
         setLoadingPayments(false);
       }
     };
 
-    fetchPaymentInfo();
+    fetchPaymentAndFilesInfo();
   }, [policies]);
 
   // Group policies by group_id
@@ -488,6 +509,9 @@ export function PolicyTreeView({
           ...group.addons.map(a => a.id)
         ];
         
+        // Check if any policy in this group/package has files
+        const hasFilesInGroup = allPolicyIds.some(id => policyFilesInfo[id]);
+        
         // For groups that only have add-ons without a main policy
         if (!hasMainPolicy && hasAddons) {
           // Render add-ons as standalone items
@@ -503,6 +527,7 @@ export function PolicyTreeView({
               isSending={sendingPolicy === addon.id}
               onTransfer={onTransferPolicy}
               onCancel={onCancelPolicy}
+              hasFiles={policyFilesInfo[addon.id] || false}
             />
           ));
         }
@@ -531,6 +556,7 @@ export function PolicyTreeView({
             onTransferPackage={onTransferPackage}
             onCancelPackage={onCancelPackage}
             allPaymentInfo={paymentInfo}
+            hasFiles={hasFilesInGroup}
           />
         );
       })}
@@ -571,7 +597,8 @@ function UnifiedPolicyCard({
   onCancel,
   onTransferPackage,
   onCancelPackage,
-  allPaymentInfo
+  allPaymentInfo,
+  hasFiles
 }: {
   policy: PolicyRecord;
   isPackage: boolean;
@@ -593,6 +620,7 @@ function UnifiedPolicyCard({
   onTransferPackage?: (policyIds: string[]) => void;
   onCancelPackage?: (policyIds: string[]) => void;
   allPaymentInfo?: PaymentInfo;
+  hasFiles?: boolean;
 }) {
   const status = getPolicyStatus(policy);
   const isPaid = isPackage 
@@ -653,6 +681,7 @@ function UnifiedPolicyCard({
                   onCancel={onCancel}
                   onTransferPackage={onTransferPackage}
                   onCancelPackage={onCancelPackage}
+                  hasFiles={hasFiles}
                 />
               </div>
             </CollapsibleTrigger>
@@ -672,6 +701,7 @@ function UnifiedPolicyCard({
               onSendInvoice={onSendInvoice}
               onTransfer={onTransfer}
               onCancel={onCancel}
+              hasFiles={hasFiles}
             />
           )}
         </div>
@@ -781,7 +811,8 @@ function PolicyCardHeader({
   onTransfer,
   onCancel,
   onTransferPackage,
-  onCancelPackage
+  onCancelPackage,
+  hasFiles
 }: {
   policy: PolicyRecord;
   isPackage: boolean;
@@ -804,6 +835,7 @@ function PolicyCardHeader({
   onCancel?: (policyId: string) => void;
   onTransferPackage?: (policyIds: string[]) => void;
   onCancelPackage?: (policyIds: string[]) => void;
+  hasFiles?: boolean;
 }) {
   return (
     <div className="space-y-3">
@@ -888,28 +920,30 @@ function PolicyCardHeader({
             </Button>
           )}
           
-          {/* Send Invoice Button */}
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isPackage && onSendPackageInvoice && allPolicyIds && groupKey) {
-                onSendPackageInvoice(e, allPolicyIds, groupKey);
-              } else {
-                onSendInvoice(e, policy.id);
-              }
-            }}
-            disabled={isPackage ? isSendingPackage : isSending}
-          >
-            {(isPackage ? isSendingPackage : isSending) ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Send className="h-3.5 w-3.5" />
-            )}
-            <span className="hidden sm:inline">إرسال للعميل</span>
-          </Button>
+          {/* Send Invoice Button - only show if files exist */}
+          {hasFiles && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isPackage && onSendPackageInvoice && allPolicyIds && groupKey) {
+                  onSendPackageInvoice(e, allPolicyIds, groupKey);
+                } else {
+                  onSendInvoice(e, policy.id);
+                }
+              }}
+              disabled={isPackage ? isSendingPackage : isSending}
+            >
+              {(isPackage ? isSendingPackage : isSending) ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Send className="h-3.5 w-3.5" />
+              )}
+              <span className="hidden sm:inline">إرسال للعميل</span>
+            </Button>
+          )}
           
           {/* Status */}
           <ExpiryBadge endDate={policy.end_date} cancelled={policy.cancelled} />

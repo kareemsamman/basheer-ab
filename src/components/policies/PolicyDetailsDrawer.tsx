@@ -497,15 +497,20 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
         setRefundAmount(0);
       }
 
-      // Fetch policy files count
+      // Fetch policy files count - check both policy_file and policy_insurance types
+      // Also check related policies if it's a package (for package SMS capability)
+      let totalFilesCount = 0;
+      const allPolicyIdsToCheck = policyData.group_id ? [policyId, ...relatedData.map(rp => rp.id)] : [policyId];
+      
       const { count: filesCount } = await supabase
         .from("media_files")
         .select("*", { count: "exact", head: true })
-        .eq("entity_id", policyId)
-        .eq("entity_type", "policy_file")
+        .in("entity_id", allPolicyIdsToCheck)
+        .in("entity_type", ["policy", "policy_insurance", "policy_file"])
         .is("deleted_at", null);
       
-      setPolicyFilesCount(filesCount || 0);
+      totalFilesCount = filesCount || 0;
+      setPolicyFilesCount(totalFilesCount);
 
       // Cache the data in session storage
       const cacheData = {
@@ -515,7 +520,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
         transferHistory: transfersData || [],
         refundAmount: refund,
         creatorName: creatorName,
-        filesCount: filesCount || 0,
+        filesCount: totalFilesCount,
         packageTotalPaid: pkgTotalPaid,
         timestamp: Date.now(),
       };
