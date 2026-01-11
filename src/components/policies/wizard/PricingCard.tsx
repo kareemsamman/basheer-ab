@@ -77,13 +77,6 @@ export function PricingCard({ pricing, showAddons = true, className }: PricingCa
           <span className="text-primary ltr-nums">₪{pricing.totalPrice.toLocaleString()}</span>
         </div>
         
-        {/* Show payable amount when ELZAMI is included (main or addon) */}
-        {hasElzami && (
-          <div className="flex justify-between pt-2 border-t border-dashed">
-            <span className="text-sm font-medium text-emerald-600">المبلغ للدفع (بدون إلزامي):</span>
-            <span className="text-lg font-bold text-emerald-600 ltr-nums">₪{pricing.payablePrice.toLocaleString()}</span>
-          </div>
-        )}
       </div>
     </Card>
   );

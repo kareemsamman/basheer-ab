@@ -76,7 +76,7 @@ export interface PackageAddon {
   // ELZAMI specific fields
   elzami_commission?: number;
   // THIRD_FULL specific fields
-  policy_type_child?: 'THIRD' | 'FULL';
+  policy_type_child?: '' | 'THIRD' | 'FULL';
   broker_buy_price?: string;
 }
 
