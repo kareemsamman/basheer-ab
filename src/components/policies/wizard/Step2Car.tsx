@@ -163,6 +163,16 @@ export function Step2Car({
     }
   };
 
+  // Fetch on Enter key press
+  const handleCarNumberKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (newCar.car_number.length >= 7 && !fetchingCarData) {
+        fetchCarData(newCar.car_number);
+      }
+    }
+  };
+
   const handleSelectCar = (car: CarRecord) => {
     setSelectedCar(car);
     setCreateNewCar(false);
@@ -314,10 +324,11 @@ export function Step2Car({
                     value={newCar.car_number}
                     onChange={(e) => setNewCar({ ...newCar, car_number: e.target.value.replace(/\D/g, '').slice(0, 8) })}
                     onBlur={handleCarNumberBlur}
+                    onKeyDown={handleCarNumberKeyDown}
                     placeholder="مثال: 12345678"
                     maxLength={8}
                     inputMode="numeric"
-                    className={cn("ltr-nums", errors.car_number || carConflict ? "border-destructive" : "")}
+                    className={cn(errors.car_number || carConflict ? "border-destructive" : "")}
                   />
                   {fetchingCarData && (
                     <div className="absolute left-3 top-1/2 -translate-y-1/2">
