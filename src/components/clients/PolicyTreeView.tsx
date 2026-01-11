@@ -192,12 +192,12 @@ export function PolicyTreeView({
         });
         setPaymentInfo(info);
 
-        // Fetch files info - check which policies have files
+        // Fetch files info - check which policies have files (ملفات البوليصة)
         const { data: filesData } = await supabase
           .from('media_files')
           .select('entity_id')
           .in('entity_id', policyIds)
-          .in('entity_type', ['policy', 'policy_insurance', 'policy_file'])
+          .in('entity_type', ['policy', 'policy_insurance', 'policy_file', 'policy_crm'])
           .is('deleted_at', null);
 
         const filesInfo: PolicyFilesInfo = {};
