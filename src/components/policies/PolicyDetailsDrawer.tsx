@@ -3,11 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,7 +24,6 @@ import {
   CheckCircle2,
   Clock,
   XCircle,
-  Plus,
   AlertTriangle,
   Send,
   Loader2,
@@ -34,8 +32,15 @@ import {
   History,
   Shield,
   TrendingUp,
-  Wallet,
   ChevronLeft,
+  CircleDollarSign,
+  Truck,
+  FileCheck,
+  MapPin,
+  Hash,
+  Palette,
+  DollarSign,
+  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PolicyEditDrawer } from "./PolicyEditDrawer";
@@ -172,24 +177,35 @@ const policyChildLabels: Record<string, string> = {
   FULL: "شامل",
 };
 
-const policyTypeColors: Record<string, string> = {
-  ELZAMI: "bg-blue-500/10 text-blue-700 border-blue-500/30",
-  THIRD_FULL: "bg-purple-500/10 text-purple-700 border-purple-500/30",
-  ROAD_SERVICE: "bg-orange-500/10 text-orange-700 border-orange-500/30",
-  ACCIDENT_FEE_EXEMPTION: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30",
-  HEALTH: "bg-rose-500/10 text-rose-700 border-rose-500/30",
-  LIFE: "bg-teal-500/10 text-teal-700 border-teal-500/30",
-  PROPERTY: "bg-amber-500/10 text-amber-700 border-amber-500/30",
-  TRAVEL: "bg-cyan-500/10 text-cyan-700 border-cyan-500/30",
-  BUSINESS: "bg-indigo-500/10 text-indigo-700 border-indigo-500/30",
-  OTHER: "bg-slate-500/10 text-slate-700 border-slate-500/30",
-};
-
-const policyTypeIcons: Record<string, React.ElementType> = {
-  ELZAMI: Shield,
-  THIRD_FULL: Car,
-  ROAD_SERVICE: Car,
-  ACCIDENT_FEE_EXEMPTION: Shield,
+const policyTypeConfig: Record<string, { icon: React.ElementType; gradient: string; bg: string; border: string; text: string }> = {
+  ELZAMI: { 
+    icon: Shield, 
+    gradient: "from-blue-500 to-blue-600",
+    bg: "bg-blue-50",
+    border: "border-blue-200",
+    text: "text-blue-700"
+  },
+  THIRD_FULL: { 
+    icon: Car, 
+    gradient: "from-purple-500 to-purple-600",
+    bg: "bg-purple-50",
+    border: "border-purple-200",
+    text: "text-purple-700"
+  },
+  ROAD_SERVICE: { 
+    icon: Truck, 
+    gradient: "from-orange-500 to-orange-600",
+    bg: "bg-orange-50",
+    border: "border-orange-200",
+    text: "text-orange-700"
+  },
+  ACCIDENT_FEE_EXEMPTION: { 
+    icon: FileCheck, 
+    gradient: "from-emerald-500 to-emerald-600",
+    bg: "bg-emerald-50",
+    border: "border-emerald-200",
+    text: "text-emerald-700"
+  },
 };
 
 const carTypeLabels: Record<string, string> = {
@@ -201,6 +217,24 @@ const carTypeLabels: Record<string, string> = {
   tjeraup4: "تجاري (أكثر من 4 طن)",
 };
 
+// Section component for consistent styling
+const Section = ({ title, icon: Icon, children, className }: { 
+  title: string; 
+  icon: React.ElementType; 
+  children: React.ReactNode;
+  className?: string;
+}) => (
+  <div className={cn("space-y-3", className)}>
+    <div className="flex items-center gap-2">
+      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+        <Icon className="h-4 w-4 text-primary" />
+      </div>
+      <h3 className="font-bold text-foreground">{title}</h3>
+    </div>
+    {children}
+  </div>
+);
+
 export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, onViewRelatedPolicy }: PolicyDetailsDrawerProps) {
   const { toast } = useToast();
   const { isAdmin } = useAuth();
@@ -210,7 +244,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
   const [editOpen, setEditOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("insurance");
+  const [activeSection, setActiveSection] = useState<'main' | 'payments' | 'files'>('main');
   const [showQuickPayment, setShowQuickPayment] = useState(false);
   const [creatorName, setCreatorName] = useState<string | null>(null);
   const [sendingSignatureSms, setSendingSignatureSms] = useState(false);
@@ -377,7 +411,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
   useEffect(() => {
     if (open && policyId) {
       fetchPolicyDetails();
-      setActiveTab("insurance");
+      setActiveSection('main');
       setShowQuickPayment(false);
     }
   }, [open, policyId]);
@@ -396,7 +430,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
   const getStatus = () => {
     if (!policy) return { label: "-", variant: "secondary" as const, icon: Clock };
     if (policy.cancelled) return { label: "ملغاة", variant: "destructive" as const, icon: XCircle };
-    if (policy.transferred) return { label: "محوّلة", variant: "warning" as const, icon: Clock };
+    if (policy.transferred) return { label: "محوّلة", variant: "warning" as const, icon: ArrowLeftRight };
     const today = new Date();
     const endDate = new Date(policy.end_date);
     if (endDate < today) return { label: "منتهية", variant: "destructive" as const, icon: XCircle };
@@ -447,13 +481,15 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
   const status = getStatus();
   const remainingDays = getRemainingDays();
   const StatusIcon = status.icon;
+  const policyConfig = policyTypeConfig[policy?.policy_type_parent || 'ELZAMI'] || policyTypeConfig.ELZAMI;
+  const PolicyIcon = policyConfig.icon;
 
   // Get display name for policy type with child
   const getPolicyTypeName = () => {
     if (!policy) return "";
     let name = policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent;
     if (policy.policy_type_child) {
-      name += ` (${policyChildLabels[policy.policy_type_child] || policy.policy_type_child})`;
+      name += ` - ${policyChildLabels[policy.policy_type_child] || policy.policy_type_child}`;
     }
     return name;
   };
@@ -476,367 +512,400 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="max-w-4xl max-h-[95vh] p-0 overflow-hidden"
+          className="max-w-5xl max-h-[95vh] p-0 overflow-hidden gap-0"
           dir="rtl"
         >
           {loading ? (
-            <div className="p-8 space-y-4">
-              <Skeleton className="h-8 w-48" />
-              <Skeleton className="h-32 w-full" />
-              <Skeleton className="h-24 w-full" />
+            <div className="p-8 space-y-6">
+              <Skeleton className="h-24 w-full rounded-xl" />
+              <div className="grid grid-cols-4 gap-4">
+                <Skeleton className="h-20" />
+                <Skeleton className="h-20" />
+                <Skeleton className="h-20" />
+                <Skeleton className="h-20" />
+              </div>
+              <Skeleton className="h-40 w-full" />
             </div>
           ) : policy ? (
             <div className="flex flex-col h-full max-h-[95vh]">
-              {/* Header - Premium Redesign */}
-              <div className="px-6 py-5 border-b bg-gradient-to-l from-muted/40 via-background to-background">
-                <div className="flex items-start justify-between gap-4">
-                  {/* Right side - Title and type */}
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-3">
-                      <DialogTitle className="text-xl font-bold">تفاصيل الوثيقة</DialogTitle>
-                      <Badge variant={status.variant} className="gap-1.5 px-3 py-1">
-                        <StatusIcon className="h-3.5 w-3.5" />
-                        {status.label}
-                      </Badge>
-                    </div>
-                    
-                    {/* Policy Type Badge - Large and Clear */}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge className={cn("text-sm px-4 py-1.5 font-semibold border-2", policyTypeColors[policy.policy_type_parent])}>
-                        {getPolicyTypeName()}
-                      </Badge>
-                      
-                      {/* Service name for Road Service */}
-                      {policy.policy_type_parent === 'ROAD_SERVICE' && policy.road_services && (
-                        <Badge variant="outline" className="text-sm px-3 py-1">
-                          {policy.road_services.name_ar || policy.road_services.name}
-                        </Badge>
-                      )}
-                      
-                      {/* Under 24 badge */}
-                      {(policy.is_under_24 || policy.clients.under24_type !== 'none') && (
-                        <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">
-                          {policy.clients.under24_type === 'additional_driver' ? 'سائق إضافي -24' : 'أقل من 24'}
-                        </Badge>
-                      )}
-                      
-                      {/* Package indicator */}
-                      {hasPackage && (
-                        <Badge variant="outline" className="gap-1 bg-primary/5 text-primary border-primary/30">
-                          <Package className="h-3 w-3" />
-                          باقة ({relatedPolicies.length + 1} وثائق)
-                        </Badge>
-                      )}
-                    </div>
-                    
-                    {/* Creator info */}
-                    {creatorName && (
-                      <p className="text-xs text-muted-foreground mt-2">
-                        أنشئ بواسطة: {creatorName}
-                      </p>
-                    )}
-                  </div>
-                  
-                  {/* Left side - Actions */}
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setEditOpen(true)}
-                      className="gap-1.5"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      تعديل
-                    </Button>
-                    {!policy.cancelled && !policy.transferred && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setTransferOpen(true)}
-                          className="gap-1.5"
-                        >
-                          <ArrowLeftRight className="h-3.5 w-3.5" />
-                          تحويل
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setCancelOpen(true)}
-                          className="gap-1.5 text-destructive hover:text-destructive"
-                        >
-                          <XCircle className="h-3.5 w-3.5" />
-                          إلغاء
-                        </Button>
-                      </>
-                    )}
-                  </div>
+              {/* Hero Header with Gradient */}
+              <div className={cn(
+                "relative overflow-hidden",
+                "bg-gradient-to-l",
+                policyConfig.gradient
+              )}>
+                {/* Background Pattern */}
+                <div className="absolute inset-0 opacity-10">
+                  <div className="absolute top-0 left-0 w-32 h-32 bg-white rounded-full -translate-x-1/2 -translate-y-1/2" />
+                  <div className="absolute bottom-0 right-0 w-48 h-48 bg-white rounded-full translate-x-1/4 translate-y-1/4" />
                 </div>
                 
-                {/* Signature Warning */}
-                {!policy.clients.signature_url && (
-                  <div className="flex items-center gap-2 mt-3 text-amber-600 bg-amber-500/10 rounded-lg px-3 py-2 text-xs">
-                    <AlertTriangle className="h-4 w-4" />
-                    <span>العميل لم يوقّع بعد</span>
-                    <Button 
-                      size="sm" 
-                      variant="ghost" 
-                      className="h-7 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-500/20 mr-auto"
-                      onClick={handleSendSignatureSms}
-                      disabled={sendingSignatureSms}
-                    >
-                      {sendingSignatureSms ? (
-                        <Loader2 className="h-3 w-3 animate-spin ml-1" />
-                      ) : (
-                        <Send className="h-3 w-3 ml-1" />
-                      )}
-                      إرسال طلب توقيع
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              {/* Financial Summary Cards - Clean Grid */}
-              <div className="px-6 py-5 bg-muted/20">
-                <div className="grid grid-cols-3 gap-4">
-                  {/* Insurance Price */}
-                  <div className="bg-background rounded-xl p-4 border shadow-sm">
-                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
-                      <Wallet className="h-4 w-4" />
-                      <span className="text-xs font-medium">سعر التأمين</span>
-                    </div>
-                    <p className="text-2xl font-bold text-primary ltr-nums">
-                      {formatCurrency(policy.insurance_price)}
-                    </p>
-                  </div>
-
-                  {/* Paid Amount */}
-                  <div className={cn(
-                    "rounded-xl p-4 border shadow-sm",
-                    paymentStatus === 'paid' ? "bg-success/5 border-success/30" : "bg-background"
-                  )}>
-                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
-                      <CreditCard className="h-4 w-4" />
-                      <span className="text-xs font-medium">المدفوع</span>
-                    </div>
-                    <p className={cn(
-                      "text-2xl font-bold ltr-nums",
-                      paymentStatus === 'paid' ? "text-success" : "text-foreground"
-                    )}>
-                      {formatCurrency(totalPaid)}
-                    </p>
-                  </div>
-
-                  {/* Remaining */}
-                  <div className={cn(
-                    "rounded-xl p-4 border shadow-sm",
-                    remaining > 0 ? "bg-destructive/5 border-destructive/30" : 
-                    remaining < 0 ? "bg-destructive/10 border-destructive/40" : 
-                    "bg-success/5 border-success/30"
-                  )}>
-                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
-                      <Banknote className="h-4 w-4" />
-                      <span className="text-xs font-medium">المتبقي</span>
-                    </div>
-                    <p className={cn(
-                      "text-2xl font-bold ltr-nums",
-                      remaining > 0 ? "text-destructive" : 
-                      remaining < 0 ? "text-destructive" : 
-                      "text-success"
-                    )}>
-                      {formatCurrency(remaining)}
-                    </p>
-                    {remaining < 0 && (
-                      <p className="text-xs text-destructive mt-1">رصيد زائد</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Profit Row - Admin Only */}
-                {!isElzami && isAdmin && (
-                  <div className="mt-4 grid grid-cols-2 gap-4">
-                    <div className={cn(
-                      "rounded-xl p-4 border shadow-sm",
-                      (policy.cancelled || isTransferred) 
-                        ? "bg-muted border-muted-foreground/20" 
-                        : "bg-success/5 border-success/30"
-                    )}>
-                      <div className="flex items-center gap-2 text-muted-foreground mb-2">
-                        <TrendingUp className="h-4 w-4" />
-                        <span className="text-xs font-medium">
-                          {hasPackage ? 'ربح هذه الوثيقة' : 'الربح'}
-                        </span>
+                <div className="relative px-6 py-5">
+                  <div className="flex items-start justify-between gap-4">
+                    {/* Right side - Policy Type & Title */}
+                    <div className="flex items-start gap-4">
+                      <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                        <PolicyIcon className="h-7 w-7 text-white" />
                       </div>
-                      <p className={cn(
-                        "text-2xl font-bold ltr-nums",
-                        (policy.cancelled || isTransferred) ? "text-muted-foreground line-through" : "text-success"
-                      )}>
-                        {(policy.cancelled || isTransferred) ? formatCurrency(0) : formatCurrency(policy.profit)}
-                      </p>
-                    </div>
-                    
-                    {hasPackage && (
-                      <div className="rounded-xl p-4 border shadow-sm bg-primary/5 border-primary/30">
-                        <div className="flex items-center gap-2 text-muted-foreground mb-2">
-                          <Package className="h-4 w-4" />
-                          <span className="text-xs font-medium">ربح الباقة الكامل</span>
-                        </div>
-                        <p className="text-2xl font-bold text-primary ltr-nums">
-                          {formatCurrency(packageTotalProfit)}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Payment Progress Bar */}
-                <div className="mt-4 bg-background rounded-xl p-4 border shadow-sm">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-medium">حالة الدفع</span>
-                    <Badge
-                      variant={
-                        paymentStatus === "paid" ? "success" : paymentStatus === "partial" ? "warning" : "destructive"
-                      }
-                      className="px-3"
-                    >
-                      {paymentStatus === "paid"
-                        ? "مدفوع بالكامل"
-                        : paymentStatus === "partial"
-                          ? `مدفوع ${percentagePaid}%`
-                          : "غير مدفوع"}
-                    </Badge>
-                  </div>
-                  <Progress value={percentagePaid} className="h-2.5" />
-                </div>
-
-                {/* Returned Cheques Warning */}
-                {hasReturnedCheques && (
-                  <div className="mt-4 bg-destructive/10 rounded-xl p-4 border border-destructive/20">
-                    <div className="flex items-center gap-2 mb-2">
-                      <AlertTriangle className="h-4 w-4 text-destructive" />
-                      <span className="text-sm font-semibold text-destructive">
-                        شيكات مرتجعة ({returnedCheques.length})
-                      </span>
-                      <span className="text-lg font-bold text-destructive mr-auto ltr-nums">
-                        {formatCurrency(returnedChequesTotal)}-
-                      </span>
-                    </div>
-                    <p className="text-xs text-destructive/70">
-                      هذا المبلغ مخصوم من رصيد العميل ويجب تحصيله
-                    </p>
-                  </div>
-                )}
-
-                {/* Cancellation Info */}
-                {policy.cancelled && (
-                  <div className="mt-4 bg-destructive/10 rounded-xl p-4 border border-destructive/20">
-                    <div className="flex items-center gap-2 mb-2">
-                      <XCircle className="h-4 w-4 text-destructive" />
-                      <span className="text-sm font-semibold text-destructive">وثيقة ملغاة</span>
-                      {policy.cancellation_date && (
-                        <Badge variant="outline" className="text-xs mr-auto">
-                          {formatDate(policy.cancellation_date)}
-                        </Badge>
-                      )}
-                    </div>
-                    {policy.cancellation_note && (
-                      <p className="text-sm text-destructive/80 whitespace-pre-wrap">{policy.cancellation_note}</p>
-                    )}
-                    {refundAmount > 0 && (
-                      <div className="mt-3 pt-3 border-t border-destructive/20 flex justify-between">
-                        <span className="text-sm text-destructive/80">مرتجع للعميل</span>
-                        <span className="text-lg font-bold text-destructive ltr-nums">{formatCurrency(refundAmount)}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Transferred Info */}
-                {isTransferred && !policy.cancelled && (
-                  <div className="mt-4 bg-amber-500/10 rounded-xl p-4 border border-amber-500/20">
-                    <div className="flex items-center gap-2 mb-2">
-                      <ArrowLeftRight className="h-4 w-4 text-amber-600" />
-                      <span className="text-sm font-semibold text-amber-700">وثيقة محوّلة</span>
-                      {policy.transferred_car_number && (
-                        <Badge variant="outline" className="text-xs mr-auto bg-amber-500/10 border-amber-500/30">
-                          إلى: {policy.transferred_car_number}
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-amber-700/80">
-                      الدفعات والملفات تم نقلها للوثيقة الجديدة
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Tabs Content */}
-              <Tabs
-                value={activeTab}
-                onValueChange={setActiveTab}
-                className="flex-1 flex flex-col overflow-hidden"
-                dir="rtl"
-              >
-                <TabsList className="mx-6 mt-4 grid grid-cols-4 h-11 p-1" dir="rtl">
-                  <TabsTrigger value="insurance" className="text-sm gap-2 font-medium">
-                    <Shield className="h-4 w-4" />
-                    التأمين
-                  </TabsTrigger>
-                  <TabsTrigger value="payments" className="text-sm gap-2 font-medium">
-                    <CreditCard className="h-4 w-4" />
-                    الدفعات ({payments.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="customer" className="text-sm gap-2 font-medium">
-                    <User className="h-4 w-4" />
-                    العميل
-                  </TabsTrigger>
-                  <TabsTrigger value="files" className="text-sm gap-2 font-medium">
-                    <ImageIcon className="h-4 w-4" />
-                    الملفات
-                  </TabsTrigger>
-                </TabsList>
-
-                <ScrollArea className="flex-1">
-                  {/* Insurance Tab */}
-                  <TabsContent value="insurance" className="px-6 py-5 space-y-4 m-0">
-                    {/* Company Card */}
-                    {policy.insurance_companies ? (
-                      <Card className="p-4">
-                        <div className="flex items-center gap-2 text-primary font-semibold mb-2">
-                          <Building2 className="h-4 w-4" />
-                          <span>شركة التأمين</span>
-                        </div>
-                        <p className="text-lg font-bold">
-                          {policy.insurance_companies.name_ar || policy.insurance_companies.name}
-                        </p>
-                        {policy.brokers && (
-                          <p className="text-sm text-muted-foreground mt-1">الوسيط: {policy.brokers.name}</p>
-                        )}
-                      </Card>
-                    ) : policy.brokers ? (
-                      <Card className="p-4">
-                        <div className="flex items-center gap-2 text-primary font-semibold mb-2">
-                          <Building2 className="h-4 w-4" />
-                          <span>الوسيط</span>
-                        </div>
-                        <p className="text-lg font-bold">{policy.brokers.name}</p>
-                      </Card>
-                    ) : null}
-
-                    {/* Package / Related Policies - REDESIGNED AS CARDS */}
-                    {relatedPolicies.length > 0 && (
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-primary font-semibold">
-                          <Package className="h-5 w-5" />
-                          <span className="text-base">وثائق الباقة الأخرى</span>
-                          <Badge variant="outline" className="mr-auto bg-primary/5">
-                            {relatedPolicies.length} وثائق إضافية
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <h1 className="text-xl font-bold text-white">{getPolicyTypeName()}</h1>
+                          <Badge className={cn(
+                            "border-white/30 font-medium",
+                            status.variant === 'success' ? "bg-white/20 text-white" :
+                            status.variant === 'destructive' ? "bg-red-100 text-red-700" :
+                            status.variant === 'warning' ? "bg-amber-100 text-amber-700" :
+                            "bg-white/20 text-white"
+                          )}>
+                            <StatusIcon className="h-3 w-3 ml-1" />
+                            {status.label}
                           </Badge>
                         </div>
                         
-                        <div className="grid gap-3">
+                        {/* Service name for Road Service */}
+                        {policy.policy_type_parent === 'ROAD_SERVICE' && policy.road_services && (
+                          <p className="text-white/80 text-sm">
+                            {policy.road_services.name_ar || policy.road_services.name}
+                          </p>
+                        )}
+                        
+                        {/* Client & Car Info */}
+                        <div className="flex items-center gap-4 mt-2 text-white/80 text-sm">
+                          <div className="flex items-center gap-1">
+                            <User className="h-3.5 w-3.5" />
+                            <span>{policy.clients.full_name}</span>
+                          </div>
+                          {policy.cars && (
+                            <div className="flex items-center gap-1">
+                              <Car className="h-3.5 w-3.5" />
+                              <span className="font-mono"><bdi>{policy.cars.car_number}</bdi></span>
+                            </div>
+                          )}
+                          {hasPackage && (
+                            <div className="flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-full">
+                              <Layers className="h-3 w-3" />
+                              <span>باقة ({relatedPolicies.length + 1})</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Left side - Actions */}
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setEditOpen(true)}
+                        className="gap-1.5 bg-white/20 hover:bg-white/30 text-white border-0"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        تعديل
+                      </Button>
+                      {!policy.cancelled && !policy.transferred && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setTransferOpen(true)}
+                            className="gap-1.5 bg-white/20 hover:bg-white/30 text-white border-0"
+                          >
+                            <ArrowLeftRight className="h-3.5 w-3.5" />
+                            تحويل
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setCancelOpen(true)}
+                            className="gap-1.5 bg-red-500/80 hover:bg-red-500 text-white border-0"
+                          >
+                            <XCircle className="h-3.5 w-3.5" />
+                            إلغاء
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Navigation Pills */}
+              <div className="px-6 py-3 border-b bg-muted/30 flex gap-2">
+                <button
+                  onClick={() => setActiveSection('main')}
+                  className={cn(
+                    "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                    activeSection === 'main' 
+                      ? "bg-primary text-primary-foreground shadow-sm" 
+                      : "text-muted-foreground hover:bg-muted"
+                  )}
+                >
+                  <Shield className="h-4 w-4 inline-block ml-1.5" />
+                  معلومات الوثيقة
+                </button>
+                <button
+                  onClick={() => setActiveSection('payments')}
+                  className={cn(
+                    "px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5",
+                    activeSection === 'payments' 
+                      ? "bg-primary text-primary-foreground shadow-sm" 
+                      : "text-muted-foreground hover:bg-muted"
+                  )}
+                >
+                  <CreditCard className="h-4 w-4" />
+                  الدفعات
+                  <span className={cn(
+                    "px-1.5 py-0.5 rounded-full text-xs",
+                    activeSection === 'payments' ? "bg-white/20" : "bg-muted-foreground/20"
+                  )}>
+                    {payments.length}
+                  </span>
+                </button>
+                <button
+                  onClick={() => setActiveSection('files')}
+                  className={cn(
+                    "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                    activeSection === 'files' 
+                      ? "bg-primary text-primary-foreground shadow-sm" 
+                      : "text-muted-foreground hover:bg-muted"
+                  )}
+                >
+                  <ImageIcon className="h-4 w-4 inline-block ml-1.5" />
+                  الملفات
+                </button>
+              </div>
+
+              {/* Content Area */}
+              <ScrollArea className="flex-1">
+                {activeSection === 'main' && (
+                  <div className="p-6 space-y-6">
+                    {/* Signature Warning */}
+                    {!policy.clients.signature_url && (
+                      <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                        <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
+                        <span className="text-amber-800 text-sm font-medium">العميل لم يوقّع بعد</span>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          className="mr-auto border-amber-300 text-amber-700 hover:bg-amber-100"
+                          onClick={handleSendSignatureSms}
+                          disabled={sendingSignatureSms}
+                        >
+                          {sendingSignatureSms ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin ml-1" />
+                          ) : (
+                            <Send className="h-3.5 w-3.5 ml-1" />
+                          )}
+                          إرسال طلب توقيع
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Financial Cards Grid */}
+                    <div className="grid grid-cols-4 gap-3">
+                      {/* Insurance Price */}
+                      <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl p-4 border border-slate-200">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center">
+                            <CircleDollarSign className="h-4 w-4 text-slate-600" />
+                          </div>
+                          <span className="text-xs font-medium text-slate-600">سعر التأمين</span>
+                        </div>
+                        <p className="text-2xl font-bold text-slate-900 ltr-nums">
+                          {formatCurrency(policy.insurance_price)}
+                        </p>
+                      </div>
+
+                      {/* Paid Amount */}
+                      <div className={cn(
+                        "rounded-xl p-4 border",
+                        paymentStatus === 'paid' 
+                          ? "bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200" 
+                          : "bg-gradient-to-br from-slate-50 to-slate-100 border-slate-200"
+                      )}>
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className={cn(
+                            "w-8 h-8 rounded-lg flex items-center justify-center",
+                            paymentStatus === 'paid' ? "bg-emerald-200" : "bg-slate-200"
+                          )}>
+                            <CreditCard className={cn("h-4 w-4", paymentStatus === 'paid' ? "text-emerald-600" : "text-slate-600")} />
+                          </div>
+                          <span className={cn("text-xs font-medium", paymentStatus === 'paid' ? "text-emerald-600" : "text-slate-600")}>
+                            المدفوع
+                          </span>
+                        </div>
+                        <p className={cn(
+                          "text-2xl font-bold ltr-nums",
+                          paymentStatus === 'paid' ? "text-emerald-700" : "text-slate-900"
+                        )}>
+                          {formatCurrency(totalPaid)}
+                        </p>
+                      </div>
+
+                      {/* Remaining */}
+                      <div className={cn(
+                        "rounded-xl p-4 border",
+                        remaining > 0 ? "bg-gradient-to-br from-red-50 to-red-100 border-red-200" :
+                        remaining < 0 ? "bg-gradient-to-br from-red-50 to-red-100 border-red-200" :
+                        "bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200"
+                      )}>
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className={cn(
+                            "w-8 h-8 rounded-lg flex items-center justify-center",
+                            remaining !== 0 ? "bg-red-200" : "bg-emerald-200"
+                          )}>
+                            <Banknote className={cn("h-4 w-4", remaining !== 0 ? "text-red-600" : "text-emerald-600")} />
+                          </div>
+                          <span className={cn("text-xs font-medium", remaining !== 0 ? "text-red-600" : "text-emerald-600")}>
+                            المتبقي
+                          </span>
+                        </div>
+                        <p className={cn(
+                          "text-2xl font-bold ltr-nums",
+                          remaining !== 0 ? "text-red-700" : "text-emerald-700"
+                        )}>
+                          {formatCurrency(remaining)}
+                        </p>
+                        {remaining < 0 && (
+                          <span className="text-xs text-red-600">رصيد زائد</span>
+                        )}
+                      </div>
+
+                      {/* Profit (Admin only) or Payment Status */}
+                      {!isElzami && isAdmin ? (
+                        <div className={cn(
+                          "rounded-xl p-4 border",
+                          (policy.cancelled || isTransferred) 
+                            ? "bg-gradient-to-br from-slate-50 to-slate-100 border-slate-200" 
+                            : "bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20"
+                        )}>
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className={cn(
+                              "w-8 h-8 rounded-lg flex items-center justify-center",
+                              (policy.cancelled || isTransferred) ? "bg-slate-200" : "bg-primary/20"
+                            )}>
+                              <TrendingUp className={cn("h-4 w-4", (policy.cancelled || isTransferred) ? "text-slate-600" : "text-primary")} />
+                            </div>
+                            <span className={cn("text-xs font-medium", (policy.cancelled || isTransferred) ? "text-slate-600" : "text-primary")}>
+                              الربح
+                            </span>
+                          </div>
+                          <p className={cn(
+                            "text-2xl font-bold ltr-nums",
+                            (policy.cancelled || isTransferred) ? "text-slate-400 line-through" : "text-primary"
+                          )}>
+                            {(policy.cancelled || isTransferred) ? formatCurrency(0) : formatCurrency(policy.profit)}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="rounded-xl p-4 border bg-gradient-to-br from-slate-50 to-slate-100 border-slate-200">
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center">
+                              <Clock className="h-4 w-4 text-slate-600" />
+                            </div>
+                            <span className="text-xs font-medium text-slate-600">المتبقي</span>
+                          </div>
+                          <p className={cn(
+                            "text-2xl font-bold",
+                            remainingDays < 0 ? "text-red-600" :
+                            remainingDays <= 30 ? "text-amber-600" : "text-slate-900"
+                          )}>
+                            {remainingDays < 0 ? 'منتهية' : `${remainingDays} يوم`}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Payment Progress */}
+                    <div className="bg-muted/30 rounded-xl p-4 border">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-medium">حالة الدفع</span>
+                        <Badge
+                          variant={
+                            paymentStatus === "paid" ? "success" : paymentStatus === "partial" ? "warning" : "destructive"
+                          }
+                        >
+                          {paymentStatus === "paid"
+                            ? "مدفوع بالكامل"
+                            : paymentStatus === "partial"
+                              ? `مدفوع ${percentagePaid}%`
+                              : "غير مدفوع"}
+                        </Badge>
+                      </div>
+                      <Progress value={percentagePaid} className="h-3" />
+                    </div>
+
+                    {/* Returned Cheques Warning */}
+                    {hasReturnedCheques && (
+                      <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
+                            <AlertTriangle className="h-5 w-5 text-red-600" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-semibold text-red-800">شيكات مرتجعة ({returnedCheques.length})</p>
+                            <p className="text-xs text-red-600">هذا المبلغ مخصوم من رصيد العميل</p>
+                          </div>
+                          <p className="text-xl font-bold text-red-700 ltr-nums">
+                            {formatCurrency(returnedChequesTotal)}-
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Cancellation Info */}
+                    {policy.cancelled && (
+                      <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
+                            <XCircle className="h-5 w-5 text-red-600" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-semibold text-red-800">وثيقة ملغاة</p>
+                            {policy.cancellation_date && (
+                              <p className="text-xs text-red-600">{formatDate(policy.cancellation_date)}</p>
+                            )}
+                            {policy.cancellation_note && (
+                              <p className="text-sm text-red-700 mt-1">{policy.cancellation_note}</p>
+                            )}
+                          </div>
+                          {refundAmount > 0 && (
+                            <div className="text-left">
+                              <p className="text-xs text-red-600">مرتجع للعميل</p>
+                              <p className="text-lg font-bold text-red-700 ltr-nums">{formatCurrency(refundAmount)}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Transferred Info */}
+                    {isTransferred && !policy.cancelled && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                            <ArrowLeftRight className="h-5 w-5 text-amber-600" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-semibold text-amber-800">وثيقة محوّلة</p>
+                            <p className="text-xs text-amber-600">الدفعات والملفات تم نقلها للوثيقة الجديدة</p>
+                          </div>
+                          {policy.transferred_car_number && (
+                            <Badge className="bg-amber-100 text-amber-700 border-amber-300">
+                              إلى: {policy.transferred_car_number}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Package / Related Policies */}
+                    {relatedPolicies.length > 0 && (
+                      <Section title="وثائق الباقة الأخرى" icon={Layers}>
+                        <div className="grid grid-cols-2 gap-3">
                           {relatedPolicies.map((rp) => {
-                            const TypeIcon = policyTypeIcons[rp.policy_type_parent] || Shield;
+                            const rpConfig = policyTypeConfig[rp.policy_type_parent] || policyTypeConfig.ELZAMI;
+                            const RpIcon = rpConfig.icon;
                             const serviceName = getServiceName(rp);
                             
                             return (
@@ -852,29 +921,24 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                                 }}
                                 className={cn(
                                   "rounded-xl border-2 p-4 cursor-pointer transition-all group",
-                                  "hover:shadow-md hover:border-primary/40 hover:bg-primary/5",
-                                  policyTypeColors[rp.policy_type_parent].replace('text-', 'border-').replace('border-', 'border-')
+                                  "hover:shadow-lg hover:scale-[1.02]",
+                                  rpConfig.bg, rpConfig.border
                                 )}
                               >
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-3">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex items-start gap-3">
                                     <div className={cn(
-                                      "w-10 h-10 rounded-lg flex items-center justify-center",
-                                      policyTypeColors[rp.policy_type_parent]
+                                      "w-10 h-10 rounded-xl flex items-center justify-center bg-gradient-to-br",
+                                      rpConfig.gradient
                                     )}>
-                                      <TypeIcon className="h-5 w-5" />
+                                      <RpIcon className="h-5 w-5 text-white" />
                                     </div>
                                     <div>
-                                      <p className="font-semibold flex items-center gap-2">
+                                      <p className={cn("font-bold", rpConfig.text)}>
                                         {policyTypeLabels[rp.policy_type_parent]}
-                                        {rp.policy_type_child && (
-                                          <span className="text-sm font-normal text-muted-foreground">
-                                            ({policyChildLabels[rp.policy_type_child]})
-                                          </span>
-                                        )}
                                       </p>
                                       {serviceName && (
-                                        <p className="text-sm text-muted-foreground">{serviceName}</p>
+                                        <p className="text-xs text-muted-foreground">{serviceName}</p>
                                       )}
                                       {rp.insurance_companies && (
                                         <p className="text-xs text-muted-foreground mt-0.5">
@@ -884,11 +948,11 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                                     </div>
                                   </div>
                                   
-                                  <div className="text-left flex items-center gap-4">
+                                  <div className="text-left flex items-center gap-2">
                                     <div>
-                                      <p className="text-lg font-bold ltr-nums">{formatCurrency(rp.insurance_price)}</p>
-                                      {isAdmin && (
-                                        <p className="text-sm text-success font-medium ltr-nums">
+                                      <p className="text-lg font-bold text-foreground ltr-nums">{formatCurrency(rp.insurance_price)}</p>
+                                      {isAdmin && rp.policy_type_parent !== 'ELZAMI' && (
+                                        <p className="text-xs text-emerald-600 font-medium ltr-nums">
                                           ربح: {formatCurrency(rp.profit)}
                                         </p>
                                       )}
@@ -901,142 +965,230 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                           })}
                         </div>
                         
-                        {/* Package Total Summary */}
-                        <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4 mt-3">
+                        {/* Package Total */}
+                        <div className="bg-primary/5 border-2 border-primary/20 rounded-xl p-4 mt-3">
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Package className="h-5 w-5 text-primary" />
-                              <span className="font-semibold text-primary">مجموع الباقة الكامل</span>
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
+                                <Layers className="h-5 w-5 text-white" />
+                              </div>
+                              <div>
+                                <p className="font-bold text-primary">مجموع الباقة</p>
+                                <p className="text-xs text-muted-foreground">{relatedPolicies.length + 1} وثائق</p>
+                              </div>
                             </div>
                             <div className="text-left">
                               <p className="text-xl font-bold text-primary ltr-nums">{formatCurrency(packageTotalPrice)}</p>
                               {isAdmin && (
-                                <p className="text-sm text-success font-medium ltr-nums">
+                                <p className="text-sm text-emerald-600 font-medium ltr-nums">
                                   إجمالي الربح: {formatCurrency(packageTotalProfit)}
                                 </p>
                               )}
                             </div>
                           </div>
                         </div>
-                      </div>
+                      </Section>
                     )}
 
-                    {/* Period */}
-                    <Card className="p-4">
-                      <div className="flex items-center gap-2 text-primary font-semibold mb-3">
-                        <Calendar className="h-4 w-4" />
-                        <span>فترة التأمين</span>
-                      </div>
-                      <div className="grid grid-cols-3 gap-4 text-center">
-                        <div>
-                          <p className="text-xs text-muted-foreground">من</p>
-                          <p className="font-semibold">{formatDate(policy.start_date)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">إلى</p>
-                          <p className="font-semibold">{formatDate(policy.end_date)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">المتبقي</p>
-                          <p
-                            className={cn(
-                              "font-semibold",
-                              remainingDays < 0
-                                ? "text-destructive"
-                                : remainingDays <= 30
-                                  ? "text-amber-600"
-                                  : "text-success",
+                    {/* Insurance Company & Period Row */}
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Insurance Company */}
+                      {(policy.insurance_companies || policy.brokers) && (
+                        <Section title="شركة التأمين" icon={Building2}>
+                          <div className="bg-muted/30 rounded-xl p-4 border">
+                            <p className="text-lg font-bold">
+                              {policy.insurance_companies?.name_ar || policy.insurance_companies?.name || policy.brokers?.name}
+                            </p>
+                            {policy.insurance_companies && policy.brokers && (
+                              <p className="text-sm text-muted-foreground mt-1">الوسيط: {policy.brokers.name}</p>
                             )}
-                          >
-                            {remainingDays < 0 ? `منتهية` : `${remainingDays} يوم`}
-                          </p>
-                        </div>
-                      </div>
-                    </Card>
-
-                    {/* Pricing Details - Admin only */}
-                    {isAdmin && (
-                      <Card className="p-4">
-                        <div className="flex items-center gap-2 text-primary font-semibold mb-3">
-                          <Banknote className="h-4 w-4" />
-                          <span>تفاصيل الأسعار</span>
-                        </div>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between py-2 border-b">
-                            <span className="text-muted-foreground">سعر التأمين</span>
-                            <span className="font-bold ltr-nums">{formatCurrency(policy.insurance_price)}</span>
                           </div>
-                          {!isElzami && (
+                        </Section>
+                      )}
+
+                      {/* Period */}
+                      <Section title="فترة التأمين" icon={Calendar}>
+                        <div className="bg-muted/30 rounded-xl p-4 border">
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1">من</p>
+                              <p className="font-semibold text-sm">{formatDate(policy.start_date)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1">إلى</p>
+                              <p className="font-semibold text-sm">{formatDate(policy.end_date)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1">المتبقي</p>
+                              <p className={cn(
+                                "font-semibold text-sm",
+                                remainingDays < 0 ? "text-red-600" :
+                                remainingDays <= 30 ? "text-amber-600" : "text-emerald-600"
+                              )}>
+                                {remainingDays < 0 ? 'منتهية' : `${remainingDays} يوم`}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </Section>
+                    </div>
+
+                    {/* Client & Car Info */}
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Client */}
+                      <Section title="بيانات العميل" icon={User}>
+                        <div className="bg-muted/30 rounded-xl p-4 border space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-muted-foreground">الاسم</span>
+                            <span className="font-semibold">{policy.clients.full_name}</span>
+                          </div>
+                          <Separator />
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-muted-foreground">رقم الهوية</span>
+                            <span className="font-mono font-semibold"><bdi>{policy.clients.id_number}</bdi></span>
+                          </div>
+                          <Separator />
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-muted-foreground">الهاتف</span>
+                            <span className="font-mono"><bdi>{policy.clients.phone_number || '-'}</bdi></span>
+                          </div>
+                          {policy.clients.file_number && (
                             <>
-                              <div className="flex justify-between py-2 border-b">
-                                <span className="text-muted-foreground">مدفوع للشركة</span>
-                                <span className="font-bold text-orange-600 ltr-nums">
-                                  {formatCurrency(policy.payed_for_company)}
-                                </span>
-                              </div>
-                              <div className="flex justify-between py-2">
-                                <span className="text-muted-foreground">الربح</span>
-                                <span className="font-bold text-success ltr-nums">{formatCurrency(policy.profit)}</span>
+                              <Separator />
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm text-muted-foreground">رقم الملف</span>
+                                <span>{policy.clients.file_number}</span>
                               </div>
                             </>
                           )}
                         </div>
-                      </Card>
+                      </Section>
+
+                      {/* Car */}
+                      <Section title="بيانات السيارة" icon={Car}>
+                        {policy.cars ? (
+                          <div className="bg-muted/30 rounded-xl p-4 border space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-muted-foreground">رقم السيارة</span>
+                              <span className="font-mono font-bold text-primary"><bdi>{policy.cars.car_number}</bdi></span>
+                            </div>
+                            <Separator />
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-muted-foreground">الشركة المصنعة</span>
+                              <span className="font-semibold">{policy.cars.manufacturer_name || '-'}</span>
+                            </div>
+                            <Separator />
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-muted-foreground">سنة الصنع</span>
+                              <span>{policy.cars.year || '-'}</span>
+                            </div>
+                            {policy.cars.car_type && (
+                              <>
+                                <Separator />
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm text-muted-foreground">النوع</span>
+                                  <span>{carTypeLabels[policy.cars.car_type] || policy.cars.car_type}</span>
+                                </div>
+                              </>
+                            )}
+                            {policy.cars.car_value && (
+                              <>
+                                <Separator />
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm text-muted-foreground">قيمة السيارة</span>
+                                  <span className="font-semibold ltr-nums">{formatCurrency(policy.cars.car_value)}</span>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="bg-muted/30 rounded-xl p-6 border text-center">
+                            <Car className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                            <p className="text-muted-foreground">بدون سيارة</p>
+                          </div>
+                        )}
+                      </Section>
+                    </div>
+
+                    {/* Pricing Details - Admin only */}
+                    {isAdmin && !isElzami && (
+                      <Section title="تفاصيل الأسعار" icon={DollarSign}>
+                        <div className="bg-muted/30 rounded-xl p-4 border">
+                          <div className="grid grid-cols-3 gap-4 text-center">
+                            <div className="p-3 rounded-lg bg-background">
+                              <p className="text-xs text-muted-foreground mb-1">سعر التأمين</p>
+                              <p className="font-bold text-lg ltr-nums">{formatCurrency(policy.insurance_price)}</p>
+                            </div>
+                            <div className="p-3 rounded-lg bg-orange-50">
+                              <p className="text-xs text-orange-600 mb-1">مدفوع للشركة</p>
+                              <p className="font-bold text-lg text-orange-700 ltr-nums">{formatCurrency(policy.payed_for_company)}</p>
+                            </div>
+                            <div className="p-3 rounded-lg bg-emerald-50">
+                              <p className="text-xs text-emerald-600 mb-1">الربح</p>
+                              <p className="font-bold text-lg text-emerald-700 ltr-nums">{formatCurrency(policy.profit)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </Section>
                     )}
 
                     {/* Notes */}
                     {policy.notes && (
-                      <Card className="p-4">
-                        <div className="flex items-center gap-2 text-primary font-semibold mb-2">
-                          <FileText className="h-4 w-4" />
-                          <span>ملاحظات</span>
+                      <Section title="ملاحظات" icon={FileText}>
+                        <div className="bg-muted/30 rounded-xl p-4 border">
+                          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{policy.notes}</p>
                         </div>
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{policy.notes}</p>
-                      </Card>
+                      </Section>
                     )}
 
                     {/* Transfer History */}
                     {transferHistory.length > 0 && (
-                      <Card className="p-4 border-amber-500/30 bg-amber-500/5">
-                        <div className="flex items-center gap-2 text-amber-700 font-semibold mb-3">
-                          <History className="h-4 w-4" />
-                          <span>سجل التحويلات ({transferHistory.length})</span>
-                        </div>
-                        <div className="space-y-3">
+                      <Section title={`سجل التحويلات (${transferHistory.length})`} icon={History}>
+                        <div className="bg-amber-50/50 border border-amber-200 rounded-xl p-4 space-y-3">
                           {transferHistory.map((transfer) => (
-                            <div key={transfer.id} className="text-sm border-b border-amber-500/20 pb-2 last:border-0 last:pb-0">
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-muted-foreground">
-                                  {formatDate(transfer.transfer_date)}
-                                </span>
+                            <div key={transfer.id} className="flex items-center gap-4 pb-3 border-b border-amber-200 last:border-0 last:pb-0">
+                              <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                                <ArrowLeftRight className="h-4 w-4 text-amber-600" />
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-sm bg-amber-100 px-2 py-0.5 rounded">
+                                    {transfer.from_car?.car_number}
+                                  </span>
+                                  <ArrowLeftRight className="h-3 w-3 text-amber-600" />
+                                  <span className="font-mono text-sm bg-primary/10 text-primary px-2 py-0.5 rounded">
+                                    {transfer.to_car?.car_number}
+                                  </span>
+                                </div>
+                                {transfer.note && (
+                                  <p className="text-xs text-muted-foreground mt-1">{transfer.note}</p>
+                                )}
+                              </div>
+                              <div className="text-left shrink-0">
+                                <p className="text-xs text-muted-foreground">{formatDate(transfer.transfer_date)}</p>
                                 {transfer.adjustment_type && transfer.adjustment_type !== 'none' && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {transfer.adjustment_type === 'customer_pays' ? 'العميل يدفع' : 'مرتجع'}
-                                    : ₪{transfer.adjustment_amount}
+                                  <Badge variant="outline" className="text-xs mt-1">
+                                    {transfer.adjustment_type === 'customer_pays' ? 'دفع' : 'مرتجع'}: ₪{transfer.adjustment_amount}
                                   </Badge>
                                 )}
                               </div>
-                              <div className="flex items-center gap-2 text-xs">
-                                <span className="font-mono bg-muted px-1.5 py-0.5 rounded">
-                                  {transfer.from_car?.car_number}
-                                </span>
-                                <ArrowLeftRight className="h-3 w-3 text-muted-foreground" />
-                                <span className="font-mono bg-primary/10 text-primary px-1.5 py-0.5 rounded">
-                                  {transfer.to_car?.car_number}
-                                </span>
-                              </div>
-                              {transfer.note && (
-                                <p className="text-xs text-muted-foreground mt-1">{transfer.note}</p>
-                              )}
                             </div>
                           ))}
                         </div>
-                      </Card>
+                      </Section>
                     )}
-                  </TabsContent>
 
-                  {/* Payments Tab */}
-                  <TabsContent value="payments" className="p-6 m-0">
+                    {/* Creator Info */}
+                    {creatorName && (
+                      <p className="text-xs text-center text-muted-foreground pt-4 border-t">
+                        أنشئ بواسطة: {creatorName}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {activeSection === 'payments' && (
+                  <div className="p-6">
                     <PolicyPaymentsSection
                       policyId={policy.id}
                       payments={payments}
@@ -1045,93 +1197,11 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                       autoOpenAdd={showQuickPayment}
                       onAutoOpenHandled={() => setShowQuickPayment(false)}
                     />
-                  </TabsContent>
+                  </div>
+                )}
 
-                  {/* Customer Tab */}
-                  <TabsContent value="customer" className="p-6 space-y-4 m-0">
-                    {/* Client */}
-                    <Card className="p-4">
-                      <div className="flex items-center gap-2 text-primary font-semibold mb-3">
-                        <User className="h-4 w-4" />
-                        <span>بيانات العميل</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <span className="text-muted-foreground text-xs">الاسم</span>
-                          <p className="font-semibold text-base">{policy.clients.full_name}</p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground text-xs">رقم الهوية</span>
-                          <p className="font-mono font-semibold">
-                            <bdi>{policy.clients.id_number}</bdi>
-                          </p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground text-xs">رقم الملف</span>
-                          <p>{policy.clients.file_number || "-"}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Phone className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-mono">
-                            <bdi>{policy.clients.phone_number || "-"}</bdi>
-                          </span>
-                        </div>
-                      </div>
-                    </Card>
-
-                    {/* Car */}
-                    {policy.cars ? (
-                      <Card className="p-4">
-                        <div className="flex items-center gap-2 text-primary font-semibold mb-3">
-                          <Car className="h-4 w-4" />
-                          <span>بيانات السيارة</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <span className="text-muted-foreground text-xs">رقم السيارة</span>
-                            <p className="font-mono font-semibold text-base">
-                              <bdi>{policy.cars.car_number}</bdi>
-                            </p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground text-xs">الشركة المصنعة</span>
-                            <p className="font-semibold">{policy.cars.manufacturer_name || "-"}</p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground text-xs">سنة الصنع</span>
-                            <p>{policy.cars.year || "-"}</p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground text-xs">النوع</span>
-                            <p>
-                              {policy.cars.car_type ? carTypeLabels[policy.cars.car_type] || policy.cars.car_type : "-"}
-                            </p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground text-xs">قيمة السيارة</span>
-                            <p className="font-semibold ltr-nums">
-                              {policy.cars.car_value ? formatCurrency(policy.cars.car_value) : "-"}
-                            </p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground text-xs">اللون</span>
-                            <p>{policy.cars.color || "-"}</p>
-                          </div>
-                        </div>
-                      </Card>
-                    ) : (
-                      <Card className="p-4">
-                        <div className="flex items-center gap-2 text-muted-foreground font-semibold mb-3">
-                          <Car className="h-4 w-4" />
-                          <span>بدون سيارة</span>
-                        </div>
-                        <p className="text-sm text-muted-foreground">هذه وثيقة تأمين غير مرتبطة بسيارة</p>
-                      </Card>
-                    )}
-                  </TabsContent>
-
-                  {/* Files Tab */}
-                  <TabsContent value="files" className="p-6 m-0">
+                {activeSection === 'files' && (
+                  <div className="p-6">
                     <PolicyFilesSection 
                       policyId={policy.id} 
                       policyNumber={policy.policy_number}
@@ -1140,9 +1210,9 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                       clientName={policy.clients.full_name}
                       onPolicyNumberSaved={() => fetchPolicyDetails()}
                     />
-                  </TabsContent>
-                </ScrollArea>
-              </Tabs>
+                  </div>
+                )}
+              </ScrollArea>
             </div>
           ) : (
             <div className="p-8 text-center text-muted-foreground">لم يتم العثور على الوثيقة</div>
