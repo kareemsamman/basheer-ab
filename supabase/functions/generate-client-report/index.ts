@@ -320,13 +320,24 @@ function generateReportHtml(
     const status = getPolicyStatus(policy);
     const files = getFilesForPolicy(policy.id);
     const companyName = getCompanyName(policy);
+    
+    // Files section at the end with proper display
     const filesHtml = files.length > 0 ? `
-      <div class="policy-files">
-        ${files.map(f => {
-          const isPdf = f.mime_type?.includes('pdf');
-          const icon = isPdf ? '📄' : '🖼️';
-          return `<a href="${f.cdn_url}" target="_blank" class="file-link">${icon}</a>`;
-        }).join('')}
+      <div class="policy-files-section">
+        <div class="files-label">📎 ملفات البوليصة (${files.length})</div>
+        <div class="files-list">
+          ${files.map(f => {
+            const isPdf = f.mime_type?.includes('pdf');
+            const icon = isPdf ? '📄' : '🖼️';
+            const shortName = f.original_name?.length > 20 
+              ? f.original_name.substring(0, 20) + '...' 
+              : (f.original_name || 'ملف');
+            return `<a href="${f.cdn_url}" target="_blank" class="file-item">
+              <span class="file-icon">${icon}</span>
+              <span class="file-name">${shortName}</span>
+            </a>`;
+          }).join('')}
+        </div>
       </div>
     ` : '';
     
@@ -342,8 +353,8 @@ function generateReportHtml(
         </div>
         <div class="policy-footer">
           <span class="price">₪${policy.insurance_price.toLocaleString()}</span>
-          ${filesHtml}
         </div>
+        ${filesHtml}
       </div>
     `;
   };
@@ -597,23 +608,42 @@ function generateReportHtml(
     }
     .price { font-size: 14px; font-weight: 700; color: #0d9488; }
     
-    .policy-files {
-      display: flex;
-      gap: 4px;
+    /* Files Section */
+    .policy-files-section {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed #e2e8f0;
     }
-    .file-link {
+    .files-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #0d9488;
+      margin-bottom: 6px;
+    }
+    .files-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .file-item {
       display: inline-flex;
       align-items: center;
-      justify-content: center;
-      width: 28px;
-      height: 28px;
+      gap: 4px;
+      padding: 4px 8px;
       background: #f0fdfa;
       border: 1px solid #99f6e4;
       border-radius: 6px;
       text-decoration: none;
-      font-size: 14px;
+      font-size: 11px;
+      color: #0f766e;
+      transition: all 0.2s;
     }
-    .file-link:hover { background: #ccfbf1; }
+    .file-item:hover { 
+      background: #ccfbf1; 
+      border-color: #14b8a6;
+    }
+    .file-icon { font-size: 14px; }
+    .file-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     
     /* Footer */
     .footer {
