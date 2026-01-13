@@ -194,6 +194,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
   const [broker, setBroker] = useState<Broker | null>(null);
   const [paymentSummary, setPaymentSummary] = useState<PaymentSummary>({ total_paid: 0, total_remaining: 0, total_profit: 0 });
   const [walletBalance, setWalletBalance] = useState<WalletBalance>({ total_refunds: 0, transaction_count: 0 });
+  const [initialLoading, setInitialLoading] = useState(true);
   const [loadingCars, setLoadingCars] = useState(true);
   const [loadingPolicies, setLoadingPolicies] = useState(true);
   const [loadingPayments, setLoadingPayments] = useState(true);
@@ -401,13 +402,20 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
   }, [client.id]);
 
   useEffect(() => {
-    fetchCars();
-    fetchPolicies();
-    fetchBroker();
-    fetchPaymentSummary();
-    fetchPayments();
-    fetchWalletBalance();
-    setNotesValue(client.notes || '');
+    const loadInitialData = async () => {
+      setInitialLoading(true);
+      await Promise.all([
+        fetchCars(),
+        fetchPolicies(),
+        fetchBroker(),
+        fetchPaymentSummary(),
+        fetchPayments(),
+        fetchWalletBalance(),
+      ]);
+      setNotesValue(client.notes || '');
+      setInitialLoading(false);
+    };
+    loadInitialData();
   }, [client.id]);
 
   // Watch for broker_id changes and refetch broker
@@ -537,6 +545,81 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
     const types = new Set(policies.map(p => p.policy_type_parent));
     return Array.from(types);
   }, [policies]);
+
+  // Loading skeleton
+  if (initialLoading) {
+    return (
+      <MainLayout>
+        <Helmet>
+          <title>{client.full_name} | AB Insurance CRM</title>
+        </Helmet>
+        <div className="max-w-6xl mx-auto space-y-6">
+          {/* Header Skeleton */}
+          <Card className="overflow-hidden">
+            <div className="bg-gradient-to-l from-primary/10 via-primary/5 to-transparent p-6">
+              <div className="flex items-start gap-4">
+                <Skeleton className="h-10 w-10 rounded-lg" />
+                <Skeleton className="h-20 w-20 rounded-2xl" />
+                <div className="flex-1 space-y-3">
+                  <Skeleton className="h-8 w-48" />
+                  <div className="flex gap-4">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-4 w-20" />
+                  </div>
+                  <div className="flex gap-2">
+                    <Skeleton className="h-6 w-20 rounded-full" />
+                    <Skeleton className="h-6 w-28 rounded-full" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Skeleton className="h-10 w-20" />
+                  <Skeleton className="h-10 w-20" />
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-5 divide-x divide-y md:divide-y-0 divide-border border-t">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="p-4 text-center space-y-2">
+                  <Skeleton className="h-3 w-16 mx-auto" />
+                  <Skeleton className="h-6 w-12 mx-auto" />
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Financial Cards Skeleton */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <Card key={i} className="p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-10 w-10 rounded-xl" />
+                  <div className="flex-1 space-y-1">
+                    <Skeleton className="h-3 w-16" />
+                    <Skeleton className="h-5 w-20" />
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          {/* Tabs Skeleton */}
+          <Card className="p-6 space-y-4">
+            <div className="flex gap-2">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-9 w-24 rounded-lg" />
+              ))}
+            </div>
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-14 w-full" />
+              ))}
+            </div>
+          </Card>
+        </div>
+      </MainLayout>
+    );
+  }
 
   return (
     <MainLayout>
