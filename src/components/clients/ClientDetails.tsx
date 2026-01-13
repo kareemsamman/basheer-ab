@@ -712,6 +712,16 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
               </div>
               
               <div className="flex gap-2 shrink-0">
+                {paymentSummary.total_remaining > 0 && (
+                  <Button 
+                    variant="default" 
+                    className="gap-2"
+                    onClick={() => setDebtPaymentModalOpen(true)}
+                  >
+                    <CreditCard className="h-4 w-4" />
+                    دفع
+                  </Button>
+                )}
                 <Button variant="outline" onClick={() => setReportModalOpen(true)}>
                   <FileText className="h-4 w-4 ml-2" />
                   تقرير
@@ -785,17 +795,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                 ₪{paymentSummary.total_remaining.toLocaleString()}
               </p>
             </div>
-            {paymentSummary.total_remaining > 0 && (
-              <Button 
-                size="sm" 
-                className="gap-2"
-                onClick={() => setDebtPaymentModalOpen(true)}
-              >
-                <CreditCard className="h-4 w-4" />
-                دفع
-              </Button>
-            )}
-            <DebtIndicator 
+            <DebtIndicator
               totalOwed={paymentSummary.total_paid + paymentSummary.total_remaining} 
               totalPaid={paymentSummary.total_paid} 
               showAmount={false}
