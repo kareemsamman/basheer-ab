@@ -55,6 +55,7 @@ import { ClientReportModal } from '@/components/clients/ClientReportModal';
 import { CarFilterChips } from '@/components/clients/CarFilterChips';
 import { ExpiryBadge } from '@/components/shared/ExpiryBadge';
 import { DebtIndicator } from '@/components/shared/DebtIndicator';
+import { DebtPaymentModal } from '@/components/debt/DebtPaymentModal';
 import { cn } from '@/lib/utils';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { useBranches } from '@/hooks/useBranches';
@@ -205,6 +206,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
   const [clientDrawerOpen, setClientDrawerOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [debtPaymentModalOpen, setDebtPaymentModalOpen] = useState(false);
   
   // Notes editing
   const [editingNotes, setEditingNotes] = useState(false);
@@ -783,6 +785,16 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                 ₪{paymentSummary.total_remaining.toLocaleString()}
               </p>
             </div>
+            {paymentSummary.total_remaining > 0 && (
+              <Button 
+                size="sm" 
+                className="gap-2"
+                onClick={() => setDebtPaymentModalOpen(true)}
+              >
+                <CreditCard className="h-4 w-4" />
+                دفع
+              </Button>
+            )}
             <DebtIndicator 
               totalOwed={paymentSummary.total_paid + paymentSummary.total_remaining} 
               totalPaid={paymentSummary.total_paid} 
@@ -1437,6 +1449,25 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
           />
         );
       })()}
+
+      {/* Debt Payment Modal */}
+      <DebtPaymentModal
+        open={debtPaymentModalOpen}
+        onOpenChange={setDebtPaymentModalOpen}
+        clientId={client.id}
+        clientName={client.full_name}
+        clientPhone={client.phone_number}
+        totalOwed={paymentSummary.total_remaining}
+        onSuccess={async () => {
+          setDebtPaymentModalOpen(false);
+          // Refresh all payment-related data
+          await Promise.all([
+            fetchPaymentSummary(),
+            fetchPayments(),
+            fetchPolicies(),
+          ]);
+        }}
+      />
     </MainLayout>
   );
 }
