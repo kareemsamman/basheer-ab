@@ -726,18 +726,30 @@ export function PolicyWizard({
           for (const addon of packageAddons) {
             if (!addon.enabled) continue;
 
-            const addonTypeParent = (addon.type === 'road_service' ? 'ROAD_SERVICE' : 'ACCIDENT_FEE_EXEMPTION') as PolicyTypeParent;
+            // Map addon type to proper policy_type_parent
+            const addonTypeMap: Record<string, PolicyTypeParent> = {
+              'elzami': 'ELZAMI',
+              'third_full': 'THIRD_FULL',
+              'road_service': 'ROAD_SERVICE',
+              'accident_fee_exemption': 'ACCIDENT_FEE_EXEMPTION',
+            };
+            const addonTypeParent = addonTypeMap[addon.type] as PolicyTypeParent;
             const addonInsurancePrice = parseFloat(addon.insurance_price) || 0;
+            
+            // Get policy_type_child for THIRD_FULL addons
+            const addonTypeChild = addon.type === 'third_full' && addon.policy_type_child 
+              ? addon.policy_type_child as PolicyTypeChild 
+              : null;
             
             // Calculate profit for addon policies
             const addonProfitData = await calculatePolicyProfit({
               policyTypeParent: addonTypeParent,
-              policyTypeChild: null,
+              policyTypeChild: addonTypeChild,
               companyId: addon.company_id || '',
               carType: (selectedCar?.car_type || newCar.car_type || 'car') as CarType,
               ageBand: isUnder24 ? 'UNDER_24' as const : 'UP_24' as const,
-              carValue: null,
-              carYear: null,
+              carValue: selectedCar?.car_value || (newCar.car_value ? parseFloat(newCar.car_value) : null),
+              carYear: selectedCar?.year || (newCar.year ? parseInt(newCar.year) : null),
               insurancePrice: addonInsurancePrice,
               roadServiceId: addon.road_service_id || null,
               accidentFeeServiceId: addon.accident_fee_service_id || null,
@@ -748,7 +760,7 @@ export function PolicyWizard({
               car_id: carId || null,
               category_id: null,
               policy_type_parent: addonTypeParent,
-              policy_type_child: null,
+              policy_type_child: addonTypeChild,
               company_id: addon.company_id || null,
               start_date: policy.start_date,
               end_date: policy.end_date,
