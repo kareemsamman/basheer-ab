@@ -904,30 +904,6 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                 </dl>
               </Card>
               
-              <Card className="p-6">
-                <h3 className="font-semibold text-lg mb-4 flex items-center gap-2">
-                  <Users className="h-5 w-5 text-primary" />
-                  الوسيط
-                </h3>
-                {broker ? (
-                  <dl className="space-y-4">
-                    <div className="flex justify-between items-center py-2 border-b">
-                      <dt className="text-muted-foreground">اسم الوسيط</dt>
-                      <dd className="font-semibold">{broker.name}</dd>
-                    </div>
-                    <div className="flex justify-between items-center py-2">
-                      <dt className="text-muted-foreground">هاتف الوسيط</dt>
-                      <dd className="font-mono ltr-nums">{broker.phone || '-'}</dd>
-                    </div>
-                  </dl>
-                ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                    <p>لا يوجد وسيط مرتبط بهذا العميل</p>
-                  </div>
-                )}
-              </Card>
-              
               {/* Signature Section */}
               <ClientSignatureSection
                 clientId={client.id}
