@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { ExpiryBadge } from '@/components/shared/ExpiryBadge';
 import { PackagePaymentModal } from './PackagePaymentModal';
+import { SinglePolicyPaymentModal } from './SinglePolicyPaymentModal';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -158,6 +159,10 @@ export function PolicyTreeView({
   const [sendingPackage, setSendingPackage] = useState<string | null>(null);
   const [sendingPolicy, setSendingPolicy] = useState<string | null>(null);
   const [policyFilesInfo, setPolicyFilesInfo] = useState<PolicyFilesInfo>({});
+  
+  // Single policy payment modal state
+  const [singlePaymentOpen, setSinglePaymentOpen] = useState(false);
+  const [selectedSinglePolicy, setSelectedSinglePolicy] = useState<PolicyRecord | null>(null);
 
   // Fetch payment info and file info for all policies
   useEffect(() => {
@@ -347,6 +352,12 @@ export function PolicyTreeView({
     setSelectedPackagePolicyIds(policyIds);
     setSelectedBranchId(branchId);
     setPackagePaymentOpen(true);
+  };
+
+  const handleSinglePolicyPayment = (e: React.MouseEvent, policy: PolicyRecord) => {
+    e.stopPropagation();
+    setSelectedSinglePolicy(policy);
+    setSinglePaymentOpen(true);
   };
 
   const getPackagePaymentStatus = (group: PolicyGroup) => {
@@ -548,7 +559,7 @@ export function PolicyTreeView({
             isSending={sendingPolicy === group.mainPolicy!.id}
             isSendingPackage={sendingPackage === groupKey}
             onPackagePayment={(e) => handlePackagePayment(e, allPolicyIds, group.mainPolicy?.branch_id || null)}
-            onTransfer={onTransferPolicy}
+            onSinglePayment={(e) => handleSinglePolicyPayment(e, group.mainPolicy!)}
             onCancel={onCancelPolicy}
             onTransferPackage={onTransferPackage}
             onCancelPackage={onCancelPackage}
@@ -569,6 +580,22 @@ export function PolicyTreeView({
           refreshPaymentInfo();
         }}
       />
+
+      {/* Single Policy Payment Modal */}
+      {selectedSinglePolicy && (
+        <SinglePolicyPaymentModal
+          open={singlePaymentOpen}
+          onOpenChange={setSinglePaymentOpen}
+          policyId={selectedSinglePolicy.id}
+          policyType={selectedSinglePolicy.policy_type_parent}
+          policyTypeChild={selectedSinglePolicy.policy_type_child}
+          insurancePrice={selectedSinglePolicy.insurance_price}
+          onSuccess={() => {
+            if (onPaymentAdded) onPaymentAdded();
+            refreshPaymentInfo();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -590,6 +617,7 @@ function UnifiedPolicyCard({
   isSending,
   isSendingPackage,
   onPackagePayment,
+  onSinglePayment,
   onTransfer,
   onCancel,
   onTransferPackage,
@@ -612,6 +640,7 @@ function UnifiedPolicyCard({
   isSending?: boolean;
   isSendingPackage?: boolean;
   onPackagePayment?: (e: React.MouseEvent) => void;
+  onSinglePayment?: (e: React.MouseEvent) => void;
   onTransfer?: (policyId: string) => void;
   onCancel?: (policyId: string) => void;
   onTransferPackage?: (policyIds: string[]) => void;
@@ -812,6 +841,7 @@ function PolicyCardHeader({
   onSendPackageInvoice,
   allPolicyIds,
   onPackagePayment,
+  onSinglePayment,
   onTransfer,
   onCancel,
   onTransferPackage,
@@ -835,6 +865,7 @@ function PolicyCardHeader({
   onSendPackageInvoice?: (e: React.MouseEvent, policyIds: string[], groupKey: string) => void;
   allPolicyIds?: string[];
   onPackagePayment?: (e: React.MouseEvent) => void;
+  onSinglePayment?: (e: React.MouseEvent) => void;
   onTransfer?: (policyId: string) => void;
   onCancel?: (policyId: string) => void;
   onTransferPackage?: (policyIds: string[]) => void;
@@ -926,6 +957,8 @@ function PolicyCardHeader({
                 e.stopPropagation();
                 if (isPackage && onPackagePayment) {
                   onPackagePayment(e);
+                } else if (!isPackage && onSinglePayment) {
+                  onSinglePayment(e);
                 }
               }}
             >
