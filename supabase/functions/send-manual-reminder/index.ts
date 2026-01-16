@@ -22,9 +22,9 @@ const POLICY_TYPE_LABELS: Record<string, string> = {
 function getPolicyTypeLabel(parent: string | null, child: string | null): string {
   if (!parent) return '';
   const parentLabel = POLICY_TYPE_LABELS[parent] || parent;
-  if (child) {
-    const childLabel = child === 'THIRD_FULL' ? 'شامل' : child === 'THIRD_ONLY' ? 'طرف ثالث' : child;
-    return `${parentLabel} - ${childLabel}`;
+  if (child && parent === 'THIRD_FULL') {
+    const childLabel = child === 'FULL' ? 'شامل' : child === 'THIRD' ? 'ثالث' : child;
+    return childLabel; // Just show child label for THIRD_FULL
   }
   return parentLabel;
 }
