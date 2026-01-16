@@ -199,12 +199,25 @@ export function DebtPaymentModal({
   const getPreviewUrls = (paymentId: string) => previewUrls[paymentId] || [];
 
   const checkTranzilaEnabled = async () => {
-    const { data } = await supabase
-      .from('payment_settings')
-      .select('is_enabled')
-      .eq('provider', 'tranzila')
-      .single();
-    setTranzilaEnabled(data?.is_enabled || false);
+    try {
+      const { data, error } = await supabase
+        .from('payment_settings')
+        .select('is_enabled')
+        .eq('provider', 'tranzila')
+        .maybeSingle();
+      
+      if (error) {
+        console.error('Error checking Tranzila enabled:', error);
+        setTranzilaEnabled(false);
+        return;
+      }
+      
+      console.log('Tranzila enabled check result:', data);
+      setTranzilaEnabled(data?.is_enabled === true);
+    } catch (err) {
+      console.error('Exception checking Tranzila:', err);
+      setTranzilaEnabled(false);
+    }
   };
 
   const fetchPolicyPaymentInfo = async () => {
