@@ -5,11 +5,31 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, CreditCard, Banknote, Wallet, AlertCircle, CheckCircle, Package } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Card } from '@/components/ui/card';
+import { Loader2, CreditCard, Banknote, Wallet, AlertCircle, CheckCircle, Package, Plus, Trash2, Split, Upload, X, ImageIcon } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { TranzilaPaymentModal } from '@/components/payments/TranzilaPaymentModal';
+import { sanitizeChequeNumber, CHEQUE_NUMBER_MAX_LENGTH } from '@/lib/chequeUtils';
+import { useToast } from '@/hooks/use-toast';
+import type { Enums } from "@/integrations/supabase/types";
+
+interface PaymentLine {
+  id: string;
+  amount: number;
+  paymentType: 'cash' | 'cheque' | 'transfer' | 'visa';
+  paymentDate: string;
+  chequeNumber?: string;
+  notes?: string;
+  tranzilaPaid?: boolean;
+  pendingImages?: File[];
+}
+
+interface PreviewUrls {
+  [paymentId: string]: string[];
+}
 
 interface PolicyPaymentInfo {
   policyId: string;
@@ -43,8 +63,8 @@ const policyTypeLabels: Record<string, string> = {
 const paymentTypes = [
   { value: 'cash', label: 'نقدي', icon: Banknote },
   { value: 'cheque', label: 'شيك', icon: CreditCard },
+  { value: 'visa', label: 'فيزا', icon: CreditCard },
   { value: 'transfer', label: 'تحويل', icon: Wallet },
-  { value: 'visa', label: 'بطاقة ائتمان', icon: CreditCard },
 ];
 
 export function PackagePaymentModal({
@@ -54,40 +74,107 @@ export function PackagePaymentModal({
   branchId,
   onSuccess,
 }: PackagePaymentModalProps) {
+  const { toast: uiToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [policies, setPolicies] = useState<PolicyPaymentInfo[]>([]);
-  const [amount, setAmount] = useState('');
-  const [paymentType, setPaymentType] = useState('cash');
-  const [chequeNumber, setChequeNumber] = useState('');
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
-  const [notes, setNotes] = useState('');
-  const [tranzilaEnabled, setTranzilaEnabled] = useState(false);
+  const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
   const [tranzilaModalOpen, setTranzilaModalOpen] = useState(false);
-  const [activeTranzilaPolicyId, setActiveTranzilaPolicyId] = useState<string | null>(null);
+  const [activeVisaPaymentIndex, setActiveVisaPaymentIndex] = useState<number | null>(null);
+  const [splitPopoverOpen, setSplitPopoverOpen] = useState(false);
+  const [splitCount, setSplitCount] = useState(2);
+  const [previewUrls, setPreviewUrls] = useState<PreviewUrls>({});
 
   const totalRemaining = policies.reduce((sum, p) => sum + p.remaining, 0);
   const totalPrice = policies.reduce((sum, p) => sum + p.price, 0);
   const totalPaid = policies.reduce((sum, p) => sum + p.paid, 0);
-  const amountNum = parseFloat(amount) || 0;
-  const isOverpaying = amountNum > totalRemaining;
-  const isValid = amountNum > 0 && amountNum <= totalRemaining && (paymentType !== 'cheque' || chequeNumber.trim());
+  
+  // Calculate total payments - count paid visa payments as already completed
+  const paidVisaTotal = paymentLines
+    .filter(p => p.paymentType === 'visa' && p.tranzilaPaid)
+    .reduce((sum, p) => sum + (p.amount || 0), 0);
+  
+  const pendingPaymentsTotal = paymentLines
+    .filter(p => !(p.paymentType === 'visa' && p.tranzilaPaid))
+    .reduce((sum, p) => sum + (p.amount || 0), 0);
+  
+  const totalPaymentAmount = paymentLines.reduce((sum, p) => sum + (p.amount || 0), 0);
+  
+  // Remaining to pay should account for already completed visa payments
+  const effectiveRemaining = totalRemaining - paidVisaTotal;
+  const isOverpaying = pendingPaymentsTotal > effectiveRemaining;
+  
+  // Validation
+  const isValid = paymentLines.length > 0 && 
+    totalPaymentAmount > 0 && 
+    !isOverpaying &&
+    paymentLines.every(p => {
+      if (p.paymentType === 'cheque' && !p.chequeNumber?.trim()) return false;
+      if (p.paymentType === 'visa' && !p.tranzilaPaid && p.amount <= 0) return false;
+      return p.amount > 0;
+    });
 
   useEffect(() => {
     if (open && policyIds.length > 0) {
       fetchPolicyPaymentInfo();
-      checkTranzilaEnabled();
     }
   }, [open, policyIds]);
 
-  const checkTranzilaEnabled = async () => {
-    const { data } = await supabase
-      .from('payment_settings')
-      .select('is_enabled')
-      .eq('provider', 'tranzila')
-      .single();
-    setTranzilaEnabled(data?.is_enabled || false);
+  // Image handling functions
+  const handleImageSelect = (paymentId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    
+    const validFiles = files.filter(file => {
+      if (!file.type.startsWith('image/')) {
+        uiToast({ title: "خطأ", description: "يرجى اختيار صور فقط", variant: "destructive" });
+        return false;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        uiToast({ title: "خطأ", description: "حجم الصورة يجب أن يكون أقل من 10MB", variant: "destructive" });
+        return false;
+      }
+      return true;
+    });
+
+    if (validFiles.length === 0) return;
+
+    const newPreviewUrls = validFiles.map(file => URL.createObjectURL(file));
+    setPreviewUrls(prev => ({
+      ...prev,
+      [paymentId]: [...(prev[paymentId] || []), ...newPreviewUrls],
+    }));
+    
+    const payment = paymentLines.find(p => p.id === paymentId);
+    if (payment) {
+      const existingFiles = payment.pendingImages || [];
+      updatePaymentLine(paymentId, 'pendingImages', [...existingFiles, ...validFiles]);
+    }
   };
+
+  const removeImage = (paymentId: string, index: number) => {
+    const urls = previewUrls[paymentId] || [];
+    if (urls[index]) {
+      URL.revokeObjectURL(urls[index]);
+    }
+    
+    setPreviewUrls(prev => {
+      const newUrls = (prev[paymentId] || []).filter((_, i) => i !== index);
+      if (newUrls.length === 0) {
+        const { [paymentId]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [paymentId]: newUrls };
+    });
+    
+    const payment = paymentLines.find(p => p.id === paymentId);
+    if (payment && payment.pendingImages) {
+      const newFiles = payment.pendingImages.filter((_, i) => i !== index);
+      updatePaymentLine(paymentId, 'pendingImages', newFiles.length > 0 ? newFiles : undefined);
+    }
+  };
+
+  const getPreviewUrls = (paymentId: string) => previewUrls[paymentId] || [];
 
   const fetchPolicyPaymentInfo = async () => {
     setLoading(true);
@@ -125,6 +212,16 @@ export function PackagePaymentModal({
       }));
 
       setPolicies(policyInfo);
+
+      // Initialize with single payment line for remaining amount
+      const currentRemaining = policyInfo.reduce((sum, p) => sum + p.remaining, 0);
+      setPaymentLines([{
+        id: crypto.randomUUID(),
+        amount: currentRemaining > 0 ? currentRemaining : 0,
+        paymentType: 'cash',
+        paymentDate: new Date().toISOString().split('T')[0],
+      }]);
+      setPreviewUrls({});
     } catch (error) {
       console.error('Error fetching policy payment info:', error);
       toast.error('خطأ في جلب بيانات الدفع');
@@ -133,29 +230,137 @@ export function PackagePaymentModal({
     }
   };
 
-  const calculateSplitPayments = () => {
-    // Split payment proportionally based on remaining amounts
+  const addPaymentLine = () => {
+    setPaymentLines([
+      ...paymentLines,
+      {
+        id: crypto.randomUUID(),
+        amount: 0,
+        paymentType: 'cash',
+        paymentDate: new Date().toISOString().split('T')[0],
+      },
+    ]);
+  };
+
+  const removePaymentLine = (id: string) => {
+    if (paymentLines.length > 1) {
+      // Clean up preview URLs
+      const urls = previewUrls[id] || [];
+      urls.forEach(url => URL.revokeObjectURL(url));
+      setPreviewUrls(prev => {
+        const { [id]: _, ...rest } = prev;
+        return rest;
+      });
+      setPaymentLines(paymentLines.filter(p => p.id !== id));
+    }
+  };
+
+  const updatePaymentLine = (id: string, field: keyof PaymentLine, value: any) => {
+    setPaymentLines(paymentLines.map(p => p.id === id ? { ...p, [field]: value } : p));
+  };
+
+  const handleSplitPayments = () => {
+    if (splitCount < 2 || splitCount > 12 || totalRemaining <= 0) return;
+    
+    const amountPerInstallment = Math.floor(totalRemaining / splitCount);
+    const remainder = totalRemaining - (amountPerInstallment * splitCount);
+    
+    const today = new Date();
+    const newPayments: PaymentLine[] = [];
+    
+    for (let i = 0; i < splitCount; i++) {
+      const paymentDate = new Date(today);
+      paymentDate.setMonth(today.getMonth() + i);
+      
+      const amount = i === 0 ? amountPerInstallment + remainder : amountPerInstallment;
+      
+      newPayments.push({
+        id: crypto.randomUUID(),
+        amount,
+        paymentType: 'cash',
+        paymentDate: paymentDate.toISOString().split('T')[0],
+      });
+    }
+    
+    // Clean up old preview URLs
+    Object.values(previewUrls).flat().forEach(url => URL.revokeObjectURL(url));
+    setPreviewUrls({});
+    setPaymentLines(newPayments);
+    setSplitPopoverOpen(false);
+  };
+
+  const handleVisaPayClick = (index: number) => {
+    const payment = paymentLines[index];
+    if (!payment || payment.amount <= 0) return;
+
+    setActiveVisaPaymentIndex(index);
+    setTranzilaModalOpen(true);
+  };
+
+  const handleTranzilaSuccess = () => {
+    setTranzilaModalOpen(false);
+    
+    if (activeVisaPaymentIndex !== null) {
+      updatePaymentLine(paymentLines[activeVisaPaymentIndex].id, 'tranzilaPaid', true);
+    }
+    
+    setActiveVisaPaymentIndex(null);
+  };
+
+  // Upload images helper
+  const uploadPaymentImages = async (paymentId: string, files: File[]): Promise<void> => {
+    if (files.length === 0) return;
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('entity_type', 'payment');
+      formData.append('entity_id', paymentId);
+
+      try {
+        const { data, error } = await supabase.functions.invoke('upload-media', {
+          body: formData,
+        });
+
+        if (!error && (data?.file?.cdn_url || data?.url)) {
+          const cdnUrl = data.file?.cdn_url || data.url;
+          const imageType = i === 0 ? 'front' : i === 1 ? 'back' : 'receipt';
+          await supabase.from('payment_images').insert({
+            payment_id: paymentId,
+            image_url: cdnUrl,
+            image_type: imageType,
+            sort_order: i,
+          });
+        }
+      } catch (err) {
+        console.error('Error uploading payment image:', err);
+      }
+    }
+  };
+
+  // Calculate proportional splits for a given amount
+  const calculateSplitPayments = (amount: number) => {
     const splits: { policyId: string; amount: number }[] = [];
     
-    if (amountNum <= 0 || totalRemaining <= 0) return splits;
+    if (amount <= 0 || totalRemaining <= 0) return splits;
 
-    // Calculate proportion for each policy
     policies.forEach(policy => {
       if (policy.remaining > 0) {
         const proportion = policy.remaining / totalRemaining;
-        const policyPayment = Math.min(amountNum * proportion, policy.remaining);
+        const policyPayment = Math.min(amount * proportion, policy.remaining);
         if (policyPayment > 0) {
           splits.push({
             policyId: policy.policyId,
-            amount: Math.round(policyPayment * 100) / 100, // Round to 2 decimals
+            amount: Math.round(policyPayment * 100) / 100,
           });
         }
       }
     });
 
-    // Adjust for rounding errors - add/subtract from first payment
+    // Adjust for rounding errors
     const totalSplit = splits.reduce((sum, s) => sum + s.amount, 0);
-    const diff = amountNum - totalSplit;
+    const diff = amount - totalSplit;
     if (splits.length > 0 && Math.abs(diff) > 0.001) {
       splits[0].amount = Math.round((splits[0].amount + diff) * 100) / 100;
     }
@@ -166,100 +371,72 @@ export function PackagePaymentModal({
   const handleSubmit = async () => {
     if (!isValid) return;
 
-    // If Visa selected, use Tranzila flow
-    if (paymentType === 'visa') {
-      if (!tranzilaEnabled) {
-        toast.error('الدفع بالبطاقة غير مفعل');
-        return;
-      }
-      // Use first policy for Tranzila, then after success split into all policies
-      const firstPolicy = policies.find(p => p.remaining > 0);
-      if (firstPolicy) {
-        setActiveTranzilaPolicyId(firstPolicy.policyId);
-        setTranzilaModalOpen(true);
-      }
-      return;
-    }
-
-    const splits = calculateSplitPayments();
-    if (splits.length === 0) {
-      toast.error('لا توجد دفعات للإضافة');
+    // Check for unpaid visa payments
+    const unpaidVisaPayments = paymentLines.filter(p => p.paymentType === 'visa' && !p.tranzilaPaid);
+    if (unpaidVisaPayments.length > 0) {
+      uiToast({ title: "تنبيه", description: "يرجى إتمام الدفع بالبطاقة أولاً", variant: "destructive" });
       return;
     }
 
     setSaving(true);
     try {
-      // Create payment records for each policy
-      const payments = splits.map(split => ({
-        policy_id: split.policyId,
-        amount: split.amount,
-        payment_type: paymentType as 'cash' | 'cheque' | 'transfer' | 'visa',
-        payment_date: paymentDate,
-        cheque_number: paymentType === 'cheque' ? chequeNumber : null,
-        notes: notes || `دفعة من باقة (${policies.length} وثائق)`,
-        branch_id: branchId,
-      }));
+      for (const paymentLine of paymentLines) {
+        // Skip already paid visa payments (already recorded via Tranzila)
+        if (paymentLine.paymentType === 'visa' && paymentLine.tranzilaPaid) {
+          continue;
+        }
 
-      const { error } = await supabase
-        .from('policy_payments')
-        .insert(payments);
+        // Split the payment proportionally across policies
+        const splits = calculateSplitPayments(paymentLine.amount);
 
-      if (error) throw error;
+        for (const split of splits) {
+          const { data, error } = await supabase
+            .from('policy_payments')
+            .insert({
+              policy_id: split.policyId,
+              amount: split.amount,
+              payment_type: paymentLine.paymentType as Enums<'payment_type'>,
+              payment_date: paymentLine.paymentDate,
+              cheque_number: paymentLine.paymentType === 'cheque' ? paymentLine.chequeNumber : null,
+              cheque_status: paymentLine.paymentType === 'cheque' ? 'pending' : null,
+              refused: false,
+              notes: paymentLine.notes || `دفعة من باقة (${policies.length} وثائق)`,
+              branch_id: branchId,
+            })
+            .select('id')
+            .single();
 
-      toast.success(`تم إضافة ${splits.length} دفعات بنجاح`);
+          if (error) throw error;
+
+          // Upload images for first split only (to avoid duplicates)
+          if (paymentLine.pendingImages && paymentLine.pendingImages.length > 0 && data && split === splits[0]) {
+            await uploadPaymentImages(data.id, paymentLine.pendingImages);
+          }
+        }
+      }
+
+      toast.success(`تمت إضافة الدفعات بنجاح`);
       onOpenChange(false);
       onSuccess();
-      
-      // Reset form
-      setAmount('');
-      setChequeNumber('');
-      setNotes('');
-      setPaymentType('cash');
     } catch (error: any) {
-      console.error('Error saving payments:', error);
-      toast.error(error.message || 'خطأ في حفظ الدفعات');
+      console.error('Error adding payments:', error);
+      if (error.message?.includes('Payment total exceeds')) {
+        toast.error('مجموع الدفعات يتجاوز سعر التأمين');
+      } else {
+        toast.error('فشل في إضافة الدفعات');
+      }
     } finally {
       setSaving(false);
     }
   };
 
-  const handleTranzilaSuccess = async () => {
-    setTranzilaModalOpen(false);
-    // Tranzila only creates payment for one policy
-    // We need to create additional split payments for other policies
-    const splits = calculateSplitPayments();
-    const otherSplits = splits.filter(s => s.policyId !== activeTranzilaPolicyId);
-    
-    if (otherSplits.length > 0) {
-      try {
-        const payments = otherSplits.map(split => ({
-          policy_id: split.policyId,
-          amount: split.amount,
-          payment_type: 'visa' as const,
-          payment_date: new Date().toISOString().split('T')[0],
-          notes: notes || `دفعة من باقة (${policies.length} وثائق)`,
-          branch_id: branchId,
-        }));
-
-        await supabase.from('policy_payments').insert(payments);
-      } catch (error) {
-        console.error('Error creating additional payments:', error);
-      }
-    }
-
-    toast.success('تم الدفع بنجاح');
-    onOpenChange(false);
-    onSuccess();
-    setAmount('');
-    setNotes('');
-    setPaymentType('cash');
-  };
-
-  const splits = calculateSplitPayments();
+  // Get first policy for Tranzila
+  const firstPolicyId = policies.find(p => p.remaining > 0)?.policyId;
+  const activeVisaPayment = activeVisaPaymentIndex !== null ? paymentLines[activeVisaPaymentIndex] : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" dir="rtl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5 text-primary" />
@@ -268,29 +445,34 @@ export function PackagePaymentModal({
         </DialogHeader>
 
         {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : totalRemaining <= 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 gap-3">
+            <CheckCircle className="h-12 w-12 text-success" />
+            <p className="text-lg font-medium">هذه الباقة مدفوعة بالكامل</p>
           </div>
         ) : (
           <div className="space-y-4">
             {/* Summary Cards */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="bg-muted/50 rounded-lg p-3 text-center">
-                <p className="text-xs text-muted-foreground">إجمالي السعر</p>
+            <div className="grid grid-cols-3 gap-2">
+              <Card className="p-3 text-center bg-muted/50">
+                <p className="text-xs text-muted-foreground mb-1">إجمالي السعر</p>
                 <p className="text-lg font-bold">₪{totalPrice.toLocaleString()}</p>
-              </div>
-              <div className="bg-success/10 rounded-lg p-3 text-center">
-                <p className="text-xs text-muted-foreground">المدفوع</p>
-                <p className="text-lg font-bold text-success">₪{totalPaid.toLocaleString()}</p>
-              </div>
-              <div className="bg-destructive/10 rounded-lg p-3 text-center">
-                <p className="text-xs text-muted-foreground">المتبقي</p>
-                <p className="text-lg font-bold text-destructive">₪{totalRemaining.toLocaleString()}</p>
-              </div>
+              </Card>
+              <Card className="p-3 text-center bg-green-50 dark:bg-green-950/20">
+                <p className="text-xs text-muted-foreground mb-1">المدفوع</p>
+                <p className="text-lg font-bold text-success">₪{(totalPaid + paidVisaTotal).toLocaleString()}</p>
+              </Card>
+              <Card className="p-3 text-center bg-red-50 dark:bg-red-950/20">
+                <p className="text-xs text-muted-foreground mb-1">المتبقي</p>
+                <p className="text-lg font-bold text-destructive">₪{effectiveRemaining.toLocaleString()}</p>
+              </Card>
             </div>
 
             {/* Policy List */}
-            <div className="border rounded-lg divide-y max-h-40 overflow-auto">
+            <div className="border rounded-lg divide-y max-h-32 overflow-auto">
               {policies.map(policy => (
                 <div key={policy.policyId} className="flex items-center justify-between p-2 text-sm">
                   <Badge variant="outline" className="text-xs">
@@ -309,123 +491,221 @@ export function PackagePaymentModal({
               ))}
             </div>
 
-            {/* Payment Form */}
+            {/* Payment Lines */}
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>المبلغ</Label>
-                  <Input
-                    type="number"
-                    value={amount}
-                    onChange={e => setAmount(e.target.value)}
-                    placeholder={`أقصى: ₪${totalRemaining.toLocaleString()}`}
-                    className={isOverpaying ? 'border-destructive' : ''}
-                  />
-                  {isOverpaying && (
-                    <p className="text-xs text-destructive mt-1 flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3" />
-                      المبلغ أكبر من المتبقي
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <Label>طريقة الدفع</Label>
-                  <Select value={paymentType} onValueChange={setPaymentType}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {paymentTypes
-                        .filter(pt => pt.value !== 'visa' || tranzilaEnabled)
-                        .map(pt => (
-                          <SelectItem key={pt.value} value={pt.value}>
-                            <span className="flex items-center gap-2">
-                              <pt.icon className="h-4 w-4" />
-                              {pt.label}
-                            </span>
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>تاريخ الدفع</Label>
-                  <Input
-                    type="date"
-                    value={paymentDate}
-                    onChange={e => setPaymentDate(e.target.value)}
-                  />
-                </div>
-                {paymentType === 'cheque' && (
-                  <div>
-                    <Label>رقم الشيك</Label>
-                    <Input
-                      value={chequeNumber}
-                      onChange={e => setChequeNumber(e.target.value)}
-                      placeholder="رقم الشيك"
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <Label>ملاحظات (اختياري)</Label>
-                <Input
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
-                  placeholder="ملاحظات إضافية"
-                />
-              </div>
-            </div>
-
-            {/* Split Preview */}
-            {amountNum > 0 && !isOverpaying && splits.length > 0 && (
-              <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
-                <p className="text-xs font-medium text-primary mb-2 flex items-center gap-1">
-                  <CheckCircle className="h-3 w-3" />
-                  توزيع الدفعة على الوثائق:
-                </p>
-                <div className="space-y-1">
-                  {splits.map(split => {
-                    const policy = policies.find(p => p.policyId === split.policyId);
-                    return (
-                      <div key={split.policyId} className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">
-                          {policy ? policyTypeLabels[policy.policyType] : split.policyId}
-                        </span>
-                        <span className="font-medium">₪{split.amount.toLocaleString()}</span>
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-semibold">الدفعات</Label>
+                <div className="flex items-center gap-2">
+                  <Popover open={splitPopoverOpen} onOpenChange={setSplitPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" disabled={totalRemaining <= 0}>
+                        <Split className="h-4 w-4 ml-2" />
+                        تقسيط
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-60" align="end">
+                      <div className="space-y-3">
+                        <Label>عدد الأقساط</Label>
+                        <Input
+                          type="number"
+                          min={2}
+                          max={12}
+                          value={splitCount}
+                          onChange={e => setSplitCount(parseInt(e.target.value) || 2)}
+                        />
+                        <Button onClick={handleSplitPayments} className="w-full">
+                          تقسيم إلى {splitCount} دفعات
+                        </Button>
                       </div>
-                    );
-                  })}
+                    </PopoverContent>
+                  </Popover>
+                  <Button variant="outline" size="sm" onClick={addPaymentLine}>
+                    <Plus className="h-4 w-4 ml-2" />
+                    إضافة دفعة
+                  </Button>
                 </div>
               </div>
-            )}
+
+              {paymentLines.map((payment, index) => (
+                <Card key={payment.id} className={cn(
+                  "p-3",
+                  payment.tranzilaPaid && "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800"
+                )}>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-muted-foreground">دفعة {index + 1}</span>
+                      {paymentLines.length > 1 && !payment.tranzilaPaid && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive hover:text-destructive"
+                          onClick={() => removePaymentLine(payment.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {payment.tranzilaPaid && (
+                        <Badge variant="success" className="gap-1">
+                          <CheckCircle className="h-3 w-3" />
+                          تم الدفع
+                        </Badge>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs">المبلغ</Label>
+                        <Input
+                          type="number"
+                          value={payment.amount || ''}
+                          onChange={e => updatePaymentLine(payment.id, 'amount', parseFloat(e.target.value) || 0)}
+                          placeholder={`أقصى: ₪${effectiveRemaining.toLocaleString()}`}
+                          disabled={payment.tranzilaPaid}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">طريقة الدفع</Label>
+                        <Select
+                          value={payment.paymentType}
+                          onValueChange={(val) => updatePaymentLine(payment.id, 'paymentType', val)}
+                          disabled={payment.tranzilaPaid}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {paymentTypes.map(pt => (
+                              <SelectItem key={pt.value} value={pt.value}>
+                                <span className="flex items-center gap-2">
+                                  <pt.icon className="h-4 w-4" />
+                                  {pt.label}
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs">تاريخ الدفع</Label>
+                        <Input
+                          type="date"
+                          value={payment.paymentDate}
+                          onChange={e => updatePaymentLine(payment.id, 'paymentDate', e.target.value)}
+                          disabled={payment.tranzilaPaid}
+                        />
+                      </div>
+                      {payment.paymentType === 'cheque' && (
+                        <div>
+                          <Label className="text-xs">رقم الشيك</Label>
+                          <Input
+                            value={payment.chequeNumber || ''}
+                            onChange={e => updatePaymentLine(payment.id, 'chequeNumber', sanitizeChequeNumber(e.target.value))}
+                            maxLength={CHEQUE_NUMBER_MAX_LENGTH}
+                            placeholder="رقم الشيك"
+                            disabled={payment.tranzilaPaid}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Visa Pay Button */}
+                    {payment.paymentType === 'visa' && !payment.tranzilaPaid && (
+                      <Button
+                        variant="outline"
+                        className="w-full border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+                        onClick={() => handleVisaPayClick(index)}
+                        disabled={payment.amount <= 0}
+                      >
+                        <CreditCard className="h-4 w-4 ml-2" />
+                        دفع ₪{(payment.amount || 0).toLocaleString()} بالبطاقة
+                      </Button>
+                    )}
+
+                    {/* Image Upload for cheque/transfer */}
+                    {(payment.paymentType === 'cheque' || payment.paymentType === 'transfer') && !payment.tranzilaPaid && (
+                      <div className="space-y-2">
+                        <Label className="text-xs flex items-center gap-1">
+                          <ImageIcon className="h-3 w-3" />
+                          صورة {payment.paymentType === 'cheque' ? 'الشيك' : 'الحوالة'}
+                        </Label>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {getPreviewUrls(payment.id).map((url, imgIndex) => (
+                            <div key={imgIndex} className="relative">
+                              <img
+                                src={url}
+                                alt="Preview"
+                                className="h-16 w-16 object-cover rounded border"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeImage(payment.id, imgIndex)}
+                                className="absolute -top-1 -right-1 bg-destructive text-white rounded-full p-0.5"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                          <label className="h-16 w-16 border-2 border-dashed rounded flex items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
+                            <Upload className="h-5 w-5 text-muted-foreground" />
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              className="hidden"
+                              onChange={(e) => handleImageSelect(payment.id, e)}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <Label className="text-xs">ملاحظات (اختياري)</Label>
+                      <Input
+                        value={payment.notes || ''}
+                        onChange={e => updatePaymentLine(payment.id, 'notes', e.target.value)}
+                        placeholder="ملاحظات إضافية"
+                        disabled={payment.tranzilaPaid}
+                      />
+                    </div>
+                  </div>
+                </Card>
+              ))}
+
+              {/* Overpaying Warning */}
+              {isOverpaying && (
+                <div className="flex items-center gap-2 text-destructive text-sm p-2 bg-destructive/10 rounded-lg">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>مجموع الدفعات أكبر من المبلغ المتبقي</span>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             إلغاء
           </Button>
-          <Button onClick={handleSubmit} disabled={!isValid || saving}>
+          <Button onClick={handleSubmit} disabled={!isValid || saving || totalRemaining <= 0}>
             {saving && <Loader2 className="h-4 w-4 animate-spin ml-2" />}
-            إضافة الدفعة
+            إضافة الدفعات
           </Button>
         </DialogFooter>
       </DialogContent>
 
       {/* Tranzila Payment Modal */}
-      {activeTranzilaPolicyId && (
+      {activeVisaPayment && firstPolicyId && (
         <TranzilaPaymentModal
           open={tranzilaModalOpen}
           onOpenChange={setTranzilaModalOpen}
-          policyId={activeTranzilaPolicyId}
-          amount={amountNum}
-          paymentDate={paymentDate}
-          notes={notes || `دفعة من باقة (${policies.length} وثائق)`}
+          policyId={firstPolicyId}
+          amount={activeVisaPayment.amount}
+          paymentDate={activeVisaPayment.paymentDate}
+          notes={activeVisaPayment.notes || `دفعة من باقة (${policies.length} وثائق)`}
           onSuccess={handleTranzilaSuccess}
           onFailure={() => setTranzilaModalOpen(false)}
         />
