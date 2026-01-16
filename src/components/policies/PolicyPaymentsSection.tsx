@@ -6,10 +6,11 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Pencil, Trash2, CreditCard, Loader2, ImageIcon, X, AlertCircle, Upload, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
+import { Plus, Pencil, Trash2, CreditCard, Loader2, ImageIcon, X, AlertCircle, Upload, ChevronLeft, ChevronRight, RotateCcw, Split, Banknote, Wallet, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal";
@@ -44,6 +45,21 @@ interface PolicyPaymentsSectionProps {
   onAutoOpenHandled?: () => void;
 }
 
+interface PaymentLine {
+  id: string;
+  amount: number;
+  paymentType: 'cash' | 'cheque' | 'transfer' | 'visa';
+  paymentDate: string;
+  chequeNumber?: string;
+  notes?: string;
+  tranzilaPaid?: boolean;
+  pendingImages?: File[];
+}
+
+interface PreviewUrls {
+  [paymentId: string]: string[];
+}
+
 const paymentTypeLabels: Record<string, string> = {
   "cash": "نقدي",
   "cheque": "شيك",
@@ -51,11 +67,11 @@ const paymentTypeLabels: Record<string, string> = {
   "transfer": "تحويل",
 };
 
-const PAYMENT_TYPES = [
-  { value: "cash", label: "نقدي" },
-  { value: "cheque", label: "شيك" },
-  { value: "visa", label: "فيزا" },
-  { value: "transfer", label: "تحويل" },
+const paymentTypes = [
+  { value: 'cash', label: 'نقدي', icon: Banknote },
+  { value: 'cheque', label: 'شيك', icon: CreditCard },
+  { value: 'transfer', label: 'تحويل', icon: Wallet },
+  { value: 'visa', label: 'بطاقة ائتمان', icon: CreditCard },
 ];
 
 const chequeStatusLabels: Record<string, { label: string; variant: "default" | "secondary" | "destructive" }> = {
@@ -79,24 +95,18 @@ export function PolicyPaymentsSection({
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [validationError, setValidationError] = useState<string | null>(null);
   const [tranzilaEnabled, setTranzilaEnabled] = useState(false);
   const [tranzilaModalOpen, setTranzilaModalOpen] = useState(false);
-  const [pendingTranzilaPayment, setPendingTranzilaPayment] = useState<{
-    amount: number;
-    date: string;
-    notes: string;
-  } | null>(null);
 
-  // Image handling states
-  const [uploadingImages, setUploadingImages] = useState(false);
-  const [pendingImages, setPendingImages] = useState<File[]>([]);
-  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
-  const [galleryImages, setGalleryImages] = useState<string[]>([]);
-  const [galleryOpen, setGalleryOpen] = useState(false);
-  const [galleryIndex, setGalleryIndex] = useState(0);
+  // Multi-line payment states
+  const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
+  const [activeVisaPaymentIndex, setActiveVisaPaymentIndex] = useState<number | null>(null);
+  const [splitPopoverOpen, setSplitPopoverOpen] = useState(false);
+  const [splitCount, setSplitCount] = useState(2);
+  const [previewUrls, setPreviewUrls] = useState<PreviewUrls>({});
 
-  const [formData, setFormData] = useState({
+  // Edit form state (for single payment edit)
+  const [editFormData, setEditFormData] = useState({
     amount: "",
     payment_type: "cash",
     payment_date: new Date().toISOString().split('T')[0],
@@ -104,10 +114,36 @@ export function PolicyPaymentsSection({
     refused: false,
     notes: "",
   });
+  const [editValidationError, setEditValidationError] = useState<string | null>(null);
+  const [editPendingImages, setEditPendingImages] = useState<File[]>([]);
+  const [editPreviewUrls, setEditPreviewUrls] = useState<string[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
 
-  // Calculate total paid (excluding refused)
+  // Calculate totals
   const totalPaid = payments.filter(p => !p.refused).reduce((sum, p) => sum + p.amount, 0);
   const remaining = insurancePrice - totalPaid;
+
+  // Calculate payment lines total
+  const paidVisaTotal = paymentLines
+    .filter(p => p.paymentType === 'visa' && p.tranzilaPaid)
+    .reduce((sum, p) => sum + (p.amount || 0), 0);
+  
+  const pendingPaymentsTotal = paymentLines
+    .filter(p => !(p.paymentType === 'visa' && p.tranzilaPaid))
+    .reduce((sum, p) => sum + (p.amount || 0), 0);
+  
+  const totalPaymentAmount = paymentLines.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const effectiveRemaining = remaining - paidVisaTotal;
+  const isOverpaying = pendingPaymentsTotal > effectiveRemaining;
+  
+  const isValid = paymentLines.length > 0 && 
+    totalPaymentAmount > 0 && 
+    !isOverpaying &&
+    paymentLines.every(p => {
+      if (p.paymentType === 'cheque' && !p.chequeNumber?.trim()) return false;
+      if (p.paymentType === 'visa' && !p.tranzilaPaid && p.amount <= 0) return false;
+      return p.amount > 0;
+    });
 
   // Check if Tranzila is enabled
   useEffect(() => {
@@ -129,29 +165,91 @@ export function PolicyPaymentsSection({
   // Auto-open add dialog when triggered from parent
   useEffect(() => {
     if (autoOpenAdd) {
-      setAddDialogOpen(true);
-      setFormData(f => ({ ...f, amount: remaining > 0 ? remaining.toString() : "" }));
+      openAddDialog();
       onAutoOpenHandled?.();
     }
-  }, [autoOpenAdd, remaining, onAutoOpenHandled]);
+  }, [autoOpenAdd, onAutoOpenHandled]);
 
-  const resetForm = () => {
-    setFormData({
-      amount: "",
-      payment_type: "cash",
-      payment_date: new Date().toISOString().split('T')[0],
-      cheque_number: "",
-      refused: false,
-      notes: "",
-    });
-    setValidationError(null);
-    // Clear images
-    previewUrls.forEach(url => URL.revokeObjectURL(url));
-    setPendingImages([]);
-    setPreviewUrls([]);
+  const openAddDialog = () => {
+    const initialAmount = remaining > 0 ? remaining : 0;
+    setPaymentLines([{
+      id: crypto.randomUUID(),
+      amount: initialAmount,
+      paymentType: 'cash',
+      paymentDate: new Date().toISOString().split('T')[0],
+    }]);
+    setPreviewUrls({});
+    setAddDialogOpen(true);
   };
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const resetAddForm = () => {
+    Object.values(previewUrls).flat().forEach(url => URL.revokeObjectURL(url));
+    setPaymentLines([]);
+    setPreviewUrls({});
+  };
+
+  // Multi-line payment functions
+  const addPaymentLine = () => {
+    setPaymentLines([
+      ...paymentLines,
+      {
+        id: crypto.randomUUID(),
+        amount: 0,
+        paymentType: 'cash',
+        paymentDate: new Date().toISOString().split('T')[0],
+      },
+    ]);
+  };
+
+  const removePaymentLine = (id: string) => {
+    if (paymentLines.length > 1) {
+      // Clean up preview URLs for this payment
+      const urls = previewUrls[id] || [];
+      urls.forEach(url => URL.revokeObjectURL(url));
+      setPreviewUrls(prev => {
+        const { [id]: _, ...rest } = prev;
+        return rest;
+      });
+      setPaymentLines(paymentLines.filter(p => p.id !== id));
+    }
+  };
+
+  const updatePaymentLine = (id: string, field: keyof PaymentLine, value: any) => {
+    setPaymentLines(paymentLines.map(p => p.id === id ? { ...p, [field]: value } : p));
+  };
+
+  const handleSplitPayments = () => {
+    if (splitCount < 2 || splitCount > 12 || remaining <= 0) return;
+    
+    const amountPerInstallment = Math.floor(remaining / splitCount);
+    const remainder = remaining - (amountPerInstallment * splitCount);
+    
+    const today = new Date();
+    const newPayments: PaymentLine[] = [];
+    
+    for (let i = 0; i < splitCount; i++) {
+      const paymentDate = new Date(today);
+      paymentDate.setMonth(today.getMonth() + i);
+      
+      const amount = i === 0 ? amountPerInstallment + remainder : amountPerInstallment;
+      
+      newPayments.push({
+        id: crypto.randomUUID(),
+        amount,
+        paymentType: 'cash',
+        paymentDate: paymentDate.toISOString().split('T')[0],
+      });
+    }
+    
+    // Clean up old preview URLs
+    Object.values(previewUrls).flat().forEach(url => URL.revokeObjectURL(url));
+    setPreviewUrls({});
+    setPaymentLines(newPayments);
+    setSplitPopoverOpen(false);
+  };
+
+  // Image handling for multi-line payments
+  const handleImageSelect = (paymentId: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
     
@@ -167,175 +265,252 @@ export function PolicyPaymentsSection({
       return true;
     });
 
-    setPendingImages(prev => [...prev, ...validFiles]);
-    validFiles.forEach(file => {
-      const url = URL.createObjectURL(file);
-      setPreviewUrls(prev => [...prev, url]);
-    });
-  };
+    if (validFiles.length === 0) return;
 
-  const removeImage = (index: number) => {
-    URL.revokeObjectURL(previewUrls[index]);
-    setPendingImages(prev => prev.filter((_, i) => i !== index));
-    setPreviewUrls(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const uploadImages = async (paymentId: string): Promise<void> => {
-    if (pendingImages.length === 0) return;
+    const newPreviewUrls = validFiles.map(file => URL.createObjectURL(file));
+    setPreviewUrls(prev => ({
+      ...prev,
+      [paymentId]: [...(prev[paymentId] || []), ...newPreviewUrls],
+    }));
     
-    setUploadingImages(true);
-    try {
-      for (let i = 0; i < pendingImages.length; i++) {
-        const file = pendingImages[i];
-        const uploadFormData = new FormData();
-        uploadFormData.append('file', file);
-        uploadFormData.append('entity_type', 'payment');
-        uploadFormData.append('entity_id', paymentId);
-        
-        const { data, error } = await supabase.functions.invoke('upload-media', {
-          body: uploadFormData,
-        });
-        
-        if (error) throw error;
-        
-        // Get the CDN URL from the response - upload-media returns { success, file: { cdn_url, ... } }
-        const cdnUrl = data.file?.cdn_url || data.url;
-        if (!cdnUrl) {
-          throw new Error('No URL returned from upload');
-        }
-        
-        const imageType = i === 0 ? 'front' : i === 1 ? 'back' : 'receipt';
-        await supabase.from('payment_images').insert({
-          payment_id: paymentId,
-          image_url: cdnUrl,
-          image_type: imageType,
-          sort_order: i,
-        });
+    const payment = paymentLines.find(p => p.id === paymentId);
+    if (payment) {
+      const existingFiles = payment.pendingImages || [];
+      updatePaymentLine(paymentId, 'pendingImages', [...existingFiles, ...validFiles]);
+    }
+  };
+
+  const removeImage = (paymentId: string, index: number) => {
+    const urls = previewUrls[paymentId] || [];
+    if (urls[index]) {
+      URL.revokeObjectURL(urls[index]);
+    }
+    
+    setPreviewUrls(prev => {
+      const newUrls = (prev[paymentId] || []).filter((_, i) => i !== index);
+      if (newUrls.length === 0) {
+        const { [paymentId]: _, ...rest } = prev;
+        return rest;
       }
-    } catch (error) {
-      console.error('Error uploading images:', error);
-      toast({ title: "تحذير", description: "تم حفظ الدفعة لكن فشل رفع بعض الصور", variant: "destructive" });
-    } finally {
-      setUploadingImages(false);
+      return { ...prev, [paymentId]: newUrls };
+    });
+    
+    const payment = paymentLines.find(p => p.id === paymentId);
+    if (payment && payment.pendingImages) {
+      const newFiles = payment.pendingImages.filter((_, i) => i !== index);
+      updatePaymentLine(paymentId, 'pendingImages', newFiles.length > 0 ? newFiles : undefined);
     }
   };
 
-  const validatePayment = (amount: number, isEdit: boolean = false, currentPaymentId?: string): boolean => {
-    if (formData.refused) {
-      setValidationError(null);
-      return true;
-    }
+  const getPreviewUrls = (paymentId: string) => previewUrls[paymentId] || [];
 
-    let otherPaymentsTotal = payments
-      .filter(p => !p.refused && (isEdit ? p.id !== currentPaymentId : true))
-      .reduce((sum, p) => sum + p.amount, 0);
+  // Visa payment handling
+  const handleVisaPayClick = (index: number) => {
+    const payment = paymentLines[index];
+    if (!payment || payment.amount <= 0) return;
     
-    const newTotal = otherPaymentsTotal + amount;
-    
-    if (newTotal > insurancePrice) {
-      const maxAllowed = insurancePrice - otherPaymentsTotal;
-      setValidationError(`المبلغ يتجاوز سعر التأمين! الحد الأقصى المسموح: ₪${maxAllowed.toLocaleString('ar-EG')}`);
-      return false;
-    }
-    
-    setValidationError(null);
-    return true;
-  };
-
-  const handleAmountChange = (value: string, isEdit: boolean = false, currentPaymentId?: string) => {
-    setFormData(f => ({ ...f, amount: value }));
-    const amount = parseFloat(value) || 0;
-    if (amount > 0) {
-      validatePayment(amount, isEdit, currentPaymentId);
-    } else {
-      setValidationError(null);
-    }
-  };
-
-  const handleAdd = async () => {
-    const amount = parseFloat(formData.amount) || 0;
-    if (amount <= 0) {
-      toast({ title: "خطأ", description: "الرجاء إدخال مبلغ صحيح", variant: "destructive" });
+    if (!tranzilaEnabled) {
+      toast({ title: "خطأ", description: "الدفع بالبطاقة غير مفعل", variant: "destructive" });
       return;
     }
 
-    if (!validatePayment(amount)) return;
+    setActiveVisaPaymentIndex(index);
+    setTranzilaModalOpen(true);
+  };
 
-    // Validate cheque number
-    if (formData.payment_type === 'cheque' && !formData.cheque_number.trim()) {
-      toast({ title: "خطأ", description: "الرجاء إدخال رقم الشيك", variant: "destructive" });
-      return;
+  const handleTranzilaSuccess = () => {
+    setTranzilaModalOpen(false);
+    
+    if (activeVisaPaymentIndex !== null) {
+      updatePaymentLine(paymentLines[activeVisaPaymentIndex].id, 'tranzilaPaid', true);
     }
+    
+    setActiveVisaPaymentIndex(null);
+  };
 
-    // Tranzila flow for Visa
-    if (formData.payment_type === 'visa' && tranzilaEnabled) {
-      setPendingTranzilaPayment({ amount, date: formData.payment_date, notes: formData.notes });
-      setAddDialogOpen(false);
-      setTranzilaModalOpen(true);
+  const handleTranzilaFailure = () => {
+    setTranzilaModalOpen(false);
+    setActiveVisaPaymentIndex(null);
+  };
+
+  // Upload images helper
+  const uploadPaymentImages = async (paymentId: string, files: File[]): Promise<void> => {
+    if (files.length === 0) return;
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('entity_type', 'payment');
+      formData.append('entity_id', paymentId);
+
+      try {
+        const { data, error } = await supabase.functions.invoke('upload-media', {
+          body: formData,
+        });
+
+        if (!error && (data?.file?.cdn_url || data?.url)) {
+          const cdnUrl = data.file?.cdn_url || data.url;
+          const imageType = i === 0 ? 'front' : i === 1 ? 'back' : 'receipt';
+          await supabase.from('payment_images').insert({
+            payment_id: paymentId,
+            image_url: cdnUrl,
+            image_type: imageType,
+            sort_order: i,
+          });
+        }
+      } catch (err) {
+        console.error('Error uploading payment image:', err);
+      }
+    }
+  };
+
+  // Submit multi-line payments
+  const handleAddMultiPayments = async () => {
+    if (!isValid) return;
+
+    // Check for unpaid visa payments
+    const unpaidVisaPayments = paymentLines.filter(p => p.paymentType === 'visa' && !p.tranzilaPaid);
+    if (unpaidVisaPayments.length > 0) {
+      toast({ title: "تنبيه", description: "يرجى إتمام الدفع بالبطاقة أولاً", variant: "destructive" });
       return;
     }
 
     setSaving(true);
     try {
-      const { data, error } = await supabase
-        .from('policy_payments')
-        .insert({
-          policy_id: policyId,
-          amount: amount,
-          payment_type: formData.payment_type as Enums<'payment_type'>,
-          payment_date: formData.payment_date,
-          cheque_number: formData.payment_type === 'cheque' ? formData.cheque_number : null,
-          cheque_status: formData.payment_type === 'cheque' ? 'pending' : null,
-          refused: formData.refused,
-          notes: formData.notes || null,
-        })
-        .select('id')
-        .single();
+      for (const paymentLine of paymentLines) {
+        // Skip already paid visa payments
+        if (paymentLine.paymentType === 'visa' && paymentLine.tranzilaPaid) {
+          continue;
+        }
 
-      if (error) throw error;
+        const { data, error } = await supabase
+          .from('policy_payments')
+          .insert({
+            policy_id: policyId,
+            amount: paymentLine.amount,
+            payment_type: paymentLine.paymentType as Enums<'payment_type'>,
+            payment_date: paymentLine.paymentDate,
+            cheque_number: paymentLine.paymentType === 'cheque' ? paymentLine.chequeNumber : null,
+            cheque_status: paymentLine.paymentType === 'cheque' ? 'pending' : null,
+            refused: false,
+            notes: paymentLine.notes || null,
+          })
+          .select('id')
+          .single();
 
-      // Upload images if any
-      if (pendingImages.length > 0 && data) {
-        await uploadImages(data.id);
+        if (error) throw error;
+
+        // Upload images if any
+        if (paymentLine.pendingImages && paymentLine.pendingImages.length > 0 && data) {
+          await uploadPaymentImages(data.id, paymentLine.pendingImages);
+        }
       }
 
-      toast({ title: "تمت الإضافة", description: "تمت إضافة الدفعة بنجاح" });
+      toast({ title: "تمت الإضافة", description: `تمت إضافة ${paymentLines.length} دفعة بنجاح` });
       setAddDialogOpen(false);
-      resetForm();
+      resetAddForm();
       onPaymentsChange();
     } catch (error: any) {
-      console.error('Error adding payment:', error);
+      console.error('Error adding payments:', error);
       if (error.message?.includes('Payment total exceeds')) {
         toast({ title: "خطأ في الدفعة", description: "مجموع الدفعات يتجاوز سعر التأمين.", variant: "destructive" });
       } else {
-        toast({ title: "خطأ", description: "فشل في إضافة الدفعة", variant: "destructive" });
+        toast({ title: "خطأ", description: "فشل في إضافة الدفعات", variant: "destructive" });
       }
     } finally {
       setSaving(false);
     }
   };
 
-  const handleTranzilaSuccess = () => {
-    resetForm();
-    setPendingTranzilaPayment(null);
-    onPaymentsChange();
+  // Edit payment functions
+  const resetEditForm = () => {
+    setEditFormData({
+      amount: "",
+      payment_type: "cash",
+      payment_date: new Date().toISOString().split('T')[0],
+      cheque_number: "",
+      refused: false,
+      notes: "",
+    });
+    setEditValidationError(null);
+    editPreviewUrls.forEach(url => URL.revokeObjectURL(url));
+    setEditPendingImages([]);
+    setEditPreviewUrls([]);
   };
 
-  const handleTranzilaFailure = () => {
-    setPendingTranzilaPayment(null);
+  const handleEditImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    
+    const validFiles = files.filter(file => {
+      if (!file.type.startsWith('image/')) {
+        toast({ title: "خطأ", description: "يرجى اختيار صور فقط", variant: "destructive" });
+        return false;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        toast({ title: "خطأ", description: "حجم الصورة يجب أن يكون أقل من 10MB", variant: "destructive" });
+        return false;
+      }
+      return true;
+    });
+
+    setEditPendingImages(prev => [...prev, ...validFiles]);
+    validFiles.forEach(file => {
+      const url = URL.createObjectURL(file);
+      setEditPreviewUrls(prev => [...prev, url]);
+    });
+  };
+
+  const removeEditImage = (index: number) => {
+    URL.revokeObjectURL(editPreviewUrls[index]);
+    setEditPendingImages(prev => prev.filter((_, i) => i !== index));
+    setEditPreviewUrls(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const validateEditPayment = (amount: number, currentPaymentId?: string): boolean => {
+    if (editFormData.refused) {
+      setEditValidationError(null);
+      return true;
+    }
+
+    let otherPaymentsTotal = payments
+      .filter(p => !p.refused && p.id !== currentPaymentId)
+      .reduce((sum, p) => sum + p.amount, 0);
+    
+    const newTotal = otherPaymentsTotal + amount;
+    
+    if (newTotal > insurancePrice) {
+      const maxAllowed = insurancePrice - otherPaymentsTotal;
+      setEditValidationError(`المبلغ يتجاوز سعر التأمين! الحد الأقصى المسموح: ₪${maxAllowed.toLocaleString('ar-EG')}`);
+      return false;
+    }
+    
+    setEditValidationError(null);
+    return true;
+  };
+
+  const handleEditAmountChange = (value: string) => {
+    setEditFormData(f => ({ ...f, amount: value }));
+    const amount = parseFloat(value) || 0;
+    if (amount > 0) {
+      validateEditPayment(amount, selectedPayment?.id);
+    } else {
+      setEditValidationError(null);
+    }
   };
 
   const handleEdit = async () => {
     if (!selectedPayment) return;
-    const amount = parseFloat(formData.amount) || 0;
+    const amount = parseFloat(editFormData.amount) || 0;
     if (amount <= 0) {
       toast({ title: "خطأ", description: "الرجاء إدخال مبلغ صحيح", variant: "destructive" });
       return;
     }
 
-    if (!validatePayment(amount, true, selectedPayment.id)) return;
+    if (!validateEditPayment(amount, selectedPayment.id)) return;
 
-    if (formData.payment_type === 'cheque' && !formData.cheque_number.trim()) {
+    if (editFormData.payment_type === 'cheque' && !editFormData.cheque_number.trim()) {
       toast({ title: "خطأ", description: "الرجاء إدخال رقم الشيك", variant: "destructive" });
       return;
     }
@@ -346,25 +521,27 @@ export function PolicyPaymentsSection({
         .from('policy_payments')
         .update({
           amount: amount,
-          payment_type: formData.payment_type as Enums<'payment_type'>,
-          payment_date: formData.payment_date,
-          cheque_number: formData.payment_type === 'cheque' ? formData.cheque_number : null,
-          refused: formData.refused,
-          notes: formData.notes || null,
+          payment_type: editFormData.payment_type as Enums<'payment_type'>,
+          payment_date: editFormData.payment_date,
+          cheque_number: editFormData.payment_type === 'cheque' ? editFormData.cheque_number : null,
+          refused: editFormData.refused,
+          notes: editFormData.notes || null,
         })
         .eq('id', selectedPayment.id);
 
       if (error) throw error;
 
       // Upload new images if any
-      if (pendingImages.length > 0) {
-        await uploadImages(selectedPayment.id);
+      if (editPendingImages.length > 0) {
+        setUploadingImages(true);
+        await uploadPaymentImages(selectedPayment.id, editPendingImages);
+        setUploadingImages(false);
       }
 
       toast({ title: "تم التحديث", description: "تم تحديث الدفعة بنجاح" });
       setEditDialogOpen(false);
       setSelectedPayment(null);
-      resetForm();
+      resetEditForm();
       onPaymentsChange();
     } catch (error: any) {
       console.error('Error updating payment:', error);
@@ -404,7 +581,7 @@ export function PolicyPaymentsSection({
 
   const openEditDialog = (payment: Payment) => {
     setSelectedPayment(payment);
-    setFormData({
+    setEditFormData({
       amount: payment.amount.toString(),
       payment_type: payment.payment_type,
       payment_date: payment.payment_date,
@@ -412,11 +589,16 @@ export function PolicyPaymentsSection({
       refused: payment.refused || false,
       notes: payment.notes || "",
     });
-    setValidationError(null);
-    setPendingImages([]);
-    setPreviewUrls([]);
+    setEditValidationError(null);
+    setEditPendingImages([]);
+    setEditPreviewUrls([]);
     setEditDialogOpen(true);
   };
+
+  // Image gallery for existing payments
+  const [galleryImages, setGalleryImages] = useState<string[]>([]);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryIndex, setGalleryIndex] = useState(0);
 
   const openGallery = (payment: Payment) => {
     const imgs: string[] = [];
@@ -442,36 +624,7 @@ export function PolicyPaymentsSection({
     return count;
   };
 
-  const renderImageUpload = () => (
-    <div className="space-y-2">
-      <Label>
-        {formData.payment_type === 'cheque' ? 'صور الشيك (أمامي/خلفي)' : 'صور إيصال التحويل'}
-      </Label>
-      <div className="flex flex-wrap gap-2">
-        {previewUrls.map((url, index) => (
-          <div key={index} className="relative group">
-            <img src={url} alt="" className="h-16 w-20 object-cover rounded border" />
-            <button
-              type="button"
-              onClick={() => removeImage(index)}
-              className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-        ))}
-        <label className="h-16 w-20 border-2 border-dashed rounded flex items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
-          <input type="file" accept="image/*" multiple onChange={handleImageSelect} className="hidden" />
-          <Upload className="h-5 w-5 text-muted-foreground" />
-        </label>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {formData.payment_type === 'cheque' 
-          ? 'يمكنك إضافة صورة الوجه الأمامي والخلفي للشيك' 
-          : 'يمكنك إضافة صور إيصالات التحويل'}
-      </p>
-    </div>
-  );
+  const activeVisaPayment = activeVisaPaymentIndex !== null ? paymentLines[activeVisaPaymentIndex] : null;
 
   return (
     <>
@@ -481,11 +634,7 @@ export function PolicyPaymentsSection({
             <CreditCard className="h-4 w-4" />
             <span>سجل الدفعات ({payments.length})</span>
           </div>
-          <Button size="sm" variant="outline" onClick={() => {
-            resetForm();
-            if (remaining > 0) setFormData(f => ({ ...f, amount: remaining.toString() }));
-            setAddDialogOpen(true);
-          }}>
+          <Button size="sm" variant="outline" onClick={openAddDialog}>
             <Plus className="h-4 w-4 ml-1" />
             إضافة دفعة
           </Button>
@@ -574,89 +723,232 @@ export function PolicyPaymentsSection({
         )}
       </Card>
 
-      {/* Add Payment Dialog */}
-      <Dialog open={addDialogOpen} onOpenChange={(open) => { setAddDialogOpen(open); if (!open) resetForm(); }}>
-        <DialogContent className="sm:max-w-md" dir="rtl">
+      {/* Add Multi-Payment Dialog */}
+      <Dialog open={addDialogOpen} onOpenChange={(open) => { setAddDialogOpen(open); if (!open) resetAddForm(); }}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
-            <DialogTitle>إضافة دفعة جديدة</DialogTitle>
+            <DialogTitle>إضافة دفعات</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>المبلغ (₪)</Label>
-              <Input
-                type="number"
-                value={formData.amount}
-                onChange={(e) => handleAmountChange(e.target.value)}
-                className={cn("ltr-input text-left", validationError && "border-destructive")}
-              />
-              {validationError && (
-                <div className="flex items-center gap-2 text-destructive text-sm">
-                  <AlertCircle className="h-4 w-4" />
-                  <span>{validationError}</span>
-                </div>
-              )}
-              {remaining > 0 && !validationError && (
-                <p className="text-xs text-muted-foreground">المتبقي: {formatCurrency(remaining)}</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label>طريقة الدفع</Label>
-              <Select value={formData.payment_type} onValueChange={(v) => setFormData(f => ({ ...f, payment_type: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {PAYMENT_TYPES.map(type => (
-                    <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>تاريخ الدفع</Label>
-              <ArabicDatePicker value={formData.payment_date} onChange={(v) => setFormData(f => ({ ...f, payment_date: v }))} />
-            </div>
-            {formData.payment_type === 'cheque' && (
-              <div className="space-y-2">
-                <Label>رقم الشيك *</Label>
-                <Input
-                  value={formData.cheque_number}
-                  onChange={(e) => setFormData(f => ({ ...f, cheque_number: sanitizeChequeNumber(e.target.value) }))}
-                  placeholder="أدخل رقم الشيك"
-                  maxLength={CHEQUE_NUMBER_MAX_LENGTH}
-                  className="font-mono ltr-input"
-                />
+            {/* Summary */}
+            <div className="grid grid-cols-3 gap-2 text-center text-sm">
+              <div className="bg-muted/50 rounded-lg p-2">
+                <p className="text-muted-foreground text-xs">سعر التأمين</p>
+                <p className="font-bold">{formatCurrency(insurancePrice)}</p>
               </div>
-            )}
-            {(formData.payment_type === 'cheque' || formData.payment_type === 'transfer') && renderImageUpload()}
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="refused-add"
-                checked={formData.refused}
-                onChange={(e) => {
-                  setFormData(f => ({ ...f, refused: e.target.checked }));
-                  if (e.target.checked) setValidationError(null);
-                  else {
-                    const amount = parseFloat(formData.amount) || 0;
-                    if (amount > 0) validatePayment(amount);
-                  }
-                }}
-                className="h-4 w-4"
-              />
-              <Label htmlFor="refused-add" className="cursor-pointer">راجع (مرفوض)</Label>
+              <div className="bg-success/10 rounded-lg p-2">
+                <p className="text-muted-foreground text-xs">المدفوع</p>
+                <p className="font-bold text-success">{formatCurrency(totalPaid + paidVisaTotal)}</p>
+              </div>
+              <div className={cn("rounded-lg p-2", effectiveRemaining > 0 ? "bg-destructive/10" : "bg-success/10")}>
+                <p className="text-muted-foreground text-xs">المتبقي</p>
+                <p className={cn("font-bold", effectiveRemaining > 0 ? "text-destructive" : "text-success")}>
+                  {formatCurrency(effectiveRemaining)}
+                </p>
+              </div>
             </div>
+
+            {/* Payment Lines Header */}
+            <div className="flex items-center justify-between">
+              <Label className="text-base font-semibold">الدفعات</Label>
+              <div className="flex items-center gap-2">
+                <Popover open={splitPopoverOpen} onOpenChange={setSplitPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" disabled={remaining <= 0}>
+                      <Split className="h-4 w-4 ml-2" />
+                      تقسيط
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-60" align="end">
+                    <div className="space-y-3">
+                      <Label>عدد الأقساط</Label>
+                      <Input
+                        type="number"
+                        min={2}
+                        max={12}
+                        value={splitCount}
+                        onChange={e => setSplitCount(parseInt(e.target.value) || 2)}
+                      />
+                      <Button onClick={handleSplitPayments} className="w-full">
+                        تقسيم إلى {splitCount} دفعات
+                      </Button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                <Button variant="outline" size="sm" onClick={addPaymentLine}>
+                  <Plus className="h-4 w-4 ml-2" />
+                  إضافة دفعة
+                </Button>
+              </div>
+            </div>
+
+            {/* Payment Lines */}
+            {paymentLines.map((payment, index) => (
+              <Card key={payment.id} className={cn(
+                "p-3",
+                payment.tranzilaPaid && "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800"
+              )}>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">دفعة {index + 1}</span>
+                    {paymentLines.length > 1 && !payment.tranzilaPaid && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive"
+                        onClick={() => removePaymentLine(payment.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">المبلغ</Label>
+                      <Input
+                        type="number"
+                        value={payment.amount || ''}
+                        onChange={e => updatePaymentLine(payment.id, 'amount', parseFloat(e.target.value) || 0)}
+                        placeholder={`أقصى: ${formatCurrency(effectiveRemaining)}`}
+                        disabled={payment.tranzilaPaid}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">طريقة الدفع</Label>
+                      <Select 
+                        value={payment.paymentType} 
+                        onValueChange={v => updatePaymentLine(payment.id, 'paymentType', v)}
+                        disabled={payment.tranzilaPaid}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {paymentTypes
+                            .filter(pt => pt.value !== 'visa' || tranzilaEnabled)
+                            .map(pt => (
+                              <SelectItem key={pt.value} value={pt.value}>
+                                <span className="flex items-center gap-2">
+                                  <pt.icon className="h-4 w-4" />
+                                  {pt.label}
+                                </span>
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">تاريخ الدفع</Label>
+                      <Input
+                        type="date"
+                        value={payment.paymentDate}
+                        onChange={e => updatePaymentLine(payment.id, 'paymentDate', e.target.value)}
+                        disabled={payment.tranzilaPaid}
+                      />
+                    </div>
+                    {payment.paymentType === 'cheque' && (
+                      <div>
+                        <Label className="text-xs">رقم الشيك</Label>
+                        <Input
+                          value={payment.chequeNumber || ''}
+                          onChange={e => updatePaymentLine(payment.id, 'chequeNumber', sanitizeChequeNumber(e.target.value))}
+                          placeholder="رقم الشيك"
+                          maxLength={CHEQUE_NUMBER_MAX_LENGTH}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Visa Pay Button */}
+                  {payment.paymentType === 'visa' && (
+                    <div className="flex items-center gap-2">
+                      {payment.tranzilaPaid ? (
+                        <Badge className="bg-green-500">
+                          <CheckCircle className="h-3 w-3 ml-1" />
+                          تم الدفع
+                        </Badge>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleVisaPayClick(index)}
+                          disabled={payment.amount <= 0}
+                        >
+                          <CreditCard className="h-4 w-4 ml-2" />
+                          ادفع الآن
+                        </Button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Image Upload for Cheque/Transfer */}
+                  {(payment.paymentType === 'cheque' || payment.paymentType === 'transfer') && (
+                    <div className="pt-3 border-t border-border/50">
+                      <Label className="text-xs text-muted-foreground mb-2 block">
+                        {payment.paymentType === 'cheque' ? 'صور الشيك' : 'صور إيصال التحويل'}
+                      </Label>
+                      <div className="flex flex-wrap gap-2">
+                        {getPreviewUrls(payment.id).map((url, imgIndex) => (
+                          <div key={imgIndex} className="relative group">
+                            <img src={url} alt="" className="h-14 w-18 object-cover rounded border" />
+                            <button
+                              type="button"
+                              onClick={() => removeImage(payment.id, imgIndex)}
+                              className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                        <label className="h-14 w-18 border-2 border-dashed rounded flex flex-col items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            multiple 
+                            onChange={(e) => handleImageSelect(payment.id, e)} 
+                            className="hidden" 
+                          />
+                          <Upload className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-[10px] text-muted-foreground mt-0.5">إضافة</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            ))}
+
+            {/* Total and Validation */}
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <span className="font-medium">مجموع الدفعات:</span>
+              <span className={cn("text-lg font-bold", isOverpaying && "text-destructive")}>
+                {formatCurrency(totalPaymentAmount)}
+              </span>
+            </div>
+
+            {isOverpaying && (
+              <p className="text-sm text-destructive flex items-center gap-1">
+                <AlertCircle className="h-4 w-4" />
+                مجموع الدفعات أكبر من المبلغ المتبقي ({formatCurrency(effectiveRemaining)})
+              </p>
+            )}
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setAddDialogOpen(false)}>إلغاء</Button>
-            <Button onClick={handleAdd} disabled={saving || uploadingImages || !!validationError}>
-              {(saving || uploadingImages) && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
-              {uploadingImages ? 'جاري رفع الصور...' : 'إضافة'}
+            <Button onClick={handleAddMultiPayments} disabled={!isValid || saving}>
+              {saving && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
+              إضافة الدفعات
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Edit Payment Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={(open) => { setEditDialogOpen(open); if (!open) { resetForm(); setSelectedPayment(null); } }}>
+      <Dialog open={editDialogOpen} onOpenChange={(open) => { setEditDialogOpen(open); if (!open) { resetEditForm(); setSelectedPayment(null); } }}>
         <DialogContent className="sm:max-w-md" dir="rtl">
           <DialogHeader>
             <DialogTitle>تعديل الدفعة</DialogTitle>
@@ -666,23 +958,23 @@ export function PolicyPaymentsSection({
               <Label>المبلغ (₪)</Label>
               <Input
                 type="number"
-                value={formData.amount}
-                onChange={(e) => handleAmountChange(e.target.value, true, selectedPayment?.id)}
-                className={cn("ltr-input text-left", validationError && "border-destructive")}
+                value={editFormData.amount}
+                onChange={(e) => handleEditAmountChange(e.target.value)}
+                className={cn("ltr-input text-left", editValidationError && "border-destructive")}
               />
-              {validationError && (
+              {editValidationError && (
                 <div className="flex items-center gap-2 text-destructive text-sm">
                   <AlertCircle className="h-4 w-4" />
-                  <span>{validationError}</span>
+                  <span>{editValidationError}</span>
                 </div>
               )}
             </div>
             <div className="space-y-2">
               <Label>طريقة الدفع</Label>
-              <Select value={formData.payment_type} onValueChange={(v) => setFormData(f => ({ ...f, payment_type: v }))}>
+              <Select value={editFormData.payment_type} onValueChange={(v) => setEditFormData(f => ({ ...f, payment_type: v }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {PAYMENT_TYPES.map(type => (
+                  {paymentTypes.map(type => (
                     <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
                   ))}
                 </SelectContent>
@@ -690,14 +982,14 @@ export function PolicyPaymentsSection({
             </div>
             <div className="space-y-2">
               <Label>تاريخ الدفع</Label>
-              <ArabicDatePicker value={formData.payment_date} onChange={(v) => setFormData(f => ({ ...f, payment_date: v }))} />
+              <ArabicDatePicker value={editFormData.payment_date} onChange={(v) => setEditFormData(f => ({ ...f, payment_date: v }))} />
             </div>
-            {formData.payment_type === 'cheque' && (
+            {editFormData.payment_type === 'cheque' && (
               <div className="space-y-2">
                 <Label>رقم الشيك *</Label>
                 <Input
-                  value={formData.cheque_number}
-                  onChange={(e) => setFormData(f => ({ ...f, cheque_number: sanitizeChequeNumber(e.target.value) }))}
+                  value={editFormData.cheque_number}
+                  onChange={(e) => setEditFormData(f => ({ ...f, cheque_number: sanitizeChequeNumber(e.target.value) }))}
                   maxLength={CHEQUE_NUMBER_MAX_LENGTH}
                   className="font-mono ltr-input"
                 />
@@ -717,23 +1009,40 @@ export function PolicyPaymentsSection({
                 </div>
               </div>
             )}
-            {(formData.payment_type === 'cheque' || formData.payment_type === 'transfer') && (
+            {(editFormData.payment_type === 'cheque' || editFormData.payment_type === 'transfer') && (
               <div className="space-y-2">
                 <Label>إضافة صور جديدة</Label>
-                {renderImageUpload()}
+                <div className="flex flex-wrap gap-2">
+                  {editPreviewUrls.map((url, index) => (
+                    <div key={index} className="relative group">
+                      <img src={url} alt="" className="h-16 w-20 object-cover rounded border" />
+                      <button
+                        type="button"
+                        onClick={() => removeEditImage(index)}
+                        className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                  <label className="h-16 w-20 border-2 border-dashed rounded flex items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
+                    <input type="file" accept="image/*" multiple onChange={handleEditImageSelect} className="hidden" />
+                    <Upload className="h-5 w-5 text-muted-foreground" />
+                  </label>
+                </div>
               </div>
             )}
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
                 id="refused-edit"
-                checked={formData.refused}
+                checked={editFormData.refused}
                 onChange={(e) => {
-                  setFormData(f => ({ ...f, refused: e.target.checked }));
-                  if (e.target.checked) setValidationError(null);
+                  setEditFormData(f => ({ ...f, refused: e.target.checked }));
+                  if (e.target.checked) setEditValidationError(null);
                   else {
-                    const amount = parseFloat(formData.amount) || 0;
-                    if (amount > 0) validatePayment(amount, true, selectedPayment?.id);
+                    const amount = parseFloat(editFormData.amount) || 0;
+                    if (amount > 0) validateEditPayment(amount, selectedPayment?.id);
                   }
                 }}
                 className="h-4 w-4"
@@ -758,7 +1067,7 @@ export function PolicyPaymentsSection({
                     toast({ title: "تم التحديث", description: "تم تحديد الشيك كمرتجع" });
                     setEditDialogOpen(false);
                     setSelectedPayment(null);
-                    resetForm();
+                    resetEditForm();
                     onPaymentsChange();
                   } catch (error) {
                     toast({ title: "خطأ", description: "فشل في تحديث الحالة", variant: "destructive" });
@@ -775,7 +1084,7 @@ export function PolicyPaymentsSection({
             )}
             <div className="flex-1" />
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>إلغاء</Button>
-            <Button onClick={handleEdit} disabled={saving || uploadingImages || !!validationError}>
+            <Button onClick={handleEdit} disabled={saving || uploadingImages || !!editValidationError}>
               {(saving || uploadingImages) && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
               حفظ
             </Button>
@@ -832,14 +1141,14 @@ export function PolicyPaymentsSection({
       </Dialog>
 
       {/* Tranzila Payment Modal */}
-      {pendingTranzilaPayment && (
+      {activeVisaPayment && (
         <TranzilaPaymentModal
           open={tranzilaModalOpen}
           onOpenChange={setTranzilaModalOpen}
           policyId={policyId}
-          amount={pendingTranzilaPayment.amount}
-          paymentDate={pendingTranzilaPayment.date}
-          notes={pendingTranzilaPayment.notes}
+          amount={activeVisaPayment.amount}
+          paymentDate={activeVisaPayment.paymentDate}
+          notes={activeVisaPayment.notes || ''}
           onSuccess={handleTranzilaSuccess}
           onFailure={handleTranzilaFailure}
         />
