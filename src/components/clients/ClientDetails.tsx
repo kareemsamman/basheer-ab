@@ -802,15 +802,18 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
             />
           </Card>
           
-          <Card className="p-4 flex items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-              <TrendingUp className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">إجمالي الأرباح</p>
-              <p className="text-xl font-bold text-primary">₪{paymentSummary.total_profit.toLocaleString()}</p>
-            </div>
-          </Card>
+          {/* Profit card - Admin only */}
+          {isAdmin && (
+            <Card className="p-4 flex items-center gap-4">
+              <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <TrendingUp className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">إجمالي الأرباح</p>
+                <p className="text-xl font-bold text-primary">₪{paymentSummary.total_profit.toLocaleString()}</p>
+              </div>
+            </Card>
+          )}
 
           {/* Wallet Balance - Show refunds owed to customer */}
           {walletBalance.total_refunds > 0 && (
