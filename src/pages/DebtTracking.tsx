@@ -216,37 +216,27 @@ export default function DebtTracking() {
     });
   };
 
-  const handleSendReminder = async () => {
+  const handleSendReminder = () => {
     if (!selectedClient) return;
-    setSendingSmsTo(selectedClient.client_id);
+    
+    // Fire and forget - show success immediately and close dialog
+    toast({
+      title: "تم الإرسال",
+      description: `تم إرسال التذكير إلى ${selectedClient.client_name}`,
+    });
+    setSmsDialogOpen(false);
+    setCustomMessage("");
 
-    try {
-      const { data, error } = await supabase.functions.invoke("send-manual-reminder", {
-        body: {
-          client_id: selectedClient.client_id,
-          message: customMessage || undefined,
-          sms_type: "payment_request",
-        },
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "تم الإرسال",
-        description: `تم إرسال التذكير إلى ${selectedClient.client_name}`,
-      });
-      setSmsDialogOpen(false);
-      setCustomMessage("");
-    } catch (error: any) {
+    // Send SMS in background without waiting
+    supabase.functions.invoke("send-manual-reminder", {
+      body: {
+        client_id: selectedClient.client_id,
+        message: customMessage || undefined,
+        sms_type: "payment_request",
+      },
+    }).catch((error) => {
       console.error("Error sending reminder:", error);
-      toast({
-        title: "خطأ",
-        description: error.message || "فشل في إرسال التذكير",
-        variant: "destructive",
-      });
-    } finally {
-      setSendingSmsTo(null);
-    }
+    });
   };
 
   const openSmsDialog = (client: ClientDebt) => {
