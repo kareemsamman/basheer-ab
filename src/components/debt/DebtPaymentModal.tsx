@@ -304,29 +304,54 @@ export function DebtPaymentModal({
     setSplitPopoverOpen(false);
   };
 
-  const calculateSplitPayments = (amount: number) => {
+  /**
+   * Sequential "fill one by one" distribution:
+   * - Fills policies in order until each is complete before moving to next
+   * - For cheques: Keeps as single record on first policy with space
+   * - For cash/transfer: Can span multiple policies
+   */
+  const calculateSplitPayments = (amount: number, paymentType: string = 'cash') => {
     const splits: { policyId: string; amount: number; branchId: string | null }[] = [];
     
     if (amount <= 0 || totalRemaining <= 0) return splits;
 
-    policies.forEach(policy => {
-      if (policy.remaining > 0) {
-        const proportion = policy.remaining / totalRemaining;
-        const policyPayment = Math.min(amount * proportion, policy.remaining);
-        if (policyPayment > 0) {
-          splits.push({
-            policyId: policy.policyId,
-            amount: Math.round(policyPayment * 100) / 100,
-            branchId: policy.branchId,
-          });
-        }
-      }
-    });
+    // Get policies with remaining balance, sorted by remaining (smallest first for efficient filling)
+    const policiesWithBalance = policies
+      .filter(p => p.remaining > 0)
+      .sort((a, b) => a.remaining - b.remaining);
 
-    const totalSplit = splits.reduce((sum, s) => sum + s.amount, 0);
-    const diff = amount - totalSplit;
-    if (splits.length > 0 && Math.abs(diff) > 0.001) {
-      splits[0].amount = Math.round((splits[0].amount + diff) * 100) / 100;
+    if (policiesWithBalance.length === 0) return splits;
+
+    // For cheques: assign to single policy only (the first one that can fit it or has largest remaining)
+    if (paymentType === 'cheque') {
+      // Try to find a policy where cheque amount fits exactly or partially
+      // If no exact fit, assign to policy with largest remaining balance
+      const exactFit = policiesWithBalance.find(p => p.remaining >= amount);
+      const targetPolicy = exactFit || policiesWithBalance[policiesWithBalance.length - 1];
+      
+      splits.push({
+        policyId: targetPolicy.policyId,
+        amount: Math.min(amount, targetPolicy.remaining),
+        branchId: targetPolicy.branchId,
+      });
+      return splits;
+    }
+
+    // For cash/transfer: fill policies sequentially one by one
+    let remainingAmount = amount;
+    
+    for (const policy of policiesWithBalance) {
+      if (remainingAmount <= 0) break;
+      
+      const paymentForPolicy = Math.min(remainingAmount, policy.remaining);
+      if (paymentForPolicy > 0) {
+        splits.push({
+          policyId: policy.policyId,
+          amount: Math.round(paymentForPolicy * 100) / 100,
+          branchId: policy.branchId,
+        });
+        remainingAmount -= paymentForPolicy;
+      }
     }
 
     return splits;
@@ -411,8 +436,8 @@ export function DebtPaymentModal({
         }
         
         if (paymentLine.paymentType !== 'visa') {
-          // Non-visa payment - split across policies
-          const splits = calculateSplitPayments(paymentLine.amount);
+          // Non-visa payment - distribute across policies (sequential for cash/transfer, single for cheque)
+          const splits = calculateSplitPayments(paymentLine.amount, paymentLine.paymentType);
           
           if (splits.length > 0) {
             // Insert all payments first
