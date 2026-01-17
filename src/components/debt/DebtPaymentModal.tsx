@@ -355,17 +355,23 @@ export function DebtPaymentModal({
       if (remainingAmount <= 0) break;
       
       const paymentForPolicy = Math.min(remainingAmount, policy.remaining);
-      if (paymentForPolicy > 0) {
-        splits.push({
-          policyId: policy.policyId,
-          amount: Math.round(paymentForPolicy * 100) / 100,
-          branchId: policy.branchId,
-        });
-        remainingAmount -= paymentForPolicy;
+      // Only add if amount is greater than 0 (protect against floating point issues)
+      if (paymentForPolicy > 0.001) {
+        const roundedAmount = Math.round(paymentForPolicy * 100) / 100;
+        // Double-check after rounding
+        if (roundedAmount > 0) {
+          splits.push({
+            policyId: policy.policyId,
+            amount: roundedAmount,
+            branchId: policy.branchId,
+          });
+          remainingAmount -= paymentForPolicy;
+        }
       }
     }
 
-    return splits;
+    // Final filter to ensure no 0-amount entries
+    return splits.filter(s => s.amount > 0);
   };
 
   const handleVisaPayClick = (index: number) => {
