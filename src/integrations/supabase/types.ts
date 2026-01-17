@@ -3427,6 +3427,7 @@ export type Database = {
       }
       can_view_financials: { Args: { _user_id: string }; Returns: boolean }
       clear_data_for_import: { Args: never; Returns: Json }
+      fix_service_policies_company: { Args: never; Returns: Json }
       generate_file_number: { Args: never; Returns: string }
       generate_invoice_number: { Args: never; Returns: string }
       get_ab_balance: {
