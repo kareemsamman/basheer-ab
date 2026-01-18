@@ -503,7 +503,7 @@ const WordPressImport = () => {
 
       // Step 1: Preserve pricing rules if resetting companies
       if (!completedSteps.includes('preserveRules')) {
-        if (resetCompanies && !isResume) {
+        if (resetCompanies) {
           updateStep('preserveRules', 'running');
           const { data: rulesResult } = await supabase.functions.invoke('wordpress-import', {
             body: { action: 'preservePricingRules' }
@@ -518,9 +518,10 @@ const WordPressImport = () => {
       }
       setProgress(3);
 
-      // Step 2: Clear data
+      // Step 2: Clear data - ALWAYS clear if checkbox is checked, even if resuming
+      // (only skip if this specific step was already completed in this session)
       if (!completedSteps.includes('clear')) {
-        if (clearBeforeImport && !isResume) {
+        if (clearBeforeImport) {
           updateStep('clear', 'running');
           
           if (resetCompanies) {
