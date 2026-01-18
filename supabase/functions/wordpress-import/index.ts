@@ -396,48 +396,61 @@ Deno.serve(async (req) => {
 
     // Action: Clear all data (except companies, pricing rules, users, branches)
     if (action === 'clear') {
-      console.log('Clearing all data...');
+      console.log('🧹 CLEARING ALL DATA - Starting...');
       
+      const deleteWithLog = async (table: string) => {
+        const { error, count } = await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        if (error) {
+          console.error(`❌ Error deleting ${table}: ${error.message}`);
+        } else {
+          console.log(`✅ Deleted from ${table}`);
+        }
+        return { table, error };
+      };
+
       // Clear ledger entries first (they reference policies)
-      await supabase.from('ab_ledger').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await deleteWithLog('ab_ledger');
       
       // Clear broker settlement items first (they reference policies and settlements)
-      await supabase.from('broker_settlement_items').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await deleteWithLog('broker_settlement_items');
       
       // Clear company and broker settlements (wallets)
-      await supabase.from('company_settlements').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('broker_settlements').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await deleteWithLog('company_settlements');
+      await deleteWithLog('broker_settlements');
       
       // Clear customer wallet transactions
-      await supabase.from('customer_wallet_transactions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await deleteWithLog('customer_wallet_transactions');
       
       // Clear notifications
-      await supabase.from('notifications').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await deleteWithLog('notifications');
       
       // Clear policy-related data
-      await supabase.from('invoices').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('policy_payments').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('customer_signatures').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('car_accidents').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('media_files').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('accident_third_parties').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('accident_reports').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('policy_groups').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('policies').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await deleteWithLog('invoices');
+      await deleteWithLog('policy_payments');
+      await deleteWithLog('customer_signatures');
+      await deleteWithLog('car_accidents');
+      await deleteWithLog('media_files');
+      await deleteWithLog('accident_third_parties');
+      await deleteWithLog('accident_reports');
+      await deleteWithLog('policy_groups');
+      await deleteWithLog('policies');
       
       // Clear outside cheques
-      await supabase.from('outside_cheques').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await deleteWithLog('outside_cheques');
       
       // Clear cars
-      await supabase.from('cars').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await deleteWithLog('cars');
       
       // Clear clients
-      await supabase.from('clients').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await deleteWithLog('clients');
       
       // Clear brokers
-      await supabase.from('brokers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await deleteWithLog('brokers');
       
-      console.log('All data cleared including wallets, ledger, notifications, and cheques');
+      // Also clear import_progress to reset state
+      await deleteWithLog('import_progress');
+      
+      console.log('🧹 CLEAR COMPLETE - All data cleared including wallets, ledger, notifications, and cheques');
       return new Response(JSON.stringify({ 
         success: true, 
         message: 'All data cleared including broker/company wallets, notifications, and cheques' 
