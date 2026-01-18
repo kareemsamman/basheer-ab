@@ -491,9 +491,9 @@ Deno.serve(async (req) => {
       const isChunk = data?.isChunk === true;
 
       // Keep each invocation small enough to always return a response (avoid timeouts)
-      const MAX_POLICIES_PER_RUN = 200;
+      const MAX_POLICIES_PER_RUN = 400;
 
-      let offset = Math.max(0, requestedOffset);
+      const offset = Math.max(0, requestedOffset);
       let policiesToProcess = incomingPolicies;
 
       // If the client sent the full array, slice by offset.
@@ -520,39 +520,73 @@ Deno.serve(async (req) => {
         errors: [] as string[],
       };
 
+      // 1) Fetch all policy ids in ONE query (avoid N+1)
+      const legacyIds = (policiesToProcess || [])
+        .map((p) => p?.legacy_wp_id)
+        .filter((v) => v !== null && v !== undefined);
+
+      if (legacyIds.length === 0) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            stats,
+            progress: {
+              offset,
+              nextOffset: offset,
+              total: totalPolicies,
+              hasMore: offset < totalPolicies,
+              processedThisRun: 0,
+            },
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+
+      const { data: existingPolicies, error: policiesError } = await supabase
+        .from('policies')
+        .select('id, legacy_wp_id, insurance_price')
+        .in('legacy_wp_id', legacyIds)
+        .is('deleted_at', null);
+
+      if (policiesError) {
+        throw policiesError;
+      }
+
+      const policyMap = new Map<any, { id: string; insurancePrice: number }>();
+      for (const p of existingPolicies || []) {
+        policyMap.set(p.legacy_wp_id, {
+          id: p.id,
+          insurancePrice: p.insurance_price || 0,
+        });
+      }
+
+      const policyIdsToClear = Array.from(policyMap.values()).map((p) => p.id);
+
+      // 2) Delete all payments in ONE query
+      if (policyIdsToClear.length > 0) {
+        const { count: deletedCount, error: deleteError } = await supabase
+          .from('policy_payments')
+          .delete({ count: 'exact' })
+          .in('policy_id', policyIdsToClear);
+
+        if (deleteError) {
+          stats.errors.push(`Failed to delete payments (chunk ${rangeStart}-${rangeEnd}): ${deleteError.message}`);
+        } else {
+          stats.paymentsDeleted += deletedCount || 0;
+        }
+      }
+
+      // 3) Build all new payment rows in memory (fast), then bulk insert
+      const rowsToInsert: any[] = [];
+
       for (const policy of policiesToProcess) {
         try {
-          // Find the policy by legacy_wp_id
-          const { data: existingPolicy } = await supabase
-            .from('policies')
-            .select('id, insurance_price')
-            .eq('legacy_wp_id', policy.legacy_wp_id)
-            .is('deleted_at', null)
-            .maybeSingle();
-
-          if (!existingPolicy) {
+          const meta = policyMap.get(policy?.legacy_wp_id);
+          if (!meta) {
             stats.policiesSkipped++;
             continue;
           }
 
-          const policyId = existingPolicy.id;
-          const insurancePrice = existingPolicy.insurance_price || 0;
-
-          // Delete all existing payments for this policy
-          const { data: deletedPayments, error: deleteError } = await supabase
-            .from('policy_payments')
-            .delete()
-            .eq('policy_id', policyId)
-            .select('id');
-
-          if (deleteError) {
-            stats.errors.push(`Policy ${policy.legacy_wp_id}: Failed to delete payments - ${deleteError.message}`);
-            continue;
-          }
-
-          stats.paymentsDeleted += deletedPayments?.length || 0;
-
-          // Re-insert payments from JSON, capped at insurance_price
           let runningTotal = 0;
 
           for (const payment of policy.payments || []) {
@@ -562,35 +596,27 @@ Deno.serve(async (req) => {
             let amount = parseFloat(payment.amount) || 0;
             if (amount <= 0) continue;
 
-            // Cap at insurance_price
-            const remainingCapacity = insurancePrice - runningTotal;
-            if (remainingCapacity <= 0) {
-              continue;
-            }
-            if (amount > remainingCapacity) {
-              amount = remainingCapacity;
-            }
+            // Cap at insurance_price (do not exceed)
+            const remainingCapacity = meta.insurancePrice - runningTotal;
+            if (remainingCapacity <= 0) continue;
+            if (amount > remainingCapacity) amount = remainingCapacity;
 
-            // Determine payment type - check for cheque indicators
             const checkNum = payment.check_number || payment.cheque_number || '';
             const rawType = (payment.payment_type || '').toLowerCase().trim();
 
             let paymentType: string;
-            // If there's a check number, it's definitely a cheque
             if (checkNum && checkNum.trim()) {
               paymentType = 'cheque';
               stats.chequesFixed++;
-            }
-            // Also check if type is 'shekat' or Arabic cheque
-            else if (['shekat', 'شيكات', 'شيك', 'cheque', 'check'].includes(rawType)) {
+            } else if (['shekat', 'شيكات', 'شيك', 'cheque', 'check'].includes(rawType)) {
               paymentType = 'cheque';
               stats.chequesFixed++;
             } else {
               paymentType = mapPaymentType(payment.payment_type, policy.notes, checkNum);
             }
 
-            const { error: insertError } = await supabase.from('policy_payments').insert({
-              policy_id: policyId,
+            rowsToInsert.push({
+              policy_id: meta.id,
               payment_type: paymentType,
               amount: amount,
               payment_date: paymentDate,
@@ -600,20 +626,26 @@ Deno.serve(async (req) => {
               branch_id: BEIT_HANINA_BRANCH_ID,
             });
 
-            if (insertError) {
-              stats.errors.push(`Policy ${policy.legacy_wp_id} payment: ${insertError.message}`);
-            } else {
-              stats.paymentsInserted++;
-              if (payment.refused_status !== 'refused') {
-                runningTotal += amount;
-              }
+            if (payment.refused_status !== 'refused') {
+              runningTotal += amount;
             }
           }
 
           stats.policiesUpdated++;
         } catch (e: any) {
-          stats.errors.push(`Policy ${policy.legacy_wp_id}: ${e.message}`);
+          stats.errors.push(`Policy ${policy?.legacy_wp_id}: ${e.message}`);
         }
+      }
+
+      const INSERT_BATCH_SIZE = 500;
+      for (let i = 0; i < rowsToInsert.length; i += INSERT_BATCH_SIZE) {
+        const batchRows = rowsToInsert.slice(i, i + INSERT_BATCH_SIZE);
+        const { error: insertError } = await supabase.from('policy_payments').insert(batchRows);
+        if (insertError) {
+          stats.errors.push(`Insert batch failed (${rangeStart}-${rangeEnd}): ${insertError.message}`);
+          continue;
+        }
+        stats.paymentsInserted += batchRows.length;
       }
 
       const nextOffset = offset + policiesToProcess.length;

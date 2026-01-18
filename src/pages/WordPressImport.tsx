@@ -102,6 +102,8 @@ const WordPressImport = () => {
     total: 0,
   });
   const [updatePoliciesChunkRange, setUpdatePoliciesChunkRange] = useState<{ from: number; to: number } | null>(null);
+  const [updatePoliciesStartedAt, setUpdatePoliciesStartedAt] = useState<number | null>(null);
+  const [updatePoliciesNow, setUpdatePoliciesNow] = useState<number>(() => Date.now());
   const [updatePoliciesStats, setUpdatePoliciesStats] = useState<{
     policiesUpdated: number;
     policiesSkipped: number;
@@ -131,6 +133,21 @@ const WordPressImport = () => {
   useEffect(() => {
     loadSavedProgress();
   }, []);
+
+  // Update policies only timer/ETA tick
+  useEffect(() => {
+    if (!updatingPoliciesOnly) {
+      setUpdatePoliciesStartedAt(null);
+      return;
+    }
+
+    const startedAt = Date.now();
+    setUpdatePoliciesStartedAt(startedAt);
+    setUpdatePoliciesNow(startedAt);
+
+    const interval = window.setInterval(() => setUpdatePoliciesNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, [updatingPoliciesOnly]);
 
   const loadSavedProgress = async () => {
     try {
@@ -1036,7 +1053,7 @@ const WordPressImport = () => {
     }
 
     // Chunked processing to avoid backend timeouts
-    const MAX_POLICIES_PER_CALL = 200;
+    const MAX_POLICIES_PER_CALL = 400;
 
     updatePoliciesCancelRef.current = false;
     setUpdatingPoliciesOnly(true);
@@ -1052,6 +1069,8 @@ const WordPressImport = () => {
       chequesFixed: 0,
       errors: [] as string[],
     };
+
+    let processedSoFar = 0;
 
     try {
       for (let offset = 0; offset < total; offset += MAX_POLICIES_PER_CALL) {
@@ -1091,11 +1110,11 @@ const WordPressImport = () => {
 
         setUpdatePoliciesStats({ ...totals });
 
-        const processed = Math.min(offset + chunk.length, total);
-        setUpdatePoliciesProgress({ processed, total });
+        processedSoFar = Math.min(offset + chunk.length, total);
+        setUpdatePoliciesProgress({ processed: processedSoFar, total });
 
-        // Give the browser a breath between calls (avoid UI freeze)
-        await new Promise((r) => setTimeout(r, 150));
+        // Tiny breath (avoid UI freeze)
+        await new Promise((r) => setTimeout(r, 50));
       }
 
       setUpdatePoliciesChunkRange(null);
@@ -1103,7 +1122,7 @@ const WordPressImport = () => {
       if (updatePoliciesCancelRef.current) {
         toast({
           title: "تم الإيقاف",
-          description: `تم إيقاف العملية عند ${updatePoliciesProgress.processed}/${total}`,
+          description: `تم إيقاف العملية عند ${processedSoFar}/${total}`,
         });
       } else {
         toast({
@@ -1429,9 +1448,9 @@ const WordPressImport = () => {
 
           <TabsContent value="tools" className="space-y-6">
             {/* Update Policies Only (re-sync payments) - First card in tools */}
-            <Card className="border-2 border-blue-500">
+            <Card className="border-2 border-primary">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-blue-600">
+                <CardTitle className="flex items-center gap-2 text-primary">
                   <RefreshCw className="h-5 w-5" />
                   تحديث الوثائق والمدفوعات فقط
                 </CardTitle>
@@ -1443,18 +1462,19 @@ const WordPressImport = () => {
               </CardHeader>
               <CardContent className="space-y-4">
                 {!jsonData && (
-                  <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-700 dark:text-amber-300">
+                  <div className="p-3 bg-muted border border-border rounded-lg text-sm text-muted-foreground">
                     ⚠️ يرجى تحميل ملف JSON أولاً من تبويب "الاستيراد"
                   </div>
                 )}
-                
+
                 {jsonData && (
-                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg space-y-1">
+                  <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg space-y-1">
                     <p className="text-sm">
                       <strong>الوثائق في JSON:</strong> {(jsonData?.policies || []).length}
                     </p>
                     <p className="text-sm">
-                      <strong>إجمالي المدفوعات:</strong> {(jsonData?.policies || []).reduce((sum: number, p: any) => sum + (p.payments?.length || 0), 0)}
+                      <strong>إجمالي المدفوعات:</strong>{' '}
+                      {(jsonData?.policies || []).reduce((sum: number, p: any) => sum + (p.payments?.length || 0), 0)}
                     </p>
                     <p className="text-xs text-muted-foreground mt-2">
                       سيتم حذف جميع المدفوعات الحالية واستبدالها بالبيانات من JSON مع ضمان عدم تجاوز سعر التأمين
@@ -1466,7 +1486,7 @@ const WordPressImport = () => {
                   <Button
                     onClick={handleUpdatePoliciesOnly}
                     disabled={updatingPoliciesOnly || !jsonData}
-                    className="bg-blue-600 hover:bg-blue-700"
+                    className="bg-primary text-primary-foreground hover:bg-primary/90"
                   >
                     {updatingPoliciesOnly ? (
                       <>
@@ -1505,7 +1525,28 @@ const WordPressImport = () => {
                         {Math.round((updatePoliciesProgress.processed / updatePoliciesProgress.total) * 100)}%)
                       </span>
                     </div>
+
                     <Progress value={(updatePoliciesProgress.processed / updatePoliciesProgress.total) * 100} />
+
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      {(() => {
+                        const elapsedSec = updatePoliciesStartedAt
+                          ? Math.max(0, Math.floor((updatePoliciesNow - updatePoliciesStartedAt) / 1000))
+                          : 0;
+                        const processed = updatePoliciesProgress.processed;
+                        const total = updatePoliciesProgress.total;
+                        const remaining = Math.max(0, total - processed);
+                        const speed = processed > 0 ? processed / Math.max(1, elapsedSec) : 0;
+                        const etaSec = speed > 0 ? Math.round(remaining / speed) : null;
+
+                        return (
+                          <>
+                            <span>الوقت: {updatePoliciesStartedAt ? formatTime(elapsedSec) : "-"}</span>
+                            <span>المتبقي: {etaSec !== null ? formatTime(etaSec) : "..."}</span>
+                          </>
+                        );
+                      })()}
+                    </div>
                   </div>
                 )}
 
