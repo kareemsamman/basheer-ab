@@ -567,8 +567,10 @@ Deno.serve(async (req) => {
       const mappings = data.mappings || {};
 
       if (entityType === 'companies') {
+        console.log(`Importing ${batch?.length || 0} companies...`);
         for (const company of batch || []) {
           try {
+            console.log(`Processing company: ${company.name}`);
             const { data: existing } = await supabase
               .from('insurance_companies')
               .select('id')
@@ -579,13 +581,14 @@ Deno.serve(async (req) => {
               name: company.name,
               name_ar: company.name,
               active: true,
-              category_parent: company.category_parent,
+              category_parent: company.category_parent ? [company.category_parent] : null,
             };
 
             if (existing) {
               await supabase.from('insurance_companies').update(companyData).eq('id', existing.id);
               newMappings[company.name.toLowerCase()] = existing.id;
               stats.updated++;
+              console.log(`Updated company: ${company.name} -> ${existing.id}`);
             } else {
               const { data: inserted, error } = await supabase
                 .from('insurance_companies')
@@ -595,14 +598,18 @@ Deno.serve(async (req) => {
               if (inserted) {
                 newMappings[company.name.toLowerCase()] = inserted.id;
                 stats.inserted++;
+                console.log(`Inserted company: ${company.name} -> ${inserted.id}`);
               } else if (error) {
+                console.error(`Error inserting company ${company.name}: ${error.message}`);
                 stats.errors.push(`Company ${company.name}: ${error.message}`);
               }
             }
           } catch (e: any) {
+            console.error(`Exception processing company ${company.name}: ${e.message}`);
             stats.errors.push(`Company ${company.name}: ${e.message}`);
           }
         }
+        console.log(`Companies import done: ${stats.inserted} inserted, ${stats.updated} updated, ${stats.errors.length} errors`);
       }
 
       if (entityType === 'brokers') {
