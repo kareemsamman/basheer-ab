@@ -93,6 +93,16 @@ const WordPressImport = () => {
   // Linking tool state
   const [linkingPolicies, setLinkingPolicies] = useState(false);
   const [linkingStats, setLinkingStats] = useState<{ found: number; linked: number; notFound: string[] } | null>(null);
+  
+  // Update policies only state
+  const [updatingPoliciesOnly, setUpdatingPoliciesOnly] = useState(false);
+  const [updatePoliciesStats, setUpdatePoliciesStats] = useState<{ 
+    policiesUpdated: number; 
+    policiesSkipped: number; 
+    paymentsDeleted: number; 
+    paymentsInserted: number; 
+    errors: string[] 
+  } | null>(null);
 
   const entityLabels: Record<string, string> = {
     companies: "شركات التأمين",
@@ -996,6 +1006,42 @@ const WordPressImport = () => {
     }
   };
 
+  const handleUpdatePoliciesOnly = async () => {
+    if (!jsonData?.policies) {
+      toast({ 
+        title: "خطأ", 
+        description: "يرجى تحميل ملف JSON أولاً", 
+        variant: "destructive" 
+      });
+      return;
+    }
+    
+    setUpdatingPoliciesOnly(true);
+    setUpdatePoliciesStats(null);
+    
+    try {
+      const { data: result, error } = await supabase.functions.invoke('wordpress-import', {
+        body: { 
+          action: 'updatePoliciesOnly',
+          data: { policies: jsonData.policies }
+        }
+      });
+      
+      if (error) throw error;
+      
+      setUpdatePoliciesStats(result.stats);
+      
+      toast({ 
+        title: "تم التحديث", 
+        description: `تم تحديث ${result.stats.policiesUpdated} وثيقة وإضافة ${result.stats.paymentsInserted} مدفوعة` 
+      });
+    } catch (err: any) {
+      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+    } finally {
+      setUpdatingPoliciesOnly(false);
+    }
+  };
+
   const handleClearAll = async () => {
     if (deleteConfirmText !== "DELETE ALL") return;
 
@@ -1305,6 +1351,84 @@ const WordPressImport = () => {
           </TabsContent>
 
           <TabsContent value="tools" className="space-y-6">
+            {/* Update Policies Only (re-sync payments) */}
+            <Card className="border-blue-500">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-blue-600">
+                  <RefreshCw className="h-5 w-5" />
+                  تحديث الوثائق والمدفوعات فقط
+                </CardTitle>
+                <CardDescription>
+                  يعيد مزامنة المدفوعات من ملف JSON للوثائق الموجودة فقط (يحذف المدفوعات القديمة ويستبدلها)
+                  <br />
+                  <strong>لا يمس:</strong> العملاء، السيارات، شركات التأمين، الوسائط
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {!jsonData && (
+                  <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-700 dark:text-amber-300">
+                    ⚠️ يرجى تحميل ملف JSON أولاً من تبويب "الاستيراد"
+                  </div>
+                )}
+                
+                {jsonData && (
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg space-y-1">
+                    <p className="text-sm">
+                      <strong>الوثائق في JSON:</strong> {(jsonData?.policies || []).length}
+                    </p>
+                    <p className="text-sm">
+                      <strong>إجمالي المدفوعات:</strong> {(jsonData?.policies || []).reduce((sum: number, p: any) => sum + (p.payments?.length || 0), 0)}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      سيتم حذف جميع المدفوعات الحالية واستبدالها بالبيانات من JSON مع ضمان عدم تجاوز سعر التأمين
+                    </p>
+                  </div>
+                )}
+
+                <Button 
+                  onClick={handleUpdatePoliciesOnly} 
+                  disabled={updatingPoliciesOnly || !jsonData}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {updatingPoliciesOnly ? (
+                    <><Loader2 className="h-4 w-4 ml-2 animate-spin" />جاري التحديث...</>
+                  ) : (
+                    <><RefreshCw className="h-4 w-4 ml-2" />تحديث المدفوعات</>
+                  )}
+                </Button>
+
+                {updatePoliciesStats && (
+                  <div className="p-4 border rounded-lg space-y-2 bg-muted">
+                    <div className="grid grid-cols-2 gap-4 text-center">
+                      <div>
+                        <p className="text-sm text-muted-foreground">وثائق محدثة</p>
+                        <p className="text-2xl font-bold text-green-600">{updatePoliciesStats.policiesUpdated}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">مدفوعات جديدة</p>
+                        <p className="text-2xl font-bold text-blue-600">{updatePoliciesStats.paymentsInserted}</p>
+                      </div>
+                    </div>
+                    {updatePoliciesStats.policiesSkipped > 0 && (
+                      <p className="text-sm text-amber-600">
+                        ⚠️ تم تخطي {updatePoliciesStats.policiesSkipped} وثيقة (غير موجودة في النظام)
+                      </p>
+                    )}
+                    {updatePoliciesStats.errors?.length > 0 && (
+                      <div className="text-sm text-destructive">
+                        <p className="font-medium">أخطاء ({updatePoliciesStats.errors.length}):</p>
+                        <ScrollArea className="h-24 mt-1">
+                          {updatePoliciesStats.errors.slice(0, 10).map((err: string, i: number) => (
+                            <p key={i} className="text-xs">{err}</p>
+                          ))}
+                        </ScrollArea>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Bulk Assign Company Tool - NO JSON NEEDED */}
             <Card>
               <CardHeader>

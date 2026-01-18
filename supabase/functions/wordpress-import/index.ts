@@ -68,22 +68,28 @@ function mapCarType(wpType: string | null | undefined): string {
   return mapping[wpType.toLowerCase()] || 'car';
 }
 
-// Payment type mapping
-function mapPaymentType(wpType: string | null | undefined, notes?: string | null): string {
-  if (!wpType && !notes) return 'cash';
+// Payment type mapping - also accepts check_number to determine if it's a cheque
+function mapPaymentType(wpType: string | null | undefined, notes?: string | null, checkNumber?: string | null): string {
+  // If there's a check_number but no explicit type, it's a cheque
+  if (checkNumber && checkNumber.trim() && (!wpType || wpType.trim() === '')) {
+    return 'cheque';
+  }
   
   if (notes) {
     const match = notes.match(/Payment Way:\s*(\w+)/i);
     if (match) {
       const extracted = match[1].toLowerCase();
       if (['visa', 'فيزا'].includes(extracted)) return 'visa';
-      if (['cheque', 'check', 'شيك'].includes(extracted)) return 'cheque';
+      if (['cheque', 'check', 'شيك', 'shekat', 'شيكات'].includes(extracted)) return 'cheque';
       if (['transfer', 'حوالة', 'bank_transfer'].includes(extracted)) return 'transfer';
       if (['cash', 'كاش'].includes(extracted)) return 'cash';
     }
   }
   
-  if (!wpType) return 'cash';
+  if (!wpType || wpType.trim() === '') {
+    // Default to cash if no type and no check_number
+    return 'cash';
+  }
   
   const typeStr = wpType.toLowerCase().trim();
   const mapping: Record<string, string> = {
@@ -92,6 +98,8 @@ function mapPaymentType(wpType: string | null | undefined, notes?: string | null
     'cheque': 'cheque',
     'check': 'cheque',
     'شيك': 'cheque',
+    'shekat': 'cheque',
+    'شيكات': 'cheque',
     'visa': 'visa',
     'فيزا': 'visa',
     'transfer': 'transfer',
@@ -473,6 +481,116 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         },
       );
+    }
+
+    // Action: Update policies and payments only (no clearing, no clients/cars/companies changes)
+    if (action === 'updatePoliciesOnly') {
+      console.log('📝 UPDATE POLICIES ONLY - Starting...');
+      
+      const stats = { 
+        policiesUpdated: 0, 
+        policiesSkipped: 0, 
+        paymentsDeleted: 0, 
+        paymentsInserted: 0, 
+        errors: [] as string[] 
+      };
+      
+      const policies = data.policies || [];
+      const mappings = data.mappings || {};
+      
+      for (const policy of policies) {
+        try {
+          // Find the policy by legacy_wp_id
+          const { data: existingPolicy } = await supabase
+            .from('policies')
+            .select('id, insurance_price')
+            .eq('legacy_wp_id', policy.legacy_wp_id)
+            .is('deleted_at', null)
+            .maybeSingle();
+          
+          if (!existingPolicy) {
+            stats.policiesSkipped++;
+            continue;
+          }
+          
+          const policyId = existingPolicy.id;
+          const insurancePrice = existingPolicy.insurance_price || 0;
+          
+          // Delete all existing payments for this policy
+          const { data: deletedPayments, error: deleteError } = await supabase
+            .from('policy_payments')
+            .delete()
+            .eq('policy_id', policyId)
+            .select('id');
+          
+          if (deleteError) {
+            stats.errors.push(`Policy ${policy.legacy_wp_id}: Failed to delete payments - ${deleteError.message}`);
+            continue;
+          }
+          
+          stats.paymentsDeleted += deletedPayments?.length || 0;
+          
+          // Re-insert payments from JSON, capped at insurance_price
+          let runningTotal = 0;
+          
+          for (const payment of policy.payments || []) {
+            const paymentDate = convertDate(payment.date);
+            if (!paymentDate) continue;
+            
+            let amount = parseFloat(payment.amount) || 0;
+            if (amount <= 0) continue;
+            
+            // Cap at insurance_price
+            const remainingCapacity = insurancePrice - runningTotal;
+            if (remainingCapacity <= 0) {
+              console.log(`Skipping payment for policy ${policy.legacy_wp_id}: already at insurance_price`);
+              continue;
+            }
+            if (amount > remainingCapacity) {
+              console.log(`Capping payment from ${amount} to ${remainingCapacity} for policy ${policy.legacy_wp_id}`);
+              amount = remainingCapacity;
+            }
+            
+            const paymentType = mapPaymentType(
+              payment.payment_type, 
+              policy.notes, 
+              payment.check_number || payment.cheque_number
+            );
+            
+            const { error: insertError } = await supabase
+              .from('policy_payments')
+              .insert({
+                policy_id: policyId,
+                payment_type: paymentType,
+                amount: amount,
+                payment_date: paymentDate,
+                cheque_number: payment.check_number || payment.cheque_number || null,
+                cheque_image_url: payment.check_image_url || payment.cheque_image_url || null,
+                refused: payment.refused_status === 'refused',
+                branch_id: BEIT_HANINA_BRANCH_ID,
+              });
+            
+            if (insertError) {
+              stats.errors.push(`Policy ${policy.legacy_wp_id} payment: ${insertError.message}`);
+            } else {
+              stats.paymentsInserted++;
+              if (payment.refused_status !== 'refused') {
+                runningTotal += amount;
+              }
+            }
+          }
+          
+          stats.policiesUpdated++;
+        } catch (e: any) {
+          stats.errors.push(`Policy ${policy.legacy_wp_id}: ${e.message}`);
+        }
+      }
+      
+      console.log(`📝 UPDATE POLICIES ONLY - Done: ${stats.policiesUpdated} updated, ${stats.paymentsInserted} payments inserted`);
+      
+      return new Response(JSON.stringify({ success: true, stats }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Action: Create import progress record
@@ -891,59 +1009,109 @@ Deno.serve(async (req) => {
       }
 
       if (entityType === 'payments') {
+        // Group payments by policy to handle capping
+        const paymentsByPolicy = new Map<string, any[]>();
         for (const payment of batch || []) {
-          try {
-            const policyId = payment.policy_legacy_wp_id ? mappings.policies?.[payment.policy_legacy_wp_id] : null;
-            if (!policyId) continue;
+          const policyLegacyId = payment.policy_legacy_wp_id;
+          if (!policyLegacyId) continue;
+          if (!paymentsByPolicy.has(policyLegacyId)) {
+            paymentsByPolicy.set(policyLegacyId, []);
+          }
+          paymentsByPolicy.get(policyLegacyId)!.push(payment);
+        }
 
-            const paymentDate = convertDate(payment.date);
-            if (!paymentDate) continue;
+        for (const [policyLegacyId, payments] of paymentsByPolicy) {
+          const policyId = mappings.policies?.[policyLegacyId];
+          if (!policyId) continue;
 
-            const amount = parseFloat(payment.amount) || 0;
-            if (amount <= 0) continue;
+          // Get policy insurance_price to cap payments
+          const { data: policyData } = await supabase
+            .from('policies')
+            .select('insurance_price')
+            .eq('id', policyId)
+            .single();
+          
+          const insurancePrice = policyData?.insurance_price || 0;
+          let runningTotal = 0;
 
-            const { data: existingPayment } = await supabase
-              .from('policy_payments')
-              .select('id')
-              .eq('policy_id', policyId)
-              .eq('payment_date', paymentDate)
-              .eq('amount', amount)
-              .maybeSingle();
-
-            const paymentType = mapPaymentType(payment.payment_type, payment.policy_notes) as any;
-
-            if (!existingPayment) {
-              const { error } = await supabase
-                .from('policy_payments')
-                .insert({
-                  policy_id: policyId,
-                  payment_type: paymentType,
-                  amount: amount,
-                  payment_date: paymentDate,
-                  cheque_number: payment.check_number || null,
-                  cheque_image_url: payment.check_image_url || null,
-                  refused: payment.refused_status === 'refused',
-                  branch_id: BEIT_HANINA_BRANCH_ID, // Always assign to بيت حنينا
-                });
-              if (error) {
-                stats.errors.push(`Payment: ${error.message}`);
-              } else {
-                stats.inserted++;
-              }
-            } else {
-              await supabase
-                .from('policy_payments')
-                .update({
-                  payment_type: paymentType,
-                  cheque_number: payment.check_number || null,
-                  cheque_image_url: payment.check_image_url || null,
-                  refused: payment.refused_status === 'refused',
-                })
-                .eq('id', existingPayment.id);
-              stats.updated++;
+          // Get existing payments total
+          const { data: existingPaymentsData } = await supabase
+            .from('policy_payments')
+            .select('amount, refused')
+            .eq('policy_id', policyId);
+          
+          for (const ep of existingPaymentsData || []) {
+            if (!ep.refused) {
+              runningTotal += parseFloat(ep.amount) || 0;
             }
-          } catch (e: any) {
-            stats.errors.push(`Payment: ${e.message}`);
+          }
+
+          for (const payment of payments) {
+            try {
+              const paymentDate = convertDate(payment.date);
+              if (!paymentDate) continue;
+
+              let amount = parseFloat(payment.amount) || 0;
+              if (amount <= 0) continue;
+
+              // Cap amount to not exceed insurance_price
+              const remainingCapacity = insurancePrice - runningTotal;
+              if (remainingCapacity <= 0) {
+                console.log(`Skipping payment for policy ${policyLegacyId}: already at or over insurance_price`);
+                continue;
+              }
+              if (amount > remainingCapacity) {
+                console.log(`Capping payment from ${amount} to ${remainingCapacity} for policy ${policyLegacyId}`);
+                amount = remainingCapacity;
+              }
+
+              const { data: existingPayment } = await supabase
+                .from('policy_payments')
+                .select('id')
+                .eq('policy_id', policyId)
+                .eq('payment_date', paymentDate)
+                .eq('amount', amount)
+                .maybeSingle();
+
+              // Pass check_number to mapPaymentType for proper detection
+              const paymentType = mapPaymentType(payment.payment_type, payment.policy_notes, payment.check_number) as any;
+
+              if (!existingPayment) {
+                const { error } = await supabase
+                  .from('policy_payments')
+                  .insert({
+                    policy_id: policyId,
+                    payment_type: paymentType,
+                    amount: amount,
+                    payment_date: paymentDate,
+                    cheque_number: payment.check_number || null,
+                    cheque_image_url: payment.check_image_url || null,
+                    refused: payment.refused_status === 'refused',
+                    branch_id: BEIT_HANINA_BRANCH_ID,
+                  });
+                if (error) {
+                  stats.errors.push(`Payment: ${error.message}`);
+                } else {
+                  stats.inserted++;
+                  if (payment.refused_status !== 'refused') {
+                    runningTotal += amount;
+                  }
+                }
+              } else {
+                await supabase
+                  .from('policy_payments')
+                  .update({
+                    payment_type: paymentType,
+                    cheque_number: payment.check_number || null,
+                    cheque_image_url: payment.check_image_url || null,
+                    refused: payment.refused_status === 'refused',
+                  })
+                  .eq('id', existingPayment.id);
+                stats.updated++;
+              }
+            } catch (e: any) {
+              stats.errors.push(`Payment: ${e.message}`);
+            }
           }
         }
       }
