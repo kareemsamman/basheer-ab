@@ -523,17 +523,21 @@ const WordPressImport = () => {
       if (!completedSteps.includes('clear')) {
         if (clearBeforeImport) {
           updateStep('clear', 'running');
-          
-          if (resetCompanies) {
-            await supabase.functions.invoke('wordpress-import', {
-              body: { action: 'deleteCompanies' }
-            });
-          }
-          
-          const { error } = await supabase.functions.invoke('wordpress-import', {
-            body: { action: 'clear' }
+
+          // 1) Clear transactional data first (policies/cars/clients/brokers/...) so FK deletion is safe
+          const { error: clearError } = await supabase.functions.invoke('wordpress-import', {
+            body: { action: 'clear' },
           });
-          if (error) throw error;
+          if (clearError) throw clearError;
+
+          // 2) If requested, reset companies AFTER clearing transactional data
+          if (resetCompanies) {
+            const { error: deleteCompaniesError } = await supabase.functions.invoke('wordpress-import', {
+              body: { action: 'deleteCompanies' },
+            });
+            if (deleteCompaniesError) throw deleteCompaniesError;
+          }
+
           updateStep('clear', 'done');
         } else {
           updateStep('clear', 'skipped');

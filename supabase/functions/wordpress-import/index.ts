@@ -337,22 +337,65 @@ Deno.serve(async (req) => {
 
     // Action: Delete all insurance companies (but preserve rules separately)
     if (action === 'deleteCompanies') {
-      console.log('Deleting all insurance companies...');
-      
-      // First delete pricing rules (they'll be restored)
-      await supabase.from('pricing_rules').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      
-      // Remove company references from policies (set to null, don't delete policies)
-      await supabase.from('policies').update({ company_id: null }).neq('id', '00000000-0000-0000-0000-000000000000');
-      
-      // Then delete companies
-      const { error } = await supabase.from('insurance_companies').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      
-      if (error) throw error;
+      console.log('🏢 Deleting all insurance companies (resetCompanies)...');
 
-      return new Response(JSON.stringify({ success: true, message: 'All insurance companies deleted' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
+
+      const clearTable = async (table: string) => {
+        const { error } = await supabase.from(table).delete().neq('id', ZERO_UUID);
+        if (error) {
+          console.error(`❌ deleteCompanies: failed clearing ${table}: ${error.message}`);
+          throw error;
+        }
+        console.log(`✅ deleteCompanies: cleared ${table}`);
+      };
+
+      // Company-scoped configuration tables (must be removed before deleting companies)
+      await clearTable('pricing_rules');
+      await clearTable('company_road_service_prices');
+      await clearTable('company_accident_fee_prices');
+      await clearTable('company_accident_templates');
+
+      // If policies still exist (e.g., clear step disabled), detach company references.
+      const { error: policiesUpdateError } = await supabase
+        .from('policies')
+        .update({ company_id: null })
+        .neq('id', ZERO_UUID);
+      if (policiesUpdateError) {
+        console.error(`❌ deleteCompanies: failed to null company_id in policies: ${policiesUpdateError.message}`);
+        throw policiesUpdateError;
+      }
+
+      // Also detach from accident reports if present
+      const { error: accidentReportsUpdateError } = await supabase
+        .from('accident_reports')
+        .update({ company_id: null })
+        .neq('id', ZERO_UUID);
+      if (accidentReportsUpdateError) {
+        console.error(`❌ deleteCompanies: failed to null company_id in accident_reports: ${accidentReportsUpdateError.message}`);
+        throw accidentReportsUpdateError;
+      }
+
+      // Finally delete companies
+      const { error: companiesError } = await supabase
+        .from('insurance_companies')
+        .delete()
+        .neq('id', ZERO_UUID);
+
+      if (companiesError) {
+        console.error(`❌ deleteCompanies: failed deleting insurance_companies: ${companiesError.message}`);
+        throw companiesError;
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'All insurance companies deleted (pricing rules cleared for restore)',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      );
     }
 
     // Action: Restore pricing rules to new companies
@@ -397,66 +440,39 @@ Deno.serve(async (req) => {
     // Action: Clear all data (except companies, pricing rules, users, branches)
     if (action === 'clear') {
       console.log('🧹 CLEARING ALL DATA - Starting...');
-      
-      const deleteWithLog = async (table: string) => {
-        const { error, count } = await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
-        if (error) {
-          console.error(`❌ Error deleting ${table}: ${error.message}`);
-        } else {
-          console.log(`✅ Deleted from ${table}`);
-        }
-        return { table, error };
-      };
 
-      // Clear ledger entries first (they reference policies)
-      await deleteWithLog('ab_ledger');
-      
-      // Clear broker settlement items first (they reference policies and settlements)
-      await deleteWithLog('broker_settlement_items');
-      
-      // Clear company and broker settlements (wallets)
-      await deleteWithLog('company_settlements');
-      await deleteWithLog('broker_settlements');
-      
-      // Clear customer wallet transactions
-      await deleteWithLog('customer_wallet_transactions');
-      
-      // Clear notifications
-      await deleteWithLog('notifications');
-      
-      // Clear policy-related data
-      await deleteWithLog('invoices');
-      await deleteWithLog('policy_payments');
-      await deleteWithLog('customer_signatures');
-      await deleteWithLog('car_accidents');
-      await deleteWithLog('media_files');
-      await deleteWithLog('accident_third_parties');
-      await deleteWithLog('accident_reports');
-      await deleteWithLog('policy_groups');
-      await deleteWithLog('policies');
-      
-      // Clear outside cheques
-      await deleteWithLog('outside_cheques');
-      
-      // Clear cars
-      await deleteWithLog('cars');
-      
-      // Clear clients
-      await deleteWithLog('clients');
-      
-      // Clear brokers
-      await deleteWithLog('brokers');
-      
-      // Also clear import_progress to reset state
-      await deleteWithLog('import_progress');
-      
-      console.log('🧹 CLEAR COMPLETE - All data cleared including wallets, ledger, notifications, and cheques');
-      return new Response(JSON.stringify({ 
-        success: true, 
-        message: 'All data cleared including broker/company wallets, notifications, and cheques' 
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      // Prefer the database-side cleanup routine (fast + FK-safe)
+      const { error: rpcError } = await supabase.rpc('clear_data_for_import');
+      if (rpcError) {
+        console.error(`❌ clear_data_for_import failed: ${rpcError.message}`);
+        throw rpcError;
+      }
+
+      console.log('✅ clear_data_for_import finished');
+
+      // Extra safety: remove any lingering import progress rows (prevents unwanted resume mode)
+      const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
+      const { error: progressError } = await supabase
+        .from('import_progress')
+        .delete()
+        .neq('id', ZERO_UUID);
+
+      if (progressError) {
+        console.warn(`⚠️ Failed clearing import_progress: ${progressError.message}`);
+      } else {
+        console.log('✅ Deleted from import_progress');
+      }
+
+      console.log('🧹 CLEAR COMPLETE - All transactional data cleared');
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'All data cleared',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      );
     }
 
     // Action: Create import progress record
