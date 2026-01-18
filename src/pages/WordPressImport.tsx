@@ -96,13 +96,19 @@ const WordPressImport = () => {
   
   // Update policies only state
   const [updatingPoliciesOnly, setUpdatingPoliciesOnly] = useState(false);
-  const [updatePoliciesStats, setUpdatePoliciesStats] = useState<{ 
-    policiesUpdated: number; 
-    policiesSkipped: number; 
-    paymentsDeleted: number; 
+  const updatePoliciesCancelRef = useRef(false);
+  const [updatePoliciesProgress, setUpdatePoliciesProgress] = useState<{ processed: number; total: number }>({
+    processed: 0,
+    total: 0,
+  });
+  const [updatePoliciesChunkRange, setUpdatePoliciesChunkRange] = useState<{ from: number; to: number } | null>(null);
+  const [updatePoliciesStats, setUpdatePoliciesStats] = useState<{
+    policiesUpdated: number;
+    policiesSkipped: number;
+    paymentsDeleted: number;
     paymentsInserted: number;
     chequesFixed?: number;
-    errors: string[] 
+    errors: string[];
   } | null>(null);
 
   const entityLabels: Record<string, string> = {
@@ -1009,37 +1015,107 @@ const WordPressImport = () => {
 
   const handleUpdatePoliciesOnly = async () => {
     if (!jsonData?.policies) {
-      toast({ 
-        title: "خطأ", 
-        description: "يرجى تحميل ملف JSON أولاً", 
-        variant: "destructive" 
+      toast({
+        title: "خطأ",
+        description: "يرجى تحميل ملف JSON أولاً",
+        variant: "destructive",
       });
       return;
     }
-    
+
+    const allPolicies: any[] = jsonData.policies || [];
+    const total = allPolicies.length;
+
+    if (total === 0) {
+      toast({
+        title: "خطأ",
+        description: "ملف JSON لا يحتوي على وثائق",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Chunked processing to avoid backend timeouts
+    const MAX_POLICIES_PER_CALL = 200;
+
+    updatePoliciesCancelRef.current = false;
     setUpdatingPoliciesOnly(true);
     setUpdatePoliciesStats(null);
-    
+    setUpdatePoliciesProgress({ processed: 0, total });
+    setUpdatePoliciesChunkRange(null);
+
+    const totals = {
+      policiesUpdated: 0,
+      policiesSkipped: 0,
+      paymentsDeleted: 0,
+      paymentsInserted: 0,
+      chequesFixed: 0,
+      errors: [] as string[],
+    };
+
     try {
-      const { data: result, error } = await supabase.functions.invoke('wordpress-import', {
-        body: { 
-          action: 'updatePoliciesOnly',
-          data: { policies: jsonData.policies }
+      for (let offset = 0; offset < total; offset += MAX_POLICIES_PER_CALL) {
+        if (updatePoliciesCancelRef.current) break;
+
+        const chunk = allPolicies.slice(offset, offset + MAX_POLICIES_PER_CALL);
+        const from = offset + 1;
+        const to = offset + chunk.length;
+        setUpdatePoliciesChunkRange({ from, to });
+
+        const { data: result, error } = await supabase.functions.invoke('wordpress-import', {
+          body: {
+            action: 'updatePoliciesOnly',
+            data: {
+              policies: chunk,
+              offset,
+              total,
+              isChunk: true,
+            },
+          },
+        });
+
+        if (error) throw error;
+
+        const s = result?.stats || {};
+        totals.policiesUpdated += Number(s.policiesUpdated || 0);
+        totals.policiesSkipped += Number(s.policiesSkipped || 0);
+        totals.paymentsDeleted += Number(s.paymentsDeleted || 0);
+        totals.paymentsInserted += Number(s.paymentsInserted || 0);
+        totals.chequesFixed += Number(s.chequesFixed || 0);
+        totals.errors.push(...((s.errors || []) as string[]));
+
+        // Keep UI fast + memory bounded
+        if (totals.errors.length > 200) {
+          totals.errors = totals.errors.slice(-200);
         }
-      });
-      
-      if (error) throw error;
-      
-      setUpdatePoliciesStats(result.stats);
-      
-      toast({ 
-        title: "تم التحديث", 
-        description: `تم تحديث ${result.stats.policiesUpdated} وثيقة وإضافة ${result.stats.paymentsInserted} مدفوعة` 
-      });
+
+        setUpdatePoliciesStats({ ...totals });
+
+        const processed = Math.min(offset + chunk.length, total);
+        setUpdatePoliciesProgress({ processed, total });
+
+        // Give the browser a breath between calls (avoid UI freeze)
+        await new Promise((r) => setTimeout(r, 150));
+      }
+
+      setUpdatePoliciesChunkRange(null);
+
+      if (updatePoliciesCancelRef.current) {
+        toast({
+          title: "تم الإيقاف",
+          description: `تم إيقاف العملية عند ${updatePoliciesProgress.processed}/${total}`,
+        });
+      } else {
+        toast({
+          title: "تم التحديث",
+          description: `تم تحديث ${totals.policiesUpdated} وثيقة وإضافة ${totals.paymentsInserted} مدفوعة`,
+        });
+      }
     } catch (err: any) {
       toast({ title: "خطأ", description: err.message, variant: "destructive" });
     } finally {
       setUpdatingPoliciesOnly(false);
+      setUpdatePoliciesChunkRange(null);
     }
   };
 
@@ -1386,17 +1462,52 @@ const WordPressImport = () => {
                   </div>
                 )}
 
-                <Button 
-                  onClick={handleUpdatePoliciesOnly} 
-                  disabled={updatingPoliciesOnly || !jsonData}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  {updatingPoliciesOnly ? (
-                    <><Loader2 className="h-4 w-4 ml-2 animate-spin" />جاري التحديث...</>
-                  ) : (
-                    <><RefreshCw className="h-4 w-4 ml-2" />تحديث المدفوعات</>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    onClick={handleUpdatePoliciesOnly}
+                    disabled={updatingPoliciesOnly || !jsonData}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    {updatingPoliciesOnly ? (
+                      <>
+                        <Loader2 className="h-4 w-4 ml-2 animate-spin" />جاري التحديث...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-4 w-4 ml-2" />تحديث المدفوعات
+                      </>
+                    )}
+                  </Button>
+
+                  {updatingPoliciesOnly && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        updatePoliciesCancelRef.current = true;
+                      }}
+                    >
+                      إيقاف
+                    </Button>
                   )}
-                </Button>
+                </div>
+
+                {updatePoliciesProgress.total > 0 && (updatingPoliciesOnly || updatePoliciesProgress.processed > 0) && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>
+                        {updatePoliciesChunkRange
+                          ? `جاري معالجة الوثائق ${updatePoliciesChunkRange.from}-${updatePoliciesChunkRange.to}`
+                          : "جاري المعالجة..."}
+                      </span>
+                      <span>
+                        {updatePoliciesProgress.processed}/{updatePoliciesProgress.total} (
+                        {Math.round((updatePoliciesProgress.processed / updatePoliciesProgress.total) * 100)}%)
+                      </span>
+                    </div>
+                    <Progress value={(updatePoliciesProgress.processed / updatePoliciesProgress.total) * 100} />
+                  </div>
+                )}
 
                 {updatePoliciesStats && (
                   <div className="p-4 border rounded-lg space-y-2 bg-muted">
