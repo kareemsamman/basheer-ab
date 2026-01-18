@@ -1,14 +1,12 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { ImageIcon, Plus, Trash2, Download, X, Loader2, FileText, FolderOpen } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { ImageIcon, Plus, Trash2, Download, Loader2, FileText, FolderOpen } from "lucide-react";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
-
+import { FilePreviewGallery } from "./FilePreviewGallery";
 interface MediaFile {
   id: string;
   original_name: string;
@@ -147,6 +145,9 @@ export function PolicyImagesSection({ policyId }: PolicyImagesSectionProps) {
     }
   };
 
+  const isViewable = (mimeType: string) => 
+    mimeType.startsWith('image/') || mimeType === 'application/pdf';
+
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -165,20 +166,21 @@ export function PolicyImagesSection({ policyId }: PolicyImagesSectionProps) {
         {files.map((file) => (
           <div
             key={file.id}
-            className="relative group rounded-lg border overflow-hidden bg-muted/30 aspect-square"
+            className="relative group rounded-lg border overflow-hidden bg-muted/30 aspect-square cursor-pointer"
+            onClick={() => {
+              if (isViewable(file.mime_type)) {
+                setSelectedImage(file);
+              }
+            }}
           >
             {isImage(file.mime_type) ? (
               <img
                 src={file.cdn_url}
                 alt={file.original_name}
-                className="w-full h-full object-cover cursor-pointer"
-                onClick={() => setSelectedImage(file)}
+                className="w-full h-full object-cover"
               />
             ) : (
-              <div 
-                className="w-full h-full flex flex-col items-center justify-center cursor-pointer"
-                onClick={() => window.open(file.cdn_url, '_blank')}
-              >
+              <div className="w-full h-full flex flex-col items-center justify-center">
                 <FileText className="h-8 w-8 text-muted-foreground" />
                 <p className="text-xs text-muted-foreground mt-2 px-2 truncate w-full text-center">
                   {file.original_name}
@@ -187,20 +189,23 @@ export function PolicyImagesSection({ policyId }: PolicyImagesSectionProps) {
             )}
             
             {/* Overlay actions */}
-            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-              <Button
-                size="icon"
-                variant="secondary"
-                className="h-8 w-8"
-                onClick={() => window.open(file.cdn_url, '_blank')}
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 pointer-events-none">
+              <a
+                href={file.cdn_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                download={file.original_name}
+                onClick={(e) => e.stopPropagation()}
+                className="pointer-events-auto inline-flex items-center justify-center h-8 w-8 rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80"
               >
                 <Download className="h-4 w-4" />
-              </Button>
+              </a>
               <Button
                 size="icon"
                 variant="destructive"
-                className="h-8 w-8"
-                onClick={() => {
+                className="h-8 w-8 pointer-events-auto"
+                onClick={(e) => {
+                  e.stopPropagation();
                   setDeletingImage(file);
                   setDeleteDialogOpen(true);
                 }}
@@ -293,32 +298,13 @@ export function PolicyImagesSection({ policyId }: PolicyImagesSectionProps) {
         </TabsContent>
       </Tabs>
 
-      {/* Image Preview Dialog */}
-      {selectedImage && (
-        <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
-          <DialogContent className="sm:max-w-3xl p-2" dir="rtl">
-            <DialogHeader className="sr-only">
-              <DialogTitle>معاينة الصورة</DialogTitle>
-            </DialogHeader>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-2 left-2 z-10"
-              onClick={() => setSelectedImage(null)}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-            <img
-              src={selectedImage.cdn_url}
-              alt={selectedImage.original_name}
-              className="w-full h-auto rounded-lg"
-            />
-            <p className="text-center text-sm text-muted-foreground mt-2">
-              {selectedImage.original_name}
-            </p>
-          </DialogContent>
-        </Dialog>
-      )}
+      {/* File Preview Gallery */}
+      <FilePreviewGallery
+        file={selectedImage}
+        allFiles={[...insuranceFiles, ...crmFiles]}
+        onClose={() => setSelectedImage(null)}
+        onNavigate={(file) => setSelectedImage(file)}
+      />
 
       {/* Delete Confirm Dialog */}
       <DeleteConfirmDialog
