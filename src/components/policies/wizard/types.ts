@@ -73,6 +73,9 @@ export interface PackageAddon {
   accident_fee_service_id?: string;
   company_id?: string;
   insurance_price: string;
+  // Independent dates for each addon (YYYY-MM-DD format)
+  start_date?: string;
+  end_date?: string;
   // ELZAMI specific fields
   elzami_commission?: number;
   // THIRD_FULL specific fields

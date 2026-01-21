@@ -152,10 +152,10 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
   // Package mode
   const [packageMode, setPackageMode] = useState(false);
   const [packageAddons, setPackageAddons] = useState<PackageAddon[]>([
-    { type: "elzami", enabled: false, company_id: "", insurance_price: "", elzami_commission: 0 },
-    { type: "third_full", enabled: false, company_id: "", insurance_price: "", policy_type_child: "THIRD", broker_buy_price: "" },
-    { type: "road_service", enabled: false, road_service_id: "", company_id: "", insurance_price: "" },
-    { type: "accident_fee_exemption", enabled: false, accident_fee_service_id: "", company_id: "", insurance_price: "" },
+    { type: "elzami", enabled: false, company_id: "", insurance_price: "", elzami_commission: 0, start_date: "", end_date: "" },
+    { type: "third_full", enabled: false, company_id: "", insurance_price: "", policy_type_child: "THIRD", broker_buy_price: "", start_date: "", end_date: "" },
+    { type: "road_service", enabled: false, road_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
+    { type: "accident_fee_exemption", enabled: false, accident_fee_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
   ]);
   const [packageRoadServices, setPackageRoadServices] = useState<RoadService[]>([]);
   const [packageRoadServiceCompanies, setPackageRoadServiceCompanies] = useState<Company[]>([]);
@@ -299,10 +299,10 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     setBrokerDirection("");
     setPackageMode(false);
     setPackageAddons([
-      { type: "elzami", enabled: false, company_id: "", insurance_price: "", elzami_commission: 0 },
-      { type: "third_full", enabled: false, company_id: "", insurance_price: "", policy_type_child: "THIRD", broker_buy_price: "" },
-      { type: "road_service", enabled: false, road_service_id: "", company_id: "", insurance_price: "" },
-      { type: "accident_fee_exemption", enabled: false, accident_fee_service_id: "", company_id: "", insurance_price: "" },
+      { type: "elzami", enabled: false, company_id: "", insurance_price: "", elzami_commission: 0, start_date: "", end_date: "" },
+      { type: "third_full", enabled: false, company_id: "", insurance_price: "", policy_type_child: "THIRD", broker_buy_price: "", start_date: "", end_date: "" },
+      { type: "road_service", enabled: false, road_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
+      { type: "accident_fee_exemption", enabled: false, accident_fee_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
     ]);
   }, [selectedCategory, defaultBrokerId]);
 
