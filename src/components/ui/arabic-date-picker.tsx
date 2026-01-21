@@ -47,24 +47,40 @@ interface ArabicDatePickerProps {
   compact?: boolean;
 }
 
-// Parse DD/MM/YYYY or D/M/YYYY to Date object
+// Parse YYYY-MM-DD to local Date object (avoiding timezone issues)
+function parseISOToLocal(dateStr: string): Date | null {
+  if (!dateStr) return null;
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10) - 1;
+  const day = parseInt(match[3], 10);
+  return new Date(year, month, day);
+}
+
+// Format local Date to YYYY-MM-DD (no timezone issues)
+function formatToISO(date: Date): string {
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const day = date.getDate().toString().padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+// Parse DD/MM/YYYY to Date object
 function parseDateInput(input: string): Date | null {
   const cleaned = input.trim();
-  // Support both DD/MM/YYYY and D/M/YYYY
   const match = cleaned.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (!match) return null;
   
   const day = parseInt(match[1], 10);
-  const month = parseInt(match[2], 10) - 1; // JS months are 0-indexed
+  const month = parseInt(match[2], 10) - 1;
   const year = parseInt(match[3], 10);
   
-  // Validate ranges
   if (month < 0 || month > 11) return null;
   if (day < 1 || day > 31) return null;
   if (year < 1900 || year > 2100) return null;
   
   const date = new Date(year, month, day);
-  // Verify the date is valid (e.g., not Feb 30)
   if (date.getDate() !== day || date.getMonth() !== month || date.getFullYear() !== year) {
     return null;
   }
@@ -72,15 +88,65 @@ function parseDateInput(input: string): Date | null {
   return date;
 }
 
-// Format Date to DD/MM/YYYY
+// Format YYYY-MM-DD to DD/MM/YYYY for display
 function formatDateForInput(dateStr: string): string {
   if (!dateStr) return "";
-  const date = new Date(dateStr);
-  if (isNaN(date.getTime())) return "";
+  const date = parseISOToLocal(dateStr);
+  if (!date) return "";
   const day = date.getDate().toString().padStart(2, "0");
   const month = (date.getMonth() + 1).toString().padStart(2, "0");
   const year = date.getFullYear();
   return `${day}/${month}/${year}`;
+}
+
+// Auto-format input with slashes: DD/MM/YYYY
+function autoFormatDateInput(value: string, prevValue: string): string {
+  // Remove all non-digits
+  const digits = value.replace(/\D/g, "");
+  
+  // Limit to 8 digits (DDMMYYYY)
+  const limited = digits.slice(0, 8);
+  
+  let formatted = "";
+  
+  if (limited.length >= 1) {
+    // Day part (max 31)
+    let dayPart = limited.slice(0, Math.min(2, limited.length));
+    if (dayPart.length === 2) {
+      const dayNum = parseInt(dayPart, 10);
+      if (dayNum > 31) dayPart = "31";
+      if (dayNum === 0) dayPart = "01";
+    }
+    formatted = dayPart;
+  }
+  
+  if (limited.length > 2) {
+    // Month part (max 12)
+    let monthPart = limited.slice(2, Math.min(4, limited.length));
+    if (monthPart.length === 2) {
+      const monthNum = parseInt(monthPart, 10);
+      if (monthNum > 12) monthPart = "12";
+      if (monthNum === 0) monthPart = "01";
+    } else if (monthPart.length === 1) {
+      const monthNum = parseInt(monthPart, 10);
+      if (monthNum > 1) monthPart = "0" + monthPart; // Auto-pad single digit > 1
+    }
+    formatted += "/" + monthPart;
+  } else if (limited.length === 2 && value.length > prevValue.length) {
+    // Auto-add slash after day when typing
+    formatted += "/";
+  }
+  
+  if (limited.length > 4) {
+    // Year part
+    const yearPart = limited.slice(4, 8);
+    formatted += "/" + yearPart;
+  } else if (limited.length === 4 && value.length > prevValue.length) {
+    // Auto-add slash after month when typing
+    formatted += "/";
+  }
+  
+  return formatted;
 }
 
 export function ArabicDatePicker({
@@ -96,17 +162,21 @@ export function ArabicDatePicker({
 }: ArabicDatePickerProps) {
   const [open, setOpen] = React.useState(false);
   const [viewDate, setViewDate] = React.useState(() => {
-    if (value) return new Date(value);
+    if (value) return parseISOToLocal(value) || new Date();
     return new Date();
   });
   const [inputValue, setInputValue] = React.useState(() => formatDateForInput(value || ""));
   const [inputError, setInputError] = React.useState(false);
+  const prevInputRef = React.useRef(inputValue);
 
   // Sync viewDate and inputValue when value changes
   React.useEffect(() => {
     if (value) {
-      setViewDate(new Date(value));
-      setInputValue(formatDateForInput(value));
+      const parsed = parseISOToLocal(value);
+      if (parsed) {
+        setViewDate(parsed);
+        setInputValue(formatDateForInput(value));
+      }
       setInputError(false);
     } else {
       setInputValue("");
@@ -116,20 +186,20 @@ export function ArabicDatePicker({
   // When popover opens, ensure viewDate matches value
   const handleOpenChange = (isOpen: boolean) => {
     if (isOpen && value) {
-      setViewDate(new Date(value));
+      const parsed = parseISOToLocal(value);
+      if (parsed) setViewDate(parsed);
     }
     setOpen(isOpen);
   };
 
-  const selectedDate = value ? new Date(value) : null;
-
-  const minDate = min ? new Date(min) : null;
-  const maxDate = max ? new Date(max) : null;
+  const selectedDate = value ? parseISOToLocal(value) : null;
+  const minDate = min ? parseISOToLocal(min) : null;
+  const maxDate = max ? parseISOToLocal(max) : null;
 
   const currentYear = viewDate.getFullYear();
   const currentMonth = viewDate.getMonth();
 
-  // Generate years range - for birth dates go back to 1920, otherwise ± 10 years
+  // Generate years range
   const years = React.useMemo(() => {
     const current = new Date().getFullYear();
     const result: number[] = [];
@@ -141,12 +211,10 @@ export function ArabicDatePicker({
     return result;
   }, [isBirthDate]);
 
-  // Get days in month
   const getDaysInMonth = (year: number, month: number) => {
     return new Date(year, month + 1, 0).getDate();
   };
 
-  // Get first day of month (0 = Sunday)
   const getFirstDayOfMonth = (year: number, month: number) => {
     return new Date(year, month, 1).getDay();
   };
@@ -171,8 +239,9 @@ export function ArabicDatePicker({
   };
 
   const handleDayClick = (day: number) => {
+    // Create date using local time, then format to ISO string manually
     const newDate = new Date(currentYear, currentMonth, day);
-    const dateStr = newDate.toISOString().split("T")[0];
+    const dateStr = formatToISO(newDate);
     onChange?.(dateStr);
     setOpen(false);
   };
@@ -210,18 +279,18 @@ export function ArabicDatePicker({
     return `${day} ${month} ${year}`;
   };
 
-  // Handle manual text input
+  // Handle manual text input with auto-formatting
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setInputValue(val);
+    const rawValue = e.target.value;
+    const formatted = autoFormatDateInput(rawValue, prevInputRef.current);
+    prevInputRef.current = formatted;
+    setInputValue(formatted);
     
-    // Clear error while typing
     if (inputError) setInputError(false);
   };
 
   const handleInputBlur = () => {
     if (!inputValue.trim()) {
-      // Allow clearing the value
       if (value) {
         onChange?.("");
       }
@@ -231,7 +300,6 @@ export function ArabicDatePicker({
     
     const parsed = parseDateInput(inputValue);
     if (parsed) {
-      // Check min/max constraints
       if (minDate && parsed < minDate) {
         setInputError(true);
         return;
@@ -240,7 +308,7 @@ export function ArabicDatePicker({
         setInputError(true);
         return;
       }
-      const dateStr = parsed.toISOString().split("T")[0];
+      const dateStr = formatToISO(parsed);
       onChange?.(dateStr);
       setInputError(false);
     } else {
@@ -400,7 +468,7 @@ export function ArabicDatePicker({
                 onClick={() => {
                   const today = new Date();
                   setViewDate(today);
-                  const dateStr = today.toISOString().split("T")[0];
+                  const dateStr = formatToISO(today);
                   onChange?.(dateStr);
                   setOpen(false);
                 }}
