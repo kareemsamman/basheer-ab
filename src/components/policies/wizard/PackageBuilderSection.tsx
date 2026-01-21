@@ -3,9 +3,10 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Package, Route, Shield, FileCheck, Loader2, Check, AlertCircle, Car } from "lucide-react";
+import { Package, Route, Shield, FileCheck, Loader2, Check, AlertCircle, Car, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import type { PackageAddon, Company, RoadService, AccidentFeeService } from "./types";
 
 // Addon Card Component - extracted outside to prevent re-creation on parent re-render
@@ -84,6 +85,8 @@ interface PackageBuilderSectionProps {
   addons: PackageAddon[];
   onAddonsChange: (addons: PackageAddon[]) => void;
   mainPolicyType: string;
+  mainStartDate: string;
+  mainEndDate: string;
   roadServices: RoadService[];
   accidentFeeServices: AccidentFeeService[];
   roadServiceCompanies: Company[];
@@ -100,6 +103,8 @@ export function PackageBuilderSection({
   addons,
   onAddonsChange,
   mainPolicyType,
+  mainStartDate,
+  mainEndDate,
   roadServices,
   accidentFeeServices,
   roadServiceCompanies,
@@ -128,6 +133,35 @@ export function PackageBuilderSection({
     onAddonsChange(newAddons);
   };
 
+  // Helper to calculate end date (1 year - 1 day from start)
+  const calculateEndDate = (startDate: string): string => {
+    if (!startDate) return "";
+    const start = new Date(startDate);
+    const end = new Date(start);
+    end.setFullYear(end.getFullYear() + 1);
+    end.setDate(end.getDate() - 1);
+    return end.toISOString().split("T")[0];
+  };
+
+  // Handle start date change for an addon - auto-calculate end date
+  const handleAddonStartDateChange = (type: PackageAddon['type'], newStartDate: string) => {
+    const endDate = calculateEndDate(newStartDate);
+    updateAddon(type, { start_date: newStartDate, end_date: endDate });
+    
+    // If this is third_full, sync road_service and accident_fee to same dates
+    if (type === 'third_full') {
+      const roadAddon = addons.find(a => a.type === 'road_service');
+      const accidentAddon = addons.find(a => a.type === 'accident_fee_exemption');
+      
+      if (roadAddon?.enabled && !roadAddon.start_date) {
+        updateAddon('road_service', { start_date: newStartDate, end_date: endDate });
+      }
+      if (accidentAddon?.enabled && !accidentAddon.start_date) {
+        updateAddon('accident_fee_exemption', { start_date: newStartDate, end_date: endDate });
+      }
+    }
+  };
+
   // Filter road services by car type
   const filteredRoadServices = carType
     ? roadServices.filter(rs => rs.allowed_car_types?.includes(carType))
@@ -138,6 +172,32 @@ export function PackageBuilderSection({
   const showThirdFullAddon = mainPolicyType === 'ELZAMI';
   const showRoadServiceAddon = true;
   const showAccidentFeeAddon = true;
+
+  // Auto-initialize addon dates from main policy or third_full when enabled
+  useEffect(() => {
+    const thirdFullAddon = addons.find(a => a.type === 'third_full');
+    
+    addons.forEach(addon => {
+      if (addon.enabled && !addon.start_date) {
+        let defaultStart = mainStartDate;
+        let defaultEnd = mainEndDate;
+        
+        // For road_service and accident_fee, prefer third_full dates if available
+        if ((addon.type === 'road_service' || addon.type === 'accident_fee_exemption') && 
+            thirdFullAddon?.enabled && thirdFullAddon.start_date) {
+          defaultStart = thirdFullAddon.start_date;
+          defaultEnd = thirdFullAddon.end_date || calculateEndDate(thirdFullAddon.start_date);
+        }
+        
+        if (defaultStart) {
+          updateAddon(addon.type, { 
+            start_date: defaultStart, 
+            end_date: defaultEnd || calculateEndDate(defaultStart) 
+          });
+        }
+      }
+    });
+  }, [addons.map(a => `${a.type}:${a.enabled}`).join(','), mainStartDate, mainEndDate]);
 
   // Auto-fetch ELZAMI commission when company is selected
   useEffect(() => {
@@ -343,6 +403,33 @@ export function PackageBuilderSection({
                   )}
                 </div>
               </div>
+              {/* Date Fields */}
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-dashed">
+                <div>
+                  <Label className="text-xs mb-1 block flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    البداية
+                  </Label>
+                  <ArabicDatePicker
+                    value={elzamiAddon.start_date}
+                    onChange={(d) => handleAddonStartDateChange('elzami', d)}
+                    disabled={disabled}
+                    compact
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs mb-1 block flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    النهاية
+                  </Label>
+                  <ArabicDatePicker
+                    value={elzamiAddon.end_date}
+                    onChange={(d) => updateAddon('elzami', { end_date: d })}
+                    disabled={disabled}
+                    compact
+                  />
+                </div>
+              </div>
             </div>
           </AddonCard>
         )}
@@ -429,6 +516,33 @@ export function PackageBuilderSection({
                     {errors.addon_thirdfull_price}
                   </p>
                 )}
+              </div>
+              {/* Date Fields */}
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-dashed">
+                <div>
+                  <Label className="text-xs mb-1 block flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    البداية
+                  </Label>
+                  <ArabicDatePicker
+                    value={thirdFullAddon.start_date}
+                    onChange={(d) => handleAddonStartDateChange('third_full', d)}
+                    disabled={disabled}
+                    compact
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs mb-1 block flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    النهاية
+                  </Label>
+                  <ArabicDatePicker
+                    value={thirdFullAddon.end_date}
+                    onChange={(d) => updateAddon('third_full', { end_date: d })}
+                    disabled={disabled}
+                    compact
+                  />
+                </div>
               </div>
             </div>
           </AddonCard>
@@ -524,6 +638,33 @@ export function PackageBuilderSection({
                   </p>
                 )}
               </div>
+              {/* Date Fields */}
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-dashed">
+                <div>
+                  <Label className="text-xs mb-1 block flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    البداية
+                  </Label>
+                  <ArabicDatePicker
+                    value={roadServiceAddon.start_date}
+                    onChange={(d) => handleAddonStartDateChange('road_service', d)}
+                    disabled={disabled}
+                    compact
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs mb-1 block flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    النهاية
+                  </Label>
+                  <ArabicDatePicker
+                    value={roadServiceAddon.end_date}
+                    onChange={(d) => updateAddon('road_service', { end_date: d })}
+                    disabled={disabled}
+                    compact
+                  />
+                </div>
+              </div>
             </div>
           </AddonCard>
         )}
@@ -617,6 +758,33 @@ export function PackageBuilderSection({
                     {errors.addon_accident_price}
                   </p>
                 )}
+              </div>
+              {/* Date Fields */}
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-dashed">
+                <div>
+                  <Label className="text-xs mb-1 block flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    البداية
+                  </Label>
+                  <ArabicDatePicker
+                    value={accidentFeeAddon.start_date}
+                    onChange={(d) => handleAddonStartDateChange('accident_fee_exemption', d)}
+                    disabled={disabled}
+                    compact
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs mb-1 block flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    النهاية
+                  </Label>
+                  <ArabicDatePicker
+                    value={accidentFeeAddon.end_date}
+                    onChange={(d) => updateAddon('accident_fee_exemption', { end_date: d })}
+                    disabled={disabled}
+                    compact
+                  />
+                </div>
               </div>
             </div>
           </AddonCard>

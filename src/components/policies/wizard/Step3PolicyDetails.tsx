@@ -723,6 +723,8 @@ export function Step3PolicyDetails({
                   addons={packageAddons}
                   onAddonsChange={setPackageAddons}
                   mainPolicyType={policy.policy_type_parent}
+                  mainStartDate={policy.start_date}
+                  mainEndDate={policy.end_date}
                   roadServices={packageRoadServices}
                   accidentFeeServices={packageAccidentFeeServices}
                   roadServiceCompanies={packageRoadServiceCompanies}
