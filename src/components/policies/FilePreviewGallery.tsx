@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { X, Download, ChevronLeft, ChevronRight, FileText, ZoomIn, ZoomOut, Loader2 } from "lucide-react";
+import { X, Download, ChevronLeft, ChevronRight, FileText, ZoomIn, ZoomOut } from "lucide-react";
 
 interface MediaFile {
   id: string;
@@ -25,9 +25,6 @@ const isPdf = (mimeType: string) => mimeType === 'application/pdf';
 
 export function FilePreviewGallery({ file, allFiles, onClose, onNavigate }: FilePreviewGalleryProps) {
   const [zoom, setZoom] = useState(1);
-  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
-  const [loadingPdf, setLoadingPdf] = useState(false);
-  
   // Get viewable files (images and PDFs only)
   const viewableFiles = useMemo(() => 
     allFiles.filter(f => isImage(f.mime_type) || isPdf(f.mime_type)), 
@@ -58,68 +55,17 @@ export function FilePreviewGallery({ file, allFiles, onClose, onNavigate }: File
 
   // Keyboard navigation
   useEffect(() => {
-    if (!file) return;
-    
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (!file) return;
       if (e.key === 'ArrowRight') goPrev(); // RTL: right goes prev
       if (e.key === 'ArrowLeft') goNext();  // RTL: left goes next
       if (e.key === 'Escape') onClose();
     };
     
     window.addEventListener('keydown', handleKeyDown);
+
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [file, goNext, goPrev, onClose]);
-
-  // Reset zoom when file changes
-  useEffect(() => {
-    setZoom(1);
-  }, [file?.id]);
-
-  // Load PDF via proxy
-  useEffect(() => {
-    if (!file) {
-      if (pdfBlobUrl) {
-        URL.revokeObjectURL(pdfBlobUrl);
-        setPdfBlobUrl(null);
-      }
-      return;
-    }
-
-    if (!isPdf(file.mime_type)) {
-      if (pdfBlobUrl) {
-        URL.revokeObjectURL(pdfBlobUrl);
-        setPdfBlobUrl(null);
-      }
-      return;
-    }
-
-    let cancelled = false;
-    const loadPdf = async () => {
-      setLoadingPdf(true);
-      try {
-        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/proxy-cdn-file`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: file.cdn_url }),
-        });
-        if (!res.ok) throw new Error('Failed to fetch PDF');
-        const blob = await res.blob();
-        if (!cancelled) {
-          if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-          setPdfBlobUrl(URL.createObjectURL(blob));
-        }
-      } catch (err) {
-        console.error('PDF load error:', err);
-      } finally {
-        if (!cancelled) setLoadingPdf(false);
-      }
-    };
-    loadPdf();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [file?.id, file?.cdn_url, file?.mime_type]);
 
   if (!file) return null;
 
@@ -129,7 +75,7 @@ export function FilePreviewGallery({ file, allFiles, onClose, onNavigate }: File
   return (
     <Dialog open={!!file} onOpenChange={() => onClose()}>
       <DialogContent 
-        className="p-0 max-w-[95vw] max-h-[95vh] h-[95vh] sm:max-w-6xl bg-black/95 border-none overflow-hidden"
+        className="p-0 max-w-[95vw] max-h-[95vh] h-[95vh] sm:max-w-6xl bg-black/95 border-none overflow-hidden [&>button]:hidden"
         dir="rtl"
       >
         <DialogHeader className="sr-only">
@@ -233,23 +179,11 @@ export function FilePreviewGallery({ file, allFiles, onClose, onNavigate }: File
           )}
           
           {fileIsPdf && (
-            loadingPdf ? (
-              <div className="flex flex-col items-center justify-center gap-4 text-white">
-                <Loader2 className="h-10 w-10 animate-spin" />
-                <span className="text-sm opacity-70">جاري تحميل الملف...</span>
-              </div>
-            ) : pdfBlobUrl ? (
-              <iframe
-                src={pdfBlobUrl}
-                className="w-full h-full rounded-lg border-0 bg-white"
-                title={file.original_name}
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center gap-4 text-white">
-                <FileText className="h-16 w-16 opacity-50" />
-                <span className="text-sm opacity-70">فشل تحميل الملف</span>
-              </div>
-            )
+            <iframe
+              src={file.cdn_url}
+              className="w-full h-full rounded-lg border-0 bg-white"
+              title={file.original_name}
+            />
           )}
         </div>
 
@@ -276,7 +210,7 @@ export function FilePreviewGallery({ file, allFiles, onClose, onNavigate }: File
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full bg-red-500 flex items-center justify-center">
+                  <div className="w-full h-full bg-destructive flex items-center justify-center">
                     <FileText className="h-6 w-6 text-white" />
                   </div>
                 )}
