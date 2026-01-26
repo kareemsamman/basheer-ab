@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card } from '@/components/ui/card';
@@ -48,6 +48,9 @@ import {
   Filter,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  CreditCard,
+  Banknote,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -82,6 +85,14 @@ const renewalStatusColors: Record<string, string> = {
   renewed: 'bg-green-100 text-green-700 border-green-200',
   not_interested: 'bg-red-100 text-red-700 border-red-200',
 };
+
+interface PolicyPaymentActivity {
+  id: string;
+  amount: number;
+  payment_date: string;
+  payment_type: string;
+  created_at: string;
+}
 
 interface CreatedPolicy {
   id: string;
@@ -196,6 +207,11 @@ export default function PolicyReports() {
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [sendingReminders, setSendingReminders] = useState(false);
   const [sendingSingleSms, setSendingSingleSms] = useState<string | null>(null);
+  
+  // Expandable row for payment activity
+  const [expandedPolicyId, setExpandedPolicyId] = useState<string | null>(null);
+  const [policyPayments, setPolicyPayments] = useState<Record<string, PolicyPaymentActivity[]>>({});
+  const [loadingPayments, setLoadingPayments] = useState<string | null>(null);
 
   // Fetch reference data
   useEffect(() => {
@@ -307,6 +323,43 @@ export default function PolicyReports() {
     } finally {
       setRenewalsLoading(false);
     }
+  };
+
+  // Fetch payment activity for a policy
+  const fetchPolicyPayments = async (policyId: string) => {
+    if (policyPayments[policyId]) {
+      // Already loaded
+      setExpandedPolicyId(expandedPolicyId === policyId ? null : policyId);
+      return;
+    }
+    
+    setLoadingPayments(policyId);
+    try {
+      const { data, error } = await supabase
+        .from('policy_payments')
+        .select('id, amount, payment_date, payment_type, created_at')
+        .eq('policy_id', policyId)
+        .order('payment_date', { ascending: false });
+      
+      if (error) throw error;
+      
+      setPolicyPayments(prev => ({ ...prev, [policyId]: data || [] }));
+      setExpandedPolicyId(policyId);
+    } catch (error) {
+      console.error('Error fetching payments:', error);
+      toast.error('فشل في تحميل الدفعات');
+    } finally {
+      setLoadingPayments(null);
+    }
+  };
+
+  const paymentTypeLabels: Record<string, string> = {
+    cash: 'نقداً',
+    cheque: 'شيك',
+    credit: 'بطاقة',
+    bank_transfer: 'تحويل بنكي',
+    tranzila: 'ترانزيلا',
+    customer_cheque: 'شيك عميل',
   };
 
   // Refresh data based on active tab
@@ -607,6 +660,7 @@ export default function PolicyReports() {
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/50">
+                        <TableHead className="w-10"></TableHead>
                         <TableHead className="text-right">تاريخ الإنشاء</TableHead>
                         <TableHead className="text-right">أنشأه</TableHead>
                         <TableHead className="text-right">العميل</TableHead>
@@ -621,51 +675,136 @@ export default function PolicyReports() {
                     </TableHeader>
                     <TableBody>
                       {createdPolicies.map(policy => (
-                        <TableRow key={policy.id} className="hover:bg-muted/30">
-                          <TableCell className="font-mono text-xs">{formatDateTime(policy.created_at)}</TableCell>
-                          <TableCell>
-                            <div>
-                              <p className="font-medium text-sm">{policy.created_by_name || '-'}</p>
-                              {policy.branch_name && (
-                                <p className="text-xs text-muted-foreground">{policy.branch_name}</p>
+                        <React.Fragment key={policy.id}>
+                          <TableRow 
+                            className={cn(
+                              "hover:bg-muted/30 cursor-pointer",
+                              expandedPolicyId === policy.id && "bg-muted/40"
+                            )}
+                            onClick={() => fetchPolicyPayments(policy.id)}
+                          >
+                            <TableCell className="w-10">
+                              {loadingPayments === policy.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                              ) : (
+                                <ChevronDown 
+                                  className={cn(
+                                    "h-4 w-4 text-muted-foreground transition-transform",
+                                    expandedPolicyId === policy.id && "rotate-180"
+                                  )} 
+                                />
                               )}
-                              {policy.created_by_phone && (
-                                <p dir="ltr" className="text-xs text-muted-foreground text-right">{policy.created_by_phone}</p>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <p className="font-medium">{policy.client_name}</p>
-                              {policy.client_file_number && (
-                                <p className="text-xs text-muted-foreground">{policy.client_file_number}</p>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell dir="ltr" className="text-right">{policy.client_phone || '-'}</TableCell>
-                          <TableCell className="font-mono">{policy.car_number || '-'}</TableCell>
-                          <TableCell>
-                            <Badge variant="secondary" className="text-xs">
-                              {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{policy.company_name_ar || policy.company_name || '-'}</TableCell>
-                          <TableCell className="text-xs">
-                            {formatDate(policy.start_date)} - {formatDate(policy.end_date)}
-                          </TableCell>
-                          <TableCell className="font-bold">₪{policy.insurance_price.toLocaleString()}</TableCell>
-                          <TableCell>
-                            <Badge 
-                              variant={policy.payment_status === 'paid' ? 'success' : policy.payment_status === 'partial' ? 'warning' : 'destructive'}
-                              className="gap-1"
-                            >
-                              {policy.payment_status === 'paid' && <CheckCircle className="h-3 w-3" />}
-                              {policy.payment_status === 'partial' && <Clock className="h-3 w-3" />}
-                              {policy.payment_status === 'unpaid' && <AlertCircle className="h-3 w-3" />}
-                              {policy.payment_status === 'paid' ? 'مدفوع' : policy.payment_status === 'partial' ? `باقي ₪${policy.remaining.toLocaleString()}` : 'غير مدفوع'}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">{formatDateTime(policy.created_at)}</TableCell>
+                            <TableCell>
+                              <div>
+                                <p className="font-medium text-sm">{policy.created_by_name || '-'}</p>
+                                {policy.branch_name && (
+                                  <p className="text-xs text-muted-foreground">{policy.branch_name}</p>
+                                )}
+                                {policy.created_by_phone && (
+                                  <p dir="ltr" className="text-xs text-muted-foreground text-right">{policy.created_by_phone}</p>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <p className="font-medium">{policy.client_name}</p>
+                                {policy.client_file_number && (
+                                  <p className="text-xs text-muted-foreground">{policy.client_file_number}</p>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell dir="ltr" className="text-right">{policy.client_phone || '-'}</TableCell>
+                            <TableCell className="font-mono">{policy.car_number || '-'}</TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className="text-xs">
+                                {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{policy.company_name_ar || policy.company_name || '-'}</TableCell>
+                            <TableCell className="text-xs">
+                              {formatDate(policy.start_date)} - {formatDate(policy.end_date)}
+                            </TableCell>
+                            <TableCell className="font-bold">₪{policy.insurance_price.toLocaleString()}</TableCell>
+                            <TableCell>
+                              <Badge 
+                                variant={policy.payment_status === 'paid' ? 'success' : policy.payment_status === 'partial' ? 'warning' : 'destructive'}
+                                className="gap-1"
+                              >
+                                {policy.payment_status === 'paid' && <CheckCircle className="h-3 w-3" />}
+                                {policy.payment_status === 'partial' && <Clock className="h-3 w-3" />}
+                                {policy.payment_status === 'unpaid' && <AlertCircle className="h-3 w-3" />}
+                                {policy.payment_status === 'paid' ? 'مدفوع' : policy.payment_status === 'partial' ? `باقي ₪${policy.remaining.toLocaleString()}` : 'غير مدفوع'}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                          
+                          {/* Expanded Payment Activity Row */}
+                          {expandedPolicyId === policy.id && policyPayments[policy.id] && (
+                            <TableRow key={`${policy.id}-payments`} className="bg-muted/20">
+                              <TableCell colSpan={11} className="p-0">
+                                <div className="px-6 py-4 border-t border-dashed">
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <CreditCard className="h-4 w-4 text-primary" />
+                                    <span className="font-medium text-sm">سجل الدفعات</span>
+                                    <Badge variant="outline" className="text-xs">
+                                      {policyPayments[policy.id].length} دفعة
+                                    </Badge>
+                                  </div>
+                                  
+                                  {policyPayments[policy.id].length === 0 ? (
+                                    <p className="text-sm text-muted-foreground py-2">لا توجد دفعات مسجلة</p>
+                                  ) : (
+                                    <div className="space-y-2">
+                                      {policyPayments[policy.id].map((payment, idx) => (
+                                        <div 
+                                          key={payment.id} 
+                                          className="flex items-center gap-4 p-3 rounded-lg bg-background border text-sm"
+                                        >
+                                          <div className={cn(
+                                            "rounded-full p-2",
+                                            payment.payment_type === 'cash' ? "bg-success/10 text-success" :
+                                            payment.payment_type === 'cheque' || payment.payment_type === 'customer_cheque' ? "bg-warning/10 text-warning" :
+                                            "bg-primary/10 text-primary"
+                                          )}>
+                                            {payment.payment_type === 'cash' ? (
+                                              <Banknote className="h-4 w-4" />
+                                            ) : (
+                                              <CreditCard className="h-4 w-4" />
+                                            )}
+                                          </div>
+                                          <div className="flex-1">
+                                            <p className="font-medium">
+                                              ₪{payment.amount.toLocaleString()}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                              {paymentTypeLabels[payment.payment_type] || payment.payment_type}
+                                            </p>
+                                          </div>
+                                          <div className="text-left">
+                                            <p className="font-mono text-xs">{formatDate(payment.payment_date)}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                              أنشئت: {formatDateTime(payment.created_at)}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      ))}
+                                      
+                                      {/* Summary */}
+                                      <div className="flex items-center justify-between pt-2 border-t mt-2">
+                                        <span className="text-sm font-medium">المجموع المدفوع:</span>
+                                        <span className="font-bold text-success">
+                                          ₪{policyPayments[policy.id].reduce((sum, p) => sum + p.amount, 0).toLocaleString()}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </React.Fragment>
                       ))}
                     </TableBody>
                   </Table>
