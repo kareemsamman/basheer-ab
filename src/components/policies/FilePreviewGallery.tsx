@@ -25,6 +25,9 @@ const isPdf = (mimeType: string) => mimeType === 'application/pdf';
 
 export function FilePreviewGallery({ file, allFiles, onClose, onNavigate }: FilePreviewGalleryProps) {
   const [zoom, setZoom] = useState(1);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  
   // Get viewable files (images and PDFs only)
   const viewableFiles = useMemo(() => 
     allFiles.filter(f => isImage(f.mime_type) || isPdf(f.mime_type)), 

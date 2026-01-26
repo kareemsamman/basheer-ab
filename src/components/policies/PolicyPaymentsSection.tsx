@@ -138,6 +138,7 @@ export function PolicyPaymentsSection({
   const [editPendingImages, setEditPendingImages] = useState<File[]>([]);
   const [editPreviewUrls, setEditPreviewUrls] = useState<{ url: string; isPdf: boolean }[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
+  const [removeExistingFiles, setRemoveExistingFiles] = useState(false);
 
   // Calculate totals
   const totalPaid = payments.filter(p => !p.refused).reduce((sum, p) => sum + p.amount, 0);
@@ -462,6 +463,7 @@ export function PolicyPaymentsSection({
     editPreviewUrls.forEach(item => URL.revokeObjectURL(item.url));
     setEditPendingImages([]);
     setEditPreviewUrls([]);
+    setRemoveExistingFiles(false);
   };
 
   const handleEditImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -544,6 +546,14 @@ export function PolicyPaymentsSection({
 
     setSaving(true);
     try {
+      // Delete existing files if requested
+      if (removeExistingFiles) {
+        await supabase.from('payment_images').delete().eq('payment_id', selectedPayment.id);
+        if (selectedPayment.cheque_image_url) {
+          await supabase.from('policy_payments').update({ cheque_image_url: null }).eq('id', selectedPayment.id);
+        }
+      }
+
       const { error } = await supabase
         .from('policy_payments')
         .update({
@@ -619,6 +629,7 @@ export function PolicyPaymentsSection({
     setEditValidationError(null);
     setEditPendingImages([]);
     setEditPreviewUrls([]);
+    setRemoveExistingFiles(false);
     setEditDialogOpen(true);
   };
 
@@ -1050,10 +1061,11 @@ export function PolicyPaymentsSection({
               </div>
             )}
             {/* Show existing images */}
-            {selectedPayment && getImageCount(selectedPayment) > 0 && (
+            {selectedPayment && getImageCount(selectedPayment) > 0 && !removeExistingFiles && (
               <div className="space-y-2">
                 <Label>الملفات الحالية</Label>
-                <div className="flex flex-wrap gap-2">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
                   {selectedPayment.cheque_image_url && (
                     isPdfUrl(selectedPayment.cheque_image_url) ? (
                       <div className="h-12 w-16 flex items-center justify-center bg-destructive/10 rounded border">
@@ -1072,6 +1084,11 @@ export function PolicyPaymentsSection({
                       <img key={i} src={img.image_url} alt="" className="h-12 w-16 object-cover rounded border" />
                     )
                   ))}
+                  </div>
+                  <Button type="button" variant="destructive" size="sm" onClick={() => setRemoveExistingFiles(true)} className="w-full">
+                    <X className="h-4 w-4 ml-2" />
+                    حذف جميع الملفات الحالية
+                  </Button>
                 </div>
               </div>
             )}
