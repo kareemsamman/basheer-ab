@@ -446,12 +446,14 @@ export function PolicyPaymentsSection({
     if (files.length === 0) return;
     
     const validFiles = files.filter(file => {
-      if (!file.type.startsWith('image/')) {
-        toast({ title: "خطأ", description: "يرجى اختيار صور فقط", variant: "destructive" });
+      const isImage = file.type.startsWith('image/');
+      const isPdf = file.type === 'application/pdf';
+      if (!isImage && !isPdf) {
+        toast({ title: "خطأ", description: "يرجى اختيار صور أو ملفات PDF فقط", variant: "destructive" });
         return false;
       }
       if (file.size > 10 * 1024 * 1024) {
-        toast({ title: "خطأ", description: "حجم الصورة يجب أن يكون أقل من 10MB", variant: "destructive" });
+        toast({ title: "خطأ", description: "حجم الملف يجب أن يكون أقل من 10MB", variant: "destructive" });
         return false;
       }
       return true;
@@ -1011,9 +1013,11 @@ export function PolicyPaymentsSection({
                 </div>
               </div>
             )}
-            {(editFormData.payment_type === 'cheque' || editFormData.payment_type === 'transfer') && (
+            {(editFormData.payment_type === 'cash' || editFormData.payment_type === 'cheque' || editFormData.payment_type === 'transfer') && (
               <div className="space-y-2">
-                <Label>إضافة صور جديدة</Label>
+                <Label>
+                  {editFormData.payment_type === 'cheque' ? 'إضافة صور الشيك' : editFormData.payment_type === 'transfer' ? 'إضافة صور إيصال التحويل' : 'إضافة صور إيصال الدفع'}
+                </Label>
                 <div className="flex flex-wrap gap-2">
                   {editPreviewUrls.map((url, index) => (
                     <div key={index} className="relative group">
@@ -1028,7 +1032,7 @@ export function PolicyPaymentsSection({
                     </div>
                   ))}
                   <label className="h-16 w-20 border-2 border-dashed rounded flex items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
-                    <input type="file" accept="image/*" multiple onChange={handleEditImageSelect} className="hidden" />
+                    <input type="file" accept="image/*,application/pdf" multiple onChange={handleEditImageSelect} className="hidden" />
                     <Upload className="h-5 w-5 text-muted-foreground" />
                   </label>
                 </div>

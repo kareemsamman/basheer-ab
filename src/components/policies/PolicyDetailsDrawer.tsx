@@ -678,6 +678,10 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
   };
 
   const handlePaymentsChange = () => {
+    // Clear cache to force fresh fetch
+    if (policyId) {
+      sessionStorage.removeItem(`policy_cache_${policyId}`);
+    }
     fetchPolicyDetails();
   };
 
