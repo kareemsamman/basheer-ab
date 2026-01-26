@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Pencil, Trash2, CreditCard, Loader2, ImageIcon, X, AlertCircle, Upload, ChevronLeft, ChevronRight, RotateCcw, Split, Banknote, Wallet, CheckCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, CreditCard, Loader2, ImageIcon, X, AlertCircle, Upload, ChevronLeft, ChevronRight, RotateCcw, Split, Banknote, Wallet, CheckCircle, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal";
@@ -57,8 +57,17 @@ interface PaymentLine {
 }
 
 interface PreviewUrls {
-  [paymentId: string]: string[];
+  [paymentId: string]: { url: string; isPdf: boolean }[];
 }
+
+// Helper to check if a URL is a PDF
+const isPdfUrl = (url: string): boolean => {
+  const lowerUrl = url.toLowerCase();
+  return lowerUrl.endsWith('.pdf') || lowerUrl.includes('application/pdf');
+};
+
+// Helper to check if file is PDF
+const isPdfFile = (file: File): boolean => file.type === 'application/pdf';
 
 const paymentTypeLabels: Record<string, string> = {
   "cash": "نقدي",
@@ -116,7 +125,7 @@ export function PolicyPaymentsSection({
   });
   const [editValidationError, setEditValidationError] = useState<string | null>(null);
   const [editPendingImages, setEditPendingImages] = useState<File[]>([]);
-  const [editPreviewUrls, setEditPreviewUrls] = useState<string[]>([]);
+  const [editPreviewUrls, setEditPreviewUrls] = useState<{ url: string; isPdf: boolean }[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
 
   // Calculate totals
@@ -183,7 +192,7 @@ export function PolicyPaymentsSection({
   };
 
   const resetAddForm = () => {
-    Object.values(previewUrls).flat().forEach(url => URL.revokeObjectURL(url));
+    Object.values(previewUrls).flat().forEach(item => URL.revokeObjectURL(item.url));
     setPaymentLines([]);
     setPreviewUrls({});
   };
@@ -205,7 +214,7 @@ export function PolicyPaymentsSection({
     if (paymentLines.length > 1) {
       // Clean up preview URLs for this payment
       const urls = previewUrls[id] || [];
-      urls.forEach(url => URL.revokeObjectURL(url));
+      urls.forEach(item => URL.revokeObjectURL(item.url));
       setPreviewUrls(prev => {
         const { [id]: _, ...rest } = prev;
         return rest;
@@ -242,7 +251,7 @@ export function PolicyPaymentsSection({
     }
     
     // Clean up old preview URLs
-    Object.values(previewUrls).flat().forEach(url => URL.revokeObjectURL(url));
+    Object.values(previewUrls).flat().forEach(item => URL.revokeObjectURL(item.url));
     setPreviewUrls({});
     setPaymentLines(newPayments);
     setSplitPopoverOpen(false);
@@ -269,10 +278,13 @@ export function PolicyPaymentsSection({
 
     if (validFiles.length === 0) return;
 
-    const newPreviewUrls = validFiles.map(file => URL.createObjectURL(file));
+    const newPreviewItems = validFiles.map(file => ({
+      url: URL.createObjectURL(file),
+      isPdf: isPdfFile(file),
+    }));
     setPreviewUrls(prev => ({
       ...prev,
-      [paymentId]: [...(prev[paymentId] || []), ...newPreviewUrls],
+      [paymentId]: [...(prev[paymentId] || []), ...newPreviewItems],
     }));
     
     const payment = paymentLines.find(p => p.id === paymentId);
@@ -285,7 +297,7 @@ export function PolicyPaymentsSection({
   const removeImage = (paymentId: string, index: number) => {
     const urls = previewUrls[paymentId] || [];
     if (urls[index]) {
-      URL.revokeObjectURL(urls[index]);
+      URL.revokeObjectURL(urls[index].url);
     }
     
     setPreviewUrls(prev => {
@@ -436,7 +448,7 @@ export function PolicyPaymentsSection({
       notes: "",
     });
     setEditValidationError(null);
-    editPreviewUrls.forEach(url => URL.revokeObjectURL(url));
+    editPreviewUrls.forEach(item => URL.revokeObjectURL(item.url));
     setEditPendingImages([]);
     setEditPreviewUrls([]);
   };
@@ -462,12 +474,12 @@ export function PolicyPaymentsSection({
     setEditPendingImages(prev => [...prev, ...validFiles]);
     validFiles.forEach(file => {
       const url = URL.createObjectURL(file);
-      setEditPreviewUrls(prev => [...prev, url]);
+      setEditPreviewUrls(prev => [...prev, { url, isPdf: isPdfFile(file) }]);
     });
   };
 
   const removeEditImage = (index: number) => {
-    URL.revokeObjectURL(editPreviewUrls[index]);
+    URL.revokeObjectURL(editPreviewUrls[index].url);
     setEditPendingImages(prev => prev.filter((_, i) => i !== index));
     setEditPreviewUrls(prev => prev.filter((_, i) => i !== index));
   };
@@ -603,6 +615,45 @@ export function PolicyPaymentsSection({
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryIndex, setGalleryIndex] = useState(0);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+
+  const currentGalleryUrl = galleryImages[galleryIndex];
+  const isCurrentPdf = currentGalleryUrl ? isPdfUrl(currentGalleryUrl) : false;
+
+  // Load PDF via proxy when needed
+  useEffect(() => {
+    if (!galleryOpen || !isCurrentPdf || !currentGalleryUrl) {
+      if (pdfBlobUrl) {
+        URL.revokeObjectURL(pdfBlobUrl);
+        setPdfBlobUrl(null);
+      }
+      return;
+    }
+
+    let cancelled = false;
+    const loadPdf = async () => {
+      try {
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/proxy-cdn-file`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: currentGalleryUrl }),
+        });
+        if (!res.ok) throw new Error('Failed to fetch PDF');
+        const blob = await res.blob();
+        if (!cancelled) {
+          if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+          setPdfBlobUrl(URL.createObjectURL(blob));
+        }
+      } catch (err) {
+        console.error('PDF load error:', err);
+      }
+    };
+    loadPdf();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [galleryOpen, galleryIndex, currentGalleryUrl, isCurrentPdf]);
 
   const openGallery = (payment: Payment) => {
     const imgs: string[] = [];
@@ -615,6 +666,7 @@ export function PolicyPaymentsSection({
     if (imgs.length > 0) {
       setGalleryImages(imgs);
       setGalleryIndex(0);
+      setPdfBlobUrl(null);
       setGalleryOpen(true);
     }
   };
@@ -896,9 +948,15 @@ export function PolicyPaymentsSection({
                         {payment.paymentType === 'cheque' ? 'صور الشيك' : payment.paymentType === 'transfer' ? 'صور إيصال التحويل' : 'صور إيصال الدفع'}
                       </Label>
                       <div className="flex flex-wrap gap-2">
-                        {getPreviewUrls(payment.id).map((url, imgIndex) => (
+                        {getPreviewUrls(payment.id).map((item, imgIndex) => (
                           <div key={imgIndex} className="relative group">
-                            <img src={url} alt="" className="h-14 w-18 object-cover rounded border" />
+                            {item.isPdf ? (
+                              <div className="h-14 w-18 flex items-center justify-center bg-red-50 dark:bg-red-950/30 rounded border">
+                                <FileText className="h-6 w-6 text-red-500" />
+                              </div>
+                            ) : (
+                              <img src={item.url} alt="" className="h-14 w-18 object-cover rounded border" />
+                            )}
                             <button
                               type="button"
                               onClick={() => removeImage(payment.id, imgIndex)}
@@ -1002,13 +1060,25 @@ export function PolicyPaymentsSection({
             {/* Show existing images */}
             {selectedPayment && getImageCount(selectedPayment) > 0 && (
               <div className="space-y-2">
-                <Label>الصور الحالية</Label>
+                <Label>الملفات الحالية</Label>
                 <div className="flex flex-wrap gap-2">
                   {selectedPayment.cheque_image_url && (
-                    <img src={selectedPayment.cheque_image_url} alt="" className="h-12 w-16 object-cover rounded border" />
+                    isPdfUrl(selectedPayment.cheque_image_url) ? (
+                      <div className="h-12 w-16 flex items-center justify-center bg-red-50 dark:bg-red-950/30 rounded border">
+                        <FileText className="h-5 w-5 text-red-500" />
+                      </div>
+                    ) : (
+                      <img src={selectedPayment.cheque_image_url} alt="" className="h-12 w-16 object-cover rounded border" />
+                    )
                   )}
                   {selectedPayment.images?.map((img, i) => (
-                    <img key={i} src={img.image_url} alt="" className="h-12 w-16 object-cover rounded border" />
+                    isPdfUrl(img.image_url) ? (
+                      <div key={i} className="h-12 w-16 flex items-center justify-center bg-red-50 dark:bg-red-950/30 rounded border">
+                        <FileText className="h-5 w-5 text-red-500" />
+                      </div>
+                    ) : (
+                      <img key={i} src={img.image_url} alt="" className="h-12 w-16 object-cover rounded border" />
+                    )
                   ))}
                 </div>
               </div>
@@ -1019,9 +1089,15 @@ export function PolicyPaymentsSection({
                   {editFormData.payment_type === 'cheque' ? 'إضافة صور الشيك' : editFormData.payment_type === 'transfer' ? 'إضافة صور إيصال التحويل' : 'إضافة صور إيصال الدفع'}
                 </Label>
                 <div className="flex flex-wrap gap-2">
-                  {editPreviewUrls.map((url, index) => (
+                  {editPreviewUrls.map((item, index) => (
                     <div key={index} className="relative group">
-                      <img src={url} alt="" className="h-16 w-20 object-cover rounded border" />
+                      {item.isPdf ? (
+                        <div className="h-16 w-20 flex items-center justify-center bg-red-50 dark:bg-red-950/30 rounded border">
+                          <FileText className="h-6 w-6 text-red-500" />
+                        </div>
+                      ) : (
+                        <img src={item.url} alt="" className="h-16 w-20 object-cover rounded border" />
+                      )}
                       <button
                         type="button"
                         onClick={() => removeEditImage(index)}
@@ -1110,16 +1186,30 @@ export function PolicyPaymentsSection({
 
       {/* Image Gallery Dialog */}
       <Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
-        <DialogContent className="sm:max-w-3xl p-2">
+        <DialogContent className="sm:max-w-4xl p-2 max-h-[90vh]">
           <DialogHeader className="sr-only">
-            <DialogTitle>معاينة الصور</DialogTitle>
+            <DialogTitle>معاينة الملفات</DialogTitle>
           </DialogHeader>
           <div className="relative">
             <Button variant="ghost" size="icon" className="absolute top-2 left-2 z-10" onClick={() => setGalleryOpen(false)}>
               <X className="h-4 w-4" />
             </Button>
             {galleryImages.length > 0 && (
-              <img src={galleryImages[galleryIndex]} alt="" className="w-full h-auto max-h-[70vh] object-contain rounded-lg" />
+              isCurrentPdf ? (
+                pdfBlobUrl ? (
+                  <iframe
+                    src={pdfBlobUrl}
+                    className="w-full h-[75vh] rounded-lg border-0 bg-white"
+                    title="PDF Preview"
+                  />
+                ) : (
+                  <div className="w-full h-[75vh] flex items-center justify-center bg-muted rounded-lg">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                )
+              ) : (
+                <img src={currentGalleryUrl} alt="" className="w-full h-auto max-h-[75vh] object-contain rounded-lg" />
+              )
             )}
             {galleryImages.length > 1 && (
               <div className="flex items-center justify-center gap-4 mt-4">
