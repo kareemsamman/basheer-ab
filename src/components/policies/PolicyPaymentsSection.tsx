@@ -1,4 +1,15 @@
 import { useState, useEffect, useMemo } from "react";
+import { FilePreviewGallery } from "./FilePreviewGallery";
+
+interface MediaFile {
+  id: string;
+  original_name: string;
+  cdn_url: string;
+  mime_type: string;
+  size: number;
+  created_at: string;
+  entity_type: string | null;
+}
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -612,62 +623,43 @@ export function PolicyPaymentsSection({
   };
 
   // Image gallery for existing payments
-  const [galleryImages, setGalleryImages] = useState<string[]>([]);
-  const [galleryOpen, setGalleryOpen] = useState(false);
-  const [galleryIndex, setGalleryIndex] = useState(0);
-  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
-
-  const currentGalleryUrl = galleryImages[galleryIndex];
-  const isCurrentPdf = currentGalleryUrl ? isPdfUrl(currentGalleryUrl) : false;
-
-  // Load PDF via proxy when needed
-  useEffect(() => {
-    if (!galleryOpen || !isCurrentPdf || !currentGalleryUrl) {
-      if (pdfBlobUrl) {
-        URL.revokeObjectURL(pdfBlobUrl);
-        setPdfBlobUrl(null);
-      }
-      return;
-    }
-
-    let cancelled = false;
-    const loadPdf = async () => {
-      try {
-        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/proxy-cdn-file`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: currentGalleryUrl }),
-        });
-        if (!res.ok) throw new Error('Failed to fetch PDF');
-        const blob = await res.blob();
-        if (!cancelled) {
-          if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-          setPdfBlobUrl(URL.createObjectURL(blob));
-        }
-      } catch (err) {
-        console.error('PDF load error:', err);
-      }
-    };
-    loadPdf();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [galleryOpen, galleryIndex, currentGalleryUrl, isCurrentPdf]);
+  const [galleryFile, setGalleryFile] = useState<MediaFile | null>(null);
+  const [galleryAllFiles, setGalleryAllFiles] = useState<MediaFile[]>([]);
 
   const openGallery = (payment: Payment) => {
-    const imgs: string[] = [];
-    if (payment.cheque_image_url) imgs.push(payment.cheque_image_url);
-    if (payment.images) {
-      payment.images.forEach(img => {
-        if (!imgs.includes(img.image_url)) imgs.push(img.image_url);
+    const files: MediaFile[] = [];
+    
+    if (payment.cheque_image_url) {
+      const isPdf = isPdfUrl(payment.cheque_image_url);
+      files.push({
+        id: `cheque_${payment.id}`,
+        original_name: `cheque_${payment.cheque_number || 'image'}${isPdf ? '.pdf' : '.jpg'}`,
+        cdn_url: payment.cheque_image_url,
+        mime_type: isPdf ? 'application/pdf' : 'image/jpeg',
+        size: 0,
+        created_at: payment.payment_date,
+        entity_type: 'policy_payment'
       });
     }
-    if (imgs.length > 0) {
-      setGalleryImages(imgs);
-      setGalleryIndex(0);
-      setPdfBlobUrl(null);
-      setGalleryOpen(true);
+    
+    if (payment.images) {
+      payment.images.forEach((img, idx) => {
+        const isPdf = isPdfUrl(img.image_url);
+        files.push({
+          id: img.id,
+          original_name: `receipt_${idx + 1}${isPdf ? '.pdf' : '.jpg'}`,
+          cdn_url: img.image_url,
+          mime_type: isPdf ? 'application/pdf' : 'image/jpeg',
+          size: 0,
+          created_at: payment.payment_date,
+          entity_type: 'policy_payment'
+        });
+      });
+    }
+    
+    if (files.length > 0) {
+      setGalleryAllFiles(files);
+      setGalleryFile(files[0]);
     }
   };
 
@@ -842,7 +834,7 @@ export function PolicyPaymentsSection({
             {paymentLines.map((payment, index) => (
               <Card key={payment.id} className={cn(
                 "p-3",
-                payment.tranzilaPaid && "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800"
+                payment.tranzilaPaid && "bg-success/10 border-success/30"
               )}>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -923,7 +915,7 @@ export function PolicyPaymentsSection({
                   {payment.paymentType === 'visa' && (
                     <div className="flex items-center gap-2">
                       {payment.tranzilaPaid ? (
-                        <Badge className="bg-green-500">
+                        <Badge className="bg-success">
                           <CheckCircle className="h-3 w-3 ml-1" />
                           تم الدفع
                         </Badge>
@@ -951,8 +943,8 @@ export function PolicyPaymentsSection({
                         {getPreviewUrls(payment.id).map((item, imgIndex) => (
                           <div key={imgIndex} className="relative group">
                             {item.isPdf ? (
-                              <div className="h-14 w-18 flex items-center justify-center bg-red-50 dark:bg-red-950/30 rounded border">
-                                <FileText className="h-6 w-6 text-red-500" />
+                              <div className="h-14 w-18 flex items-center justify-center bg-destructive/10 rounded border">
+                                <FileText className="h-6 w-6 text-destructive" />
                               </div>
                             ) : (
                               <img src={item.url} alt="" className="h-14 w-18 object-cover rounded border" />
@@ -1064,8 +1056,8 @@ export function PolicyPaymentsSection({
                 <div className="flex flex-wrap gap-2">
                   {selectedPayment.cheque_image_url && (
                     isPdfUrl(selectedPayment.cheque_image_url) ? (
-                      <div className="h-12 w-16 flex items-center justify-center bg-red-50 dark:bg-red-950/30 rounded border">
-                        <FileText className="h-5 w-5 text-red-500" />
+                      <div className="h-12 w-16 flex items-center justify-center bg-destructive/10 rounded border">
+                        <FileText className="h-5 w-5 text-destructive" />
                       </div>
                     ) : (
                       <img src={selectedPayment.cheque_image_url} alt="" className="h-12 w-16 object-cover rounded border" />
@@ -1073,8 +1065,8 @@ export function PolicyPaymentsSection({
                   )}
                   {selectedPayment.images?.map((img, i) => (
                     isPdfUrl(img.image_url) ? (
-                      <div key={i} className="h-12 w-16 flex items-center justify-center bg-red-50 dark:bg-red-950/30 rounded border">
-                        <FileText className="h-5 w-5 text-red-500" />
+                      <div key={i} className="h-12 w-16 flex items-center justify-center bg-destructive/10 rounded border">
+                        <FileText className="h-5 w-5 text-destructive" />
                       </div>
                     ) : (
                       <img key={i} src={img.image_url} alt="" className="h-12 w-16 object-cover rounded border" />
@@ -1092,8 +1084,8 @@ export function PolicyPaymentsSection({
                   {editPreviewUrls.map((item, index) => (
                     <div key={index} className="relative group">
                       {item.isPdf ? (
-                        <div className="h-16 w-20 flex items-center justify-center bg-red-50 dark:bg-red-950/30 rounded border">
-                          <FileText className="h-6 w-6 text-red-500" />
+                        <div className="h-16 w-20 flex items-center justify-center bg-destructive/10 rounded border">
+                          <FileText className="h-6 w-6 text-destructive" />
                         </div>
                       ) : (
                         <img src={item.url} alt="" className="h-16 w-20 object-cover rounded border" />
@@ -1184,57 +1176,13 @@ export function PolicyPaymentsSection({
         loading={deleting}
       />
 
-      {/* Image Gallery Dialog */}
-      <Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
-        <DialogContent className="sm:max-w-4xl p-2 max-h-[90vh]">
-          <DialogHeader className="sr-only">
-            <DialogTitle>معاينة الملفات</DialogTitle>
-          </DialogHeader>
-          <div className="relative">
-            <Button variant="ghost" size="icon" className="absolute top-2 left-2 z-10" onClick={() => setGalleryOpen(false)}>
-              <X className="h-4 w-4" />
-            </Button>
-            {galleryImages.length > 0 && (
-              isCurrentPdf ? (
-                pdfBlobUrl ? (
-                  <iframe
-                    src={pdfBlobUrl}
-                    className="w-full h-[75vh] rounded-lg border-0 bg-white"
-                    title="PDF Preview"
-                  />
-                ) : (
-                  <div className="w-full h-[75vh] flex items-center justify-center bg-muted rounded-lg">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  </div>
-                )
-              ) : (
-                <img src={currentGalleryUrl} alt="" className="w-full h-auto max-h-[75vh] object-contain rounded-lg" />
-              )
-            )}
-            {galleryImages.length > 1 && (
-              <div className="flex items-center justify-center gap-4 mt-4">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setGalleryIndex(i => (i > 0 ? i - 1 : galleryImages.length - 1))}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-                <span className="text-sm text-muted-foreground">
-                  {galleryIndex + 1} / {galleryImages.length}
-                </span>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setGalleryIndex(i => (i < galleryImages.length - 1 ? i + 1 : 0))}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* File Preview Gallery */}
+      <FilePreviewGallery
+        file={galleryFile}
+        allFiles={galleryAllFiles}
+        onClose={() => setGalleryFile(null)}
+        onNavigate={(file) => setGalleryFile(file)}
+      />
 
       {/* Tranzila Payment Modal */}
       {activeVisaPayment && (
