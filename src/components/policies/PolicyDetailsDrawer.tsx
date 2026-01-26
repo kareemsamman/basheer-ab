@@ -682,7 +682,10 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
     if (policyId) {
       sessionStorage.removeItem(`policy_cache_${policyId}`);
     }
-    fetchPolicyDetails();
+    // Small delay to ensure database commit before refetch
+    setTimeout(() => {
+      fetchPolicyDetails();
+    }, 150);
   };
 
   const status = getStatus();
