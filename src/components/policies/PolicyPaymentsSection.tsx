@@ -51,6 +51,7 @@ interface PolicyPaymentsSectionProps {
   policyId: string;
   payments: Payment[];
   insurancePrice: number;
+  branchId?: string | null;
   onPaymentsChange: () => void;
   autoOpenAdd?: boolean;
   onAutoOpenHandled?: () => void;
@@ -104,6 +105,7 @@ export function PolicyPaymentsSection({
   policyId, 
   payments, 
   insurancePrice,
+  branchId,
   onPaymentsChange,
   autoOpenAdd,
   onAutoOpenHandled 
@@ -421,6 +423,7 @@ export function PolicyPaymentsSection({
             cheque_status: paymentLine.paymentType === 'cheque' ? 'pending' : null,
             refused: false,
             notes: paymentLine.notes || null,
+            branch_id: branchId || null,
           })
           .select('id')
           .single();

@@ -38,6 +38,7 @@ interface SinglePolicyPaymentModalProps {
   policyType: string;
   policyTypeChild?: string | null;
   insurancePrice: number;
+  branchId?: string | null;
   onSuccess: () => void;
 }
 
@@ -68,6 +69,7 @@ export function SinglePolicyPaymentModal({
   policyType,
   policyTypeChild,
   insurancePrice,
+  branchId,
   onSuccess,
 }: SinglePolicyPaymentModalProps) {
   const { toast: uiToast } = useToast();
@@ -342,6 +344,7 @@ export function SinglePolicyPaymentModal({
             cheque_status: paymentLine.paymentType === 'cheque' ? 'pending' : null,
             refused: false,
             notes: paymentLine.notes || null,
+            branch_id: branchId || null,
           })
           .select('id')
           .single();

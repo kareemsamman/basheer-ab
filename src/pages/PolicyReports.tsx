@@ -246,10 +246,9 @@ export default function PolicyReports() {
     try {
       const { fromDate, toDate } = getDateRange();
       
-      // Workers can only see their own policies in "Created" tab
-      const effectiveCreatedBy = isAdmin 
-        ? (createdByFilter !== 'all' ? createdByFilter : null)
-        : user?.id || null;
+      // Workers can filter by created_by but see all policies in their branch (RLS handles access)
+      // Admins can filter by specific user or see all
+      const effectiveCreatedBy = createdByFilter !== 'all' ? createdByFilter : null;
       
       const { data, error } = await supabase.rpc('report_created_policies', {
         p_from_date: fromDate,

@@ -1483,6 +1483,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                       policyId={policy.id}
                       payments={payments}
                       insurancePrice={policy.insurance_price}
+                      branchId={policy.branch_id}
                       onPaymentsChange={handlePaymentsChange}
                       autoOpenAdd={showQuickPayment}
                       onAutoOpenHandled={() => setShowQuickPayment(false)}

@@ -591,6 +591,7 @@ export function PolicyTreeView({
           policyType={selectedSinglePolicy.policy_type_parent}
           policyTypeChild={selectedSinglePolicy.policy_type_child}
           insurancePrice={selectedSinglePolicy.insurance_price}
+          branchId={selectedSinglePolicy.branch_id}
           onSuccess={() => {
             if (onPaymentAdded) onPaymentAdded();
             refreshPaymentInfo();
