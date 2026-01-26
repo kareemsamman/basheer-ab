@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 
 interface PdfJsViewerProps {
   url: string;
@@ -26,31 +25,13 @@ export function PdfJsViewer({ url, className = "" }: PdfJsViewerProps) {
       setError(null);
 
       try {
-        // Use proxy edge function to fetch PDF
-        const { data, error: fnError } = await supabase.functions.invoke('proxy-cdn-file', {
-          body: { url }
-        });
-
-        if (fnError) throw fnError;
-        if (cancelled) return;
-
-        // Convert response to blob
-        const pdfData = data;
-        
         // Dynamically import pdf.js
         const pdfjsLib = await import('pdfjs-dist');
         
-        // Set worker
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+        // For pdfjs-dist v5+, use unpkg worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
-        // Load PDF from proxy response
-        const { data: proxyResponse } = await supabase.functions.invoke('proxy-cdn-file', {
-          body: { url }
-        });
-
-        if (cancelled) return;
-
-        // Fetch as array buffer through proxy
+        // Fetch PDF through proxy to bypass CORS/X-Frame-Options
         const response = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/proxy-cdn-file`,
           {
@@ -64,6 +45,7 @@ export function PdfJsViewer({ url, className = "" }: PdfJsViewerProps) {
         );
 
         if (!response.ok) throw new Error('Failed to load PDF');
+        if (cancelled) return;
 
         const arrayBuffer = await response.arrayBuffer();
         if (cancelled) return;
