@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const body = await req.json();
-    const { phone_number, extension_number } = body;
+    const { phone_number, extension_id, extension_number: legacyExtensionNumber } = body;
 
     if (!phone_number) {
       return new Response(
@@ -50,37 +50,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get user's extension from profile if not provided
-    let extensionToUse = extension_number;
-    if (!extensionToUse) {
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('pbx_extension')
-        .eq('id', user.id)
-        .single();
-
-      if (profileError) {
-        console.error('Profile fetch error:', profileError);
-        return new Response(
-          JSON.stringify({ success: false, message: 'خطأ في جلب بيانات المستخدم' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      extensionToUse = profile?.pbx_extension;
-    }
-
-    if (!extensionToUse) {
-      return new Response(
-        JSON.stringify({ success: false, message: 'لم يتم تعيين رقم تحويلة لهذا المستخدم' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     // Get PBX credentials from auth_settings table
     const { data: authSettings, error: authSettingsError } = await supabase
       .from('auth_settings')
-      .select('ippbx_enabled, ippbx_token_id, ippbx_extension_password')
+      .select('ippbx_enabled, ippbx_token_id')
       .limit(1)
       .single();
 
@@ -100,26 +73,98 @@ Deno.serve(async (req) => {
     }
 
     const tokenId = authSettings.ippbx_token_id;
-    const extensionPassword = authSettings.ippbx_extension_password;
 
-    if (!tokenId || !extensionPassword) {
-      console.error('Missing PBX credentials in auth_settings');
+    if (!tokenId) {
+      console.error('Missing Token ID in auth_settings');
       return new Response(
-        JSON.stringify({ success: false, message: 'لم يتم تكوين نظام الاتصال' }),
+        JSON.stringify({ success: false, message: 'لم يتم تكوين رمز التوثيق (Token ID)' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    let extensionNumber: string;
+    let extensionPassword: string;
+
+    // New flow: get extension from pbx_extensions table
+    if (extension_id) {
+      const { data: extension, error: extError } = await supabase
+        .from('pbx_extensions')
+        .select('extension_number, password_md5')
+        .eq('id', extension_id)
+        .single();
+
+      if (extError || !extension) {
+        console.error('Extension fetch error:', extError);
+        return new Response(
+          JSON.stringify({ success: false, message: 'التحويلة غير موجودة' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      extensionNumber = extension.extension_number;
+      extensionPassword = extension.password_md5;
+    } 
+    // Legacy flow: get extension number from request and password from auth_settings
+    else if (legacyExtensionNumber) {
+      extensionNumber = legacyExtensionNumber;
+      
+      // Try to find matching extension in new table first
+      const { data: extension } = await supabase
+        .from('pbx_extensions')
+        .select('password_md5')
+        .eq('extension_number', legacyExtensionNumber)
+        .single();
+
+      if (extension) {
+        extensionPassword = extension.password_md5;
+      } else {
+        // Fallback to old auth_settings password (backward compatibility)
+        const { data: oldSettings } = await supabase
+          .from('auth_settings')
+          .select('ippbx_extension_password')
+          .limit(1)
+          .single();
+        
+        extensionPassword = oldSettings?.ippbx_extension_password || '';
+      }
+    } 
+    // No extension specified - use default
+    else {
+      const { data: defaultExt, error: defaultError } = await supabase
+        .from('pbx_extensions')
+        .select('extension_number, password_md5')
+        .eq('is_default', true)
+        .single();
+
+      if (defaultError || !defaultExt) {
+        console.error('No default extension found:', defaultError);
+        return new Response(
+          JSON.stringify({ success: false, message: 'لا توجد تحويلة افتراضية' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      extensionNumber = defaultExt.extension_number;
+      extensionPassword = defaultExt.password_md5;
+    }
+
+    if (!extensionNumber || !extensionPassword) {
+      return new Response(
+        JSON.stringify({ success: false, message: 'بيانات التحويلة غير مكتملة' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     // Clean phone number (remove dashes and spaces)
     const cleanPhone = phone_number.replace(/[-\s]/g, '');
 
-    console.log(`Initiating call: ${extensionToUse} -> ${cleanPhone}`);
+    console.log(`Initiating call: ${extensionNumber} -> ${cleanPhone}`);
 
     // Call IPPBX API
     const pbxPayload = {
       token_id: tokenId,
       phone_number: cleanPhone,
-      extension_number: extensionToUse,
+      extension_number: extensionNumber,
       extension_password: extensionPassword,
     };
 

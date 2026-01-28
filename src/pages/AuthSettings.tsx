@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Mail, Smartphone, Save, Eye, EyeOff, AlertCircle, Send, Loader2, Phone } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { PbxExtensionsSection } from "@/components/settings/PbxExtensionsSection";
 
 interface AuthSettingsData {
   id: string;
@@ -33,7 +34,6 @@ interface AuthSettingsData {
   // IPPBX settings
   ippbx_enabled: boolean;
   ippbx_token_id: string | null;
-  ippbx_extension_password: string | null;
 }
 
 export default function AuthSettings() {
@@ -42,13 +42,9 @@ export default function AuthSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testingSmtp, setTestingSmtp] = useState(false);
-  const [testingCall, setTestingCall] = useState(false);
   const [showSmtpPassword, setShowSmtpPassword] = useState(false);
   const [showSmsToken, setShowSmsToken] = useState(false);
-  const [showIppbxPassword, setShowIppbxPassword] = useState(false);
   const [testEmail, setTestEmail] = useState("");
-  const [testPhone, setTestPhone] = useState("");
-  const [testExtension, setTestExtension] = useState("");
   
   const [settings, setSettings] = useState<AuthSettingsData>({
     id: "",
@@ -67,7 +63,6 @@ export default function AuthSettings() {
     sms_message_template: "رمز التحقق الخاص بك هو: {code}",
     ippbx_enabled: false,
     ippbx_token_id: "",
-    ippbx_extension_password: "",
   });
 
   useEffect(() => {
@@ -131,7 +126,6 @@ export default function AuthSettings() {
           sms_message_template: data.sms_message_template || "رمز التحقق الخاص بك هو: {code}",
           ippbx_enabled: (data as any).ippbx_enabled || false,
           ippbx_token_id: (data as any).ippbx_token_id || "",
-          ippbx_extension_password: (data as any).ippbx_extension_password || "",
         });
       }
     } catch (error) {
@@ -163,7 +157,6 @@ export default function AuthSettings() {
           sms_message_template: settings.sms_message_template,
           ippbx_enabled: settings.ippbx_enabled,
           ippbx_token_id: settings.ippbx_token_id || null,
-          ippbx_extension_password: settings.ippbx_extension_password || null,
         } as any)
         .eq("id", settings.id);
 
@@ -508,158 +501,16 @@ export default function AuthSettings() {
           </TabsContent>
 
           <TabsContent value="ippbx" className="space-y-4 mt-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>الاتصال السريع (Click-to-Call)</CardTitle>
-                    <CardDescription>
-                      إعدادات نظام IPPBX للاتصال المباشر بالعملاء
-                    </CardDescription>
-                  </div>
-                  <Switch
-                    checked={settings.ippbx_enabled}
-                    onCheckedChange={(checked) =>
-                      setSettings({ ...settings, ippbx_enabled: checked })
-                    }
-                  />
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    أدخل بيانات IPPBX من مزود الخدمة. عند الضغط على رقم هاتف العميل سيتم الاتصال به مباشرة عبر تحويلتك.
-                  </AlertDescription>
-                </Alert>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="ippbx_token_id">رمز التوثيق (Token ID)</Label>
-                    <Input
-                      id="ippbx_token_id"
-                      value={settings.ippbx_token_id || ""}
-                      onChange={(e) =>
-                        setSettings({ ...settings, ippbx_token_id: e.target.value })
-                      }
-                      className="ltr-input"
-                      placeholder="أدخل Token ID"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ippbx_extension_password">كلمة مرور التحويلة (MD5)</Label>
-                    <div className="relative">
-                      <Input
-                        id="ippbx_extension_password"
-                        type={showIppbxPassword ? "text" : "password"}
-                        value={settings.ippbx_extension_password || ""}
-                        onChange={(e) =>
-                          setSettings({ ...settings, ippbx_extension_password: e.target.value })
-                        }
-                        className="ltr-input"
-                        placeholder="أدخل Extension Password"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute left-0 top-0 h-full px-3"
-                        onClick={() => setShowIppbxPassword(!showIppbxPassword)}
-                      >
-                        {showIppbxPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-4 border rounded-lg bg-muted/30">
-                  <h4 className="font-medium text-sm mb-2">ملاحظة</h4>
-                  <p className="text-sm text-muted-foreground">
-                    يجب تعيين رقم التحويلة لكل موظف من صفحة إدارة المستخدمين. عند الضغط على رقم هاتف العميل، سيتم الاتصال به عبر تحويلة الموظف المسجل.
-                  </p>
-                </div>
-
-                {/* Test Call Section */}
-                <div className="p-4 border rounded-lg bg-primary/5 space-y-3">
-                  <h4 className="font-medium text-sm flex items-center gap-2">
-                    <Phone className="h-4 w-4 text-primary" />
-                    اختبار الاتصال السريع
-                  </h4>
-                  <p className="text-xs text-muted-foreground">
-                    للتأكد من صحة الإعدادات، أدخل رقم هاتف ورقم تحويلة وجرّب الاتصال
-                  </p>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="test_phone">رقم هاتف للاختبار</Label>
-                      <Input
-                        id="test_phone"
-                        value={testPhone}
-                        onChange={(e) => setTestPhone(e.target.value)}
-                        className="ltr-input"
-                        placeholder="05XXXXXXXX"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="test_extension">رقم التحويلة</Label>
-                      <Input
-                        id="test_extension"
-                        value={testExtension}
-                        onChange={(e) => setTestExtension(e.target.value)}
-                        className="ltr-input"
-                        placeholder="101"
-                      />
-                    </div>
-                  </div>
-                  <Button
-                    onClick={async () => {
-                      if (!testPhone || !testExtension) {
-                        toast.error("يرجى إدخال رقم الهاتف ورقم التحويلة");
-                        return;
-                      }
-                      // Save settings first
-                      await handleSave();
-                      
-                      setTestingCall(true);
-                      try {
-                        const { data, error } = await supabase.functions.invoke('click2call', {
-                          body: { 
-                            phone_number: testPhone,
-                            extension_number: testExtension 
-                          },
-                        });
-
-                        if (error) throw error;
-
-                        if (data?.success) {
-                          toast.success(data.message || "تم بدء الاتصال بنجاح");
-                        } else {
-                          toast.error(data?.message || "فشل في بدء الاتصال");
-                        }
-                      } catch (error) {
-                        console.error("Error testing call:", error);
-                        toast.error("فشل في اختبار الاتصال");
-                      } finally {
-                        setTestingCall(false);
-                      }
-                    }}
-                    disabled={testingCall || !testPhone || !testExtension || !settings.ippbx_enabled}
-                    className="w-full gap-2"
-                  >
-                    {testingCall ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Phone className="h-4 w-4" />
-                    )}
-                    {testingCall ? "جاري الاتصال..." : "اختبار الاتصال"}
-                  </Button>
-                  {!settings.ippbx_enabled && (
-                    <p className="text-xs text-warning">
-                      ⚠️ يجب تفعيل الاتصال السريع أولاً
-                    </p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            <PbxExtensionsSection
+              ippbxEnabled={settings.ippbx_enabled}
+              onIppbxEnabledChange={(enabled) =>
+                setSettings({ ...settings, ippbx_enabled: enabled })
+              }
+              ippbxTokenId={settings.ippbx_token_id || ""}
+              onTokenIdChange={(tokenId) =>
+                setSettings({ ...settings, ippbx_token_id: tokenId })
+              }
+            />
           </TabsContent>
         </Tabs>
       </div>
