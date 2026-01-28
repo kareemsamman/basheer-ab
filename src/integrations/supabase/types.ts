@@ -2236,6 +2236,36 @@ export type Database = {
         }
         Relationships: []
       }
+      pbx_extensions: {
+        Row: {
+          created_at: string | null
+          extension_name: string | null
+          extension_number: string
+          id: string
+          is_default: boolean | null
+          password_md5: string
+          password_plain: string
+        }
+        Insert: {
+          created_at?: string | null
+          extension_name?: string | null
+          extension_number: string
+          id?: string
+          is_default?: boolean | null
+          password_md5: string
+          password_plain: string
+        }
+        Update: {
+          created_at?: string | null
+          extension_name?: string | null
+          extension_number?: string
+          id?: string
+          is_default?: boolean | null
+          password_md5?: string
+          password_plain?: string
+        }
+        Relationships: []
+      }
       policies: {
         Row: {
           accident_fee_service_id: string | null
