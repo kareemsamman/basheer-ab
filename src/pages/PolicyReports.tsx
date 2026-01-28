@@ -131,39 +131,40 @@ interface CreatedPolicy {
   total_count: number;
 }
 
-// Matches new report_renewals return type
-interface RenewalPolicy {
-  id: string;
-  group_key: string;
-  is_package: boolean;
-  package_types: string[] | null;
-  package_policy_ids: string[] | null;
-  package_count: number;
+// Matches new report_renewals return type - grouped by client
+interface RenewalClient {
   client_id: string;
   client_name: string;
   client_file_number: string | null;
   client_phone: string | null;
+  policies_count: number;
+  earliest_end_date: string;
+  days_remaining: number;
+  total_insurance_price: number;
+  policy_types: string[] | null;
+  policy_ids: string[] | null;
+  worst_renewal_status: string;
+  renewal_notes: string | null;
+  total_count: number;
+}
+
+// Client's individual policy details
+interface RenewalPolicy {
+  id: string;
   car_id: string | null;
   car_number: string | null;
+  policy_type_parent: string;
+  policy_type_child: string | null;
   company_id: string | null;
   company_name: string | null;
   company_name_ar: string | null;
-  policy_type_parent: string;
-  policy_type_child: string | null;
-  policy_number: string | null;
   start_date: string;
   end_date: string;
   days_remaining: number;
   insurance_price: number;
-  profit: number;
-  created_at: string;
-  created_by_admin_id: string | null;
-  created_by_name: string | null;
   renewal_status: string;
   renewal_notes: string | null;
-  last_contacted_at: string | null;
   reminder_sent_at: string | null;
-  total_count: number;
 }
 
 interface RenewalSummary {
@@ -205,8 +206,8 @@ export default function PolicyReports() {
   const [createdCompanyFilter, setCreatedCompanyFilter] = useState<string>('all');
   const [createdSearch, setCreatedSearch] = useState('');
   
-  // Renewals State
-  const [renewals, setRenewals] = useState<RenewalPolicy[]>([]);
+  // Renewals State - now grouped by client
+  const [renewalClients, setRenewalClients] = useState<RenewalClient[]>([]);
   const [renewalsLoading, setRenewalsLoading] = useState(true);
   const [renewalsPage, setRenewalsPage] = useState(0);
   const [renewalsTotalRows, setRenewalsTotalRows] = useState(0);
@@ -223,7 +224,7 @@ export default function PolicyReports() {
   
   // Modals
   const [updateStatusOpen, setUpdateStatusOpen] = useState(false);
-  const [selectedRenewal, setSelectedRenewal] = useState<RenewalPolicy | null>(null);
+  const [selectedRenewalClient, setSelectedRenewalClient] = useState<RenewalClient | null>(null);
   const [newStatus, setNewStatus] = useState('');
   const [statusNotes, setStatusNotes] = useState('');
   const [updatingStatus, setUpdatingStatus] = useState(false);
@@ -231,10 +232,15 @@ export default function PolicyReports() {
   const [sendingReminders, setSendingReminders] = useState(false);
   const [sendingSingleSms, setSendingSingleSms] = useState<string | null>(null);
   
-  // Expandable row for payment activity
+  // Expandable row for payment activity (created policies)
   const [expandedPolicyId, setExpandedPolicyId] = useState<string | null>(null);
   const [policyPayments, setPolicyPayments] = useState<Record<string, PolicyPaymentActivity[]>>({});
   const [loadingPayments, setLoadingPayments] = useState<string | null>(null);
+  
+  // Expandable row for client policies (renewals)
+  const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
+  const [clientPolicies, setClientPolicies] = useState<Record<string, RenewalPolicy[]>>({});
+  const [loadingClientPolicies, setLoadingClientPolicies] = useState<string | null>(null);
 
   // Fetch reference data
   useEffect(() => {
@@ -362,8 +368,10 @@ export default function PolicyReports() {
       ]);
 
       if (renewalsRes.error) throw renewalsRes.error;
-      setRenewals((renewalsRes.data as RenewalPolicy[]) || []);
-      setRenewalsTotalRows((renewalsRes.data as RenewalPolicy[])?.[0]?.total_count || 0);
+      // Cast to unknown first to handle type mismatch during types.ts regeneration
+      const clientData = (renewalsRes.data as unknown as RenewalClient[]) || [];
+      setRenewalClients(clientData);
+      setRenewalsTotalRows(clientData[0]?.total_count || 0);
       
       if (summaryRes.data && summaryRes.data.length > 0) {
         setRenewalsSummary(summaryRes.data[0]);
@@ -373,6 +381,36 @@ export default function PolicyReports() {
       toast.error('فشل في تحميل البيانات');
     } finally {
       setRenewalsLoading(false);
+    }
+  };
+
+  // Fetch client's detailed policies for expansion
+  const fetchClientPolicies = async (clientId: string) => {
+    if (clientPolicies[clientId]) {
+      // Already loaded, toggle
+      setExpandedClientId(expandedClientId === clientId ? null : clientId);
+      return;
+    }
+    
+    setLoadingClientPolicies(clientId);
+    try {
+      const { startDate, endDate } = getRenewalDateRange();
+      
+      const { data, error } = await supabase.rpc('get_client_renewal_policies', {
+        p_client_id: clientId,
+        p_start_date: startDate,
+        p_end_date: endDate
+      });
+      
+      if (error) throw error;
+      
+      setClientPolicies(prev => ({ ...prev, [clientId]: (data as RenewalPolicy[]) || [] }));
+      setExpandedClientId(clientId);
+    } catch (error) {
+      console.error('Error fetching client policies:', error);
+      toast.error('فشل في تحميل الوثائق');
+    } finally {
+      setLoadingClientPolicies(null);
     }
   };
 
@@ -430,30 +468,39 @@ export default function PolicyReports() {
     }
   }, [activeTab, renewalsPage, renewalsMonth, renewalsDaysFilter, renewalsPolicyTypeFilter, renewalsCreatedByFilter, renewalsSearch]);
 
-  // Update renewal status
+  // Update renewal status for all policies of a client
   const handleUpdateStatus = async () => {
-    if (!selectedRenewal || !newStatus) return;
+    if (!selectedRenewalClient || !newStatus) return;
     
     setUpdatingStatus(true);
     try {
-      // Upsert renewal tracking record
-      const { error } = await supabase
-        .from('policy_renewal_tracking')
-        .upsert({
-          policy_id: selectedRenewal.id,
-          renewal_status: newStatus,
-          notes: statusNotes || null,
-          last_contacted_at: ['called', 'renewed', 'not_interested'].includes(newStatus) ? new Date().toISOString() : selectedRenewal.last_contacted_at,
-          contacted_by: (await supabase.auth.getUser()).data.user?.id
-        }, { onConflict: 'policy_id' });
-
-      if (error) throw error;
+      const userId = (await supabase.auth.getUser()).data.user?.id;
       
-      toast.success('تم تحديث الحالة');
+      // Update tracking for ALL policies of this client
+      const policyIds = selectedRenewalClient.policy_ids || [];
+      
+      for (const policyId of policyIds) {
+        const { error } = await supabase
+          .from('policy_renewal_tracking')
+          .upsert({
+            policy_id: policyId,
+            renewal_status: newStatus,
+            notes: statusNotes || null,
+            last_contacted_at: ['called', 'renewed', 'not_interested'].includes(newStatus) ? new Date().toISOString() : null,
+            contacted_by: userId
+          }, { onConflict: 'policy_id' });
+
+        if (error) throw error;
+      }
+      
+      toast.success(`تم تحديث الحالة لـ ${policyIds.length} وثيقة`);
       setUpdateStatusOpen(false);
-      setSelectedRenewal(null);
+      setSelectedRenewalClient(null);
       setNewStatus('');
       setStatusNotes('');
+      // Clear cached policies
+      setClientPolicies({});
+      setExpandedClientId(null);
       fetchRenewals();
     } catch (error) {
       console.error('Error updating status:', error);
@@ -517,40 +564,41 @@ export default function PolicyReports() {
     }
   };
 
-  // Send single renewal reminder SMS with package details
-  const handleSendSingleSms = async (policy: RenewalPolicy) => {
-    if (!policy.client_phone) {
+  // Send single renewal reminder SMS for ALL client's policies
+  const handleSendSingleSms = async (client: RenewalClient) => {
+    if (!client.client_phone) {
       toast.error('رقم هاتف العميل مطلوب');
       return;
     }
 
-    setSendingSingleSms(policy.id);
+    setSendingSingleSms(client.client_id);
     try {
-      // Use package_types if available, otherwise single type
-      let packageTypes: string[] = policy.is_package && policy.package_types
-        ? policy.package_types.map(t => policyTypeLabels[t] || t)
-        : [policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent];
-
-      const typesText = packageTypes.join(' و ');
-      const endDate = formatDate(policy.end_date);
+      // Build message with all policy types
+      const typesText = (client.policy_types || []).map(t => policyTypeLabels[t] || t).join(' و ');
+      const endDate = formatDate(client.earliest_end_date);
       
-      // Build message
-      const message = `مرحباً ${policy.client_name}، نذكرك بأن تأمين (${typesText}) لسيارتك رقم ${policy.car_number || '-'} سينتهي بتاريخ ${endDate}. يرجى التواصل معنا أو زيارة المكتب للتجديد.`;
+      const message = `مرحباً ${client.client_name}، نذكرك بأن تأمين (${typesText}) سينتهي بتاريخ ${endDate}. يرجى التواصل معنا أو زيارة المكتب للتجديد.`;
 
       const { error } = await supabase.functions.invoke('send-sms', {
-        body: { phone: policy.client_phone, message }
+        body: { phone: client.client_phone, message }
       });
 
       if (error) throw error;
 
-      // Update renewal tracking
-      await supabase.from('policy_renewal_tracking').upsert({
-        policy_id: policy.id,
-        renewal_status: 'sms_sent',
-        reminder_sent_at: new Date().toISOString()
-      }, { onConflict: 'policy_id' });
+      // Update renewal tracking for ALL policies
+      const policyIds = client.policy_ids || [];
+      for (const policyId of policyIds) {
+        await supabase.from('policy_renewal_tracking').upsert({
+          policy_id: policyId,
+          renewal_status: 'sms_sent',
+          reminder_sent_at: new Date().toISOString()
+        }, { onConflict: 'policy_id' });
+      }
 
-      toast.success('تم إرسال التذكير');
+      toast.success(`تم إرسال التذكير لـ ${policyIds.length} وثيقة`);
+      // Clear cached policies
+      setClientPolicies({});
+      setExpandedClientId(null);
       fetchRenewals();
     } catch (error: any) {
       console.error('Error sending SMS:', error);
@@ -1003,131 +1051,197 @@ export default function PolicyReports() {
               </div>
             </Card>
 
-            {/* Table */}
+            {/* Table - Grouped by Customer */}
             <Card className="overflow-hidden">
               {renewalsLoading ? (
                 <div className="p-4 space-y-2">
                   {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
                 </div>
-              ) : renewals.length === 0 ? (
+              ) : renewalClients.length === 0 ? (
                 <div className="text-center py-12">
                   <Calendar className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
-                  <p className="text-muted-foreground">لا توجد وثائق منتهية في هذه الفترة</p>
+                  <p className="text-muted-foreground">لا يوجد عملاء لديهم وثائق منتهية في هذه الفترة</p>
                 </div>
               ) : (
                 <>
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/50">
-                        <TableHead className="text-right">تاريخ الانتهاء</TableHead>
-                        <TableHead className="text-right">الأيام المتبقية</TableHead>
+                        <TableHead className="w-10"></TableHead>
                         <TableHead className="text-right">العميل</TableHead>
                         <TableHead className="text-right">الهاتف</TableHead>
-                        <TableHead className="text-right">السيارة</TableHead>
-                        <TableHead className="text-right">النوع</TableHead>
-                        <TableHead className="text-right">الشركة</TableHead>
-                        <TableHead className="text-right">السعر</TableHead>
-                        <TableHead className="text-right">أنشأها</TableHead>
-                        <TableHead className="text-right">حالة التجديد</TableHead>
+                        <TableHead className="text-right">الوثائق</TableHead>
+                        <TableHead className="text-right">الأنواع</TableHead>
+                        <TableHead className="text-right">أقرب انتهاء</TableHead>
+                        <TableHead className="text-right">الأيام المتبقية</TableHead>
+                        <TableHead className="text-right">إجمالي السعر</TableHead>
+                        <TableHead className="text-right">الحالة</TableHead>
                         <TableHead className="text-right">ملاحظات</TableHead>
                         <TableHead className="w-10"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {renewals.map(policy => (
-                        <TableRow key={policy.id} className="hover:bg-muted/30">
-                          <TableCell className="font-mono">{formatDate(policy.end_date)}</TableCell>
-                          <TableCell>
-                            <Badge variant={policy.days_remaining <= 7 ? 'destructive' : policy.days_remaining <= 14 ? 'warning' : 'secondary'}>
-                              {policy.days_remaining} يوم
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <p className="font-medium">{policy.client_name}</p>
-                              {policy.client_file_number && (
-                                <p className="text-xs text-muted-foreground">{policy.client_file_number}</p>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <ClickablePhone phone={policy.client_phone} />
-                          </TableCell>
-                          <TableCell className="font-mono">{policy.car_number || '-'}</TableCell>
-                          <TableCell>
-                            {policy.is_package ? (
-                              <div className="flex flex-col gap-1">
-                                <Badge variant="default" className="text-xs gap-1 bg-primary">
-                                  <Package className="h-3 w-3" />
-                                  باقة ({policy.package_count})
-                                </Badge>
-                                <div className="flex flex-wrap gap-0.5">
-                                  {policy.package_types?.map(type => (
-                                    <span key={type} className="text-[10px] text-muted-foreground">
-                                      {policyTypeLabels[type] || type}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : (
-                              <Badge variant="secondary" className="text-xs">
-                                {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
-                              </Badge>
+                      {renewalClients.map(client => (
+                        <React.Fragment key={client.client_id}>
+                          <TableRow 
+                            className={cn(
+                              "hover:bg-muted/30 cursor-pointer",
+                              expandedClientId === client.client_id && "bg-muted/40"
                             )}
-                          </TableCell>
-                          <TableCell>{policy.company_name_ar || policy.company_name || '-'}</TableCell>
-                          <TableCell className="font-bold">₪{policy.insurance_price.toLocaleString()}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground">{policy.created_by_name || '-'}</TableCell>
-                          <TableCell>
-                            <Badge className={cn('border', renewalStatusColors[policy.renewal_status])}>
-                              {renewalStatusLabels[policy.renewal_status]}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="max-w-[150px] truncate text-xs text-muted-foreground">
-                            {policy.renewal_notes || '-'}
-                          </TableCell>
-                          <TableCell>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => {
-                                  setSelectedRenewal(policy);
-                                  setNewStatus(policy.renewal_status);
-                                  setStatusNotes(policy.renewal_notes || '');
-                                  setUpdateStatusOpen(true);
-                                }}>
-                                  <MessageSquare className="h-4 w-4 ml-2" />
-                                  تحديث الحالة
-                                </DropdownMenuItem>
-                                {policy.client_phone && (
-                                  <>
-                                    <DropdownMenuItem 
-                                      onClick={() => handleSendSingleSms(policy)}
-                                      disabled={sendingSingleSms === policy.id}
-                                    >
-                                      {sendingSingleSms === policy.id ? (
-                                        <Loader2 className="h-4 w-4 ml-2 animate-spin" />
-                                      ) : (
-                                        <Send className="h-4 w-4 ml-2" />
-                                      )}
-                                      إرسال تذكير SMS
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem asChild>
-                                      <a href={`tel:${policy.client_phone}`}>
-                                        <Phone className="h-4 w-4 ml-2" />
-                                        اتصال
-                                      </a>
-                                    </DropdownMenuItem>
-                                  </>
+                            onClick={() => fetchClientPolicies(client.client_id)}
+                          >
+                            <TableCell className="w-10">
+                              {loadingClientPolicies === client.client_id ? (
+                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                              ) : (
+                                <ChevronDown 
+                                  className={cn(
+                                    "h-4 w-4 text-muted-foreground transition-transform",
+                                    expandedClientId === client.client_id && "rotate-180"
+                                  )} 
+                                />
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <p className="font-medium">{client.client_name}</p>
+                                {client.client_file_number && (
+                                  <p className="text-xs text-muted-foreground">{client.client_file_number}</p>
                                 )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
+                              </div>
+                            </TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <ClickablePhone phone={client.client_phone} />
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="font-bold">
+                                {client.policies_count} وثيقة
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap gap-1">
+                                {client.policy_types?.map(type => (
+                                  <Badge key={type} variant="secondary" className="text-xs">
+                                    {policyTypeLabels[type] || type}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-mono">{formatDate(client.earliest_end_date)}</TableCell>
+                            <TableCell>
+                              <Badge variant={client.days_remaining <= 7 ? 'destructive' : client.days_remaining <= 14 ? 'warning' : 'secondary'}>
+                                {client.days_remaining} يوم
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-bold">₪{client.total_insurance_price.toLocaleString()}</TableCell>
+                            <TableCell>
+                              <Badge className={cn('border', renewalStatusColors[client.worst_renewal_status])}>
+                                {renewalStatusLabels[client.worst_renewal_status]}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="max-w-[150px] truncate text-xs text-muted-foreground">
+                              {client.renewal_notes || '-'}
+                            </TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                                    <MoreVertical className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => {
+                                    setSelectedRenewalClient(client);
+                                    setNewStatus(client.worst_renewal_status);
+                                    setStatusNotes(client.renewal_notes || '');
+                                    setUpdateStatusOpen(true);
+                                  }}>
+                                    <MessageSquare className="h-4 w-4 ml-2" />
+                                    تحديث الحالة ({client.policies_count} وثيقة)
+                                  </DropdownMenuItem>
+                                  {client.client_phone && (
+                                    <>
+                                      <DropdownMenuItem 
+                                        onClick={() => handleSendSingleSms(client)}
+                                        disabled={sendingSingleSms === client.client_id}
+                                      >
+                                        {sendingSingleSms === client.client_id ? (
+                                          <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                                        ) : (
+                                          <Send className="h-4 w-4 ml-2" />
+                                        )}
+                                        إرسال تذكير SMS ({client.policies_count} وثيقة)
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem asChild>
+                                        <a href={`tel:${client.client_phone}`}>
+                                          <Phone className="h-4 w-4 ml-2" />
+                                          اتصال
+                                        </a>
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                          
+                          {/* Expanded Policies Row */}
+                          {expandedClientId === client.client_id && clientPolicies[client.client_id] && (
+                            <TableRow key={`${client.client_id}-policies`} className="bg-muted/20">
+                              <TableCell colSpan={11} className="p-0">
+                                <div className="px-6 py-4 border-t border-dashed">
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <FileText className="h-4 w-4 text-primary" />
+                                    <span className="font-medium text-sm">الوثائق المنتهية</span>
+                                    <Badge variant="outline" className="text-xs">
+                                      {clientPolicies[client.client_id].length} وثيقة
+                                    </Badge>
+                                  </div>
+                                  
+                                  <div className="space-y-2">
+                                    {clientPolicies[client.client_id].map((policy) => (
+                                      <div 
+                                        key={policy.id} 
+                                        className="flex items-center gap-4 p-3 rounded-lg bg-background border text-sm"
+                                      >
+                                        <div className="flex-1 grid grid-cols-6 gap-4">
+                                          <div>
+                                            <p className="text-xs text-muted-foreground">السيارة</p>
+                                            <p className="font-mono">{policy.car_number || '-'}</p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-muted-foreground">النوع</p>
+                                            <Badge variant="secondary" className="text-xs">
+                                              {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
+                                            </Badge>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-muted-foreground">الشركة</p>
+                                            <p>{policy.company_name_ar || policy.company_name || '-'}</p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-muted-foreground">تاريخ الانتهاء</p>
+                                            <p className="font-mono">{formatDate(policy.end_date)}</p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-muted-foreground">السعر</p>
+                                            <p className="font-bold">₪{policy.insurance_price.toLocaleString()}</p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-muted-foreground">الحالة</p>
+                                            <Badge className={cn('border text-xs', renewalStatusColors[policy.renewal_status])}>
+                                              {renewalStatusLabels[policy.renewal_status]}
+                                            </Badge>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </React.Fragment>
                       ))}
                     </TableBody>
                   </Table>
@@ -1135,7 +1249,7 @@ export default function PolicyReports() {
                   {/* Pagination */}
                   <div className="flex items-center justify-between p-4 border-t">
                     <p className="text-sm text-muted-foreground">
-                      إجمالي: {renewalsTotalRows} وثيقة/باقة
+                      إجمالي: {renewalsTotalRows} عميل
                     </p>
                     <div className="flex items-center gap-2">
                       <Button
@@ -1174,8 +1288,11 @@ export default function PolicyReports() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <p className="text-sm text-muted-foreground mb-2">العميل: {selectedRenewal?.client_name}</p>
-              <p className="text-sm text-muted-foreground">السيارة: {selectedRenewal?.car_number}</p>
+              <p className="text-sm text-muted-foreground mb-2">العميل: {selectedRenewalClient?.client_name}</p>
+              <p className="text-sm text-muted-foreground">عدد الوثائق: {selectedRenewalClient?.policies_count} وثيقة</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                سيتم تطبيق الحالة على جميع وثائق هذا العميل
+              </p>
             </div>
             <Select value={newStatus} onValueChange={setNewStatus}>
               <SelectTrigger>

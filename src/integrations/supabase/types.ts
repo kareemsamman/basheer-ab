@@ -3496,6 +3496,30 @@ export type Database = {
           total_payable: number
         }[]
       }
+      get_client_renewal_policies: {
+        Args: {
+          p_client_id: string
+          p_end_date?: string
+          p_start_date?: string
+        }
+        Returns: {
+          car_id: string
+          car_number: string
+          company_id: string
+          company_name: string
+          company_name_ar: string
+          days_remaining: number
+          end_date: string
+          id: string
+          insurance_price: number
+          policy_type_child: string
+          policy_type_parent: string
+          reminder_sent_at: string
+          renewal_notes: string
+          renewal_status: string
+          start_date: string
+        }[]
+      }
       get_company_balance: {
         Args: { p_company_id: string; p_from_date?: string; p_to_date?: string }
         Returns: {
@@ -3660,51 +3684,78 @@ export type Database = {
           status: string
         }[]
       }
-      report_renewals: {
-        Args: {
-          p_company_id?: string
-          p_created_by?: string
-          p_end_date: string
-          p_page?: number
-          p_page_size?: number
-          p_policy_type?: string
-          p_search?: string
-          p_start_date: string
-        }
-        Returns: {
-          car_id: string
-          car_number: string
-          client_file_number: string
-          client_id: string
-          client_name: string
-          client_phone: string
-          company_id: string
-          company_name: string
-          company_name_ar: string
-          created_at: string
-          created_by_admin_id: string
-          created_by_name: string
-          days_remaining: number
-          end_date: string
-          group_key: string
-          id: string
-          insurance_price: number
-          is_package: boolean
-          last_contacted_at: string
-          package_count: number
-          package_policy_ids: string[]
-          package_types: string[]
-          policy_number: string
-          policy_type_child: string
-          policy_type_parent: string
-          profit: number
-          reminder_sent_at: string
-          renewal_notes: string
-          renewal_status: string
-          start_date: string
-          total_count: number
-        }[]
-      }
+      report_renewals:
+        | {
+            Args: {
+              p_created_by?: string
+              p_end_date?: string
+              p_page?: number
+              p_page_size?: number
+              p_policy_type?: string
+              p_search?: string
+              p_start_date?: string
+            }
+            Returns: {
+              client_file_number: string
+              client_id: string
+              client_name: string
+              client_phone: string
+              days_remaining: number
+              earliest_end_date: string
+              policies_count: number
+              policy_ids: string[]
+              policy_types: string[]
+              renewal_notes: string
+              total_count: number
+              total_insurance_price: number
+              worst_renewal_status: string
+            }[]
+          }
+        | {
+            Args: {
+              p_company_id?: string
+              p_created_by?: string
+              p_end_date: string
+              p_page?: number
+              p_page_size?: number
+              p_policy_type?: string
+              p_search?: string
+              p_start_date: string
+            }
+            Returns: {
+              car_id: string
+              car_number: string
+              client_file_number: string
+              client_id: string
+              client_name: string
+              client_phone: string
+              company_id: string
+              company_name: string
+              company_name_ar: string
+              created_at: string
+              created_by_admin_id: string
+              created_by_name: string
+              days_remaining: number
+              end_date: string
+              group_key: string
+              id: string
+              insurance_price: number
+              is_package: boolean
+              last_contacted_at: string
+              package_count: number
+              package_policy_ids: string[]
+              package_types: string[]
+              policy_number: string
+              policy_type_child: string
+              policy_type_parent: string
+              profit: number
+              reminder_sent_at: string
+              renewal_notes: string
+              renewal_status: string
+              start_date: string
+              total_count: number
+            }[]
+          }
       report_renewals_service: {
         Args: {
           p_days_remaining?: number
