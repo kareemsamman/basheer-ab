@@ -56,6 +56,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+import { ClickablePhone } from '@/components/shared/ClickablePhone';
 
 const policyTypeLabels: Record<string, string> = {
   ELZAMI: 'إلزامي',
@@ -715,7 +716,9 @@ export default function PolicyReports() {
                                 )}
                               </div>
                             </TableCell>
-                            <TableCell dir="ltr" className="text-right">{policy.client_phone || '-'}</TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <ClickablePhone phone={policy.client_phone} />
+                            </TableCell>
                             <TableCell className="font-mono">{policy.car_number || '-'}</TableCell>
                             <TableCell>
                               <Badge variant="secondary" className="text-xs">
@@ -991,7 +994,9 @@ export default function PolicyReports() {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell dir="ltr" className="text-right">{policy.client_phone || '-'}</TableCell>
+                          <TableCell>
+                            <ClickablePhone phone={policy.client_phone} />
+                          </TableCell>
                           <TableCell className="font-mono">{policy.car_number || '-'}</TableCell>
                           <TableCell>
                             <Badge variant="secondary" className="text-xs">
