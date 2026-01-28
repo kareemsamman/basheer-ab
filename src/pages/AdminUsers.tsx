@@ -45,6 +45,7 @@ import {
   Loader2,
   RefreshCw,
   Building2,
+  Phone,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -57,6 +58,7 @@ interface UserProfile {
   created_at: string;
   updated_at: string;
   branch_id: string | null;
+  pbx_extension: string | null;
 }
 
 interface UserRole {
@@ -330,6 +332,34 @@ export default function AdminUsers() {
     }
   };
 
+  const handleChangeExtension = async (userId: string, extension: string) => {
+    setActionLoading(userId);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ pbx_extension: extension || null } as any)
+        .eq('id', userId);
+
+      if (error) throw error;
+
+      toast({
+        title: "تم التحديث",
+        description: "تم تحديث رقم التحويلة بنجاح",
+      });
+
+      fetchUsers();
+    } catch (error) {
+      console.error('Error changing extension:', error);
+      toast({
+        title: "خطأ",
+        description: "فشل في تحديث رقم التحويلة",
+        variant: "destructive",
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const pendingUsers = users.filter(u => u.status === 'pending');
   const activeUsers = users.filter(u => u.status === 'active');
   const blockedUsers = users.filter(u => u.status === 'blocked');
@@ -570,6 +600,12 @@ export default function AdminUsers() {
                       <TableHead className="text-right">البريد الإلكتروني</TableHead>
                       <TableHead className="text-right">الفرع</TableHead>
                       <TableHead className="text-right">الدور</TableHead>
+                      <TableHead className="text-right">
+                        <div className="flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          التحويلة
+                        </div>
+                      </TableHead>
                       <TableHead className="text-right">الحالة</TableHead>
                       <TableHead className="text-right">الإجراءات</TableHead>
                     </TableRow>
@@ -617,6 +653,26 @@ export default function AdminUsers() {
                               <SelectItem value="admin">مدير</SelectItem>
                             </SelectContent>
                           </Select>
+                        </TableCell>
+                        <TableCell>
+                          <input
+                            type="text"
+                            className="w-20 px-2 py-1 text-sm border rounded bg-background text-center ltr-input"
+                            placeholder="101"
+                            defaultValue={user.pbx_extension || ''}
+                            onBlur={(e) => {
+                              const newValue = e.target.value.trim();
+                              if (newValue !== (user.pbx_extension || '')) {
+                                handleChangeExtension(user.id, newValue);
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.currentTarget.blur();
+                              }
+                            }}
+                            disabled={actionLoading === user.id}
+                          />
                         </TableCell>
                         <TableCell>{getStatusBadge(user.status)}</TableCell>
                         <TableCell>

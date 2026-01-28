@@ -42,10 +42,13 @@ export default function AuthSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testingSmtp, setTestingSmtp] = useState(false);
+  const [testingCall, setTestingCall] = useState(false);
   const [showSmtpPassword, setShowSmtpPassword] = useState(false);
   const [showSmsToken, setShowSmsToken] = useState(false);
   const [showIppbxPassword, setShowIppbxPassword] = useState(false);
   const [testEmail, setTestEmail] = useState("");
+  const [testPhone, setTestPhone] = useState("");
+  const [testExtension, setTestExtension] = useState("");
   
   const [settings, setSettings] = useState<AuthSettingsData>({
     id: "",
@@ -574,6 +577,86 @@ export default function AuthSettings() {
                   <p className="text-sm text-muted-foreground">
                     يجب تعيين رقم التحويلة لكل موظف من صفحة إدارة المستخدمين. عند الضغط على رقم هاتف العميل، سيتم الاتصال به عبر تحويلة الموظف المسجل.
                   </p>
+                </div>
+
+                {/* Test Call Section */}
+                <div className="p-4 border rounded-lg bg-primary/5 space-y-3">
+                  <h4 className="font-medium text-sm flex items-center gap-2">
+                    <Phone className="h-4 w-4 text-primary" />
+                    اختبار الاتصال السريع
+                  </h4>
+                  <p className="text-xs text-muted-foreground">
+                    للتأكد من صحة الإعدادات، أدخل رقم هاتف ورقم تحويلة وجرّب الاتصال
+                  </p>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="test_phone">رقم هاتف للاختبار</Label>
+                      <Input
+                        id="test_phone"
+                        value={testPhone}
+                        onChange={(e) => setTestPhone(e.target.value)}
+                        className="ltr-input"
+                        placeholder="05XXXXXXXX"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="test_extension">رقم التحويلة</Label>
+                      <Input
+                        id="test_extension"
+                        value={testExtension}
+                        onChange={(e) => setTestExtension(e.target.value)}
+                        className="ltr-input"
+                        placeholder="101"
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    onClick={async () => {
+                      if (!testPhone || !testExtension) {
+                        toast.error("يرجى إدخال رقم الهاتف ورقم التحويلة");
+                        return;
+                      }
+                      // Save settings first
+                      await handleSave();
+                      
+                      setTestingCall(true);
+                      try {
+                        const { data, error } = await supabase.functions.invoke('click2call', {
+                          body: { 
+                            phone_number: testPhone,
+                            extension_number: testExtension 
+                          },
+                        });
+
+                        if (error) throw error;
+
+                        if (data?.success) {
+                          toast.success(data.message || "تم بدء الاتصال بنجاح");
+                        } else {
+                          toast.error(data?.message || "فشل في بدء الاتصال");
+                        }
+                      } catch (error) {
+                        console.error("Error testing call:", error);
+                        toast.error("فشل في اختبار الاتصال");
+                      } finally {
+                        setTestingCall(false);
+                      }
+                    }}
+                    disabled={testingCall || !testPhone || !testExtension || !settings.ippbx_enabled}
+                    className="w-full gap-2"
+                  >
+                    {testingCall ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Phone className="h-4 w-4" />
+                    )}
+                    {testingCall ? "جاري الاتصال..." : "اختبار الاتصال"}
+                  </Button>
+                  {!settings.ippbx_enabled && (
+                    <p className="text-xs text-warning">
+                      ⚠️ يجب تفعيل الاتصال السريع أولاً
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
