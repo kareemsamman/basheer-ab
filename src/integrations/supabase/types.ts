@@ -2899,6 +2899,7 @@ export type Database = {
           email: string
           full_name: string | null
           id: string
+          pbx_extension: string | null
           phone: string | null
           status: Database["public"]["Enums"]["user_status"]
           updated_at: string
@@ -2910,6 +2911,7 @@ export type Database = {
           email: string
           full_name?: string | null
           id: string
+          pbx_extension?: string | null
           phone?: string | null
           status?: Database["public"]["Enums"]["user_status"]
           updated_at?: string
@@ -2921,6 +2923,7 @@ export type Database = {
           email?: string
           full_name?: string | null
           id?: string
+          pbx_extension?: string | null
           phone?: string | null
           status?: Database["public"]["Enums"]["user_status"]
           updated_at?: string
