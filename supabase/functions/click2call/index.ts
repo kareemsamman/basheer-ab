@@ -77,12 +77,33 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get PBX credentials from secrets
-    const tokenId = Deno.env.get('IPPBX_TOKEN_ID');
-    const extensionPassword = Deno.env.get('IPPBX_EXTENSION_PASSWORD');
+    // Get PBX credentials from auth_settings table
+    const { data: authSettings, error: authSettingsError } = await supabase
+      .from('auth_settings')
+      .select('ippbx_enabled, ippbx_token_id, ippbx_extension_password')
+      .limit(1)
+      .single();
+
+    if (authSettingsError) {
+      console.error('Auth settings fetch error:', authSettingsError);
+      return new Response(
+        JSON.stringify({ success: false, message: 'خطأ في جلب إعدادات الاتصال' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!authSettings?.ippbx_enabled) {
+      return new Response(
+        JSON.stringify({ success: false, message: 'خاصية الاتصال السريع غير مفعلة' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const tokenId = authSettings.ippbx_token_id;
+    const extensionPassword = authSettings.ippbx_extension_password;
 
     if (!tokenId || !extensionPassword) {
-      console.error('Missing PBX credentials');
+      console.error('Missing PBX credentials in auth_settings');
       return new Response(
         JSON.stringify({ success: false, message: 'لم يتم تكوين نظام الاتصال' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

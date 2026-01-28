@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Mail, Smartphone, Save, Eye, EyeOff, AlertCircle, Send, Loader2 } from "lucide-react";
+import { Mail, Smartphone, Save, Eye, EyeOff, AlertCircle, Send, Loader2, Phone } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface AuthSettingsData {
@@ -30,6 +30,10 @@ interface AuthSettingsData {
   sms_019_token: string | null;
   sms_019_source: string | null;
   sms_message_template: string | null;
+  // IPPBX settings
+  ippbx_enabled: boolean;
+  ippbx_token_id: string | null;
+  ippbx_extension_password: string | null;
 }
 
 export default function AuthSettings() {
@@ -40,6 +44,7 @@ export default function AuthSettings() {
   const [testingSmtp, setTestingSmtp] = useState(false);
   const [showSmtpPassword, setShowSmtpPassword] = useState(false);
   const [showSmsToken, setShowSmsToken] = useState(false);
+  const [showIppbxPassword, setShowIppbxPassword] = useState(false);
   const [testEmail, setTestEmail] = useState("");
   
   const [settings, setSettings] = useState<AuthSettingsData>({
@@ -57,6 +62,9 @@ export default function AuthSettings() {
     sms_019_token: "",
     sms_019_source: "",
     sms_message_template: "رمز التحقق الخاص بك هو: {code}",
+    ippbx_enabled: false,
+    ippbx_token_id: "",
+    ippbx_extension_password: "",
   });
 
   useEffect(() => {
@@ -118,6 +126,9 @@ export default function AuthSettings() {
           sms_019_token: data.sms_019_token || "",
           sms_019_source: data.sms_019_source || "",
           sms_message_template: data.sms_message_template || "رمز التحقق الخاص بك هو: {code}",
+          ippbx_enabled: (data as any).ippbx_enabled || false,
+          ippbx_token_id: (data as any).ippbx_token_id || "",
+          ippbx_extension_password: (data as any).ippbx_extension_password || "",
         });
       }
     } catch (error) {
@@ -147,6 +158,9 @@ export default function AuthSettings() {
           sms_019_token: settings.sms_019_token || null,
           sms_019_source: settings.sms_019_source || null,
           sms_message_template: settings.sms_message_template,
+          ippbx_enabled: settings.ippbx_enabled,
+          ippbx_token_id: settings.ippbx_token_id || null,
+          ippbx_extension_password: settings.ippbx_extension_password || null,
         } as any)
         .eq("id", settings.id);
 
@@ -216,7 +230,7 @@ export default function AuthSettings() {
         </div>
 
         <Tabs defaultValue="email" className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsList className="grid w-full max-w-lg grid-cols-3">
             <TabsTrigger value="email" className="gap-2">
               <Mail className="h-4 w-4" />
               البريد الإلكتروني
@@ -224,6 +238,10 @@ export default function AuthSettings() {
             <TabsTrigger value="sms" className="gap-2">
               <Smartphone className="h-4 w-4" />
               الرسائل النصية
+            </TabsTrigger>
+            <TabsTrigger value="ippbx" className="gap-2">
+              <Phone className="h-4 w-4" />
+              الاتصال السريع
             </TabsTrigger>
           </TabsList>
 
@@ -481,6 +499,81 @@ export default function AuthSettings() {
                     placeholder="رمز التحقق الخاص بك هو: {code}"
                   />
                   <p className="text-xs text-muted-foreground">استخدم {"{code}"} لإدراج رمز التحقق</p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="ippbx" className="space-y-4 mt-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>الاتصال السريع (Click-to-Call)</CardTitle>
+                    <CardDescription>
+                      إعدادات نظام IPPBX للاتصال المباشر بالعملاء
+                    </CardDescription>
+                  </div>
+                  <Switch
+                    checked={settings.ippbx_enabled}
+                    onCheckedChange={(checked) =>
+                      setSettings({ ...settings, ippbx_enabled: checked })
+                    }
+                  />
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    أدخل بيانات IPPBX من مزود الخدمة. عند الضغط على رقم هاتف العميل سيتم الاتصال به مباشرة عبر تحويلتك.
+                  </AlertDescription>
+                </Alert>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="ippbx_token_id">رمز التوثيق (Token ID)</Label>
+                    <Input
+                      id="ippbx_token_id"
+                      value={settings.ippbx_token_id || ""}
+                      onChange={(e) =>
+                        setSettings({ ...settings, ippbx_token_id: e.target.value })
+                      }
+                      className="ltr-input"
+                      placeholder="أدخل Token ID"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ippbx_extension_password">كلمة مرور التحويلة (MD5)</Label>
+                    <div className="relative">
+                      <Input
+                        id="ippbx_extension_password"
+                        type={showIppbxPassword ? "text" : "password"}
+                        value={settings.ippbx_extension_password || ""}
+                        onChange={(e) =>
+                          setSettings({ ...settings, ippbx_extension_password: e.target.value })
+                        }
+                        className="ltr-input"
+                        placeholder="أدخل Extension Password"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute left-0 top-0 h-full px-3"
+                        onClick={() => setShowIppbxPassword(!showIppbxPassword)}
+                      >
+                        {showIppbxPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 border rounded-lg bg-muted/30">
+                  <h4 className="font-medium text-sm mb-2">ملاحظة</h4>
+                  <p className="text-sm text-muted-foreground">
+                    يجب تعيين رقم التحويلة لكل موظف من صفحة إدارة المستخدمين. عند الضغط على رقم هاتف العميل، سيتم الاتصال به عبر تحويلة الموظف المسجل.
+                  </p>
                 </div>
               </CardContent>
             </Card>

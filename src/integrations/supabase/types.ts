@@ -471,6 +471,9 @@ export type Database = {
           gmail_app_password: string | null
           gmail_sender_email: string | null
           id: string
+          ippbx_enabled: boolean | null
+          ippbx_extension_password: string | null
+          ippbx_token_id: string | null
           sms_019_source: string | null
           sms_019_token: string | null
           sms_019_user: string | null
@@ -491,6 +494,9 @@ export type Database = {
           gmail_app_password?: string | null
           gmail_sender_email?: string | null
           id?: string
+          ippbx_enabled?: boolean | null
+          ippbx_extension_password?: string | null
+          ippbx_token_id?: string | null
           sms_019_source?: string | null
           sms_019_token?: string | null
           sms_019_user?: string | null
@@ -511,6 +517,9 @@ export type Database = {
           gmail_app_password?: string | null
           gmail_sender_email?: string | null
           id?: string
+          ippbx_enabled?: boolean | null
+          ippbx_extension_password?: string | null
+          ippbx_token_id?: string | null
           sms_019_source?: string | null
           sms_019_token?: string | null
           sms_019_user?: string | null
