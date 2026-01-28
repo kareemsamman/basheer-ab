@@ -51,6 +51,7 @@ import {
   ChevronDown,
   CreditCard,
   Banknote,
+  Package,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -69,6 +70,7 @@ const policyTypeLabels: Record<string, string> = {
   TRAVEL: 'تأمين سفر',
   BUSINESS: 'تأمين أعمال',
   OTHER: 'أخرى',
+  PACKAGE: 'باقة',
 };
 
 const renewalStatusLabels: Record<string, string> = {
@@ -118,6 +120,11 @@ interface CreatedPolicy {
   remaining: number;
   payment_status: string;
   total_rows: number;
+  // Package support
+  is_package: boolean;
+  package_types: string[] | null;
+  package_policy_ids: string[] | null;
+  package_count: number;
 }
 
 interface RenewalPolicy {
@@ -142,6 +149,11 @@ interface RenewalPolicy {
   created_by_name: string | null;
   group_id?: string | null;
   total_rows: number;
+  // Package support
+  is_package: boolean;
+  package_types: string[] | null;
+  package_policy_ids: string[] | null;
+  package_count: number;
 }
 
 interface RenewalSummary {
@@ -326,26 +338,30 @@ export default function PolicyReports() {
     }
   };
 
-  // Fetch payment activity for a policy
-  const fetchPolicyPayments = async (policyId: string) => {
-    if (policyPayments[policyId]) {
+  // Fetch payment activity for a policy or package
+  const fetchPolicyPayments = async (policyId: string, policyIds?: string[] | null) => {
+    const cacheKey = policyId;
+    if (policyPayments[cacheKey]) {
       // Already loaded
-      setExpandedPolicyId(expandedPolicyId === policyId ? null : policyId);
+      setExpandedPolicyId(expandedPolicyId === cacheKey ? null : cacheKey);
       return;
     }
     
     setLoadingPayments(policyId);
     try {
+      // For packages, fetch payments for all policies in the package
+      const idsToQuery = policyIds && policyIds.length > 0 ? policyIds : [policyId];
+      
       const { data, error } = await supabase
         .from('policy_payments')
         .select('id, amount, payment_date, payment_type, created_at')
-        .eq('policy_id', policyId)
+        .in('policy_id', idsToQuery)
         .order('payment_date', { ascending: false });
       
       if (error) throw error;
       
-      setPolicyPayments(prev => ({ ...prev, [policyId]: data || [] }));
-      setExpandedPolicyId(policyId);
+      setPolicyPayments(prev => ({ ...prev, [cacheKey]: data || [] }));
+      setExpandedPolicyId(cacheKey);
     } catch (error) {
       console.error('Error fetching payments:', error);
       toast.error('فشل في تحميل الدفعات');
@@ -682,7 +698,7 @@ export default function PolicyReports() {
                               "hover:bg-muted/30 cursor-pointer",
                               expandedPolicyId === policy.id && "bg-muted/40"
                             )}
-                            onClick={() => fetchPolicyPayments(policy.id)}
+                            onClick={() => fetchPolicyPayments(policy.id, policy.package_policy_ids)}
                           >
                             <TableCell className="w-10">
                               {loadingPayments === policy.id ? (
@@ -721,9 +737,25 @@ export default function PolicyReports() {
                             </TableCell>
                             <TableCell className="font-mono">{policy.car_number || '-'}</TableCell>
                             <TableCell>
-                              <Badge variant="secondary" className="text-xs">
-                                {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
-                              </Badge>
+                              {policy.is_package ? (
+                                <div className="flex flex-col gap-1">
+                                  <Badge variant="default" className="text-xs gap-1 bg-primary">
+                                    <Package className="h-3 w-3" />
+                                    باقة ({policy.package_count})
+                                  </Badge>
+                                  <div className="flex flex-wrap gap-0.5">
+                                    {policy.package_types?.map(type => (
+                                      <span key={type} className="text-[10px] text-muted-foreground">
+                                        {policyTypeLabels[type] || type}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : (
+                                <Badge variant="secondary" className="text-xs">
+                                  {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
+                                </Badge>
+                              )}
                             </TableCell>
                             <TableCell>{policy.company_name_ar || policy.company_name || '-'}</TableCell>
                             <TableCell className="text-xs">
@@ -815,7 +847,7 @@ export default function PolicyReports() {
                   {/* Pagination */}
                   <div className="flex items-center justify-between p-4 border-t">
                     <p className="text-sm text-muted-foreground">
-                      إجمالي: {createdTotalRows} وثيقة
+                      إجمالي: {createdTotalRows} وثيقة/باقة
                     </p>
                     <div className="flex items-center gap-2">
                       <Button
@@ -999,9 +1031,25 @@ export default function PolicyReports() {
                           </TableCell>
                           <TableCell className="font-mono">{policy.car_number || '-'}</TableCell>
                           <TableCell>
-                            <Badge variant="secondary" className="text-xs">
-                              {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
-                            </Badge>
+                            {policy.is_package ? (
+                              <div className="flex flex-col gap-1">
+                                <Badge variant="default" className="text-xs gap-1 bg-primary">
+                                  <Package className="h-3 w-3" />
+                                  باقة ({policy.package_count})
+                                </Badge>
+                                <div className="flex flex-wrap gap-0.5">
+                                  {policy.package_types?.map(type => (
+                                    <span key={type} className="text-[10px] text-muted-foreground">
+                                      {policyTypeLabels[type] || type}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <Badge variant="secondary" className="text-xs">
+                                {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell>{policy.company_name_ar || policy.company_name || '-'}</TableCell>
                           <TableCell className="font-bold">₪{policy.insurance_price.toLocaleString()}</TableCell>
@@ -1063,7 +1111,7 @@ export default function PolicyReports() {
                   {/* Pagination */}
                   <div className="flex items-center justify-between p-4 border-t">
                     <p className="text-sm text-muted-foreground">
-                      إجمالي: {renewalsTotalRows} وثيقة
+                      إجمالي: {renewalsTotalRows} وثيقة/باقة
                     </p>
                     <div className="flex items-center gap-2">
                       <Button

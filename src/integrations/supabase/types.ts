@@ -3625,6 +3625,10 @@ export type Database = {
           end_date: string
           id: string
           insurance_price: number
+          is_package: boolean
+          package_count: number
+          package_policy_ids: string[]
+          package_types: string[]
           payment_status: string
           policy_type_child: string
           policy_type_parent: string
@@ -3677,7 +3681,11 @@ export type Database = {
           group_id: string
           id: string
           insurance_price: number
+          is_package: boolean
           last_contacted_at: string
+          package_count: number
+          package_policy_ids: string[]
+          package_types: string[]
           policy_type_child: string
           policy_type_parent: string
           reminder_sent_at: string
