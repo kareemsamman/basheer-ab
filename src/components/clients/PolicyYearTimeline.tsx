@@ -353,14 +353,28 @@ export function PolicyYearTimeline({
         });
       });
 
-      // Sort packages within year: active → ended → transferred → cancelled
+      // Sort packages within year: 
+      // 1. Newly created (last 24h) first
+      // 2. Then by status: active → ended → transferred → cancelled
+      // 3. Then by newest start date
       packages.sort((a, b) => {
+        const policyA = a.mainPolicy || a.addons[0];
+        const policyB = b.mainPolicy || b.addons[0];
+        
+        // New policies first (created within last 24 hours)
+        const aIsNew = policyA?.created_at && isNewPolicy(policyA.created_at);
+        const bIsNew = policyB?.created_at && isNewPolicy(policyB.created_at);
+        if (aIsNew && !bIsNew) return -1;
+        if (!aIsNew && bIsNew) return 1;
+        
+        // Then by status priority
         const priorityA = getStatusPriority(a.status);
         const priorityB = getStatusPriority(b.status);
         if (priorityA !== priorityB) return priorityA - priorityB;
+        
         // Then by newest start date
-        const dateA = a.mainPolicy?.start_date || a.addons[0]?.start_date || '';
-        const dateB = b.mainPolicy?.start_date || b.addons[0]?.start_date || '';
+        const dateA = policyA?.start_date || '';
+        const dateB = policyB?.start_date || '';
         return new Date(dateB).getTime() - new Date(dateA).getTime();
       });
 
@@ -491,16 +505,20 @@ export function PolicyYearTimeline({
   };
 
   const getPackagePaymentStatus = (pkg: PolicyPackage) => {
-    // Sum ALL payments including those on ELZAMI policies
+    // Calculate remaining for each policy individually then sum
+    // This ensures correct remaining even when payments are on ELZAMI
+    let totalRemaining = 0;
     let totalPaid = 0;
+    
     pkg.allPolicyIds.forEach(id => {
-      totalPaid += paymentInfo[id]?.paid || 0;
+      const policyPaid = paymentInfo[id]?.paid || 0;
+      const policyRemaining = paymentInfo[id]?.remaining || 0;
+      totalPaid += policyPaid;
+      totalRemaining += Math.max(0, policyRemaining);
     });
-    // For remaining calculation, use debtPrice (excludes ELZAMI) 
-    // This ensures payments on ELZAMI count toward the package debt
-    const remaining = Math.max(0, pkg.debtPrice - totalPaid);
-    const isPaid = remaining <= 0;
-    return { totalPaid, remaining, isPaid };
+    
+    const isPaid = totalRemaining <= 0 && pkg.totalPrice > 0;
+    return { totalPaid, remaining: totalRemaining, isPaid };
   };
 
   if (policies.length === 0) {
