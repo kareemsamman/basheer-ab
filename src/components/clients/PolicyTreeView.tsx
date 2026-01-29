@@ -374,19 +374,25 @@ export function PolicyTreeView({
     ];
     
     let totalPrice = 0;
+    let debtPrice = 0; // For remaining calculation, excludes ELZAMI
     let totalPaid = 0;
     
     allPolicyIds.forEach(id => {
       const policy = policies.find(p => p.id === id);
       if (policy) {
         totalPrice += policy.insurance_price;
+        // Exclude ELZAMI from debt calculation (it's paid by company/system)
+        if (policy.policy_type_parent !== 'ELZAMI') {
+          debtPrice += policy.insurance_price;
+        }
         totalPaid += paymentInfo[id]?.paid || 0;
       }
     });
     
-    const remaining = totalPrice - totalPaid;
+    // Use debtPrice for remaining calculation - payments on ELZAMI count toward the total
+    const remaining = Math.max(0, debtPrice - totalPaid);
     const isPaid = remaining <= 0;
-    const percentage = totalPrice > 0 ? Math.round((totalPaid / totalPrice) * 100) : 0;
+    const percentage = debtPrice > 0 ? Math.round((totalPaid / debtPrice) * 100) : (totalPaid > 0 ? 100 : 0);
     
     return { totalPrice, totalPaid, remaining, isPaid, percentage };
   };

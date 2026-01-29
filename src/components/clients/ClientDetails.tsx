@@ -290,11 +290,14 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
 
   const fetchPaymentSummary = async () => {
     try {
-      // Get all policies for this client
+      // Get all active policies for this client (exclude cancelled/transferred)
+      // Also exclude ELZAMI from debt calculation (they're paid by company or within package payments)
       const { data: policiesData } = await supabase
         .from('policies')
-        .select('id, insurance_price, profit')
+        .select('id, insurance_price, profit, policy_type_parent, cancelled, transferred')
         .eq('client_id', client.id)
+        .eq('cancelled', false)
+        .eq('transferred', false)
         .is('deleted_at', null);
 
       if (!policiesData || policiesData.length === 0) {
@@ -302,23 +305,32 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
         return;
       }
 
-      const policyIds = policiesData.map(p => p.id);
-      const totalInsurance = policiesData.reduce((sum, p) => sum + (p.insurance_price || 0), 0);
+      // For debt calculation, exclude ELZAMI policies (per business logic)
+      const debtPolicies = policiesData.filter(p => p.policy_type_parent !== 'ELZAMI');
+      const debtPolicyIds = debtPolicies.map(p => p.id);
+      
+      // Total insurance from non-ELZAMI policies only (for debt)
+      const totalDebtInsurance = debtPolicies.reduce((sum, p) => sum + (p.insurance_price || 0), 0);
+      
+      // Total profit from all policies
       const totalProfit = policiesData.reduce((sum, p) => sum + (p.profit || 0), 0);
 
-      // Get payments for these policies
-      const { data: paymentsData } = await supabase
-        .from('policy_payments')
-        .select('amount, refused')
-        .in('policy_id', policyIds);
+      // Get payments for debt policies only
+      let totalPaid = 0;
+      if (debtPolicyIds.length > 0) {
+        const { data: paymentsData } = await supabase
+          .from('policy_payments')
+          .select('amount, refused')
+          .in('policy_id', debtPolicyIds);
 
-      const totalPaid = (paymentsData || [])
-        .filter(p => !p.refused)
-        .reduce((sum, p) => sum + (p.amount || 0), 0);
+        totalPaid = (paymentsData || [])
+          .filter(p => !p.refused)
+          .reduce((sum, p) => sum + (p.amount || 0), 0);
+      }
 
       setPaymentSummary({
         total_paid: totalPaid,
-        total_remaining: totalInsurance - totalPaid,
+        total_remaining: Math.max(0, totalDebtInsurance - totalPaid),
         total_profit: totalProfit,
       });
     } catch (error) {

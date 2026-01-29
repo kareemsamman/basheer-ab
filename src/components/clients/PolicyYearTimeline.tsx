@@ -149,6 +149,7 @@ interface PolicyPackage {
   allPolicyIds: string[];
   status: PolicyStatus;
   totalPrice: number;
+  debtPrice: number; // Excludes ELZAMI for debt calculations
 }
 
 interface YearGroup {
@@ -310,24 +311,31 @@ export function PolicyYearTimeline({
         const statusPolicy = mainPolicy || groupPolicies[0];
         const status = getPolicyStatus(statusPolicy);
         const totalPrice = groupPolicies.reduce((sum, p) => sum + p.insurance_price, 0);
+        // For debt calculation, exclude ELZAMI (it's paid by company/system)
+        const debtPrice = groupPolicies
+          .filter(p => p.policy_type_parent !== 'ELZAMI')
+          .reduce((sum, p) => sum + p.insurance_price, 0);
 
         packages.push({
           mainPolicy,
           addons,
           allPolicyIds: allIds,
           status,
-          totalPrice
+          totalPrice,
+          debtPrice
         });
       });
 
       // Create standalone entries
       standalone.forEach(policy => {
+        const isElzami = policy.policy_type_parent === 'ELZAMI';
         packages.push({
           mainPolicy: MAIN_POLICY_TYPES.includes(policy.policy_type_parent) ? policy : null,
           addons: ADDON_POLICY_TYPES.includes(policy.policy_type_parent) ? [policy] : [],
           allPolicyIds: [policy.id],
           status: getPolicyStatus(policy),
-          totalPrice: policy.insurance_price
+          totalPrice: policy.insurance_price,
+          debtPrice: isElzami ? 0 : policy.insurance_price
         });
       });
 
@@ -469,11 +477,14 @@ export function PolicyYearTimeline({
   };
 
   const getPackagePaymentStatus = (pkg: PolicyPackage) => {
+    // Sum ALL payments including those on ELZAMI policies
     let totalPaid = 0;
     pkg.allPolicyIds.forEach(id => {
       totalPaid += paymentInfo[id]?.paid || 0;
     });
-    const remaining = pkg.totalPrice - totalPaid;
+    // For remaining calculation, use debtPrice (excludes ELZAMI) 
+    // This ensures payments on ELZAMI count toward the package debt
+    const remaining = Math.max(0, pkg.debtPrice - totalPaid);
     const isPaid = remaining <= 0;
     return { totalPaid, remaining, isPaid };
   };
