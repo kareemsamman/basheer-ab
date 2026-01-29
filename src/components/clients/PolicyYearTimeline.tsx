@@ -21,6 +21,7 @@ import {
   Loader2,
   Zap,
   AlertTriangle,
+  Trash2,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -33,6 +34,7 @@ import { PackagePaymentModal } from './PackagePaymentModal';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useAuth } from '@/hooks/useAuth';
 
 interface PolicyRecord {
   id: string;
@@ -64,6 +66,7 @@ interface PolicyYearTimelineProps {
   onCancelPolicy?: (policyId: string) => void;
   onTransferPackage?: (policyIds: string[]) => void;
   onCancelPackage?: (policyIds: string[]) => void;
+  onDeletePolicy?: (policyIds: string[]) => void;
 }
 
 const policyTypeLabels: Record<string, string> = {
@@ -175,8 +178,10 @@ export function PolicyYearTimeline({
   onTransferPolicy,
   onCancelPolicy,
   onTransferPackage,
-  onCancelPackage
+  onCancelPackage,
+  onDeletePolicy
 }: PolicyYearTimelineProps) {
+  const { isSuperAdmin } = useAuth();
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo>({});
   const [accidentInfo, setAccidentInfo] = useState<Record<string, number>>({});
   const [loadingPayments, setLoadingPayments] = useState(true);
@@ -585,6 +590,8 @@ export function PolicyYearTimeline({
                       onCancel={onCancelPolicy}
                       onTransferPackage={onTransferPackage}
                       onCancelPackage={onCancelPackage}
+                      onDeletePolicy={onDeletePolicy}
+                      isSuperAdmin={isSuperAdmin}
                     />
                   );
                 })}
@@ -620,7 +627,9 @@ function PolicyPackageCard({
   onTransfer,
   onCancel,
   onTransferPackage,
-  onCancelPackage
+  onCancelPackage,
+  onDeletePolicy,
+  isSuperAdmin
 }: {
   pkg: PolicyPackage;
   paymentStatus: { totalPaid: number; remaining: number; isPaid: boolean };
@@ -633,6 +642,8 @@ function PolicyPackageCard({
   onCancel?: (id: string) => void;
   onTransferPackage?: (ids: string[]) => void;
   onCancelPackage?: (ids: string[]) => void;
+  onDeletePolicy?: (ids: string[]) => void;
+  isSuperAdmin?: boolean;
 }) {
   const policy = pkg.mainPolicy || pkg.addons[0];
   if (!policy) return null;
@@ -839,6 +850,26 @@ function PolicyPackageCard({
                         إلغاء الوثيقة
                       </DropdownMenuItem>
                     )}
+                  </>
+                )}
+
+                {/* Super Admin Only: Delete Policy */}
+                {isSuperAdmin && onDeletePolicy && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem 
+                      className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                      onClick={() => {
+                        if (isPackage) {
+                          onDeletePolicy(pkg.allPolicyIds);
+                        } else {
+                          onDeletePolicy([policy.id]);
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 ml-2" />
+                      {isPackage ? 'حذف الباقة نهائياً' : 'حذف الوثيقة نهائياً'}
+                    </DropdownMenuItem>
                   </>
                 )}
               </DropdownMenuContent>

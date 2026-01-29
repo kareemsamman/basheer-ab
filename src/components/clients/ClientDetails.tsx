@@ -56,6 +56,7 @@ import { CarFilterChips } from '@/components/clients/CarFilterChips';
 import { ExpiryBadge } from '@/components/shared/ExpiryBadge';
 import { ClickablePhone } from '@/components/shared/ClickablePhone';
 import { DebtIndicator } from '@/components/shared/DebtIndicator';
+import { DeleteConfirmDialog } from '@/components/shared/DeleteConfirmDialog';
 import { DebtPaymentModal } from '@/components/debt/DebtPaymentModal';
 import { cn } from '@/lib/utils';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -188,7 +189,7 @@ const carTypeLabels: Record<string, string> = {
 
 export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps) {
   const { getBranchName } = useBranches();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isSuperAdmin } = useAuth();
   const { setRecentClient } = useRecentClient();
   const [cars, setCars] = useState<CarRecord[]>([]);
   const [policies, setPolicies] = useState<PolicyRecord[]>([]);
@@ -208,6 +209,11 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [debtPaymentModalOpen, setDebtPaymentModalOpen] = useState(false);
+  
+  // Delete policy state (Super Admin only)
+  const [deletePolicyIds, setDeletePolicyIds] = useState<string[]>([]);
+  const [deletePolicyDialogOpen, setDeletePolicyDialogOpen] = useState(false);
+  const [deletingPolicy, setDeletingPolicy] = useState(false);
   
   // Notes editing
   const [editingNotes, setEditingNotes] = useState(false);
@@ -506,6 +512,50 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
   const handlePolicyClick = (policyId: string) => {
     setSelectedPolicyId(policyId);
     setPolicyDetailsOpen(true);
+  };
+
+  // Super Admin: Handle policy deletion
+  const handleDeletePolicy = async () => {
+    if (!isSuperAdmin || deletePolicyIds.length === 0) return;
+    
+    setDeletingPolicy(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      
+      if (!token) {
+        toast.error('يرجى تسجيل الدخول مرة أخرى');
+        return;
+      }
+
+      const response = await supabase.functions.invoke('delete-policy', {
+        body: { policyIds: deletePolicyIds },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message || 'فشل في حذف الوثيقة');
+      }
+
+      const result = response.data;
+      
+      if (result.success) {
+        toast.success(`تم حذف ${result.deletedCount} وثيقة نهائياً`);
+        setDeletePolicyDialogOpen(false);
+        setDeletePolicyIds([]);
+        // Refresh all data
+        fetchPolicies();
+        fetchPayments();
+        fetchPaymentSummary();
+        fetchWalletBalance();
+      } else {
+        throw new Error(result.error || 'فشل في حذف الوثيقة');
+      }
+    } catch (error: any) {
+      console.error('Delete policy error:', error);
+      toast.error(error.message || 'فشل في حذف الوثيقة');
+    } finally {
+      setDeletingPolicy(false);
+    }
   };
 
   const getPolicyStatus = (policy: PolicyRecord) => {
@@ -1103,6 +1153,10 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                     setPolicyDetailsOpen(true);
                   }
                 }}
+                onDeletePolicy={isSuperAdmin ? (policyIds) => {
+                  setDeletePolicyIds(policyIds);
+                  setDeletePolicyDialogOpen(true);
+                } : undefined}
               />
             )}
           </TabsContent>
@@ -1453,6 +1507,19 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
             fetchPolicies(),
           ]);
         }}
+      />
+
+      {/* Super Admin: Delete Policy Confirmation Dialog */}
+      <DeleteConfirmDialog
+        open={deletePolicyDialogOpen}
+        onOpenChange={(open) => {
+          setDeletePolicyDialogOpen(open);
+          if (!open) setDeletePolicyIds([]);
+        }}
+        onConfirm={handleDeletePolicy}
+        title="حذف الوثيقة نهائياً"
+        description={`هل أنت متأكد من حذف ${deletePolicyIds.length > 1 ? `${deletePolicyIds.length} وثائق` : 'هذه الوثيقة'} نهائياً؟ سيتم حذف جميع البيانات المرتبطة (الدفعات، القيود المحاسبية، الملفات). هذا الإجراء لا يمكن التراجع عنه!`}
+        loading={deletingPolicy}
       />
     </MainLayout>
   );
