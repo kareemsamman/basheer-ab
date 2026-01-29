@@ -30,7 +30,7 @@ export function ClientChildrenManager({
 }: ClientChildrenManagerProps) {
   const [errors, setErrors] = useState<Record<string, Record<string, string>>>({});
 
-  const validateChild = (child: NewChildForm): Record<string, string> => {
+  const validateChild = (child: NewChildForm, allNewChildren: NewChildForm[]): Record<string, string> => {
     const childErrors: Record<string, string> = {};
     
     if (!child.full_name.trim()) {
@@ -43,14 +43,16 @@ export function ClientChildrenManager({
       childErrors.id_number = "رقم هوية غير صالح";
     }
     
+    const normalized = digitsOnly(child.id_number).trim();
+
     // Check for duplicate ID within new children
-    const duplicateInNew = newChildren.filter(
-      c => c.id !== child.id && c.id_number === child.id_number
-    ).length > 0;
+    const duplicateInNew = allNewChildren.some(
+      c => c.id !== child.id && digitsOnly(c.id_number).trim() === normalized
+    );
     
     // Check for duplicate ID within existing children
     const duplicateInExisting = existingChildren.some(
-      c => c.id_number === child.id_number
+      c => digitsOnly(c.id_number).trim() === normalized
     );
     
     if (duplicateInNew || duplicateInExisting) {
@@ -69,14 +71,23 @@ export function ClientChildrenManager({
     updated[index] = { ...updated[index], [field]: value };
     onNewChildrenChange(updated);
     
-    // Validate on change
-    const childErrors = validateChild(updated[index]);
-    setErrors(prev => ({ ...prev, [updated[index].id]: childErrors }));
+    // Recompute errors for all rows to keep duplicate validation in sync
+    const nextErrors: Record<string, Record<string, string>> = {};
+    for (const c of updated) {
+      nextErrors[c.id] = validateChild(c, updated);
+    }
+    setErrors(nextErrors);
   };
 
   const handleRemoveNewChild = (index: number) => {
     const updated = newChildren.filter((_, i) => i !== index);
     onNewChildrenChange(updated);
+
+    const nextErrors: Record<string, Record<string, string>> = {};
+    for (const c of updated) {
+      nextErrors[c.id] = validateChild(c, updated);
+    }
+    setErrors(nextErrors);
   };
 
   const isChildLinked = (childId: string) => linkedChildIds.includes(childId);

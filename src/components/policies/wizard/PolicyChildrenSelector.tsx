@@ -65,7 +65,7 @@ export function PolicyChildrenSelector({
     }
   };
 
-  const validateChild = (child: NewChildForm): Record<string, string> => {
+  const validateChild = (child: NewChildForm, allNewChildren: NewChildForm[]): Record<string, string> => {
     const childErrors: Record<string, string> = {};
     
     if (!child.full_name.trim()) {
@@ -77,14 +77,16 @@ export function PolicyChildrenSelector({
     } else if (!isValidIsraeliId(child.id_number)) {
       childErrors.id_number = "رقم هوية غير صالح";
     } else {
+      const normalized = digitsOnly(child.id_number).trim();
+
       // Check for duplicate ID within other new children
-      const duplicateInNew = newChildren.filter(
-        c => c.id !== child.id && c.id_number.trim() === child.id_number.trim()
-      ).length > 0;
+      const duplicateInNew = allNewChildren.some(
+        c => c.id !== child.id && digitsOnly(c.id_number).trim() === normalized
+      );
       
       // Check for duplicate ID within existing children
       const duplicateInExisting = existingChildren.some(
-        c => c.id_number === child.id_number.trim()
+        c => digitsOnly(c.id_number).trim() === normalized
       );
       
       if (duplicateInNew) {
@@ -97,24 +99,6 @@ export function PolicyChildrenSelector({
     return childErrors;
   };
 
-  // Check if there are any validation errors that should block saving
-  const hasValidationErrors = (): boolean => {
-    for (const child of newChildren) {
-      if (!child.full_name.trim() || !child.id_number.trim()) return true;
-      if (!isValidIsraeliId(child.id_number)) return true;
-      
-      // Check duplicates
-      const duplicateInNew = newChildren.filter(
-        c => c.id !== child.id && c.id_number.trim() === child.id_number.trim()
-      ).length > 0;
-      const duplicateInExisting = existingChildren.some(
-        c => c.id_number === child.id_number.trim()
-      );
-      if (duplicateInNew || duplicateInExisting) return true;
-    }
-    return false;
-  };
-
   const handleAddChild = () => {
     onNewChildrenChange([...newChildren, createEmptyChildForm()]);
   };
@@ -123,14 +107,24 @@ export function PolicyChildrenSelector({
     const updated = [...newChildren];
     updated[index] = { ...updated[index], [field]: value };
     onNewChildrenChange(updated);
-    
-    const childErrors = validateChild(updated[index]);
-    setErrors(prev => ({ ...prev, [updated[index].id]: childErrors }));
+
+    // Recompute errors for all rows to keep duplicate validation in sync
+    const nextErrors: Record<string, Record<string, string>> = {};
+    for (const c of updated) {
+      nextErrors[c.id] = validateChild(c, updated);
+    }
+    setErrors(nextErrors);
   };
 
   const handleRemoveNewChild = (index: number) => {
     const updated = newChildren.filter((_, i) => i !== index);
     onNewChildrenChange(updated);
+
+    const nextErrors: Record<string, Record<string, string>> = {};
+    for (const c of updated) {
+      nextErrors[c.id] = validateChild(c, updated);
+    }
+    setErrors(nextErrors);
   };
 
   if (!clientId) {

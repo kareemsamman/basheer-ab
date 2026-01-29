@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Save, ArrowRight, ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { calculatePolicyProfit } from "@/lib/pricingCalculator";
+import { digitsOnly } from "@/lib/validation";
 import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal";
 import {
   WizardStepper,
@@ -866,13 +867,42 @@ export function PolicyWizard({
       await uploadFiles(policyIdToUse);
 
       // Save new children and link selected children to policy
-      const clientIdForChildren = selectedClient?.id || newlyCreatedClientId;
+      let clientIdForChildren = selectedClient?.id || newlyCreatedClientId;
+      // If we used a temp policy (Tranzila flow), we might not have clientId in state
+      if (!clientIdForChildren && policyIdToUse) {
+        const { data: policyClient, error: policyClientError } = await supabase
+          .from('policies')
+          .select('client_id')
+          .eq('id', policyIdToUse)
+          .single();
+
+        if (policyClientError) throw policyClientError;
+        clientIdForChildren = policyClient?.client_id || null;
+      }
+
       if (clientIdForChildren) {
         // Validate for duplicate IDs among new children BEFORE inserting
-        const newChildIdNumbers = newChildren.map(c => c.id_number.trim()).filter(Boolean);
+        const newChildIdNumbers = newChildren
+          .map(c => digitsOnly(c.id_number).trim())
+          .filter(Boolean);
         const duplicateIdNumbers = newChildIdNumbers.filter((id, idx) => newChildIdNumbers.indexOf(id) !== idx);
         if (duplicateIdNumbers.length > 0) {
           throw new Error(`رقم الهوية مكرر: ${duplicateIdNumbers[0]}`);
+        }
+
+        // Also block duplicates between new children and existing children for this client
+        if (newChildIdNumbers.length > 0) {
+          const { data: existing, error: existingErr } = await supabase
+            .from('client_children')
+            .select('id_number')
+            .eq('client_id', clientIdForChildren);
+          if (existingErr) throw existingErr;
+
+          const existingSet = new Set((existing || []).map(r => digitsOnly(r.id_number).trim()));
+          const dupAgainstExisting = newChildIdNumbers.find(id => existingSet.has(id));
+          if (dupAgainstExisting) {
+            throw new Error(`رقم الهوية "${dupAgainstExisting}" موجود مسبقاً لهذا العميل`);
+          }
         }
 
         // Insert new children into client_children
@@ -886,7 +916,7 @@ export function PolicyWizard({
               .insert({
                 client_id: clientIdForChildren,
                 full_name: child.full_name.trim(),
-                id_number: child.id_number.trim(),
+                id_number: digitsOnly(child.id_number).trim(),
                 birth_date: child.birth_date || null,
                 phone: child.phone || null,
                 relation: child.relation || null,
@@ -896,6 +926,17 @@ export function PolicyWizard({
               .single();
 
             if (childError) {
+              console.error('[PolicyWizard] Failed to insert child', {
+                payload: {
+                  client_id: clientIdForChildren,
+                  full_name: child.full_name,
+                  id_number: child.id_number,
+                  birth_date: child.birth_date,
+                  phone: child.phone,
+                  relation: child.relation,
+                },
+                error: childError,
+              });
               // Handle duplicate key error
               if (childError.code === '23505') {
                 throw new Error(`رقم الهوية "${child.id_number}" موجود مسبقاً لهذا العميل`);
@@ -910,7 +951,7 @@ export function PolicyWizard({
         }
 
         // All child IDs to link to policy (selected existing + newly inserted)
-        const allChildIdsToLink = [...selectedChildIds, ...insertedChildIds];
+        const allChildIdsToLink = Array.from(new Set([...selectedChildIds, ...insertedChildIds]));
 
         // REPLACE strategy: Delete existing policy_children for this policy, then insert new set
         // This prevents duplicates on edit/re-save
@@ -921,8 +962,12 @@ export function PolicyWizard({
             .eq('policy_id', policyIdToUse);
 
           if (deleteError) {
-            console.error('Failed to clear existing policy_children:', deleteError);
-            // Don't throw - this is non-critical, proceed with insert
+            console.error('[PolicyWizard] Failed to clear existing policy_children', {
+              policy_id: policyIdToUse,
+              error: deleteError,
+            });
+            // This is required for correctness (replace-links); surface it.
+            throw deleteError;
           }
         }
 
@@ -938,6 +983,10 @@ export function PolicyWizard({
             .insert(policyChildrenInserts);
 
           if (linkError) {
+            console.error('[PolicyWizard] Failed to link policy children', {
+              payload: policyChildrenInserts,
+              error: linkError,
+            });
             // Show specific RLS or constraint errors
             throw new Error(`فشل ربط السائقين بالوثيقة: ${linkError.message}`);
           }
@@ -1021,9 +1070,28 @@ export function PolicyWizard({
       }
     } catch (error: unknown) {
       console.error('Save error:', error);
+
+      const formatSaveError = (err: unknown): string => {
+        // Our own thrown errors should always be user-friendly.
+        if (err instanceof Error) return err.message;
+        if (typeof err === 'string') return err;
+        if (!err || typeof err !== 'object') return "حدث خطأ أثناء حفظ البيانات";
+
+        const anyErr = err as any;
+        const msg = typeof anyErr.message === 'string' ? anyErr.message : "حدث خطأ أثناء حفظ البيانات";
+
+        // Only admins should see low-level details.
+        if (!isAdmin) return "حدث خطأ أثناء حفظ البيانات";
+
+        const code = typeof anyErr.code === 'string' ? ` (${anyErr.code})` : '';
+        const details = typeof anyErr.details === 'string' && anyErr.details ? ` — ${anyErr.details}` : '';
+        const hint = typeof anyErr.hint === 'string' && anyErr.hint ? ` — ${anyErr.hint}` : '';
+        return `${msg}${code}${details}${hint}`;
+      };
+
       toast({
         title: "خطأ في الحفظ",
-        description: error instanceof Error ? error.message : "حدث خطأ أثناء حفظ البيانات",
+        description: formatSaveError(error),
         variant: "destructive",
       });
     } finally {
