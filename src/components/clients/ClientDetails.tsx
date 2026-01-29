@@ -80,6 +80,7 @@ import { DebtIndicator } from '@/components/shared/DebtIndicator';
 import { DeleteConfirmDialog } from '@/components/shared/DeleteConfirmDialog';
 import { DebtPaymentModal } from '@/components/debt/DebtPaymentModal';
 import { ClientNotesSection } from '@/components/clients/ClientNotesSection';
+import { PaymentEditDialog } from '@/components/clients/PaymentEditDialog';
 import { cn } from '@/lib/utils';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { useBranches } from '@/hooks/useBranches';
@@ -258,6 +259,10 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
   const [deletePaymentId, setDeletePaymentId] = useState<string | null>(null);
   const [deletePaymentDialogOpen, setDeletePaymentDialogOpen] = useState(false);
   const [deletingPayment, setDeletingPayment] = useState(false);
+  
+  // Payment edit state
+  const [editPaymentDialogOpen, setEditPaymentDialogOpen] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<PaymentRecord | null>(null);
   
   // Notes editing
   const [editingNotes, setEditingNotes] = useState(false);
@@ -615,12 +620,10 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
     }
   };
 
-  // Open policy drawer to edit payment
+  // Open payment edit dialog directly
   const handleEditPayment = (payment: PaymentRecord) => {
-    if (payment.policy_id) {
-      setSelectedPolicyId(payment.policy_id);
-      setPolicyDetailsOpen(true);
-    }
+    setEditingPayment(payment);
+    setEditPaymentDialogOpen(true);
   };
 
   const handleSaveNotes = async () => {
@@ -1777,6 +1780,21 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
             fetchPaymentSummary(),
             fetchPayments(),
             fetchPolicies(),
+          ]);
+        }}
+      />
+
+      {/* Payment Edit Dialog */}
+      <PaymentEditDialog
+        open={editPaymentDialogOpen}
+        onOpenChange={setEditPaymentDialogOpen}
+        payment={editingPayment}
+        onSuccess={async () => {
+          setEditingPayment(null);
+          // Refresh payment-related data
+          await Promise.all([
+            fetchPaymentSummary(),
+            fetchPayments(),
           ]);
         }}
       />

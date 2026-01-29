@@ -1063,8 +1063,8 @@ export function PolicyWizard({
           // Navigate to clients page with the new client open
           window.location.href = `/clients?open=${newlyCreatedClientId}`;
         } else if (selectedClient?.id) {
-          // Refresh current page to show new policy card
-          window.location.reload();
+          // Navigate back to the specific client profile (not just reload)
+          window.location.href = `/clients?open=${selectedClient.id}`;
         } else {
           // Fallback - just call onSaved
           onSaved?.();
