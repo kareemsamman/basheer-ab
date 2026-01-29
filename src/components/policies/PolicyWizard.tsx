@@ -141,6 +141,13 @@ export function PolicyWizard({
     setInsuranceFiles,
     crmFiles,
     setCrmFiles,
+    // Children / Additional Drivers
+    clientChildren,
+    setClientChildren,
+    selectedChildIds,
+    setSelectedChildIds,
+    newChildren,
+    setNewChildren,
     steps,
     currentStepData,
     effectiveBranchId,
@@ -152,6 +159,7 @@ export function PolicyWizard({
     resetCarData,
     resetPolicyData,
     resetPayments,
+    resetChildren,
     resetForm,
     validateStep,
     goToStep,
@@ -857,6 +865,54 @@ export function PolicyWizard({
       // Upload files
       await uploadFiles(policyIdToUse);
 
+      // Save new children and link selected children to policy
+      const clientIdForChildren = selectedClient?.id || newlyCreatedClientId;
+      if (clientIdForChildren) {
+        // Insert new children into client_children
+        const insertedChildIds: string[] = [];
+        if (newChildren.length > 0) {
+          for (const child of newChildren) {
+            const { data: newChild, error: childError } = await supabase
+              .from('client_children')
+              .insert({
+                client_id: clientIdForChildren,
+                full_name: child.full_name.trim(),
+                id_number: child.id_number.trim(),
+                birth_date: child.birth_date || null,
+                phone: child.phone || null,
+                relation: child.relation || null,
+                notes: child.notes || null,
+              })
+              .select('id')
+              .single();
+
+            if (!childError && newChild) {
+              insertedChildIds.push(newChild.id);
+            } else {
+              console.error('Failed to insert child:', childError);
+            }
+          }
+        }
+
+        // All child IDs to link to policy (selected existing + newly inserted)
+        const allChildIdsToLink = [...selectedChildIds, ...insertedChildIds];
+
+        // Insert into policy_children (link children to policy)
+        if (allChildIdsToLink.length > 0) {
+          const policyChildrenInserts = allChildIdsToLink.map(childId => ({
+            policy_id: policyIdToUse,
+            child_id: childId,
+          }));
+
+          const { error: linkError } = await supabase
+            .from('policy_children')
+            .insert(policyChildrenInserts);
+
+          if (linkError) {
+            console.error('Failed to link children to policy:', linkError);
+          }
+        }
+      }
       // Send signature and invoice SMS to client
       const clientPhone = selectedClient?.phone_number || newClient.phone_number;
       
@@ -1019,6 +1075,10 @@ export function PolicyWizard({
                 setNewClient={setNewClient}
                 checkingDuplicate={checkingDuplicate}
                 setCheckingDuplicate={setCheckingDuplicate}
+                selectedChildIds={selectedChildIds}
+                setSelectedChildIds={setSelectedChildIds}
+                newChildren={newChildren}
+                setNewChildren={setNewChildren}
                 errors={errors}
                 setErrors={setErrors}
               />

@@ -21,6 +21,7 @@ import type {
   PricingBreakdown,
 } from "./types";
 import { User, Car, FileText, CreditCard, Building2 } from "lucide-react";
+import type { ClientChild, NewChildForm } from "@/types/clientChildren";
 
 const DRAFT_KEY = "abcrm:policyWizardDraft:v3";
 
@@ -171,6 +172,11 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
   const [insuranceFiles, setInsuranceFiles] = useState<File[]>([]);
   const [crmFiles, setCrmFiles] = useState<File[]>([]);
 
+  // Children / Additional Drivers (Phase 3)
+  const [clientChildren, setClientChildren] = useState<ClientChild[]>([]);
+  const [selectedChildIds, setSelectedChildIds] = useState<string[]>([]);
+  const [newChildren, setNewChildren] = useState<NewChildForm[]>([]);
+
   // Pricing calculation - updated to support ELZAMI and THIRD_FULL in package
   const pricing: PricingBreakdown = useMemo(() => {
     const basePrice = parseFloat(policy.insurance_price) || 0;
@@ -310,6 +316,12 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     setPayments([]);
   }, []);
 
+  const resetChildren = useCallback(() => {
+    setClientChildren([]);
+    setSelectedChildIds([]);
+    setNewChildren([]);
+  }, []);
+
   const resetForm = useCallback(() => {
     setCurrentStep(1);
     setSelectedClient(null);
@@ -328,11 +340,12 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     resetCarData();
     resetPolicyData();
     resetPayments();
+    resetChildren();
     setInsuranceFiles([]);
     setCrmFiles([]);
     setErrors({});
     setSelectedCategory(null);
-  }, [resetCarData, resetPolicyData, resetPayments]);
+  }, [resetCarData, resetPolicyData, resetPayments, resetChildren]);
 
   // Validation
   const validateStep = useCallback((stepId: number): boolean => {
@@ -577,10 +590,19 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     crmFiles,
     setCrmFiles,
 
+    // Children / Additional Drivers
+    clientChildren,
+    setClientChildren,
+    selectedChildIds,
+    setSelectedChildIds,
+    newChildren,
+    setNewChildren,
+
     // Functions
     resetCarData,
     resetPolicyData,
     resetPayments,
+    resetChildren,
     resetForm,
     validateStep,
     clearDraft,

@@ -38,6 +38,9 @@ import { useBranches } from '@/hooks/useBranches';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { ClientChildrenManager } from './ClientChildrenManager';
+import type { ClientChild, NewChildForm } from '@/types/clientChildren';
+import { createEmptyChildForm } from '@/types/clientChildren';
 
 const UNDER24_OPTIONS = [
   { value: 'none', label: 'لا' },
@@ -142,6 +145,12 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
   const { isAdmin, branchId: userBranchId } = useAuth();
   const { branches } = useBranches();
   const isEditing = !!client;
+  
+  // Children state
+  const [existingChildren, setExistingChildren] = useState<ClientChild[]>([]);
+  const [newChildren, setNewChildren] = useState<NewChildForm[]>([]);
+  const [childrenToDelete, setChildrenToDelete] = useState<string[]>([]);
+  const [linkedChildIds, setLinkedChildIds] = useState<string[]>([]);
 
   const form = useForm<ClientFormData>({
     resolver: zodResolver(clientSchema),
@@ -175,6 +184,42 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
     };
     fetchBrokers();
   }, []);
+
+  // Fetch children when editing a client
+  useEffect(() => {
+    if (!open || !client?.id) {
+      setExistingChildren([]);
+      setNewChildren([]);
+      setChildrenToDelete([]);
+      setLinkedChildIds([]);
+      return;
+    }
+
+    const fetchChildren = async () => {
+      // Fetch existing children
+      const { data: childrenData, error } = await supabase
+        .from('client_children')
+        .select('*')
+        .eq('client_id', client.id)
+        .order('created_at', { ascending: true });
+
+      if (!error && childrenData) {
+        setExistingChildren(childrenData as ClientChild[]);
+      }
+
+      // Fetch linked children (those linked to policies)
+      const { data: linkedData } = await supabase
+        .from('policy_children')
+        .select('child_id')
+        .in('child_id', (childrenData || []).map(c => c.id));
+
+      if (linkedData) {
+        setLinkedChildIds(linkedData.map(l => l.child_id));
+      }
+    };
+
+    fetchChildren();
+  }, [open, client?.id]);
 
   // Reset form when client changes or drawer opens
   useEffect(() => {
@@ -234,6 +279,8 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
         ...(!isEditing ? { created_by_admin_id: createdByAdminId } : {}),
       };
 
+      let savedClientId = client?.id;
+      
       if (isEditing) {
         const { error } = await supabase
           .from('clients')
@@ -257,15 +304,13 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
             .update({ branch_id: newBranchId })
             .eq('client_id', client.id)
             .is('deleted_at', null);
-
-          toast.success('تم تحديث بيانات العميل ونقل جميع وثائقه للفرع الجديد');
-        } else {
-          toast.success('تم تحديث بيانات العميل');
         }
       } else {
-        const { error } = await supabase
+        const { data: newClientData, error } = await supabase
           .from('clients')
-          .insert(clientData);
+          .insert(clientData)
+          .select('id')
+          .single();
 
         if (error) {
           if (error.code === '23505') {
@@ -274,6 +319,46 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
           }
           throw error;
         }
+        savedClientId = newClientData.id;
+      }
+
+      // Save children
+      if (savedClientId) {
+        // Delete removed children (that are not linked to policies)
+        for (const childId of childrenToDelete) {
+          if (!linkedChildIds.includes(childId)) {
+            await supabase
+              .from('client_children')
+              .delete()
+              .eq('id', childId);
+          }
+        }
+
+        // Insert new children
+        for (const child of newChildren) {
+          if (child.full_name.trim() && child.id_number.trim()) {
+            await supabase
+              .from('client_children')
+              .insert({
+                client_id: savedClientId,
+                full_name: child.full_name.trim(),
+                id_number: child.id_number.trim(),
+                birth_date: child.birth_date || null,
+                phone: child.phone || null,
+                relation: child.relation || null,
+                notes: child.notes || null,
+              });
+          }
+        }
+      }
+
+      if (isEditing) {
+        if (branchChanged) {
+          toast.success('تم تحديث بيانات العميل ونقل جميع وثائقه للفرع الجديد');
+        } else {
+          toast.success('تم تحديث بيانات العميل');
+        }
+      } else {
         toast.success('تمت إضافة العميل بنجاح');
       }
 
@@ -532,8 +617,9 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
               )}
             />
 
-            {/* Additional Driver Fields - shown only when under24_type is additional_driver */}
-            {under24Type === 'additional_driver' && (
+            {/* Legacy Additional Driver Fields - shown only when under24_type is additional_driver */}
+            {/* These are kept for backward compatibility but will be migrated to client_children */}
+            {under24Type === 'additional_driver' && !isEditing && (
               <div className="space-y-4 p-4 rounded-md border bg-muted/30">
                 <FormField
                   control={form.control}
@@ -568,6 +654,24 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
                       <FormMessage />
                     </FormItem>
                   )}
+                />
+              </div>
+            )}
+
+            {/* Children / Additional Drivers Manager */}
+            {(isEditing || under24Type === 'additional_driver') && (
+              <div className="border-t pt-4">
+                <ClientChildrenManager
+                  existingChildren={existingChildren}
+                  newChildren={newChildren}
+                  onNewChildrenChange={setNewChildren}
+                  onRemoveExisting={(childId) => {
+                    if (!linkedChildIds.includes(childId)) {
+                      setChildrenToDelete([...childrenToDelete, childId]);
+                      setExistingChildren(existingChildren.filter(c => c.id !== childId));
+                    }
+                  }}
+                  linkedChildIds={linkedChildIds}
                 />
               </div>
             )}

@@ -11,7 +11,9 @@ import { Search, Plus, User, AlertCircle, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InsuranceTypeCards } from "./InsuranceTypeCards";
 import { CreateClientForm } from "./CreateClientForm";
+import { PolicyChildrenSelector } from "./PolicyChildrenSelector";
 import type { InsuranceCategory, Client, Broker, NewClientForm, ValidationErrors } from "./types";
+import type { ClientChild, NewChildForm } from "@/types/clientChildren";
 
 interface Step1Props {
   // Branch
@@ -41,6 +43,12 @@ interface Step1Props {
   checkingDuplicate: boolean;
   setCheckingDuplicate: (checking: boolean) => void;
   
+  // Children / Additional Drivers
+  selectedChildIds: string[];
+  setSelectedChildIds: (ids: string[]) => void;
+  newChildren: NewChildForm[];
+  setNewChildren: (children: NewChildForm[]) => void;
+  
   // Errors
   errors: ValidationErrors;
   setErrors: (errors: ValidationErrors) => void;
@@ -68,6 +76,10 @@ export function Step1BranchTypeClient({
   setNewClient,
   checkingDuplicate,
   setCheckingDuplicate,
+  selectedChildIds,
+  setSelectedChildIds,
+  newChildren,
+  setNewChildren,
   errors,
   setErrors,
 }: Step1Props) {
@@ -106,6 +118,9 @@ export function Step1BranchTypeClient({
     setClientSearch("");
     setClients([]);
     setErrors({});
+    // Reset children selection when client changes
+    setSelectedChildIds([]);
+    setNewChildren([]);
   };
 
   const handleCreateNewClick = () => {
@@ -138,6 +153,9 @@ export function Step1BranchTypeClient({
   const handleRemoveClient = () => {
     setSelectedClient(null);
     setClientSearch("");
+    // Reset children selection when client is removed
+    setSelectedChildIds([]);
+    setNewChildren([]);
   };
 
   const FieldError = ({ error }: { error?: string }) => {
@@ -296,6 +314,17 @@ export function Step1BranchTypeClient({
                 إلغاء
               </Button>
             </div>
+          )}
+
+          {/* Children / Additional Drivers Section - After client is selected */}
+          {(selectedClient || createNewClient) && (
+            <PolicyChildrenSelector
+              clientId={selectedClient?.id || null}
+              selectedChildIds={selectedChildIds}
+              onSelectedChange={setSelectedChildIds}
+              newChildren={newChildren}
+              onNewChildrenChange={setNewChildren}
+            />
           )}
         </div>
       )}

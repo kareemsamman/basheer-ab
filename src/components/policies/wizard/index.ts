@@ -13,3 +13,4 @@ export * from './Step1BranchTypeClient';
 export * from './Step2Car';
 export * from './Step3PolicyDetails';
 export * from './Step4Payments';
+export * from './PolicyChildrenSelector';
