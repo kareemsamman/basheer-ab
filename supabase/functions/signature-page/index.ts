@@ -145,11 +145,10 @@ serve(async (req) => {
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
   const date = new Date(dateStr);
-  return date.toLocaleDateString('ar-EG', { 
+  return date.toLocaleDateString('en-GB', { 
     year: 'numeric', 
-    month: 'long', 
-    day: 'numeric',
-    calendar: 'gregory'
+    month: '2-digit', 
+    day: '2-digit',
   });
 }
 

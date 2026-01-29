@@ -203,6 +203,9 @@ export function DebtPaymentModal({
 
   const getPreviewUrls = (paymentId: string) => previewUrls[paymentId] || [];
 
+  // State for total ELZAMI payments (fetched separately)
+  const [elzamiPaymentsTotal, setElzamiPaymentsTotal] = useState(0);
+
   const fetchPolicyPaymentInfo = async () => {
     setLoading(true);
     try {
@@ -217,6 +220,30 @@ export function DebtPaymentModal({
         .neq('policy_type_parent', 'ELZAMI');
 
       if (policiesError) throw policiesError;
+
+      // Also fetch ELZAMI policies for this client to get their payments (for total display)
+      const { data: elzamiPoliciesData } = await supabase
+        .from('policies')
+        .select('id')
+        .eq('client_id', clientId)
+        .eq('cancelled', false)
+        .is('deleted_at', null)
+        .eq('policy_type_parent', 'ELZAMI');
+
+      const elzamiPolicyIds = (elzamiPoliciesData || []).map(p => p.id);
+      let elzamiTotal = 0;
+
+      if (elzamiPolicyIds.length > 0) {
+        const { data: elzamiPayments } = await supabase
+          .from('policy_payments')
+          .select('amount, refused')
+          .in('policy_id', elzamiPolicyIds);
+
+        elzamiTotal = (elzamiPayments || [])
+          .filter(p => !p.refused)
+          .reduce((sum, p) => sum + p.amount, 0);
+      }
+      setElzamiPaymentsTotal(elzamiTotal);
 
       const policyIds = (policiesData || []).map(p => p.id);
 
@@ -569,38 +596,21 @@ export function DebtPaymentModal({
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-muted/50 rounded-lg p-3 text-center">
                 <p className="text-xs text-muted-foreground">إجمالي السعر</p>
-                <p className="text-lg font-bold">₪{totalPrice.toLocaleString()}</p>
+                <p className="text-lg font-bold ltr-nums">₪{totalPrice.toLocaleString('en-US')}</p>
               </div>
               <div className="bg-green-500/10 rounded-lg p-3 text-center">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center justify-center gap-1">
-                        <p className="text-xs text-muted-foreground">المدفوع للدين</p>
-                        <HelpCircle className="h-3 w-3 text-muted-foreground" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-[200px]">
-                      <p className="text-xs">
-                        هذا المبلغ يشمل الدفعات للوثائق غير الإلزامية فقط. 
-                        دفعات الإلزامي تُدفع مباشرة للشركة ولا تُحتسب هنا.
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-                <p className="text-lg font-bold text-green-600">
-                  ₪{(totalPaid + paidVisaTotal).toLocaleString()}
+                <p className="text-xs text-muted-foreground">المدفوع</p>
+                <p className="text-lg font-bold text-green-600 ltr-nums">
+                  ₪{(totalPaid + paidVisaTotal + elzamiPaymentsTotal).toLocaleString('en-US')}
                 </p>
-                {paidVisaTotal > 0 && (
-                  <p className="text-[10px] text-green-600 mt-0.5">
-                    (منها ₪{paidVisaTotal.toLocaleString()} بطاقة ائتمان)
-                  </p>
-                )}
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  منها للدين: ₪{(totalPaid + paidVisaTotal).toLocaleString('en-US')}
+                </p>
               </div>
               <div className="bg-destructive/10 rounded-lg p-3 text-center">
                 <p className="text-xs text-muted-foreground">المتبقي</p>
-                <p className="text-lg font-bold text-destructive">
-                  ₪{effectiveRemaining.toLocaleString()}
+                <p className="text-lg font-bold text-destructive ltr-nums">
+                  ₪{effectiveRemaining.toLocaleString('en-US')}
                 </p>
               </div>
             </div>
@@ -618,9 +628,9 @@ export function DebtPaymentModal({
                     )}
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-muted-foreground">₪{policy.price.toLocaleString()}</span>
-                    <span className="font-medium text-destructive">
-                      -₪{policy.remaining.toLocaleString()}
+                    <span className="text-muted-foreground ltr-nums">₪{policy.price.toLocaleString('en-US')}</span>
+                    <span className="font-medium text-destructive ltr-nums">
+                      -₪{policy.remaining.toLocaleString('en-US')}
                     </span>
                   </div>
                 </div>

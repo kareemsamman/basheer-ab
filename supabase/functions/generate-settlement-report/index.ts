@@ -195,16 +195,15 @@ serve(async (req) => {
 });
 
 function formatNumber(num: number): string {
-  return num.toLocaleString("ar-EG");
+  return num.toLocaleString("en-US");
 }
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return "-";
-  return new Date(dateStr).toLocaleDateString("ar-EG", {
+  return new Date(dateStr).toLocaleDateString("en-GB", {
     year: "numeric",
-    month: "long",
-    day: "numeric",
-    calendar: "gregory",
+    month: "2-digit",
+    day: "2-digit",
   });
 }
 

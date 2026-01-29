@@ -73,7 +73,7 @@ export function CancelPolicyModal({
         
         // Replace placeholders
         const refundMsg = hasRefund && refundAmount 
-          ? `يوجد لك مرتجع بقيمة ₪${parseFloat(refundAmount).toLocaleString("ar-EG")}. ` 
+          ? `يوجد لك مرتجع بقيمة ₪${parseFloat(refundAmount).toLocaleString("en-US")}. ` 
           : "";
         
         template = template
@@ -99,7 +99,7 @@ export function CancelPolicyModal({
     // Update SMS message if already set
     if (sendSms && smsMessage) {
       const refundMsg = checked && refundAmount 
-        ? `يوجد لك مرتجع بقيمة ₪${parseFloat(refundAmount).toLocaleString("ar-EG")}. ` 
+        ? `يوجد لك مرتجع بقيمة ₪${parseFloat(refundAmount).toLocaleString("en-US")}. ` 
         : "";
       setSmsMessage(prev => {
         // Try to update the refund message part
@@ -271,7 +271,7 @@ export function CancelPolicyModal({
                   dir="ltr"
                 />
                 <p className="text-xs text-muted-foreground">
-                  الحد الأقصى: ₪{insurancePrice.toLocaleString("ar-EG")}
+                  الحد الأقصى: ₪{insurancePrice.toLocaleString("en-US")}
                 </p>
               </div>
             )}

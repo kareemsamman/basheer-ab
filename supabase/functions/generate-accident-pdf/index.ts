@@ -257,7 +257,7 @@ serve(async (req) => {
 function buildFieldValues(report: AccidentReport, thirdParties: ThirdParty[]): Record<string, string> {
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "";
-    return new Date(dateStr).toLocaleDateString("ar-EG");
+    return new Date(dateStr).toLocaleDateString("en-GB");
   };
 
   const policyTypeLabel = report.policies.policy_type_child === "THIRD" ? "طرف ثالث" : "شامل";
@@ -934,7 +934,7 @@ function escapeHtml(text: string): string {
 function generateHtmlReport(report: AccidentReport, thirdParties: ThirdParty[]): string {
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString("ar-EG");
+    return new Date(dateStr).toLocaleDateString("en-GB");
   };
 
   const policyTypeLabel = report.policies.policy_type_child === "THIRD" ? "طرف ثالث" : "شامل";

@@ -285,11 +285,10 @@ serve(async (req) => {
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return "-";
-  return new Date(dateStr).toLocaleDateString("ar-EG", {
+  return new Date(dateStr).toLocaleDateString("en-GB", {
     year: "numeric",
-    month: "short",
-    day: "numeric",
-    calendar: "gregory",
+    month: "2-digit",
+    day: "2-digit",
   });
 }
 

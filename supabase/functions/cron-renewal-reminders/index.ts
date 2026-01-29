@@ -143,8 +143,8 @@ serve(async (req) => {
       }
 
       // Build message
-      const endDate = new Date(policy.end_date).toLocaleDateString('ar-EG', { 
-        year: 'numeric', month: 'long', day: 'numeric', calendar: 'gregory' 
+      const endDate = new Date(policy.end_date).toLocaleDateString('en-GB', { 
+        year: 'numeric', month: '2-digit', day: '2-digit'
       });
       const policyType = POLICY_TYPE_LABELS[policy.policy_type_parent] || policy.policy_type_parent;
 
