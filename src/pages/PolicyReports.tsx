@@ -362,8 +362,12 @@ export default function PolicyReports() {
           p_page_size: PAGE_SIZE,
           p_page: renewalsPage + 1 // 1-indexed
         }),
+        // Pass the same filters to summary so numbers always match
         supabase.rpc('report_renewals_summary', {
-          p_end_month: renewalsMonth ? `${renewalsMonth}-01` : null
+          p_end_month: renewalsMonth ? `${renewalsMonth}-01` : null,
+          p_policy_type: renewalsPolicyTypeFilter !== 'all' ? renewalsPolicyTypeFilter : null,
+          p_created_by: renewalsCreatedByFilter !== 'all' ? renewalsCreatedByFilter : null,
+          p_search: renewalsSearch || null
         })
       ]);
 
@@ -374,7 +378,7 @@ export default function PolicyReports() {
       setRenewalsTotalRows(clientData[0]?.total_count || 0);
       
       if (summaryRes.data && summaryRes.data.length > 0) {
-        setRenewalsSummary(summaryRes.data[0]);
+        setRenewalsSummary(summaryRes.data[0] as unknown as RenewalSummary);
       }
     } catch (error) {
       console.error('Error fetching renewals:', error);
