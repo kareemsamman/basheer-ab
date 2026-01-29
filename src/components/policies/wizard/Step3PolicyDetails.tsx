@@ -8,7 +8,9 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { supabase } from "@/integrations/supabase/client";
-import { AlertCircle, Package, ArrowLeftRight, ImageIcon, FolderOpen, Upload, X, ChevronDown, ChevronUp } from "lucide-react";
+import { AlertCircle, Package, ArrowLeftRight, ImageIcon, FolderOpen, Upload, X, ChevronDown, ChevronUp, Printer, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import '@/types/scanner.d.ts';
 import { cn } from "@/lib/utils";
 import { PricingCard } from "./PricingCard";
 import { PackageBuilderSection } from "./PackageBuilderSection";
@@ -146,6 +148,113 @@ export function Step3PolicyDetails({
   const insuranceInputRef = useRef<HTMLInputElement>(null);
   const crmInputRef = useRef<HTMLInputElement>(null);
   const [loadingPrice, setLoadingPrice] = useState(false);
+  const [scanning, setScanning] = useState<'insurance' | 'crm' | null>(null);
+
+  // Convert base64 to Blob for scanner
+  const base64ToBlob = (base64: string): Blob => {
+    const base64Data = base64.includes(',') ? base64.split(',')[1] : base64;
+    const byteCharacters = atob(base64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: 'image/jpeg' });
+  };
+
+  // Handle direct scan
+  const handleDirectScan = async (fileType: 'insurance' | 'crm') => {
+    if (!window.scanner) {
+      toast.error('مكتبة السكانر غير محملة. يرجى تحديث الصفحة.');
+      return;
+    }
+
+    setScanning(fileType);
+    const savedScanner = localStorage.getItem('preferred_scanner');
+
+    const scanRequest = {
+      use_asprise_dialog: false,
+      show_scanner_ui: false,
+      source_name: savedScanner || 'select',
+      scanner_name: savedScanner || 'select',
+      prompt_scan_more: false,
+      twain_cap_setting: {
+        ICAP_PIXELTYPE: 'TWPT_RGB',
+        ICAP_XRESOLUTION: '200',
+        ICAP_YRESOLUTION: '200',
+      },
+      output_settings: [{
+        type: 'return-base64',
+        format: 'jpg',
+        jpeg_quality: 85,
+      }],
+    };
+
+    try {
+      window.scanner.scan(
+        (successful: boolean, mesg: string, response: string) => {
+          setScanning(null);
+
+          if (!successful) {
+            if (mesg && mesg.includes('cancel')) {
+              return;
+            }
+            toast.error(mesg || 'فشل في المسح. تأكد من تثبيت ScanApp وتوصيل السكانر.');
+            return;
+          }
+
+          try {
+            const images = window.scanner.getScannedImages(response, true, false);
+            
+            if (!images || images.length === 0) {
+              toast.error('لم يتم العثور على صور ممسوحة.');
+              return;
+            }
+
+            // Save scanner name for next time
+            try {
+              const parsedResponse = JSON.parse(response);
+              if (parsedResponse?.scanned?.[0]?.src_name) {
+                const scannerName = parsedResponse.scanned[0].src_name;
+                if (scannerName && scannerName !== 'select') {
+                  localStorage.setItem('preferred_scanner', scannerName);
+                }
+              }
+            } catch {}
+
+            // Convert scanned images to File objects
+            const newFiles: File[] = images.map((img, index) => {
+              let base64Data = img.src;
+              if (base64Data.startsWith('data:')) {
+                base64Data = base64Data.split(',')[1];
+              }
+              
+              const blob = base64ToBlob(base64Data);
+              const timestamp = Date.now();
+              return new File([blob], `scan_${timestamp}_${index}.jpg`, { type: 'image/jpeg' });
+            });
+
+            // Add to appropriate file list
+            if (fileType === 'insurance') {
+              setInsuranceFiles([...insuranceFiles, ...newFiles]);
+            } else {
+              setCrmFiles([...crmFiles, ...newFiles]);
+            }
+
+            toast.success(`تم مسح ${newFiles.length} صورة بنجاح`);
+          } catch (parseError) {
+            console.error('Error parsing scanned images:', parseError);
+            toast.error('خطأ في معالجة الصور الممسوحة.');
+          }
+        },
+        scanRequest
+      );
+    } catch (err) {
+      setScanning(null);
+      console.error('Scanner error:', err);
+      toast.error('خطأ في الاتصال بالسكانر. تأكد من تثبيت ScanApp.');
+    }
+  };
   
   const getCarType = () => {
     if (createNewCar) return newCar.car_type;
@@ -941,19 +1050,38 @@ export function Step3PolicyDetails({
               <ImageIcon className="h-4 w-4 text-primary" />
               <Label className="font-semibold">ملفات التأمين</Label>
             </div>
-            <div className="relative">
-              <input
-                ref={insuranceInputRef}
-                type="file"
-                multiple
-                accept="image/*,.pdf,video/*"
-                onChange={(e) => handleFileSelect(e, 'insurance')}
-                className="absolute inset-0 opacity-0 cursor-pointer w-full"
-              />
-              <Button type="button" size="sm" variant="outline" className="gap-1.5">
-                <Upload className="h-4 w-4" />
-                رفع ملف
+            <div className="flex items-center gap-1.5">
+              {/* Scan Button */}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => handleDirectScan('insurance')}
+                disabled={scanning === 'insurance'}
+              >
+                {scanning === 'insurance' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Printer className="h-4 w-4" />
+                )}
+                مسح
               </Button>
+              {/* Upload Button */}
+              <div className="relative">
+                <input
+                  ref={insuranceInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*,.pdf,video/*"
+                  onChange={(e) => handleFileSelect(e, 'insurance')}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full"
+                />
+                <Button type="button" size="sm" variant="outline" className="gap-1.5">
+                  <Upload className="h-4 w-4" />
+                  رفع ملف
+                </Button>
+              </div>
             </div>
           </div>
           <p className="text-xs text-muted-foreground mb-3">
@@ -998,19 +1126,38 @@ export function Step3PolicyDetails({
               <FolderOpen className="h-4 w-4 text-muted-foreground" />
               <Label className="font-semibold">ملفات النظام</Label>
             </div>
-            <div className="relative">
-              <input
-                ref={crmInputRef}
-                type="file"
-                multiple
-                accept="image/*,.pdf,video/*"
-                onChange={(e) => handleFileSelect(e, 'crm')}
-                className="absolute inset-0 opacity-0 cursor-pointer w-full"
-              />
-              <Button type="button" size="sm" variant="outline" className="gap-1.5">
-                <Upload className="h-4 w-4" />
-                رفع ملف
+            <div className="flex items-center gap-1.5">
+              {/* Scan Button */}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => handleDirectScan('crm')}
+                disabled={scanning === 'crm'}
+              >
+                {scanning === 'crm' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Printer className="h-4 w-4" />
+                )}
+                مسح
               </Button>
+              {/* Upload Button */}
+              <div className="relative">
+                <input
+                  ref={crmInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*,.pdf,video/*"
+                  onChange={(e) => handleFileSelect(e, 'crm')}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full"
+                />
+                <Button type="button" size="sm" variant="outline" className="gap-1.5">
+                  <Upload className="h-4 w-4" />
+                  رفع ملف
+                </Button>
+              </div>
             </div>
           </div>
           <p className="text-xs text-muted-foreground mb-3">
