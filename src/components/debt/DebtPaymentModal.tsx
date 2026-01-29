@@ -111,10 +111,14 @@ export function DebtPaymentModal({
   const effectiveRemaining = totalRemaining - paidVisaTotal;
   const isOverpaying = pendingPaymentsTotal > effectiveRemaining;
   
+  // Check for unpaid visa payments
+  const hasUnpaidVisa = paymentLines.some(p => p.paymentType === 'visa' && !p.tranzilaPaid);
+
   // Check if all non-visa payments have valid data, and visa payments are either paid or have valid amount
   const isValid = paymentLines.length > 0 && 
     totalPaymentAmount > 0 && 
     !isOverpaying &&
+    !hasUnpaidVisa && // Block if unpaid visa exists
     paymentLines.every(p => {
       if (p.paymentType === 'cheque' && !p.chequeNumber?.trim()) return false;
       if (p.paymentType === 'visa' && !p.tranzilaPaid && p.amount <= 0) return false;
@@ -807,6 +811,13 @@ export function DebtPaymentModal({
                 <AlertCircle className="h-4 w-4" />
                 مجموع الدفعات أكبر من المبلغ المتبقي (₪{effectiveRemaining.toLocaleString()})
               </p>
+            )}
+
+            {hasUnpaidVisa && (
+              <div className="flex items-center gap-2 text-amber-600 text-sm p-2 bg-amber-50 dark:bg-amber-950/20 rounded-lg">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>يرجى إتمام الدفع بالبطاقة أولاً قبل الحفظ</span>
+              </div>
             )}
           </div>
         )}
