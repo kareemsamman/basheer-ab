@@ -224,7 +224,7 @@ export function AccidentFeePricingDrawer({ open, onOpenChange, company }: Accide
                       </TableCell>
                       <TableCell>
                         <span className={profit >= 0 ? 'text-success font-medium' : 'text-destructive font-medium'}>
-                          ₪{profit.toLocaleString('ar-EG')}
+                          ₪{profit.toLocaleString('en-US')}
                         </span>
                       </TableCell>
                     </TableRow>

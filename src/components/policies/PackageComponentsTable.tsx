@@ -62,12 +62,12 @@ const policyTypeConfig: Record<string, { icon: React.ElementType; bg: string; te
 
 export function PackageComponentsTable({ policies, isAdmin }: PackageComponentsTableProps) {
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("ar-EG");
+    return new Date(dateStr).toLocaleDateString("en-GB");
   };
 
   const formatCurrency = (amount: number | null) => {
     if (amount === null || amount === undefined) return "₪0";
-    return `₪${Math.abs(amount).toLocaleString("ar-EG", { maximumFractionDigits: 0 })}`;
+    return `₪${Math.abs(amount).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
   };
 
   const getTypeName = (p: PackagePolicy) => {

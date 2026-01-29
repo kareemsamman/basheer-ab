@@ -175,7 +175,7 @@ export default function AccidentReports() {
   }, [fetchReports]);
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("ar-EG");
+    return new Date(dateStr).toLocaleDateString("en-GB");
   };
 
   const handleDeleteReport = async () => {

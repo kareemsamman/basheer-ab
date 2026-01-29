@@ -249,7 +249,7 @@ export default function Companies() {
                     <TableCell>
                       {company.category_parent?.includes('ELZAMI') ? (
                         <span className={`font-medium ${(company.elzami_commission || 0) < 0 ? 'text-destructive' : 'text-success'}`}>
-                          ₪{(company.elzami_commission || 0).toLocaleString('ar-EG')}
+                          ₪{(company.elzami_commission || 0).toLocaleString('en-US')}
                         </span>
                       ) : (
                         <span className="text-muted-foreground text-sm">-</span>
