@@ -46,6 +46,7 @@ import { cn } from "@/lib/utils";
 import { PolicyEditDrawer } from "./PolicyEditDrawer";
 import { PolicyPaymentsSection } from "./PolicyPaymentsSection";
 import { PolicyFilesSection } from "./PolicyFilesSection";
+import { PackageComponentsTable } from "./PackageComponentsTable";
 
 import { CancelPolicyModal } from "./CancelPolicyModal";
 import { TransferPolicyModal } from "./TransferPolicyModal";
@@ -255,6 +256,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
   const [policyFilesCount, setPolicyFilesCount] = useState<number>(0);
   const [sendingPolicySms, setSendingPolicySms] = useState(false);
   const [packageTotalPaid, setPackageTotalPaid] = useState<number>(0);
+  const [packagePayments, setPackagePayments] = useState<Payment[]>([]);
 
   const handleSendSignatureSms = async () => {
     if (!policy || !policy.clients.phone_number) {
@@ -436,26 +438,43 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
 
       // For packages, fetch ALL payments across all policies in the group
       let pkgTotalPaid = 0;
+      let allPkgPayments: Payment[] = [];
       if (policyData.group_id) {
         // Get all policy IDs in this package
         const allPackagePolicyIds = [policyId, ...relatedData.map(rp => rp.id)];
         
-        // Fetch all payments for the entire package
+        // Fetch all payments for the entire package with full data
         const { data: allPackagePayments } = await supabase
           .from("policy_payments")
-          .select("amount, refused, cheque_status")
-          .in("policy_id", allPackagePolicyIds);
+          .select("*")
+          .in("policy_id", allPackagePolicyIds)
+          .order("payment_date", { ascending: false });
         
         if (allPackagePayments) {
           pkgTotalPaid = allPackagePayments
             .filter(p => !p.refused && p.cheque_status !== 'returned')
             .reduce((sum, p) => sum + p.amount, 0);
+          
+          // Fetch payment images for all package payments
+          const paymentIds = allPackagePayments.map(p => p.id);
+          const { data: imagesData } = await supabase
+            .from("payment_images")
+            .select("*")
+            .in("payment_id", paymentIds)
+            .order("sort_order", { ascending: true });
+
+          allPkgPayments = allPackagePayments.map(payment => ({
+            ...payment,
+            images: imagesData?.filter(img => img.payment_id === payment.id) || []
+          }));
         }
         setPackageTotalPaid(pkgTotalPaid);
+        setPackagePayments(allPkgPayments);
       } else {
         // For single policies, package total paid = this policy's paid
         const singlePaid = paymentsData?.filter((p: any) => !p.refused && p.cheque_status !== 'returned').reduce((sum: number, p: any) => sum + p.amount, 0) || 0;
         setPackageTotalPaid(singlePaid);
+        setPackagePayments([]);
       }
       
       // Fetch refund amount for cancelled policies
@@ -546,54 +565,33 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
     ? (policy?.profit || 0) + relatedPolicies.reduce((sum, rp) => sum + (rp.profit || 0), 0)
     : 0;
 
-  // For packages, calculate distributed payment for THIS policy
-  // Distribution logic: fill each policy in order until its price is met, then move to next
-  const calculateDistributedPayment = () => {
+  // For packages, show unified totals. For single policies, use direct payments
+  const calculatePaymentTotals = () => {
     if (!policy || isTransferred) return { paid: 0, remaining: 0, percentage: 100, status: 'paid' as const };
     
-    if (!hasPackage) {
-      // Single policy - use direct payments
-      const paid = payments.filter((p) => !p.refused && p.cheque_status !== 'returned').reduce((sum, p) => sum + p.amount, 0);
-      const rem = policy.insurance_price - paid;
-      const pct = Math.min(100, Math.round((paid / policy.insurance_price) * 100));
+    if (hasPackage) {
+      // Package: show unified totals
+      const paid = packageTotalPaid;
+      const price = packageTotalPrice;
+      const rem = Math.max(0, price - paid);
+      const pct = Math.min(100, Math.round((paid / price) * 100));
       const status = rem <= 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
       return { paid, remaining: rem, percentage: pct, status };
     }
 
-    // Package: distribute packageTotalPaid across all policies
-    // Get all policies in the package (current + related), sorted by creation order (current first)
-    const allPolicies = [
-      { id: policy.id, price: policy.insurance_price, type: policy.policy_type_parent },
-      ...relatedPolicies.map(rp => ({ id: rp.id, price: rp.insurance_price, type: rp.policy_type_parent }))
-    ];
-
-    let remainingPayment = packageTotalPaid;
-    let thisPolicyPaid = 0;
-
-    for (const p of allPolicies) {
-      if (remainingPayment <= 0) break;
-      
-      const amountForThis = Math.min(p.price, remainingPayment);
-      remainingPayment -= amountForThis;
-
-      if (p.id === policy.id) {
-        thisPolicyPaid = amountForThis;
-        break; // Found this policy, stop
-      }
-    }
-
-    const rem = policy.insurance_price - thisPolicyPaid;
-    const pct = Math.min(100, Math.round((thisPolicyPaid / policy.insurance_price) * 100));
-    const status = rem <= 0 ? 'paid' : thisPolicyPaid > 0 ? 'partial' : 'unpaid';
-    
-    return { paid: thisPolicyPaid, remaining: rem, percentage: pct, status };
+    // Single policy - use direct payments
+    const paid = payments.filter((p) => !p.refused && p.cheque_status !== 'returned').reduce((sum, p) => sum + p.amount, 0);
+    const rem = policy.insurance_price - paid;
+    const pct = Math.min(100, Math.round((paid / policy.insurance_price) * 100));
+    const status = rem <= 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+    return { paid, remaining: rem, percentage: pct, status };
   };
 
-  const distributedPayment = calculateDistributedPayment();
-  const totalPaid = distributedPayment.paid;
-  const remaining = distributedPayment.remaining;
-  const percentagePaid = distributedPayment.percentage;
-  const paymentStatus = distributedPayment.status;
+  const paymentTotals = calculatePaymentTotals();
+  const totalPaid = paymentTotals.paid;
+  const remaining = paymentTotals.remaining;
+  const percentagePaid = paymentTotals.percentage;
+  const paymentStatus = paymentTotals.status;
 
   // Returned cheques calculation
   const returnedCheques = isTransferred ? [] : payments.filter((p) => p.payment_type === 'cheque' && (p.refused || p.cheque_status === 'returned'));
@@ -602,37 +600,6 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
 
   // Check if ELZAMI (no profit)
   const isElzami = policy?.policy_type_parent === "ELZAMI";
-
-  // Helper function to get payment status for any policy in the package
-  const getRelatedPolicyPaymentStatus = (rpId: string, rpPrice: number) => {
-    if (!hasPackage) return { paid: 0, remaining: rpPrice, status: 'unpaid' as const };
-    
-    // Build all policies array (current + related)
-    const allPolicies = [
-      { id: policy!.id, price: policy!.insurance_price },
-      ...relatedPolicies.map(rp => ({ id: rp.id, price: rp.insurance_price }))
-    ];
-
-    let remainingPayment = packageTotalPaid;
-    let thisPolicyPaid = 0;
-
-    for (const p of allPolicies) {
-      if (remainingPayment <= 0) break;
-      
-      const amountForThis = Math.min(p.price, remainingPayment);
-      remainingPayment -= amountForThis;
-
-      if (p.id === rpId) {
-        thisPolicyPaid = amountForThis;
-        break;
-      }
-    }
-
-    const rem = rpPrice - thisPolicyPaid;
-    const status = rem <= 0 ? 'paid' : thisPolicyPaid > 0 ? 'partial' : 'unpaid';
-    
-    return { paid: thisPolicyPaid, remaining: rem, status };
-  };
 
   const handleEditComplete = () => {
     fetchPolicyDetails();
@@ -721,7 +688,9 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                       </div>
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          <h1 className="text-xl font-bold text-white">{getPolicyTypeName()}</h1>
+                          <h1 className="text-xl font-bold text-white">
+                            {hasPackage ? "باقة تأمين" : getPolicyTypeName()}
+                          </h1>
                           <Badge className={cn(
                             "border-white/30 font-medium",
                             status.variant === 'success' ? "bg-white/20 text-white" :
@@ -732,10 +701,16 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                             <StatusIcon className="h-3 w-3 ml-1" />
                             {status.label}
                           </Badge>
+                          {hasPackage && (
+                            <Badge className="bg-white/20 border-white/30 text-white font-medium">
+                              <Layers className="h-3 w-3 ml-1" />
+                              {relatedPolicies.length + 1} وثائق
+                            </Badge>
+                          )}
                         </div>
                         
-                        {/* Service name for Road Service */}
-                        {policy.policy_type_parent === 'ROAD_SERVICE' && policy.road_services && (
+                        {/* Service name for Road Service (only for single policies) */}
+                        {!hasPackage && policy.policy_type_parent === 'ROAD_SERVICE' && policy.road_services && (
                           <p className="text-white/80 text-sm">
                             {policy.road_services.name_ar || policy.road_services.name}
                           </p>
@@ -753,10 +728,10 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                               <span className="font-mono"><bdi>{policy.cars.car_number}</bdi></span>
                             </div>
                           )}
-                          {hasPackage && (
-                            <div className="flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-full">
-                              <Layers className="h-3 w-3" />
-                              <span>باقة ({relatedPolicies.length + 1})</span>
+                          {policy.insurance_companies && (
+                            <div className="flex items-center gap-1">
+                              <Building2 className="h-3.5 w-3.5" />
+                              <span>{policy.insurance_companies.name_ar || policy.insurance_companies.name}</span>
                             </div>
                           )}
                         </div>
@@ -847,7 +822,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                     "px-1.5 py-0.5 rounded-full text-xs",
                     activeSection === 'payments' ? "bg-white/20" : "bg-muted-foreground/20"
                   )}>
-                    {payments.length}
+                    {hasPackage ? packagePayments.length : payments.length}
                   </span>
                 </button>
                 <button
@@ -904,10 +879,12 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                           <div className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center">
                             <CircleDollarSign className="h-4 w-4 text-slate-600" />
                           </div>
-                          <span className="text-xs font-medium text-slate-600">سعر التأمين</span>
+                          <span className="text-xs font-medium text-slate-600">
+                            {hasPackage ? "سعر الباقة" : "سعر التأمين"}
+                          </span>
                         </div>
                         <p className="text-2xl font-bold text-slate-900 ltr-nums">
-                          {formatCurrency(policy.insurance_price)}
+                          {formatCurrency(hasPackage ? packageTotalPrice : policy.insurance_price)}
                         </p>
                       </div>
 
@@ -1165,124 +1142,36 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                       </Section>
                     </div>
 
-                    {/* Package / Related Policies - 3 column layout */}
-                    {relatedPolicies.length > 0 && (
-                      <Section title="وثائق الباقة الأخرى" icon={Layers}>
-                        <div className="grid grid-cols-3 gap-3">
-                          {relatedPolicies.map((rp) => {
-                            const rpConfig = policyTypeConfig[rp.policy_type_parent] || policyTypeConfig.ELZAMI;
-                            const RpIcon = rpConfig.icon;
-                            const serviceName = getServiceName(rp);
-                            const rpPaymentStatus = getRelatedPolicyPaymentStatus(rp.id, rp.insurance_price);
-                            
-                            // Handle click - navigate to related policy WITHOUT closing
-                            const handleClick = (e: React.MouseEvent) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              // Clear cache to force refresh
-                              sessionStorage.removeItem(`policy_cache_${rp.id}`);
-                              if (onViewRelatedPolicy) {
-                                onViewRelatedPolicy(rp.id);
-                              }
-                            };
-                            
-                            return (
-                              <div
-                                key={rp.id}
-                                onClick={handleClick}
-                                className={cn(
-                                  "rounded-xl border-2 p-3 cursor-pointer transition-all group min-h-[140px] flex flex-col",
-                                  "hover:shadow-lg hover:scale-[1.02] hover:border-primary",
-                                  rpConfig.bg, rpConfig.border
-                                )}
-                              >
-                                {/* Icon & Type + Payment Badge */}
-                                <div className="flex items-center gap-2 mb-2">
-                                  <div className={cn(
-                                    "w-8 h-8 rounded-lg flex items-center justify-center bg-gradient-to-br shrink-0",
-                                    rpConfig.gradient
-                                  )}>
-                                    <RpIcon className="h-4 w-4 text-white" />
-                                  </div>
-                                  <p className={cn("font-bold text-sm truncate flex-1", rpConfig.text)}>
-                                    {policyTypeLabels[rp.policy_type_parent]}
-                                  </p>
-                                  {/* Payment status badge */}
-                                  <span className={cn(
-                                    "text-[10px] px-1.5 py-0.5 rounded-full font-semibold shrink-0",
-                                    rpPaymentStatus.status === 'paid' ? "bg-emerald-100 text-emerald-700" :
-                                    rpPaymentStatus.status === 'partial' ? "bg-amber-100 text-amber-700" :
-                                    "bg-red-100 text-red-700"
-                                  )}>
-                                    {rpPaymentStatus.status === 'paid' ? '✓' : rpPaymentStatus.status === 'partial' ? '◐' : '○'}
-                                  </span>
-                                </div>
-                                
-                                {/* Service & Company */}
-                                <div className="space-y-0.5 mb-2 flex-1">
-                                  {serviceName && (
-                                    <p className="text-xs text-muted-foreground truncate">{serviceName}</p>
-                                  )}
-                                  {rp.insurance_companies && (
-                                    <p className="text-xs text-muted-foreground truncate">
-                                      {rp.insurance_companies.name_ar || rp.insurance_companies.name}
-                                    </p>
-                                  )}
-                                </div>
-                                
-                                {/* Price & Profit - stacked vertically */}
-                                <div className="pt-2 border-t border-dashed flex items-center justify-between">
-                                  <div className="flex flex-col">
-                                    <p className="text-base font-bold text-foreground ltr-nums">{formatCurrency(rp.insurance_price)}</p>
-                                    {isAdmin && rp.policy_type_parent !== 'ELZAMI' && (
-                                      <span className={cn(
-                                        "text-xs font-semibold ltr-nums mt-1",
-                                        (rp.profit || 0) < 0 ? "text-red-600" : "text-emerald-600"
-                                      )}>
-                                        ربح: {formatCurrency(rp.profit)}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <ChevronLeft className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        
-                        {/* Package Total with Payment Status */}
-                        <div className="bg-gradient-to-l from-teal-50 to-cyan-50 border-2 border-teal-200 rounded-xl p-4 mt-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center">
-                                <Layers className="h-5 w-5 text-white" />
-                              </div>
-                              <div>
-                                <p className="font-bold text-teal-700">مجموع الباقة</p>
-                                <p className="text-xs text-muted-foreground">{relatedPolicies.length + 1} وثائق</p>
-                              </div>
-                            </div>
-                            <div className="text-left">
-                              <p className="text-xl font-bold text-teal-700 ltr-nums">{formatCurrency(packageTotalPrice)}</p>
-                              <p className={cn(
-                                "text-sm font-semibold ltr-nums",
-                                packageTotalPaid >= packageTotalPrice ? "text-emerald-600" :
-                                packageTotalPaid > 0 ? "text-amber-600" : "text-red-600"
-                              )}>
-                                مدفوع: {formatCurrency(packageTotalPaid)}
-                              </p>
-                              {isAdmin && (
-                                <p className={cn(
-                                  "text-xs font-semibold ltr-nums",
-                                  packageTotalProfit < 0 ? "text-red-600" : "text-emerald-600"
-                                )}>
-                                  إجمالي الربح: {formatCurrency(packageTotalProfit)}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </Section>
+                    {/* Package Components Table - unified view */}
+                    {hasPackage && (
+                      <PackageComponentsTable
+                        policies={[
+                          {
+                            id: policy.id,
+                            policy_type_parent: policy.policy_type_parent,
+                            policy_type_child: policy.policy_type_child,
+                            start_date: policy.start_date,
+                            end_date: policy.end_date,
+                            insurance_price: policy.insurance_price,
+                            profit: policy.profit,
+                            insurance_companies: policy.insurance_companies,
+                            road_services: policy.road_services,
+                          },
+                          ...relatedPolicies.map(rp => ({
+                            id: rp.id,
+                            policy_type_parent: rp.policy_type_parent,
+                            policy_type_child: rp.policy_type_child,
+                            start_date: policy.start_date, // Use main policy dates
+                            end_date: policy.end_date,
+                            insurance_price: rp.insurance_price,
+                            profit: rp.profit,
+                            insurance_companies: rp.insurance_companies,
+                            road_services: rp.road_services,
+                            accident_fee_services: rp.accident_fee_services,
+                          }))
+                        ]}
+                        isAdmin={isAdmin}
+                      />
                     )}
 
                     {/* Client & Car Info */}
@@ -1443,12 +1332,14 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                   <div className="p-6">
                     <PolicyPaymentsSection
                       policyId={policy.id}
-                      payments={payments}
-                      insurancePrice={policy.insurance_price}
+                      payments={hasPackage ? packagePayments : payments}
+                      insurancePrice={hasPackage ? packageTotalPrice : policy.insurance_price}
                       branchId={policy.branch_id}
                       onPaymentsChange={handlePaymentsChange}
                       autoOpenAdd={showQuickPayment}
                       onAutoOpenHandled={() => setShowQuickPayment(false)}
+                      packagePolicyIds={hasPackage ? [policy.id, ...relatedPolicies.map(rp => rp.id)] : undefined}
+                      packageTotalPrice={hasPackage ? packageTotalPrice : undefined}
                     />
                   </div>
                 )}
@@ -1462,6 +1353,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                       clientPhoneNumber={policy.clients.phone_number}
                       clientName={policy.clients.full_name}
                       onPolicyNumberSaved={() => fetchPolicyDetails()}
+                      packagePolicyIds={hasPackage ? [policy.id, ...relatedPolicies.map(rp => rp.id)] : undefined}
                     />
                   </div>
                 )}

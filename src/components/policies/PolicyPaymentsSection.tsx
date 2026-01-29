@@ -55,6 +55,9 @@ interface PolicyPaymentsSectionProps {
   onPaymentsChange: () => void;
   autoOpenAdd?: boolean;
   onAutoOpenHandled?: () => void;
+  // Package support - array of all policy IDs in package for unified view
+  packagePolicyIds?: string[];
+  packageTotalPrice?: number;
 }
 
 interface PaymentLine {
@@ -108,7 +111,9 @@ export function PolicyPaymentsSection({
   branchId,
   onPaymentsChange,
   autoOpenAdd,
-  onAutoOpenHandled 
+  onAutoOpenHandled,
+  packagePolicyIds,
+  packageTotalPrice
 }: PolicyPaymentsSectionProps) {
   const { toast } = useToast();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -142,9 +147,10 @@ export function PolicyPaymentsSection({
   const [uploadingImages, setUploadingImages] = useState(false);
   const [removeExistingFiles, setRemoveExistingFiles] = useState(false);
 
-  // Calculate totals
+  // Calculate totals - use package totals if provided
+  const effectivePrice = packageTotalPrice ?? insurancePrice;
   const totalPaid = payments.filter(p => !p.refused).reduce((sum, p) => sum + p.amount, 0);
-  const remaining = insurancePrice - totalPaid;
+  const remaining = effectivePrice - totalPaid;
 
   // Calculate payment lines total
   const paidVisaTotal = paymentLines

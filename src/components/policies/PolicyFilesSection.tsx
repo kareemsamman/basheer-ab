@@ -33,6 +33,8 @@ interface PolicyFilesSectionProps {
   clientPhoneNumber?: string | null;
   clientName?: string;
   onPolicyNumberSaved?: (policyNumber: string) => void;
+  // Package support - array of all policy IDs in package for unified file view
+  packagePolicyIds?: string[];
 }
 
 export function PolicyFilesSection({ 
@@ -41,7 +43,8 @@ export function PolicyFilesSection({
   clientId,
   clientPhoneNumber,
   clientName,
-  onPolicyNumberSaved 
+  onPolicyNumberSaved,
+  packagePolicyIds 
 }: PolicyFilesSectionProps) {
   const { toast } = useToast();
   const [insuranceFiles, setInsuranceFiles] = useState<MediaFile[]>([]);
@@ -77,11 +80,16 @@ export function PolicyFilesSection({
   const fetchFiles = async () => {
     setLoading(true);
     try {
+      // Use package policy IDs if provided (unified package view), otherwise single policy
+      const targetPolicyIds = packagePolicyIds && packagePolicyIds.length > 0 
+        ? packagePolicyIds 
+        : [policyId];
+      
       // Fetch insurance files (policy files from insurance company)
       const { data: insuranceData, error: insuranceError } = await supabase
         .from('media_files')
         .select('*')
-        .eq('entity_id', policyId)
+        .in('entity_id', targetPolicyIds)
         .in('entity_type', ['policy', 'policy_insurance'])
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
@@ -93,7 +101,7 @@ export function PolicyFilesSection({
       const { data: crmData, error: crmError } = await supabase
         .from('media_files')
         .select('*')
-        .eq('entity_id', policyId)
+        .in('entity_id', targetPolicyIds)
         .eq('entity_type', 'policy_crm')
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
