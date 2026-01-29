@@ -2028,6 +2028,7 @@ export type Database = {
           is_read: boolean
           link: string | null
           message: string
+          metadata: Json | null
           read_at: string | null
           title: string
           type: string
@@ -2041,6 +2042,7 @@ export type Database = {
           is_read?: boolean
           link?: string | null
           message: string
+          metadata?: Json | null
           read_at?: string | null
           title: string
           type?: string
@@ -2054,6 +2056,7 @@ export type Database = {
           is_read?: boolean
           link?: string | null
           message?: string
+          metadata?: Json | null
           read_at?: string | null
           title?: string
           type?: string
@@ -2938,6 +2941,7 @@ export type Database = {
           email: string
           full_name: string | null
           id: string
+          last_seen_notifications_at: string | null
           pbx_extension: string | null
           phone: string | null
           status: Database["public"]["Enums"]["user_status"]
@@ -2950,6 +2954,7 @@ export type Database = {
           email: string
           full_name?: string | null
           id: string
+          last_seen_notifications_at?: string | null
           pbx_extension?: string | null
           phone?: string | null
           status?: Database["public"]["Enums"]["user_status"]
@@ -2962,6 +2967,7 @@ export type Database = {
           email?: string
           full_name?: string | null
           id?: string
+          last_seen_notifications_at?: string | null
           pbx_extension?: string | null
           phone?: string | null
           status?: Database["public"]["Enums"]["user_status"]

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,9 +23,12 @@ import {
   Search,
   Filter
 } from 'lucide-react';
-import { useNotifications, Notification } from '@/hooks/useNotifications';
+import { useNotifications, Notification, PAYMENT_METHOD_LABELS } from '@/hooks/useNotifications';
+import { PaymentMethodBadge } from '@/components/notifications/PaymentMethodBadge';
+import { NewSinceLastVisitBanner } from '@/components/notifications/NewSinceLastVisitBanner';
 import { formatDistanceToNow, format } from 'date-fns';
 import { ar } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -78,17 +81,26 @@ export default function Notifications() {
     markAsRead, 
     markAllAsRead, 
     deleteNotification,
-    deleteAllNotifications 
+    deleteAllNotifications,
+    newSinceLastSeen,
+    updateLastSeen,
+    recentlyArrivedIds
   } = useNotifications();
   
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [showBanner, setShowBanner] = useState(true);
   
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  // Update last seen when visiting this page
+  useEffect(() => {
+    updateLastSeen();
+  }, [updateLastSeen]);
 
   // Filtered notifications
   const filteredNotifications = useMemo(() => {
@@ -179,12 +191,24 @@ export default function Notifications() {
   return (
     <MainLayout>
       <div className="space-y-6">
+        {/* New since last visit banner */}
+        {showBanner && newSinceLastSeen > 0 && (
+          <NewSinceLastVisitBanner 
+            count={newSinceLastSeen} 
+            onDismiss={() => setShowBanner(false)} 
+          />
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-2xl font-bold">الإشعارات</h1>
             <p className="text-muted-foreground">
-              {unreadCount > 0 ? `${unreadCount} إشعار غير مقروء` : 'جميع الإشعارات مقروءة'}
+              {unreadCount > 0 ? (
+                <><span className="ltr-nums">{unreadCount}</span> إشعار غير مقروء</>
+              ) : (
+                'جميع الإشعارات مقروءة'
+              )}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -264,7 +288,7 @@ export default function Notifications() {
           
           {filteredNotifications.length !== notifications.length && (
             <p className="text-sm text-muted-foreground mt-2">
-              عرض {filteredNotifications.length} من {notifications.length} إشعار
+              عرض <span className="ltr-nums">{filteredNotifications.length}</span> من <span className="ltr-nums">{notifications.length}</span> إشعار
             </p>
           )}
         </Card>
@@ -302,72 +326,94 @@ export default function Notifications() {
                 </CardContent>
               </Card>
             ) : (
-              filteredNotifications.map((notification) => (
-                <Card 
-                  key={notification.id}
-                  className={`cursor-pointer transition-all hover:shadow-md ${
-                    selectedNotification?.id === notification.id ? 'ring-2 ring-primary' : ''
-                  } ${!notification.is_read ? NOTIFICATION_COLORS[notification.type] || NOTIFICATION_COLORS.general : ''}`}
-                  onClick={() => handleNotificationClick(notification)}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-start gap-4">
-                      <div className={`p-2 rounded-full ${NOTIFICATION_COLORS[notification.type] || NOTIFICATION_COLORS.general}`}>
-                        {NOTIFICATION_ICONS[notification.type] || NOTIFICATION_ICONS.general}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className={`font-medium ${!notification.is_read ? 'text-foreground' : 'text-muted-foreground'}`}>
-                            {notification.title}
-                          </h3>
-                          {!notification.is_read && (
-                            <Badge variant="default" className="text-[10px] px-1.5 py-0">
-                              جديد
-                            </Badge>
-                          )}
+              filteredNotifications.map((notification) => {
+                const isRecentlyArrived = recentlyArrivedIds.has(notification.id);
+                const paymentMethod = notification.metadata?.payment_method;
+                
+                return (
+                  <Card 
+                    key={notification.id}
+                    className={cn(
+                      "cursor-pointer transition-all hover:shadow-md",
+                      selectedNotification?.id === notification.id && 'ring-2 ring-primary',
+                      !notification.is_read && (NOTIFICATION_COLORS[notification.type] || NOTIFICATION_COLORS.general),
+                      isRecentlyArrived && 'animate-in slide-in-from-top-2 duration-300 ring-2 ring-primary/50'
+                    )}
+                    onClick={() => handleNotificationClick(notification)}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-4">
+                        <div className={cn(
+                          "p-2 rounded-full",
+                          NOTIFICATION_COLORS[notification.type] || NOTIFICATION_COLORS.general
+                        )}>
+                          {NOTIFICATION_ICONS[notification.type] || NOTIFICATION_ICONS.general}
                         </div>
-                        <p className="text-sm text-muted-foreground line-clamp-2">
-                          {notification.message}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          {formatTime(notification.created_at)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {!notification.is_read && (
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <h3 className={cn(
+                              "font-medium",
+                              !notification.is_read ? 'text-foreground' : 'text-muted-foreground'
+                            )}>
+                              {notification.title}
+                            </h3>
+                            {!notification.is_read && (
+                              <Badge variant="default" className="text-[10px] px-1.5 py-0">
+                                جديد
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground line-clamp-2">
+                            {notification.message}
+                          </p>
+                          
+                          {/* Payment method badge */}
+                          {notification.type === 'payment' && paymentMethod && (
+                            <div className="mt-2">
+                              <PaymentMethodBadge method={paymentMethod} />
+                            </div>
+                          )}
+                          
+                          <p className="text-xs text-muted-foreground mt-2">
+                            {formatTime(notification.created_at)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {!notification.is_read && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                markAsRead(notification.id);
+                              }}
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            disabled={deleting === notification.id}
                             onClick={(e) => {
                               e.stopPropagation();
-                              markAsRead(notification.id);
+                              handleDelete(notification.id);
                             }}
                           >
-                            <Check className="h-4 w-4" />
+                            {deleting === notification.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
                           </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          disabled={deleting === notification.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(notification.id);
-                          }}
-                        >
-                          {deleting === notification.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </Button>
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
+                    </CardContent>
+                  </Card>
+                );
+              })
             )}
           </div>
 
@@ -381,7 +427,10 @@ export default function Notifications() {
                 {selectedNotification ? (
                   <div className="space-y-4">
                     <div className="flex items-center gap-3">
-                      <div className={`p-3 rounded-full ${NOTIFICATION_COLORS[selectedNotification.type] || NOTIFICATION_COLORS.general}`}>
+                      <div className={cn(
+                        "p-3 rounded-full",
+                        NOTIFICATION_COLORS[selectedNotification.type] || NOTIFICATION_COLORS.general
+                      )}>
                         {NOTIFICATION_ICONS[selectedNotification.type] || NOTIFICATION_ICONS.general}
                       </div>
                       <div>
@@ -409,6 +458,39 @@ export default function Notifications() {
                           {selectedNotification.is_read ? 'مقروء' : 'غير مقروء'}
                         </Badge>
                       </div>
+                      
+                      {/* Payment details */}
+                      {selectedNotification.type === 'payment' && selectedNotification.metadata && (
+                        <>
+                          {selectedNotification.metadata.payment_method && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground">طريقة الدفع:</span>
+                              <PaymentMethodBadge method={selectedNotification.metadata.payment_method} />
+                            </div>
+                          )}
+                          {selectedNotification.metadata.amount && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">المبلغ:</span>
+                              <span className="font-medium ltr-nums">
+                                ₪{selectedNotification.metadata.amount.toLocaleString()}
+                              </span>
+                            </div>
+                          )}
+                          {selectedNotification.metadata.client_name && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">العميل:</span>
+                              <span>{selectedNotification.metadata.client_name}</span>
+                            </div>
+                          )}
+                          {selectedNotification.metadata.reference && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">رقم المرجع:</span>
+                              <span className="ltr-nums">{selectedNotification.metadata.reference}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      
                       {selectedNotification.read_at && (
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">تمت القراءة:</span>
@@ -450,7 +532,10 @@ export default function Notifications() {
           </AlertDialogHeader>
           <AlertDialogFooter className="gap-2">
             <AlertDialogCancel>إلغاء</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteAll} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction
+              onClick={handleDeleteAll}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
               حذف الكل
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -33,6 +33,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { SidebarNotificationBadge } from "./SidebarNotificationBadge";
 
 // Navigation items - some are admin-only
 const getNavigation = (isAdmin: boolean) => {
@@ -140,13 +141,14 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
         </div>
         {getNavigation(isAdmin).map((item) => {
           const isActiveRoute = location.pathname === item.href;
+          const isNotifications = item.href === '/notifications';
           return (
             <NavLink
               key={item.name}
               to={item.href}
               onClick={handleNavClick}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
+                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 relative",
                 isActiveRoute
                   ? "bg-primary/10 text-primary"
                   : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -155,6 +157,7 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
             >
               <item.icon className={cn("h-5 w-5 flex-shrink-0", isActiveRoute && "text-primary")} />
               {!collapsed && <span>{item.name}</span>}
+              {isNotifications && <SidebarNotificationBadge collapsed={collapsed} />}
             </NavLink>
           );
         })}

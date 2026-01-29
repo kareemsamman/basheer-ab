@@ -19,8 +19,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { useNotifications, Notification } from '@/hooks/useNotifications';
+import { PaymentMethodBadge } from '@/components/notifications/PaymentMethodBadge';
 import { formatDistanceToNow } from 'date-fns';
 import { ar } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 const NOTIFICATION_ICONS: Record<string, React.ReactNode> = {
   signature: <FileSignature className="h-4 w-4 text-emerald-500" />,
@@ -44,7 +46,16 @@ const NOTIFICATION_COLORS: Record<string, string> = {
 
 export function NotificationsDropdown() {
   const navigate = useNavigate();
-  const { notifications, unreadCount, loading, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
+  const { 
+    notifications, 
+    unreadCount, 
+    loading, 
+    markAsRead, 
+    markAllAsRead, 
+    deleteNotification,
+    recentlyArrivedIds,
+    badgePulse
+  } = useNotifications();
   const [open, setOpen] = useState(false);
 
   const handleNotificationClick = async (notification: Notification) => {
@@ -68,14 +79,24 @@ export function NotificationsDropdown() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative h-9 w-9 md:h-10 md:w-10">
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className={cn(
+            "relative h-9 w-9 md:h-10 md:w-10",
+            badgePulse && "animate-pulse"
+          )}
+        >
           <Bell className="h-4 w-4 md:h-5 md:w-5 text-muted-foreground" />
           {unreadCount > 0 && (
             <Badge 
-              className="absolute -left-1 -top-1 h-5 w-5 rounded-full p-0 text-[10px] flex items-center justify-center border-2 border-background" 
+              className={cn(
+                "absolute -left-1 -top-1 h-5 w-5 rounded-full p-0 text-[10px] flex items-center justify-center border-2 border-background",
+                badgePulse && "ring-2 ring-destructive/50"
+              )}
               variant="destructive"
             >
-              {unreadCount > 99 ? '99+' : unreadCount}
+              <span className="ltr-nums">{unreadCount > 99 ? '99+' : unreadCount}</span>
             </Badge>
           )}
         </Button>
@@ -92,7 +113,7 @@ export function NotificationsDropdown() {
             <h3 className="font-semibold">الإشعارات</h3>
             {unreadCount > 0 && (
               <Badge variant="secondary" className="text-xs">
-                {unreadCount} جديد
+                <span className="ltr-nums">{unreadCount}</span> جديد
               </Badge>
             )}
           </div>
@@ -131,68 +152,91 @@ export function NotificationsDropdown() {
             </div>
           ) : (
             <div className="divide-y divide-border/50">
-              {notifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  className={`group p-4 hover:bg-muted/50 cursor-pointer transition-all duration-200 ${
-                    !notification.is_read ? 'bg-primary/5' : ''
-                  }`}
-                  onClick={() => handleNotificationClick(notification)}
-                >
-                  <div className="flex items-start gap-3">
-                    {/* Icon */}
-                    <div className={`p-2.5 rounded-full flex-shrink-0 ${NOTIFICATION_COLORS[notification.type] || NOTIFICATION_COLORS.general}`}>
-                      {NOTIFICATION_ICONS[notification.type] || NOTIFICATION_ICONS.general}
-                    </div>
-                    
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <p className={`text-sm font-medium leading-tight ${!notification.is_read ? 'text-foreground' : 'text-muted-foreground'}`}>
-                          {notification.title}
-                        </p>
-                        {!notification.is_read && (
-                          <span className="h-2 w-2 rounded-full bg-primary flex-shrink-0 animate-pulse" />
-                        )}
+              {notifications.map((notification) => {
+                const isRecentlyArrived = recentlyArrivedIds.has(notification.id);
+                const paymentMethod = notification.metadata?.payment_method;
+                
+                return (
+                  <div
+                    key={notification.id}
+                    className={cn(
+                      "group p-4 hover:bg-muted/50 cursor-pointer transition-all duration-200",
+                      !notification.is_read && 'bg-primary/5',
+                      isRecentlyArrived && 'animate-in slide-in-from-top-2 duration-300 bg-primary/10'
+                    )}
+                    onClick={() => handleNotificationClick(notification)}
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* Icon */}
+                      <div className={cn(
+                        "p-2.5 rounded-full flex-shrink-0",
+                        NOTIFICATION_COLORS[notification.type] || NOTIFICATION_COLORS.general
+                      )}>
+                        {NOTIFICATION_ICONS[notification.type] || NOTIFICATION_ICONS.general}
                       </div>
-                      <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-                        {notification.message}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground/70 mt-1.5">
-                        {formatTime(notification.created_at)}
-                      </p>
-                    </div>
-                    
-                    {/* Actions */}
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {!notification.is_read && (
+                      
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                          <p className={cn(
+                            "text-sm font-medium leading-tight",
+                            !notification.is_read ? 'text-foreground' : 'text-muted-foreground'
+                          )}>
+                            {notification.title}
+                          </p>
+                          {!notification.is_read && (
+                            <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4">
+                              جديد
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                          {notification.message}
+                        </p>
+                        
+                        {/* Payment method badge for payment notifications */}
+                        {notification.type === 'payment' && paymentMethod && (
+                          <div className="mt-1.5">
+                            <PaymentMethodBadge method={paymentMethod} />
+                          </div>
+                        )}
+                        
+                        <p className="text-[11px] text-muted-foreground/70 mt-1.5">
+                          {formatTime(notification.created_at)}
+                        </p>
+                      </div>
+                      
+                      {/* Actions */}
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {!notification.is_read && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-primary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              markAsRead(notification.id);
+                            }}
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-primary"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
                           onClick={(e) => {
                             e.stopPropagation();
-                            markAsRead(notification.id);
+                            deleteNotification(notification.id);
                           }}
                         >
-                          <Check className="h-3.5 w-3.5" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteNotification(notification.id);
-                        }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </ScrollArea>
