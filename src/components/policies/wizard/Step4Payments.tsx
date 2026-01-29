@@ -138,13 +138,13 @@ export function Step4Payments({
     setPayments(payments.filter(p => p.id !== id));
   };
 
-  // Split payment into equal installments
+  // Split remaining amount into equal installments (keeps locked payments)
   const handleSplitPayments = () => {
-    if (splitCount < 2 || splitCount > 12) return;
+    if (splitCount < 2 || splitCount > 12 || remainingToPay <= 0) return;
     
-    const totalAmount = pricing.totalPrice;
-    const amountPerInstallment = Math.floor(totalAmount / splitCount);
-    const remainder = totalAmount - (amountPerInstallment * splitCount);
+    const amountToSplit = remainingToPay;
+    const amountPerInstallment = Math.floor(amountToSplit / splitCount);
+    const remainder = amountToSplit - (amountPerInstallment * splitCount);
     
     const today = new Date();
     const newPayments: PaymentLine[] = [];
@@ -165,7 +165,9 @@ export function Step4Payments({
       });
     }
     
-    setPayments(newPayments);
+    // Keep locked payments, remove unlocked ones, add new split payments
+    const lockedPayments = payments.filter(p => p.locked === true);
+    setPayments([...lockedPayments, ...newPayments]);
     setSplitPopoverOpen(false);
   };
 
@@ -238,65 +240,62 @@ export function Step4Payments({
         <div className="flex items-center justify-between">
           <Label className="text-base font-semibold">الدفعات</Label>
           <div className="flex gap-2">
-            {/* Split Payments Button - hidden for ELZAMI */}
-            {!isElzami && (
-              <Popover open={splitPopoverOpen} onOpenChange={setSplitPopoverOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                  >
-                    <Split className="h-4 w-4" />
-                    تقسيط
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64" align="end" dir="rtl">
-                  <div className="space-y-4">
-                    <h4 className="font-semibold text-sm">تقسيط المبلغ</h4>
-                    <div className="space-y-2">
-                      <Label className="text-xs">عدد الأقساط (2-12)</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          type="number"
-                          min={2}
-                          max={12}
-                          value={splitCount}
-                          onChange={(e) => setSplitCount(Math.min(12, Math.max(2, parseInt(e.target.value) || 2)))}
-                          className="h-9"
-                        />
-                        <Button 
-                          type="button" 
-                          size="sm" 
-                          onClick={handleSplitPayments}
-                          className="h-9 px-4"
-                        >
-                          تقسيم
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        سيتم تقسيم {pricing.totalPrice} ₪ إلى {splitCount} دفعات متساوية
-                      </p>
+            {/* Split Payments Button - always show, splits remaining amount */}
+            <Popover open={splitPopoverOpen} onOpenChange={setSplitPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  disabled={remainingToPay <= 0}
+                >
+                  <Split className="h-4 w-4" />
+                  تقسيط
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64" align="end" dir="rtl">
+                <div className="space-y-4">
+                  <h4 className="font-semibold text-sm">تقسيط المبلغ المتبقي</h4>
+                  <div className="space-y-2">
+                    <Label className="text-xs">عدد الأقساط (2-12)</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        min={2}
+                        max={12}
+                        value={splitCount}
+                        onChange={(e) => setSplitCount(Math.min(12, Math.max(2, parseInt(e.target.value) || 2)))}
+                        className="h-9"
+                      />
+                      <Button 
+                        type="button" 
+                        size="sm" 
+                        onClick={handleSplitPayments}
+                        className="h-9 px-4"
+                      >
+                        تقسيم
+                      </Button>
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      سيتم تقسيم {remainingToPay} ₪ إلى {splitCount} دفعات متساوية
+                    </p>
                   </div>
-                </PopoverContent>
-              </Popover>
-            )}
+                </div>
+              </PopoverContent>
+            </Popover>
             
-            {/* Add Payment Button - hidden for ELZAMI */}
-            {!isElzami && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={addPayment}
-                className="gap-2"
-              >
-                <Plus className="h-4 w-4" />
-                إضافة دفعة
-              </Button>
-            )}
+            {/* Add Payment Button - always show */}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addPayment}
+              className="gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              إضافة دفعة
+            </Button>
           </div>
         </div>
 
