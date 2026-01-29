@@ -158,34 +158,55 @@ const WordPressImport = () => {
     return () => window.clearInterval(interval);
   }, [updatingPoliciesOnly]);
 
-  // Fetch unpaid ELZAMI count on mount
+  // Fetch unpaid ELZAMI count on mount - using paginated queries to handle >1000 records
   const fetchUnpaidElzamiCount = async () => {
     try {
-      // Get all ELZAMI policies
-      const { data: elzamiPolicies, error: policiesError } = await supabase
-        .from('policies')
-        .select('id')
-        .eq('policy_type_parent', 'ELZAMI');
+      // Use a paginated approach to get ALL ELZAMI policies
+      const allElzamiIds: string[] = [];
+      let offset = 0;
+      const pageSize = 1000;
       
-      if (policiesError) throw policiesError;
+      while (true) {
+        const { data: batch, error: policiesError } = await supabase
+          .from('policies')
+          .select('id')
+          .eq('policy_type_parent', 'ELZAMI')
+          .range(offset, offset + pageSize - 1);
+        
+        if (policiesError) throw policiesError;
+        if (!batch || batch.length === 0) break;
+        
+        allElzamiIds.push(...batch.map(p => p.id));
+        if (batch.length < pageSize) break;
+        offset += pageSize;
+      }
       
-      const policyIds = elzamiPolicies?.map(p => p.id) || [];
-      if (policyIds.length === 0) {
+      if (allElzamiIds.length === 0) {
         setElzamiUnpaidCount(0);
         return;
       }
       
-      // Get policies that have non-refused payments
-      const { data: paidPolicies, error: paymentsError } = await supabase
-        .from('policy_payments')
-        .select('policy_id')
-        .in('policy_id', policyIds)
-        .eq('refused', false);
+      // Get ALL policies that have non-refused payments (paginated)
+      const allPaidPolicyIds = new Set<string>();
+      offset = 0;
       
-      if (paymentsError) throw paymentsError;
+      while (true) {
+        const { data: paidBatch, error: paymentsError } = await supabase
+          .from('policy_payments')
+          .select('policy_id')
+          .in('policy_id', allElzamiIds)
+          .eq('refused', false)
+          .range(offset, offset + pageSize - 1);
+        
+        if (paymentsError) throw paymentsError;
+        if (!paidBatch || paidBatch.length === 0) break;
+        
+        paidBatch.forEach(p => allPaidPolicyIds.add(p.policy_id));
+        if (paidBatch.length < pageSize) break;
+        offset += pageSize;
+      }
       
-      const paidPolicyIds = new Set(paidPolicies?.map(p => p.policy_id) || []);
-      const unpaidCount = policyIds.filter(id => !paidPolicyIds.has(id)).length;
+      const unpaidCount = allElzamiIds.filter(id => !allPaidPolicyIds.has(id)).length;
       setElzamiUnpaidCount(unpaidCount);
     } catch (e) {
       console.error('Error fetching unpaid ELZAMI count:', e);
@@ -203,30 +224,55 @@ const WordPressImport = () => {
     const stats = { found: 0, fixed: 0, errors: [] as string[] };
     
     try {
-      // 1. Fetch all ELZAMI policies
-      const { data: elzamiPolicies, error } = await supabase
-        .from('policies')
-        .select('id, policy_number, insurance_price, start_date')
-        .eq('policy_type_parent', 'ELZAMI');
+      // 1. Fetch ALL ELZAMI policies using pagination (to handle >1000 records)
+      const allElzamiPolicies: { id: string; policy_number: string | null; insurance_price: number | null; start_date: string | null }[] = [];
+      let offset = 0;
+      const pageSize = 1000;
       
-      if (error) throw error;
+      while (true) {
+        const { data: batch, error } = await supabase
+          .from('policies')
+          .select('id, policy_number, insurance_price, start_date')
+          .eq('policy_type_parent', 'ELZAMI')
+          .range(offset, offset + pageSize - 1);
+        
+        if (error) throw error;
+        if (!batch || batch.length === 0) break;
+        
+        allElzamiPolicies.push(...batch);
+        if (batch.length < pageSize) break;
+        offset += pageSize;
+      }
       
-      const policyIds = elzamiPolicies?.map(p => p.id) || [];
-      if (policyIds.length === 0) {
+      if (allElzamiPolicies.length === 0) {
         toast({ title: "لا توجد وثائق إلزامي", description: "لم يتم العثور على أي وثائق إلزامي" });
         setFixingElzami(false);
         return;
       }
       
-      // 2. Get policies that already have non-refused payments
-      const { data: existingPayments } = await supabase
-        .from('policy_payments')
-        .select('policy_id')
-        .in('policy_id', policyIds)
-        .eq('refused', false);
+      const policyIds = allElzamiPolicies.map(p => p.id);
       
-      const paidPolicyIds = new Set(existingPayments?.map(p => p.policy_id) || []);
-      const needsPayment = elzamiPolicies?.filter(p => !paidPolicyIds.has(p.id)) || [];
+      // 2. Get ALL policies that already have non-refused payments (paginated)
+      const paidPolicyIds = new Set<string>();
+      offset = 0;
+      
+      while (true) {
+        const { data: paidBatch, error: paymentsError } = await supabase
+          .from('policy_payments')
+          .select('policy_id')
+          .in('policy_id', policyIds)
+          .eq('refused', false)
+          .range(offset, offset + pageSize - 1);
+        
+        if (paymentsError) throw paymentsError;
+        if (!paidBatch || paidBatch.length === 0) break;
+        
+        paidBatch.forEach(p => paidPolicyIds.add(p.policy_id));
+        if (paidBatch.length < pageSize) break;
+        offset += pageSize;
+      }
+      
+      const needsPayment = allElzamiPolicies.filter(p => !paidPolicyIds.has(p.id));
       
       stats.found = needsPayment.length;
       
