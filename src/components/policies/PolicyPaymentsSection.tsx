@@ -165,9 +165,13 @@ export function PolicyPaymentsSection({
   const effectiveRemaining = remaining - paidVisaTotal;
   const isOverpaying = pendingPaymentsTotal > effectiveRemaining;
   
+  // Check for unpaid visa payments
+  const hasUnpaidVisa = paymentLines.some(p => p.paymentType === 'visa' && !p.tranzilaPaid);
+
   const isValid = paymentLines.length > 0 && 
     totalPaymentAmount > 0 && 
     !isOverpaying &&
+    !hasUnpaidVisa && // Block if unpaid visa exists
     paymentLines.every(p => {
       if (p.paymentType === 'cheque' && !p.chequeNumber?.trim()) return false;
       if (p.paymentType === 'visa' && !p.tranzilaPaid && p.amount <= 0) return false;
@@ -1010,6 +1014,13 @@ export function PolicyPaymentsSection({
                 مجموع الدفعات أكبر من المبلغ المتبقي ({formatCurrency(effectiveRemaining)})
               </p>
             )}
+
+            {hasUnpaidVisa && (
+              <div className="flex items-center gap-2 text-amber-600 text-sm p-2 bg-amber-50 dark:bg-amber-950/20 rounded-lg">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>يرجى إتمام الدفع بالبطاقة أولاً قبل الحفظ</span>
+              </div>
+            )}
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setAddDialogOpen(false)}>إلغاء</Button>
@@ -1048,9 +1059,12 @@ export function PolicyPaymentsSection({
               <Select value={editFormData.payment_type} onValueChange={(v) => setEditFormData(f => ({ ...f, payment_type: v }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {paymentTypes.map(type => (
-                    <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
-                  ))}
+                  {/* Filter out visa from edit - visa payments must go through Tranzila */}
+                  {paymentTypes
+                    .filter(type => type.value !== 'visa')
+                    .map(type => (
+                      <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>

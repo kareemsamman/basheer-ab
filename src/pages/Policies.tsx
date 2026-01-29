@@ -650,8 +650,8 @@ export default function Policies() {
         onOpenChange={setDetailsOpen}
         policyId={selectedPolicyId}
         onUpdated={() => {
-          // Silent background refresh
-          setTimeout(() => fetchPolicies(), 500);
+          // Immediate refresh without delay
+          fetchPolicies();
         }}
         onViewRelatedPolicy={(policyId) => {
           setSelectedPolicyId(policyId);
