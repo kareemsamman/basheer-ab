@@ -81,19 +81,21 @@ export function RecentActivity() {
         }
       }
 
-      // Fetch recent payments (last 10) - filter out cancelled policies
+      // Fetch recent payments (last 10) - filter out cancelled policies and ELZAMI
       const { data: payments } = await supabase
         .from("policy_payments")
-        .select("id, created_at, amount, policies(cancelled, clients(full_name, deleted_at))")
+        .select("id, created_at, amount, policies(cancelled, policy_type_parent, clients(full_name, deleted_at))")
         .order("created_at", { ascending: false })
         .match(branchFilter)
-        .limit(10);
+        .limit(15); // Fetch more to account for filtered ELZAMI
 
       if (payments) {
         for (const pay of payments) {
           // Skip if policy is cancelled or client is deleted
           if ((pay.policies as any)?.cancelled) continue;
           if ((pay.policies as any)?.clients?.deleted_at) continue;
+          // Skip ELZAMI payments - money goes directly to company, not agent
+          if ((pay.policies as any)?.policy_type_parent === 'ELZAMI') continue;
           
           const clientName = (pay.policies as any)?.clients?.full_name || "عميل";
           results.push({

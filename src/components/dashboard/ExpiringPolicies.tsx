@@ -16,7 +16,16 @@ interface ExpiringPolicy {
   client: { full_name: string } | null;
   car: { car_number: string } | null;
   company: { name: string; name_ar: string | null } | null;
+  renewal_tracking: { renewal_status: string | null }[] | null;
 }
+
+const renewalStatusLabels: Record<string, { label: string; color: string }> = {
+  pending: { label: "قيد الانتظار", color: "bg-muted text-muted-foreground" },
+  sms_sent: { label: "تم إرسال SMS", color: "bg-blue-500/10 text-blue-600 border-blue-500/30" },
+  called: { label: "تم الاتصال", color: "bg-amber-500/10 text-amber-600 border-amber-500/30" },
+  renewed: { label: "تم التجديد", color: "bg-success/10 text-success border-success/30" },
+  not_interested: { label: "غير مهتم", color: "bg-destructive/10 text-destructive border-destructive/30" },
+};
 
 const policyTypeLabels: Record<string, string> = {
   ELZAMI: "إلزامي",
@@ -46,7 +55,8 @@ export function ExpiringPolicies() {
           id, end_date, policy_type_parent, insurance_price,
           client:clients(full_name),
           car:cars(car_number),
-          company:insurance_companies(name, name_ar)
+          company:insurance_companies(name, name_ar),
+          renewal_tracking:policy_renewal_tracking(renewal_status)
         `)
         .is("deleted_at", null)
         .eq("cancelled", false)
@@ -74,7 +84,7 @@ export function ExpiringPolicies() {
             <Badge variant="destructive" className="mr-2">{policies.length}</Badge>
           )}
         </div>
-        <Button variant="ghost" size="sm" className="text-primary" onClick={() => navigate("/debt-tracking")}>
+        <Button variant="ghost" size="sm" className="text-primary" onClick={() => navigate("/reports/policies?tab=renewals")}>
           عرض الكل <ChevronLeft className="mr-1 h-4 w-4" />
         </Button>
       </CardHeader>
@@ -101,27 +111,36 @@ export function ExpiringPolicies() {
             <p>لا توجد وثائق تنتهي خلال 30 يوم</p>
           </div>
         ) : (
-          policies.map((policy) => (
-            <div 
-              key={policy.id} 
-              className="flex items-center justify-between rounded-lg bg-secondary/50 p-3 transition-colors hover:bg-secondary cursor-pointer"
-              onClick={() => navigate("/policies")}
-            >
-              <div className="flex items-center gap-3">
-                <ExpiryBadge endDate={policy.end_date} showDays={true} />
-                <div>
-                  <p className="font-medium text-foreground">{policy.client?.full_name || "غير معروف"}</p>
-                  <p className="text-sm text-muted-foreground"><bdi>{policy.car?.car_number || "-"}</bdi></p>
+          policies.map((policy) => {
+            const renewalStatus = policy.renewal_tracking?.[0]?.renewal_status;
+            const statusInfo = renewalStatus ? renewalStatusLabels[renewalStatus] : null;
+            
+            return (
+              <div 
+                key={policy.id} 
+                className="flex items-center justify-between rounded-lg bg-secondary/50 p-3 transition-colors hover:bg-secondary cursor-pointer"
+                onClick={() => navigate("/reports/policies?tab=renewals")}
+              >
+                <div className="flex items-center gap-3">
+                  <ExpiryBadge endDate={policy.end_date} showDays={true} />
+                  <div>
+                    <p className="font-medium text-foreground">{policy.client?.full_name || "غير معروف"}</p>
+                    <p className="text-sm text-muted-foreground"><bdi>{policy.car?.car_number || "-"}</bdi></p>
+                  </div>
+                </div>
+                <div className="text-left flex flex-col items-end gap-1">
+                  <Badge variant="outline" className="text-xs">
+                    {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
+                  </Badge>
+                  {statusInfo && (
+                    <Badge variant="outline" className={`text-xs ${statusInfo.color}`}>
+                      {statusInfo.label}
+                    </Badge>
+                  )}
                 </div>
               </div>
-              <div className="text-left">
-                <Badge variant="outline" className="mb-1">
-                  {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
-                </Badge>
-                <p className="text-xs text-muted-foreground">{policy.company?.name_ar || policy.company?.name || "-"}</p>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </CardContent>
     </Card>
