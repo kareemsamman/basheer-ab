@@ -1,138 +1,105 @@
 
-# خطة إصلاح مشاكل عرض الوثائق والتابعين
+# خطة إصلاح النشاط الأخير ووثائق تنتهي قريباً وإضافة ملخص التجديدات
 
 ## المشاكل المحددة
 
-### 1. الوثيقة الجديدة لا تظهر فوراً (تظهر "وثيقة 3" بدلاً من "وثيقة 4")
-**السبب**: على الرغم من أن `onSaved` في `PolicyWizard.tsx` يستدعي `fetchPolicies()` و `fetchPaymentSummary()` بعد تأخير 150ms، إلا أن العداد في الواجهة يعتمد على state `policies` والتي قد لا تُحدّث بشكل صحيح.
+### 1. النشاط الأخير يعرض دفعات الإلزامي (خطأ تجاري)
+**المشكلة**: عند استلام دفعة من وثيقة إلزامي، يظهر إشعار "دفعة مستلمة ₪X من العميل" رغم أن هذا المبلغ يذهب مباشرة لشركة التأمين وليس للوكيل.
 
-**التحليل**:
-- الكود في `ClientDetails.tsx` (سطور 1428-1439) يستدعي `Promise.all([fetchPolicies(), fetchPaymentSummary(), fetchPayments(), fetchCars()])` بعد تأخير 100ms
-- المشكلة المحتملة: التأخير غير كافٍ أو أن الحالة لا تُحدّث بسبب closure قديم
+**الحل**: استبعاد دفعات وثائق الإلزامي من قسم "النشاط الأخير" في Dashboard.
 
-### 2. معلومات التابعين (الأولاد المسموح لهم بالقيادة) لا تظهر في البطاقات
-**السبب**: 
-- `PolicyYearTimeline.tsx` لا يجلب معلومات `policy_children` من قاعدة البيانات
-- البطاقات لا تعرض مؤشر للتابعين
-- الواجهة `PolicyRecord` لا تتضمن عدد التابعين
+### 2. ودجت "وثائق تنتهي قريباً" لا تتطابق مع صفحة التقارير
+**المشكلة الحالية**: 
+- الودجت تعرض 6 وثائق فقط بدون تفاصيل كافية
+- عند الضغط على "عرض الكل" تذهب لـ `/debt-tracking` بدلاً من `/reports/policies`
+- لا تعرض معلومات حالة التجديد (تم الاتصال، تم إرسال SMS، إلخ)
+
+**الحل**: تحديث الودجت لتتطابق مع صفحة التجديدات وتوجيه "عرض الكل" إلى `/reports/policies`
+
+### 3. صفحة تقارير الوثائق تفتقد ملخص إحصائي قبل الجدول
+**المشكلة**: المستخدم يريد رؤية ملخص سريع للأرقام قبل الجدول:
+- عدد التجديدات الإجمالي
+- عدد الذين تم إرسال SMS لهم
+- عدد الذين تم الاتصال بهم
+- إلخ
+
+**الحل**: الملخص الإحصائي موجود بالفعل (سطور 957-984)! لكنه يُعرض فقط عند وجود `renewalsSummary`. سنتحقق من أنه يظهر دائماً.
 
 ---
 
 ## التغييرات المطلوبة
 
-### الجزء 1: إصلاح التحديث الفوري للوثائق
+### الجزء 1: استبعاد دفعات الإلزامي من النشاط الأخير
 
 | الملف | التغيير |
 |------|---------|
-| `src/components/policies/PolicyWizard.tsx` | زيادة التأخير من 150ms إلى 300ms لضمان اكتمال عمليات الكتابة في قاعدة البيانات |
-| `src/components/clients/ClientDetails.tsx` | استدعاء مباشر (بدون `setTimeout` في `Promise.all`) + إضافة `key` للـ `PolicyYearTimeline` لإجبار إعادة العرض |
+| `src/components/dashboard/RecentActivity.tsx` | تعديل query الدفعات لجلب `policy_type_parent` واستبعاد `ELZAMI` |
 
-### الجزء 2: إضافة عرض التابعين في البطاقات
+```typescript
+// التعديل المطلوب - إضافة policy_type_parent للـ select
+const { data: payments } = await supabase
+  .from("policy_payments")
+  .select("id, created_at, amount, policies(cancelled, policy_type_parent, clients(full_name, deleted_at))")
+  .order("created_at", { ascending: false })
+  .match(branchFilter)
+  .limit(10);
+
+// ثم في الـ loop:
+for (const pay of payments) {
+  // Skip ELZAMI payments - money goes to company, not agent
+  if ((pay.policies as any)?.policy_type_parent === 'ELZAMI') continue;
+  // ... rest of logic
+}
+```
+
+### الجزء 2: تحديث ودجت "وثائق تنتهي قريباً"
 
 | الملف | التغيير |
 |------|---------|
-| `src/components/clients/PolicyYearTimeline.tsx` | 1. جلب `policy_children` لكل الوثائق<br>2. إضافة state لتخزين عدد الأولاد لكل وثيقة<br>3. عرض badge "👨‍👦 X سائق" في البطاقات |
+| `src/components/dashboard/ExpiringPolicies.tsx` | 1. تغيير الرابط من `/debt-tracking` إلى `/reports/policies?tab=renewals`<br>2. إضافة جلب حالة التجديد لكل وثيقة<br>3. عرض badge الحالة (تم إرسال SMS، إلخ) |
 
----
-
-## التفاصيل التقنية
-
-### 1. تعديل PolicyWizard.tsx
+**التفاصيل:**
 ```typescript
-// سطر 1067-1069 - زيادة التأخير
-setTimeout(() => {
-  onSaved?.();
-}, 300); // زيادة من 150 إلى 300
-```
+// إضافة للـ interface
+interface ExpiringPolicy {
+  // ... existing fields
+  renewal_status: string | null;
+}
 
-### 2. تعديل ClientDetails.tsx
-```typescript
-// سطر 1428-1439 - إضافة key ديناميكي للـ Timeline
-const [policiesRefreshKey, setPoliciesRefreshKey] = useState(0);
+// تحديث الـ query
+const { data, error } = await supabase
+  .from("policies")
+  .select(`
+    id, end_date, policy_type_parent, insurance_price,
+    client:clients(full_name),
+    car:cars(car_number),
+    company:insurance_companies(name, name_ar),
+    renewal_tracking:policy_renewal_tracking(renewal_status)
+  `)
+  // ... same filters
 
-// في onSaved:
-onSaved={async () => {
-  setPolicyWizardOpen(false);
-  await new Promise(resolve => setTimeout(resolve, 100));
-  await Promise.all([
-    fetchPolicies(),
-    fetchPaymentSummary(),
-    fetchPayments(),
-    fetchCars(),
-  ]);
-  setPoliciesRefreshKey(prev => prev + 1); // إجبار إعادة العرض
-  onRefresh();
-}}
+// تغيير زر "عرض الكل"
+onClick={() => navigate("/reports/policies?tab=renewals")}
 
-// في JSX:
-<PolicyYearTimeline 
-  key={policiesRefreshKey}
-  policies={filteredPolicies}
-  ...
-/>
-```
-
-### 3. تعديل PolicyYearTimeline.tsx
-
-**إضافة state لعدد التابعين:**
-```typescript
-const [childrenInfo, setChildrenInfo] = useState<Record<string, number>>({});
-
-// Fetch children count per policy
-useEffect(() => {
-  const fetchChildrenInfo = async () => {
-    if (policies.length === 0) {
-      setChildrenInfo({});
-      return;
-    }
-
-    const policyIds = policies.map(p => p.id);
-    
-    try {
-      const { data } = await supabase
-        .from('policy_children')
-        .select('policy_id')
-        .in('policy_id', policyIds);
-
-      const counts: Record<string, number> = {};
-      (data || []).forEach(row => {
-        counts[row.policy_id] = (counts[row.policy_id] || 0) + 1;
-      });
-
-      setChildrenInfo(counts);
-    } catch (error) {
-      console.error('Error fetching children info:', error);
-    }
-  };
-
-  fetchChildrenInfo();
-}, [policies]);
-```
-
-**تمرير عدد التابعين للبطاقة:**
-```typescript
-// في سطر 598
-const childrenCount = pkg.allPolicyIds.reduce((sum, id) => sum + (childrenInfo[id] || 0), 0);
-
-<PolicyPackageCard
-  ...
-  childrenCount={childrenCount}
-/>
-```
-
-**عرض badge التابعين في البطاقة:**
-```typescript
-// في PolicyPackageCard - إضافة prop
-childrenCount?: number;
-
-// في JSX بعد badge "جديدة":
-{childrenCount > 0 && (
-  <Badge variant="outline" className="gap-1 bg-indigo-500/10 text-indigo-700 border-indigo-500/30">
-    <Users className="h-3 w-3" />
-    {childrenCount} سائق إضافي
+// عرض badge الحالة في كل بطاقة
+{policy.renewal_tracking?.[0]?.renewal_status && (
+  <Badge variant="outline" className={statusColor}>
+    {statusLabel}
   </Badge>
 )}
 ```
+
+### الجزء 3: التأكد من ظهور ملخص الإحصائيات
+
+الملخص موجود بالفعل في `PolicyReports.tsx` سطور 957-984، ويعرض:
+- إجمالي المنتهية
+- لم يتم التواصل  
+- تم إرسال SMS
+- تم الاتصال
+- تم التجديد
+- غير مهتم
+
+**الفحص**: التأكد من أن `report_renewals_summary` database function تُرجع البيانات بشكل صحيح.
 
 ---
 
@@ -140,14 +107,12 @@ childrenCount?: number;
 
 | الملف | نوع التغيير |
 |-------|-------------|
-| `src/components/policies/PolicyWizard.tsx` | تعديل (زيادة التأخير) |
-| `src/components/clients/ClientDetails.tsx` | تعديل (إضافة refresh key) |
-| `src/components/clients/PolicyYearTimeline.tsx` | تعديل (جلب وعرض التابعين) |
+| `src/components/dashboard/RecentActivity.tsx` | تعديل (استبعاد دفعات ELZAMI) |
+| `src/components/dashboard/ExpiringPolicies.tsx` | تعديل (رابط + حالة التجديد) |
 
 ## النتائج المتوقعة
 
-- ✅ الوثيقة الجديدة تظهر فوراً بعد الإنشاء (العداد يتحدث من 3 إلى 4)
-- ✅ badge "سائق إضافي" يظهر على البطاقات التي تحتوي على تابعين
-- ✅ التابعين يظهرون في تفاصيل الوثيقة (موجود مسبقاً)
-- ✅ التابعين يظهرون في تقرير العميل الشامل (موجود مسبقاً)
-- ✅ التابعين يُرسلون مع الفواتير للعميل (موجود مسبقاً في edge function)
+- ✅ دفعات الإلزامي لا تظهر في "النشاط الأخير" (لأن المال يذهب للشركة)
+- ✅ زر "عرض الكل" في ودجت الوثائق المنتهية يوجه لصفحة التقارير
+- ✅ عرض حالة التجديد (تم إرسال SMS، تم الاتصال) في ودجت الوثائق المنتهية
+- ✅ ملخص الإحصائيات يظهر في أعلى صفحة التجديدات (موجود مسبقاً)
