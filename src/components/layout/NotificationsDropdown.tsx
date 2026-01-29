@@ -20,6 +20,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { useNotifications, Notification } from '@/hooks/useNotifications';
 import { PaymentMethodBadge } from '@/components/notifications/PaymentMethodBadge';
+import { PaymentTypeBadges } from '@/components/notifications/PaymentTypeBadges';
 import { formatDistanceToNow } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -154,7 +155,7 @@ export function NotificationsDropdown() {
             <div className="divide-y divide-border/50">
               {notifications.map((notification) => {
                 const isRecentlyArrived = recentlyArrivedIds.has(notification.id);
-                const paymentMethod = notification.metadata?.payment_method;
+                const isPayment = notification.type === 'payment';
                 
                 return (
                   <div
@@ -194,10 +195,11 @@ export function NotificationsDropdown() {
                           {notification.message}
                         </p>
                         
-                        {/* Payment method badge for payment notifications */}
-                        {notification.type === 'payment' && paymentMethod && (
-                          <div className="mt-1.5">
-                            <PaymentMethodBadge method={paymentMethod} />
+                        {/* Payment badges for payment notifications */}
+                        {isPayment && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            <PaymentMethodBadge metadata={notification.metadata} />
+                            <PaymentTypeBadges metadata={notification.metadata} />
                           </div>
                         )}
                         

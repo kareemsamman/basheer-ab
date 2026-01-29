@@ -3,12 +3,45 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
 
+// Payment cheque details
+export interface PaymentChequeDetails {
+  number?: string;
+  due_date?: string;
+  bank_name?: string;
+}
+
+// Payment installment details
+export interface PaymentInstallmentDetails {
+  index?: number;
+  total?: number;
+}
+
+// Structured payment details inside metadata
+export interface PaymentDetails {
+  payment_id?: string;
+  policy_id?: string | null;
+  client_id?: string;
+  client_name?: string;
+  amount?: number;
+  currency?: string;
+  method?: 'cash' | 'cheque' | 'visa' | 'transfer';
+  type?: 'premium' | 'renewal' | 'settlement' | 'commission' | 'debt_payment' | 'refund' | 'installment' | 'other';
+  type_labels?: string[];
+  reference?: string | null;
+  notes?: string | null;
+  cheque?: PaymentChequeDetails | null;
+  installment?: PaymentInstallmentDetails | null;
+}
+
 export interface NotificationMetadata {
+  // Legacy flat fields for backward compatibility
   payment_method?: 'cash' | 'cheque' | 'visa' | 'transfer';
   amount?: number;
   client_name?: string;
   payment_id?: string;
   reference?: string;
+  // New structured payment object
+  payment?: PaymentDetails;
   [key: string]: unknown;
 }
 
@@ -35,6 +68,68 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   transfer: 'حوالة/تحويل',
 };
 
+// Payment type Arabic labels
+export const PAYMENT_TYPE_LABELS: Record<string, string> = {
+  premium: 'قسط',
+  renewal: 'تجديد',
+  settlement: 'تسوية شركة',
+  commission: 'عمولة',
+  debt_payment: 'تسديد دين',
+  refund: 'استرجاع',
+  installment: 'قسط (دفعة)',
+  other: 'دفعة أخرى',
+};
+
+// Helper to get payment method from notification (supports both old and new structure)
+export function getPaymentMethod(metadata: NotificationMetadata | null): 'cash' | 'cheque' | 'visa' | 'transfer' | undefined {
+  if (!metadata) return undefined;
+  // New structure first
+  if (metadata.payment?.method) return metadata.payment.method;
+  // Fallback to legacy
+  return metadata.payment_method;
+}
+
+// Helper to get payment type labels from notification
+export function getPaymentTypeLabels(metadata: NotificationMetadata | null): string[] {
+  if (!metadata) return ['دفعة'];
+  
+  // If we have type_labels array, use it
+  if (metadata.payment?.type_labels && metadata.payment.type_labels.length > 0) {
+    return metadata.payment.type_labels;
+  }
+  
+  // If we have a type, map it
+  if (metadata.payment?.type) {
+    return [PAYMENT_TYPE_LABELS[metadata.payment.type] || 'دفعة'];
+  }
+  
+  // Default fallback
+  return ['دفعة'];
+}
+
+// Helper to get payment details from notification
+export function getPaymentDetails(metadata: NotificationMetadata | null): PaymentDetails | null {
+  if (!metadata) return null;
+  
+  // If we have the new structured payment object
+  if (metadata.payment) {
+    return metadata.payment;
+  }
+  
+  // Build from legacy flat fields
+  if (metadata.payment_method || metadata.amount || metadata.client_name) {
+    return {
+      method: metadata.payment_method,
+      amount: metadata.amount,
+      client_name: metadata.client_name,
+      payment_id: metadata.payment_id,
+      reference: metadata.reference,
+    };
+  }
+  
+  return null;
+}
+
 // Notification sound URL (using a free notification sound)
 const NOTIFICATION_SOUND_URL = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
 
@@ -48,6 +143,8 @@ export function useNotifications() {
   const [recentlyArrivedIds, setRecentlyArrivedIds] = useState<Set<string>>(new Set());
   const [badgePulse, setBadgePulse] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Track shown toast IDs to prevent duplicates
+  const shownToastIdsRef = useRef<Set<string>>(new Set());
 
   // Initialize audio element
   useEffect(() => {
@@ -280,31 +377,52 @@ export function useNotifications() {
             ...rawNotification,
             metadata: rawNotification.metadata as NotificationMetadata | null
           };
-          setNotifications(prev => [newNotification, ...prev]);
-          setUnreadCount(prev => prev + 1);
           
-          // Mark as recently arrived for animation
-          setRecentlyArrivedIds(prev => new Set(prev).add(newNotification.id));
-          clearRecentlyArrived(newNotification.id);
-          
-          // Trigger badge pulse
-          setBadgePulse(true);
-          setTimeout(() => setBadgePulse(false), 2000);
-          
-          // Play sound
-          playNotificationSound();
-          
-          // Show toast notification
-          toast(newNotification.title, {
-            description: newNotification.message,
-            action: newNotification.link ? {
-              label: 'عرض',
-              onClick: () => {
-                window.location.href = newNotification.link!;
-              },
-            } : undefined,
-            duration: 5000,
+          // Always add to the list
+          setNotifications(prev => {
+            // Dedupe check - don't add if already exists
+            if (prev.some(n => n.id === newNotification.id)) {
+              return prev;
+            }
+            return [newNotification, ...prev];
           });
+          
+          // ONLY show toast/sound/pulse for UNREAD notifications
+          const isUnread = !newNotification.is_read && !newNotification.read_at;
+          
+          if (isUnread) {
+            // Check if we've already shown a toast for this notification (dedupe)
+            if (shownToastIdsRef.current.has(newNotification.id)) {
+              return;
+            }
+            shownToastIdsRef.current.add(newNotification.id);
+            
+            // Update unread count
+            setUnreadCount(prev => prev + 1);
+            
+            // Mark as recently arrived for animation
+            setRecentlyArrivedIds(prev => new Set(prev).add(newNotification.id));
+            clearRecentlyArrived(newNotification.id);
+            
+            // Trigger badge pulse
+            setBadgePulse(true);
+            setTimeout(() => setBadgePulse(false), 2000);
+            
+            // Play sound
+            playNotificationSound();
+            
+            // Show toast notification
+            toast(newNotification.title, {
+              description: newNotification.message,
+              action: newNotification.link ? {
+                label: 'عرض',
+                onClick: () => {
+                  window.location.href = newNotification.link!;
+                },
+              } : undefined,
+              duration: 5000,
+            });
+          }
         }
       )
       .subscribe();

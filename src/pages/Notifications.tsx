@@ -23,8 +23,10 @@ import {
   Search,
   Filter
 } from 'lucide-react';
-import { useNotifications, Notification, PAYMENT_METHOD_LABELS } from '@/hooks/useNotifications';
+import { useNotifications, Notification } from '@/hooks/useNotifications';
 import { PaymentMethodBadge } from '@/components/notifications/PaymentMethodBadge';
+import { PaymentTypeBadges } from '@/components/notifications/PaymentTypeBadges';
+import { PaymentDetailsPanel } from '@/components/notifications/PaymentDetailsPanel';
 import { NewSinceLastVisitBanner } from '@/components/notifications/NewSinceLastVisitBanner';
 import { formatDistanceToNow, format } from 'date-fns';
 import { ar } from 'date-fns/locale';
@@ -328,7 +330,7 @@ export default function Notifications() {
             ) : (
               filteredNotifications.map((notification) => {
                 const isRecentlyArrived = recentlyArrivedIds.has(notification.id);
-                const paymentMethod = notification.metadata?.payment_method;
+                const isPayment = notification.type === 'payment';
                 
                 return (
                   <Card 
@@ -367,12 +369,13 @@ export default function Notifications() {
                             {notification.message}
                           </p>
                           
-                          {/* Payment method badge */}
-                          {notification.type === 'payment' && paymentMethod && (
-                            <div className="mt-2">
-                              <PaymentMethodBadge method={paymentMethod} />
-                            </div>
-                          )}
+                        {/* Payment badges for payment notifications */}
+                        {notification.type === 'payment' && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            <PaymentMethodBadge metadata={notification.metadata} />
+                            <PaymentTypeBadges metadata={notification.metadata} />
+                          </div>
+                        )}
                           
                           <p className="text-xs text-muted-foreground mt-2">
                             {formatTime(notification.created_at)}
@@ -445,7 +448,7 @@ export default function Notifications() {
                       <p className="text-sm leading-relaxed">{selectedNotification.message}</p>
                     </div>
 
-                    <div className="space-y-2 text-sm">
+                    <div className="space-y-3 text-sm">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">النوع:</span>
                         <Badge variant="outline">
@@ -459,38 +462,6 @@ export default function Notifications() {
                         </Badge>
                       </div>
                       
-                      {/* Payment details */}
-                      {selectedNotification.type === 'payment' && selectedNotification.metadata && (
-                        <>
-                          {selectedNotification.metadata.payment_method && (
-                            <div className="flex justify-between items-center">
-                              <span className="text-muted-foreground">طريقة الدفع:</span>
-                              <PaymentMethodBadge method={selectedNotification.metadata.payment_method} />
-                            </div>
-                          )}
-                          {selectedNotification.metadata.amount && (
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">المبلغ:</span>
-                              <span className="font-medium ltr-nums">
-                                ₪{selectedNotification.metadata.amount.toLocaleString()}
-                              </span>
-                            </div>
-                          )}
-                          {selectedNotification.metadata.client_name && (
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">العميل:</span>
-                              <span>{selectedNotification.metadata.client_name}</span>
-                            </div>
-                          )}
-                          {selectedNotification.metadata.reference && (
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">رقم المرجع:</span>
-                              <span className="ltr-nums">{selectedNotification.metadata.reference}</span>
-                            </div>
-                          )}
-                        </>
-                      )}
-                      
                       {selectedNotification.read_at && (
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">تمت القراءة:</span>
@@ -498,6 +469,14 @@ export default function Notifications() {
                         </div>
                       )}
                     </div>
+                    
+                    {/* Payment details panel */}
+                    {selectedNotification.type === 'payment' && selectedNotification.metadata && (
+                      <>
+                        <div className="border-t my-4" />
+                        <PaymentDetailsPanel metadata={selectedNotification.metadata} />
+                      </>
+                    )}
 
                     {selectedNotification.link && (
                       <Button 
