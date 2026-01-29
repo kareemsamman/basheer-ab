@@ -1,81 +1,155 @@
 
-# خطة إصلاح مشكلتين: بطاقات الملخص + إصلاح دفعات الإلزامي
+# خطة إصلاح مشاكل إنشاء الوثائق وتابعين السائقين
 
-## المشكلة 1: بطاقات ملخص التجديدات لا تظهر
+## المشاكل المحددة
 
-### السبب
-يوجد **نسختان** من دالة `report_renewals_summary` في قاعدة البيانات:
-- النسخة القديمة: معامل واحد فقط `(p_end_month)`
-- النسخة الجديدة: 4 معاملات `(p_end_month, p_policy_type, p_created_by, p_search)`
+### 1. الوثيقة الجديدة لا تظهر فوراً
+**السبب**: بعد إنشاء الوثيقة، يتم استدعاء `onSaved?.()` بتأخير 150ms، لكن صفحة العميل لا تقوم بإعادة جلب البيانات فوراً.
 
-عند استدعاء الدالة، PostgreSQL لا يستطيع تحديد أي نسخة يستخدم، فيظهر خطأ:
-```
-function report_renewals_summary(date) is not unique
-```
+### 2. معلومات السائقين/التابعين غير ظاهرة
+**السبب**: 
+- تفاصيل الوثيقة (PolicyDetailsDrawer) لا تعرض السائقين المرتبطين بالوثيقة
+- تقرير العميل الشامل لا يجلب أو يعرض بيانات policy_children
+- رسائل SMS لا تتضمن معلومات السائقين
 
-### الحل
-حذف النسخة القديمة من الدالة والإبقاء على النسخة الجديدة فقط.
+### 3. عدم إمكانية تعديل التابعين في الملف الشخصي
+**السبب**: مكون `ClientChildrenManager` يعرض التابعين لكن لا يوفر إمكانية تعديلهم (فقط إضافة وحذف)
 
-```sql
--- حذف النسخة القديمة ذات المعامل الواحد
-DROP FUNCTION IF EXISTS public.report_renewals_summary(date);
-```
+### 4. خيار "سائق إضافي (ابن/ابنة) أقل من 24" غير مطلوب
+**الحل**: إزالته وإبقاء خيارين فقط:
+- لا
+- نعم – العميل نفسه أقل من 24
 
----
-
-## المشكلة 2: خطأ "Failed to fetch" عند إصلاح دفعات الإلزامي
-
-### السبب
-الكود يستخدم `.in('policy_id', policyIds)` حيث `policyIds` يحتوي على **1517+ عنصر**. 
-Supabase/PostgREST لديه حدود على عدد العناصر في `.in()` مما يسبب فشل الاستعلام.
-
-### الحل
-تقسيم الاستعلامات إلى دفعات أصغر (500 عنصر كحد أقصى).
+### 5. مشاكل RTL في مجموعة الراديو
+**السبب**: استخدام `dir="ltr"` و `space-x-reverse` في تخطيط أزرار الراديو
 
 ---
 
 ## التغييرات المطلوبة
 
-### 1. Database Migration
-```sql
--- إزالة الدالة المكررة
-DROP FUNCTION IF EXISTS public.report_renewals_summary(date);
-```
+### الجزء 1: إصلاح التحديث الفوري للوثائق
 
-### 2. ملف `src/pages/WordPressImport.tsx`
-تعديل دالة `handleFixElzamiPayments` لتقسيم استعلامات `.in()`:
+| الملف | التغيير |
+|------|---------|
+| `src/components/clients/ClientDetails.tsx` | تعديل `handlePolicyWizardComplete` لاستدعاء `fetchPolicies()` و `fetchPaymentSummary()` فوراً بعد إغلاق المعالج |
+
+### الجزء 2: عرض التابعين في تفاصيل الوثيقة
+
+| الملف | التغيير |
+|------|---------|
+| `src/components/policies/PolicyDetailsDrawer.tsx` | إضافة جلب `policy_children` وعرضهم في قسم جديد "السائقين الإضافيين" |
+
+### الجزء 3: إضافة التابعين لتقرير العميل الشامل
+
+| الملف | التغيير |
+|------|---------|
+| `supabase/functions/generate-client-report/index.ts` | جلب `policy_children` لكل وثيقة وعرض أسمائهم في بطاقة الوثيقة |
+
+### الجزء 4: تعديل خيارات "أقل من 24" في ملف العميل
+
+| الملف | التغيير |
+|------|---------|
+| `src/components/clients/ClientDrawer.tsx` | إزالة خيار `additional_driver` من `UNDER24_OPTIONS` وتبسيط الخيارات لخيارين فقط |
+| Schema validation | إزالة `additional_driver` من enum |
+
+### الجزء 5: إضافة تعديل التابعين في الملف الشخصي
+
+| الملف | التغيير |
+|------|---------|
+| `src/components/clients/ClientChildrenManager.tsx` | إضافة زر تعديل لكل تابع موجود مع نموذج تعديل مضمن |
+
+### الجزء 6: إصلاح RTL لمجموعة الراديو
+
+| الملف | التغيير |
+|------|---------|
+| `src/components/clients/ClientDrawer.tsx` | إزالة `space-x-reverse` من divs وإزالة أي `dir="ltr"` |
+
+---
+
+## التفاصيل التقنية
+
+### 1. تحديث تفاصيل الوثيقة لعرض التابعين
 
 ```typescript
-// بدلاً من:
-const { data: paidBatch } = await supabase
-  .from('policy_payments')
-  .select('policy_id')
-  .in('policy_id', policyIds)  // ← 1517 عنصر = خطأ!
+// في PolicyDetailsDrawer.tsx - إضافة fetch للأطفال
+const [policyChildren, setPolicyChildren] = useState<any[]>([]);
 
-// نستخدم:
-// تقسيم policyIds إلى مجموعات من 500
-const chunkSize = 500;
-for (let i = 0; i < policyIds.length; i += chunkSize) {
-  const chunk = policyIds.slice(i, i + chunkSize);
-  const { data } = await supabase
-    .from('policy_payments')
-    .select('policy_id')
-    .in('policy_id', chunk);
-  // ...
-}
+// ضمن fetchPolicyDetails:
+const { data: childrenData } = await supabase
+  .from('policy_children')
+  .select(`
+    id,
+    child:client_children(
+      id, full_name, id_number, relation, phone
+    )
+  `)
+  .eq('policy_id', policyId);
+
+setPolicyChildren(childrenData || []);
+```
+
+### 2. عرض قسم السائقين الإضافيين
+
+```html
+<!-- قسم جديد في PolicyDetailsDrawer -->
+{policyChildren.length > 0 && (
+  <Section title="السائقين الإضافيين" icon={Users}>
+    <div className="space-y-2">
+      {policyChildren.map(pc => (
+        <div key={pc.id} className="p-3 bg-muted/50 rounded-lg">
+          <p className="font-medium">{pc.child.full_name}</p>
+          <p className="text-sm text-muted-foreground">
+            {pc.child.id_number} • {pc.child.relation}
+          </p>
+        </div>
+      ))}
+    </div>
+  </Section>
+)}
+```
+
+### 3. تبسيط خيارات أقل من 24
+
+```typescript
+// من:
+const UNDER24_OPTIONS = [
+  { value: 'none', label: 'لا' },
+  { value: 'client', label: 'نعم – العميل نفسه أقل من 24' },
+  { value: 'additional_driver', label: 'نعم – سائق إضافي (ابن/ابنة) أقل من 24' },
+]
+
+// إلى:
+const UNDER24_OPTIONS = [
+  { value: 'none', label: 'لا' },
+  { value: 'client', label: 'نعم – العميل أقل من 24' },
+]
+```
+
+### 4. إصلاح RTL
+
+```html
+<!-- من: -->
+<div className="flex items-center space-x-2 space-x-reverse">
+
+<!-- إلى: -->
+<div className="flex items-center gap-2">
 ```
 
 ---
 
-## ملخص التغييرات
+## ملخص الملفات المتأثرة
 
-| الملف | التغيير |
-|------|---------|
-| **Migration** | حذف `report_renewals_summary(date)` المكررة |
-| **WordPressImport.tsx** | تقسيم استعلام `.in()` إلى chunks بحجم 500 |
+1. `src/components/clients/ClientDetails.tsx` - تحديث فوري
+2. `src/components/clients/ClientDrawer.tsx` - تبسيط خيارات + RTL
+3. `src/components/clients/ClientChildrenManager.tsx` - إضافة تعديل
+4. `src/components/policies/PolicyDetailsDrawer.tsx` - عرض التابعين
+5. `supabase/functions/generate-client-report/index.ts` - التابعين في التقرير
 
 ## النتائج المتوقعة
 
-1. ✅ بطاقات الملخص ستظهر بشكل صحيح مع الأعداد
-2. ✅ زر "إصلاح الدفعات" سيعمل بدون أخطاء
-3. ✅ الأعداد ستتطابق بين الملخص والجدول
+- ✅ الوثيقة تظهر فور إنشائها بدون تحديث
+- ✅ التابعين يظهرون في تفاصيل الوثيقة
+- ✅ تقرير العميل يتضمن معلومات السائقين لكل وثيقة
+- ✅ خيارات "أقل من 24" مبسطة (خياران فقط)
+- ✅ إمكانية تعديل التابعين من ملف العميل
+- ✅ تخطيط RTL صحيح بدون انقلاب
