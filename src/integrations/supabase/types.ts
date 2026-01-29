@@ -3846,34 +3846,22 @@ export type Database = {
           total_rows: number
         }[]
       }
-      report_renewals_summary:
-        | {
-            Args: { p_end_month?: string }
-            Returns: {
-              called: number
-              not_contacted: number
-              not_interested: number
-              renewed: number
-              sms_sent: number
-              total_expiring: number
-            }[]
-          }
-        | {
-            Args: {
-              p_created_by?: string
-              p_end_month?: string
-              p_policy_type?: string
-              p_search?: string
-            }
-            Returns: {
-              called: number
-              not_contacted: number
-              not_interested: number
-              renewed: number
-              sms_sent: number
-              total_expiring: number
-            }[]
-          }
+      report_renewals_summary: {
+        Args: {
+          p_created_by?: string
+          p_end_month?: string
+          p_policy_type?: string
+          p_search?: string
+        }
+        Returns: {
+          called: number
+          not_contacted: number
+          not_interested: number
+          renewed: number
+          sms_sent: number
+          total_expiring: number
+        }[]
+      }
       reverse_ledger_entry: {
         Args: { p_admin_id?: string; p_entry_id: string; p_reason?: string }
         Returns: string

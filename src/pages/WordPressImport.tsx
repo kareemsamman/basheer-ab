@@ -186,24 +186,22 @@ const WordPressImport = () => {
         return;
       }
       
-      // Get ALL policies that have non-refused payments (paginated)
+      // Get ALL policies that have non-refused payments (chunked to avoid .in() limits)
       const allPaidPolicyIds = new Set<string>();
-      offset = 0;
+      const chunkSize = 500;
       
-      while (true) {
+      for (let i = 0; i < allElzamiIds.length; i += chunkSize) {
+        const chunk = allElzamiIds.slice(i, i + chunkSize);
         const { data: paidBatch, error: paymentsError } = await supabase
           .from('policy_payments')
           .select('policy_id')
-          .in('policy_id', allElzamiIds)
-          .eq('refused', false)
-          .range(offset, offset + pageSize - 1);
+          .in('policy_id', chunk)
+          .eq('refused', false);
         
         if (paymentsError) throw paymentsError;
-        if (!paidBatch || paidBatch.length === 0) break;
-        
-        paidBatch.forEach(p => allPaidPolicyIds.add(p.policy_id));
-        if (paidBatch.length < pageSize) break;
-        offset += pageSize;
+        if (paidBatch) {
+          paidBatch.forEach(p => allPaidPolicyIds.add(p.policy_id));
+        }
       }
       
       const unpaidCount = allElzamiIds.filter(id => !allPaidPolicyIds.has(id)).length;
@@ -252,24 +250,22 @@ const WordPressImport = () => {
       
       const policyIds = allElzamiPolicies.map(p => p.id);
       
-      // 2. Get ALL policies that already have non-refused payments (paginated)
+      // 2. Get ALL policies that already have non-refused payments (chunked to avoid .in() limits)
       const paidPolicyIds = new Set<string>();
-      offset = 0;
+      const chunkSize = 500;
       
-      while (true) {
+      for (let i = 0; i < policyIds.length; i += chunkSize) {
+        const chunk = policyIds.slice(i, i + chunkSize);
         const { data: paidBatch, error: paymentsError } = await supabase
           .from('policy_payments')
           .select('policy_id')
-          .in('policy_id', policyIds)
-          .eq('refused', false)
-          .range(offset, offset + pageSize - 1);
+          .in('policy_id', chunk)
+          .eq('refused', false);
         
         if (paymentsError) throw paymentsError;
-        if (!paidBatch || paidBatch.length === 0) break;
-        
-        paidBatch.forEach(p => paidPolicyIds.add(p.policy_id));
-        if (paidBatch.length < pageSize) break;
-        offset += pageSize;
+        if (paidBatch) {
+          paidBatch.forEach(p => paidPolicyIds.add(p.policy_id));
+        }
       }
       
       const needsPayment = allElzamiPolicies.filter(p => !paidPolicyIds.has(p.id));
