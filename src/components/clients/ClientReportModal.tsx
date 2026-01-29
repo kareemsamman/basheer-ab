@@ -376,11 +376,10 @@ export function ClientReportModal({
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString('ar-EG', {
+    return new Date(dateStr).toLocaleDateString('en-GB', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
-      calendar: 'gregory',
     });
   };
 
@@ -789,7 +788,7 @@ export function ClientReportModal({
               <p className="font-bold text-primary text-sm">بشير للتأمينات</p>
               <p className="text-[10px]">BASHEER INSURANCE</p>
             </div>
-            <p className="ltr-nums">{new Date().toLocaleDateString('ar-EG', { calendar: 'gregory' })}</p>
+            <p className="ltr-nums">{new Date().toLocaleDateString('en-GB')}</p>
           </div>
         </div>
       </DialogContent>

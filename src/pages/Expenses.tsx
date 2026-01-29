@@ -192,11 +192,11 @@ export default function Expenses() {
   };
 
   const formatCurrency = (amount: number) => {
-    return `₪${amount.toLocaleString('ar-EG', { maximumFractionDigits: 0 })}`;
+    return `₪${amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('ar-EG');
+    return new Date(dateStr).toLocaleDateString('en-GB');
   };
 
   const prevMonth = () => setSelectedMonth(prev => subMonths(prev, 1));

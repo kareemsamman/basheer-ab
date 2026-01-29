@@ -336,7 +336,7 @@ export default function Policies() {
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('ar-EG');
+    return new Date(dateStr).toLocaleDateString('en-GB');
   };
 
   // Format time remaining for recalculation

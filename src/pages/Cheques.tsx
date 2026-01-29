@@ -584,17 +584,17 @@ export default function Cheques() {
   };
 
   const formatCurrency = (amount: number) => {
-    return `₪${amount.toLocaleString('ar-EG', { maximumFractionDigits: 0 })}`;
+    return `₪${amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('ar-EG');
+    return new Date(dateStr).toLocaleDateString('en-GB');
   };
 
   const formatMonthName = (monthKey: string) => {
     const [year, month] = monthKey.split('-');
     const date = new Date(parseInt(year), parseInt(month) - 1);
-    return date.toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' });
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
 
   // Use Bunny CDN for image upload instead of Supabase Storage

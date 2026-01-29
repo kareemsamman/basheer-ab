@@ -171,7 +171,7 @@ export default function Clients() {
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString('ar-EG');
+    return new Date(dateStr).toLocaleDateString('en-GB');
   };
 
   const totalPages = Math.ceil(totalCount / pageSize);

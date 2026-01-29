@@ -163,7 +163,7 @@ export function CalculationExplanationModal({
               <h4 className="font-semibold text-sm">خطوات الحساب (إلزامي):</h4>
               <div className="text-sm space-y-1 font-mono">
                 <p>المستحق للشركة = سعر التأمين</p>
-                <p className="text-primary">المستحق للشركة = ₪{insurancePrice.toLocaleString('ar-EG')}</p>
+                <p className="text-primary">المستحق للشركة = ₪{insurancePrice.toLocaleString('en-US')}</p>
                 <Separator className="my-2" />
                 <p>الربح = 0 (لا ربح في التأمين الإلزامي)</p>
               </div>
@@ -180,7 +180,7 @@ export function CalculationExplanationModal({
                 {thirdPriceRule && (
                   <div className="flex justify-between items-center text-sm">
                     <span>{RULE_TYPE_LABELS[thirdPriceRule.rule_type]}</span>
-                    <Badge variant="secondary">₪{thirdPriceRule.value.toLocaleString('ar-EG')}</Badge>
+                    <Badge variant="secondary">₪{thirdPriceRule.value.toLocaleString('en-US')}</Badge>
                   </div>
                 )}
               </div>
@@ -189,11 +189,11 @@ export function CalculationExplanationModal({
                 <h4 className="font-semibold text-sm">خطوات الحساب (ثالث):</h4>
                 <div className="text-sm space-y-1 font-mono">
                   <p>المستحق للشركة = سعر الطرف الثالث</p>
-                  <p className="text-primary">المستحق للشركة = ₪{thirdPriceRule?.value.toLocaleString('ar-EG') || companyPayment.toLocaleString('ar-EG')}</p>
+                  <p className="text-primary">المستحق للشركة = ₪{thirdPriceRule?.value.toLocaleString('en-US') || companyPayment.toLocaleString('en-US')}</p>
                   <Separator className="my-2" />
                   <p>الربح = سعر التأمين - المستحق للشركة</p>
-                  <p>الربح = ₪{insurancePrice.toLocaleString('ar-EG')} - ₪{companyPayment.toLocaleString('ar-EG')}</p>
-                  <p className="text-success">الربح = ₪{profit.toLocaleString('ar-EG')}</p>
+                  <p>الربح = ₪{insurancePrice.toLocaleString('en-US')} - ₪{companyPayment.toLocaleString('en-US')}</p>
+                  <p className="text-success">الربح = ₪{profit.toLocaleString('en-US')}</p>
                 </div>
               </div>
             </div>
@@ -213,13 +213,13 @@ export function CalculationExplanationModal({
                 {thirdPriceRule && (
                   <div className="flex justify-between items-center text-sm">
                     <span>{RULE_TYPE_LABELS[thirdPriceRule.rule_type]}</span>
-                    <Badge variant="secondary">₪{thirdPriceRule.value.toLocaleString('ar-EG')}</Badge>
+                    <Badge variant="secondary">₪{thirdPriceRule.value.toLocaleString('en-US')}</Badge>
                   </div>
                 )}
                 {discountRule && (
                   <div className="flex justify-between items-center text-sm">
                     <span>{RULE_TYPE_LABELS[discountRule.rule_type]} (يحل محل سعر الثالث)</span>
-                    <Badge variant="secondary">₪{discountRule.value.toLocaleString('ar-EG')}</Badge>
+                    <Badge variant="secondary">₪{discountRule.value.toLocaleString('en-US')}</Badge>
                   </div>
                 )}
                 {fullPercentRule && (
@@ -231,7 +231,7 @@ export function CalculationExplanationModal({
                 {minPriceRule && (
                   <div className="flex justify-between items-center text-sm">
                     <span>{RULE_TYPE_LABELS[minPriceRule.rule_type]}</span>
-                    <Badge variant="secondary">₪{minPriceRule.value.toLocaleString('ar-EG')}</Badge>
+                    <Badge variant="secondary">₪{minPriceRule.value.toLocaleString('en-US')}</Badge>
                   </div>
                 )}
               </div>
@@ -241,9 +241,9 @@ export function CalculationExplanationModal({
                 <div className="text-sm space-y-1 font-mono">
                   <p className="text-muted-foreground">// حساب مكون الثالث</p>
                   {discountRule ? (
-                    <p>مكون الثالث = الخصم = ₪{discountRule.value.toLocaleString('ar-EG')}</p>
+                    <p>مكون الثالث = الخصم = ₪{discountRule.value.toLocaleString('en-US')}</p>
                   ) : (
-                    <p>مكون الثالث = سعر الثالث = ₪{(thirdPriceRule?.value || 0).toLocaleString('ar-EG')}</p>
+                    <p>مكون الثالث = سعر الثالث = ₪{(thirdPriceRule?.value || 0).toLocaleString('en-US')}</p>
                   )}
                   
                   <Separator className="my-2" />
@@ -251,15 +251,15 @@ export function CalculationExplanationModal({
                   <p className="text-muted-foreground">// حساب مكون الشامل</p>
                   {useMinPrice ? (
                     <>
-                      <p>قيمة السيارة = ₪{carValue.toLocaleString('ar-EG')} (أقل من ₪60,000)</p>
-                      <p>مكون الشامل = الحد الأدنى = ₪{(minPriceRule?.value || 0).toLocaleString('ar-EG')}</p>
+                      <p>قيمة السيارة = ₪{carValue.toLocaleString('en-US')} (أقل من ₪60,000)</p>
+                      <p>مكون الشامل = الحد الأدنى = ₪{(minPriceRule?.value || 0).toLocaleString('en-US')}</p>
                     </>
                   ) : (
                     <>
-                      <p>قيمة السيارة = ₪{carValue.toLocaleString('ar-EG')} (أكبر من أو يساوي ₪60,000)</p>
+                      <p>قيمة السيارة = ₪{carValue.toLocaleString('en-US')} (أكبر من أو يساوي ₪60,000)</p>
                       <p>مكون الشامل = قيمة السيارة × (نسبة الشامل / 100)</p>
-                      <p>مكون الشامل = ₪{carValue.toLocaleString('ar-EG')} × ({fullPercentRule?.value || 0}% / 100)</p>
-                      <p>مكون الشامل = ₪{fullComponent.toLocaleString('ar-EG')}</p>
+                      <p>مكون الشامل = ₪{carValue.toLocaleString('en-US')} × ({fullPercentRule?.value || 0}% / 100)</p>
+                      <p>مكون الشامل = ₪{fullComponent.toLocaleString('en-US')}</p>
                     </>
                   )}
                   
@@ -267,13 +267,13 @@ export function CalculationExplanationModal({
                   
                   <p className="text-muted-foreground">// المجموع</p>
                   <p>المستحق للشركة = مكون الشامل + مكون الثالث</p>
-                  <p className="text-primary">المستحق للشركة = ₪{companyPayment.toLocaleString('ar-EG')}</p>
+                  <p className="text-primary">المستحق للشركة = ₪{companyPayment.toLocaleString('en-US')}</p>
                   
                   <Separator className="my-2" />
                   
                   <p>الربح = سعر التأمين - المستحق للشركة</p>
-                  <p>الربح = ₪{insurancePrice.toLocaleString('ar-EG')} - ₪{companyPayment.toLocaleString('ar-EG')}</p>
-                  <p className="text-success">الربح = ₪{profit.toLocaleString('ar-EG')}</p>
+                  <p>الربح = ₪{insurancePrice.toLocaleString('en-US')} - ₪{companyPayment.toLocaleString('en-US')}</p>
+                  <p className="text-success">الربح = ₪{profit.toLocaleString('en-US')}</p>
                 </div>
               </div>
             </div>
@@ -289,13 +289,13 @@ export function CalculationExplanationModal({
               {roadBaseRule && (
                 <div className="flex justify-between items-center text-sm">
                   <span>{RULE_TYPE_LABELS[roadBaseRule.rule_type]}</span>
-                  <Badge variant="secondary">₪{roadBaseRule.value.toLocaleString('ar-EG')}</Badge>
+                  <Badge variant="secondary">₪{roadBaseRule.value.toLocaleString('en-US')}</Badge>
                 </div>
               )}
               {roadExtraRule && isOldCar && (
                 <div className="flex justify-between items-center text-sm">
                   <span>{RULE_TYPE_LABELS[roadExtraRule.rule_type]}</span>
-                  <Badge variant="secondary">₪{roadExtraRule.value.toLocaleString('ar-EG')}</Badge>
+                  <Badge variant="secondary">₪{roadExtraRule.value.toLocaleString('en-US')}</Badge>
                 </div>
               )}
             </div>
@@ -308,7 +308,7 @@ export function CalculationExplanationModal({
                   <>
                     <p className="text-amber-500">السيارة قديمة (≤ 2007) - يتم إضافة رسوم إضافية</p>
                     <p>المستحق للشركة = السعر الأساسي + رسوم السيارة القديمة</p>
-                    <p>المستحق للشركة = ₪{(roadBaseRule?.value || 0).toLocaleString('ar-EG')} + ₪{(roadExtraRule?.value || 0).toLocaleString('ar-EG')}</p>
+                    <p>المستحق للشركة = ₪{(roadBaseRule?.value || 0).toLocaleString('en-US')} + ₪{(roadExtraRule?.value || 0).toLocaleString('en-US')}</p>
                   </>
                 ) : (
                   <>
@@ -316,13 +316,13 @@ export function CalculationExplanationModal({
                     <p>المستحق للشركة = السعر الأساسي</p>
                   </>
                 )}
-                <p className="text-primary">المستحق للشركة = ₪{companyPayment.toLocaleString('ar-EG')}</p>
+                <p className="text-primary">المستحق للشركة = ₪{companyPayment.toLocaleString('en-US')}</p>
                 
                 <Separator className="my-2" />
                 
                 <p>الربح = سعر التأمين - المستحق للشركة</p>
-                <p>الربح = ₪{insurancePrice.toLocaleString('ar-EG')} - ₪{companyPayment.toLocaleString('ar-EG')}</p>
-                <p className="text-success">الربح = ₪{profit.toLocaleString('ar-EG')}</p>
+                <p>الربح = ₪{insurancePrice.toLocaleString('en-US')} - ₪{companyPayment.toLocaleString('en-US')}</p>
+                <p className="text-success">الربح = ₪{profit.toLocaleString('en-US')}</p>
               </div>
             </div>
           </div>
@@ -336,7 +336,7 @@ export function CalculationExplanationModal({
               {thirdPriceRule && (
                 <div className="flex justify-between items-center text-sm">
                   <span>{RULE_TYPE_LABELS[thirdPriceRule.rule_type]}</span>
-                  <Badge variant="secondary">₪{thirdPriceRule.value.toLocaleString('ar-EG')}</Badge>
+                  <Badge variant="secondary">₪{thirdPriceRule.value.toLocaleString('en-US')}</Badge>
                 </div>
               )}
             </div>
@@ -345,10 +345,10 @@ export function CalculationExplanationModal({
               <h4 className="font-semibold text-sm">خطوات الحساب (إعفاء رسوم حادث):</h4>
               <div className="text-sm space-y-1 font-mono">
                 <p>المستحق للشركة = سعر الإعفاء الثابت</p>
-                <p className="text-primary">المستحق للشركة = ₪{companyPayment.toLocaleString('ar-EG')}</p>
+                <p className="text-primary">المستحق للشركة = ₪{companyPayment.toLocaleString('en-US')}</p>
                 <Separator className="my-2" />
                 <p>الربح = سعر التأمين - المستحق للشركة</p>
-                <p className="text-success">الربح = ₪{profit.toLocaleString('ar-EG')}</p>
+                <p className="text-success">الربح = ₪{profit.toLocaleString('en-US')}</p>
               </div>
             </div>
           </div>

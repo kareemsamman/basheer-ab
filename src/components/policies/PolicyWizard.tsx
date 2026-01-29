@@ -693,7 +693,7 @@ export function PolicyWizard({
             .insert({
               client_id: clientId,
               car_id: carId || null,
-              name: `باقة - ${new Date().toLocaleDateString('ar-EG')}`,
+              name: `باقة - ${new Date().toLocaleDateString('en-GB')}`,
             })
             .select()
             .single();

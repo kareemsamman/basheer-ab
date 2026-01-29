@@ -161,7 +161,7 @@ export default function Cars() {
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString('ar-EG');
+    return new Date(dateStr).toLocaleDateString('en-GB');
   };
 
   const totalPages = Math.ceil(totalCount / pageSize);
@@ -273,7 +273,7 @@ export default function Cars() {
                       </TableCell>
                       <TableCell className="text-muted-foreground">{car.color || "-"}</TableCell>
                       <TableCell className="font-medium">
-                        {car.car_value ? `₪${car.car_value.toLocaleString('ar-EG')}` : "-"}
+                        {car.car_value ? `₪${car.car_value.toLocaleString('en-US')}` : "-"}
                       </TableCell>
                       <TableCell>
                         {car.branch ? (

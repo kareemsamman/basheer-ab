@@ -284,11 +284,11 @@ export default function FinancialReports() {
 
   const formatCurrency = (amount: number) => {
     const sign = amount < 0 ? "-" : "";
-    return `${sign}₪${Math.abs(amount).toLocaleString("ar-EG", { maximumFractionDigits: 0 })}`;
+    return `${sign}₪${Math.abs(amount).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('ar-EG');
+    return new Date(dateStr).toLocaleDateString('en-GB');
   };
 
   return (

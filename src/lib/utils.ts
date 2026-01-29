@@ -24,3 +24,29 @@ export function getFullCdnUrl(path: string | null | undefined): string | null {
   
   return `${BUNNY_CDN_URL}/${cleanPath}`;
 }
+
+/**
+ * Format currency with Western numerals (0-9) and ₪ symbol
+ * Negative amounts are prefixed with minus sign
+ */
+export function formatCurrency(amount: number | null | undefined): string {
+  if (amount === null || amount === undefined) return '₪0';
+  const sign = amount < 0 ? "-" : "";
+  return `${sign}₪${Math.abs(amount).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+}
+
+/**
+ * Format date with Western numerals in DD/MM/YYYY format
+ */
+export function formatDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return '-';
+  return new Date(dateStr).toLocaleDateString('en-GB');
+}
+
+/**
+ * Format number with Western numerals (no currency symbol)
+ */
+export function formatNumber(num: number | null | undefined): string {
+  if (num === null || num === undefined) return '0';
+  return num.toLocaleString('en-US');
+}

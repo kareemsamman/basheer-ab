@@ -127,19 +127,19 @@ export default function Dashboard() {
             <>
               <StatCard
                 title="إجمالي العملاء"
-                value={stats.totalClients.toLocaleString('ar-EG')}
+                value={stats.totalClients.toLocaleString('en-US')}
                 icon={Users}
                 variant="primary"
               />
               <StatCard
                 title="الوثائق النشطة"
-                value={stats.activePolicies.toLocaleString('ar-EG')}
+                value={stats.activePolicies.toLocaleString('en-US')}
                 icon={FileText}
                 variant="default"
               />
               <StatCard
                 title="السيارات المؤمنة"
-                value={stats.totalCars.toLocaleString('ar-EG')}
+                value={stats.totalCars.toLocaleString('en-US')}
                 icon={Car}
                 variant="default"
               />
@@ -147,14 +147,14 @@ export default function Dashboard() {
               {isAdmin ? (
                 <StatCard
                   title="أرباح الشهر"
-                  value={profitLoading ? '...' : `₪${profitSummary.monthProfit.toLocaleString('ar-EG')}`}
+                  value={profitLoading ? '...' : `₪${profitSummary.monthProfit.toLocaleString('en-US')}`}
                   icon={TrendingUp}
                   variant="success"
                 />
               ) : (
                 <StatCard
                   title="تنتهي هذا الشهر"
-                  value={stats.expiringThisMonth.toLocaleString('ar-EG')}
+                  value={stats.expiringThisMonth.toLocaleString('en-US')}
                   icon={Clock}
                   variant="warning"
                 />
@@ -173,7 +173,7 @@ export default function Dashboard() {
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">أرباح اليوم</p>
                     <p className="text-2xl font-bold text-success ltr-nums">
-                      {profitLoading ? '...' : `₪${profitSummary.todayProfit.toLocaleString('ar-EG')}`}
+                      {profitLoading ? '...' : `₪${profitSummary.todayProfit.toLocaleString('en-US')}`}
                     </p>
                   </div>
                   <div className="rounded-xl bg-success/10 p-3">
@@ -186,7 +186,7 @@ export default function Dashboard() {
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">المستحق للشركات</p>
                     <p className="text-2xl font-bold text-destructive ltr-nums">
-                      {profitLoading ? '...' : `₪${profitSummary.totalCompanyPaymentDue.toLocaleString('ar-EG')}`}
+                      {profitLoading ? '...' : `₪${profitSummary.totalCompanyPaymentDue.toLocaleString('en-US')}`}
                     </p>
                   </div>
                   <div className="rounded-xl bg-destructive/10 p-3">
@@ -199,7 +199,7 @@ export default function Dashboard() {
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">المستحق للوسطاء</p>
                     <p className="text-2xl font-bold text-orange-500 ltr-nums">
-                      {profitLoading ? '...' : `₪${profitSummary.totalBrokerDebtOwed.toLocaleString('ar-EG')}`}
+                      {profitLoading ? '...' : `₪${profitSummary.totalBrokerDebtOwed.toLocaleString('en-US')}`}
                     </p>
                   </div>
                   <div className="rounded-xl bg-orange-500/10 p-3">

@@ -228,7 +228,7 @@ export function BrokerPaymentModal({
     onOpenChange(false);
   };
 
-  const formatCurrency = (val: number) => `₪${val.toLocaleString('ar-EG', { maximumFractionDigits: 0 })}`;
+  const formatCurrency = (val: number) => `₪${val.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 
   return (
     <Dialog open={open} onOpenChange={(val) => !val && handleCancel()}>

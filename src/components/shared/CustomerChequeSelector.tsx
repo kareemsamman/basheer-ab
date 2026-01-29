@@ -159,7 +159,7 @@ export function CustomerChequeSelector({
   const totalSelected = selectedCheques.reduce((sum, c) => sum + c.amount, 0);
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('ar-EG');
+    return new Date(dateStr).toLocaleDateString('en-GB');
   };
 
   if (loading) {

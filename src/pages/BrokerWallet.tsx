@@ -679,7 +679,7 @@ export default function BrokerWallet() {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Calendar className="h-4 w-4 text-muted-foreground" />
-                          {new Date(transaction.settlement_date).toLocaleDateString('ar-EG')}
+                          {new Date(transaction.settlement_date).toLocaleDateString('en-GB')}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -804,7 +804,7 @@ export default function BrokerWallet() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs text-muted-foreground">التاريخ</p>
-                    <p className="font-medium">{new Date(settlementDetail.transaction.settlement_date).toLocaleDateString('ar-EG')}</p>
+                    <p className="font-medium">{new Date(settlementDetail.transaction.settlement_date).toLocaleDateString('en-GB')}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">المبلغ</p>
@@ -874,7 +874,7 @@ export default function BrokerWallet() {
                             <div className="text-xs text-muted-foreground mt-1">
                               {cheque.client_name && <span>{cheque.client_name}</span>}
                               {cheque.car_number && <span className="mr-2">• {cheque.car_number}</span>}
-                              {cheque.payment_date && <span className="mr-2">• {new Date(cheque.payment_date).toLocaleDateString('ar-EG')}</span>}
+                              {cheque.payment_date && <span className="mr-2">• {new Date(cheque.payment_date).toLocaleDateString('en-GB')}</span>}
                             </div>
                           </div>
                           {cheque.cheque_image_url && (
