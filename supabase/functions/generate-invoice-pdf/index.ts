@@ -114,6 +114,21 @@ serve(async (req: Request) => {
       );
     }
 
+    // Fetch additional drivers (policy_children)
+    const { data: policyChildren } = await supabase
+      .from('policy_children')
+      .select(`
+        id,
+        child:client_children(id, full_name, id_number, relation, phone)
+      `)
+      .eq('policy_id', policy_id);
+
+    const additionalDrivers = (policyChildren || [])
+      .filter(pc => pc.child)
+      .map(pc => pc.child);
+
+    console.log(`[generate-invoice-pdf] Found ${additionalDrivers.length} additional drivers`);
+
     // Get payment details
     const { data: payments } = await supabase
       .from('policy_payments')
@@ -127,7 +142,7 @@ serve(async (req: Request) => {
     const remaining = (policy.insurance_price || 0) - totalPaid;
 
     // Build comprehensive invoice HTML
-    const htmlContent = buildAbInvoiceHtml(policy, payments || [], paymentType);
+    const htmlContent = buildAbInvoiceHtml(policy, payments || [], paymentType, additionalDrivers);
 
     // Convert HTML to PDF using an external service or generate as HTML file
     // For now, we'll create an HTML file that can be printed as PDF
@@ -219,7 +234,8 @@ function getInsuranceTypeLabel(parent: string, child: string | null): string {
 function buildAbInvoiceHtml(
   policy: any,
   payments: any[],
-  paymentType: string
+  paymentType: string,
+  additionalDrivers: any[] = []
 ): string {
   const client = policy.client || {};
   const car = policy.car || {};
@@ -557,6 +573,34 @@ function buildAbInvoiceHtml(
         </div>
       </div>
     </div>
+
+    ${additionalDrivers.length > 0 ? `
+    <div class="section">
+      <div class="section-title">السائقين الإضافيين (${additionalDrivers.length})</div>
+      <div class="section-content" style="padding: 0;">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>الاسم</th>
+              <th>رقم الهوية</th>
+              <th>الصلة</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${additionalDrivers.map((driver: any, i: number) => `
+              <tr>
+                <td style="padding: 8px; border: 1px solid #ddd;">${i + 1}</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">${driver.full_name || '-'}</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">${driver.id_number || '-'}</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">${driver.relation || '-'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    ` : ''}
 
     ${payments.length > 0 ? `
     <div class="section">

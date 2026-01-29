@@ -1052,22 +1052,24 @@ export function PolicyWizard({
 
       onComplete?.(policyIdToUse);
       
-      // Close dialog first, then trigger refresh after a brief delay
-      // This ensures the DB commit is complete before fetching
+      // Close dialog first
       onOpenChange(false);
       resetForm();
       
-      // If we created a new client, navigate to the clients page with that client open
-      if (newlyCreatedClientId) {
-        setTimeout(() => {
+      // Always reload page after creating policy to show fresh data (new cards, etc.)
+      // This ensures the client view shows the new policy card immediately
+      setTimeout(() => {
+        if (newlyCreatedClientId) {
+          // Navigate to clients page with the new client open
           window.location.href = `/clients?open=${newlyCreatedClientId}`;
-        }, 100);
-      } else {
-        // Delay onSaved to ensure DB writes are committed
-        setTimeout(() => {
+        } else if (selectedClient?.id) {
+          // Refresh current page to show new policy card
+          window.location.reload();
+        } else {
+          // Fallback - just call onSaved
           onSaved?.();
-        }, 300);
-      }
+        }
+      }, 150);
     } catch (error: unknown) {
       console.error('Save error:', error);
 
