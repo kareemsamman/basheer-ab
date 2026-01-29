@@ -99,6 +99,12 @@ export interface PaymentLine {
   tranzila_paid?: boolean;
   tranzila_transaction_id?: string;
   pendingImages?: File[]; // Store actual files for upload
+  /** If true, this payment is system-generated and cannot be edited/deleted */
+  locked?: boolean;
+  /** Source of the payment: 'user' or 'system' */
+  source?: 'user' | 'system';
+  /** Label to display for locked payments (e.g., "دفعة إلزامي – تلقائية") */
+  locked_label?: string;
 }
 
 export interface ValidationErrors {

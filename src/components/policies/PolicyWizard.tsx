@@ -295,11 +295,12 @@ export function PolicyWizard({
     if (!validateStep(currentStep)) return;
     const nextStep = Math.min(currentStep + 1, steps.length);
     
-    // Auto-fill payment for ELZAMI when entering Step 4
+    // Auto-fill LOCKED payment for ELZAMI when entering Step 4
+    // ELZAMI payments are system-generated and immutable
     if (nextStep === 4 && policy.policy_type_parent === 'ELZAMI') {
-      // Only auto-fill if payments are empty or have no amount
-      const hasPayments = payments.some(p => p.amount > 0);
-      if (!hasPayments) {
+      // Only auto-fill if payments are empty or have no locked ELZAMI payment
+      const hasLockedElzamiPayment = payments.some(p => p.locked && p.source === 'system');
+      if (!hasLockedElzamiPayment) {
         const totalPrice = parseFloat(policy.insurance_price) || pricing.totalPrice;
         if (totalPrice > 0) {
           setPayments([{
@@ -308,6 +309,9 @@ export function PolicyWizard({
             amount: totalPrice,
             payment_date: new Date().toISOString().split('T')[0],
             refused: false,
+            locked: true,
+            source: 'system',
+            locked_label: 'دفعة إلزامي – تلقائية',
           }]);
         }
       }
@@ -796,6 +800,9 @@ export function PolicyWizard({
             refused: p.refused || false,
             branch_id: effectiveBranchId || null,
             created_by_admin_id: user?.id || null,
+            // Pass locked and source flags for ELZAMI system-generated payments
+            locked: p.locked || false,
+            source: p.source || 'user',
           }));
 
         if (paymentInserts.length > 0) {
@@ -1103,6 +1110,7 @@ export function PolicyWizard({
                 onCreateTempPolicy={handleCreateTempPolicy}
                 onDeleteTempPolicy={handleDeleteTempPolicy}
                 tempPolicyId={tempPolicyId}
+                isElzami={policy.policy_type_parent === 'ELZAMI'}
               />
             )}
           </div>

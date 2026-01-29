@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
-import { Plus, Trash2, CreditCard, AlertCircle, Loader2, Split, Upload, X, ImageIcon } from "lucide-react";
+import { Plus, Trash2, CreditCard, AlertCircle, Loader2, Split, Upload, X, ImageIcon, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PaymentSummaryBar } from "./PaymentSummaryBar";
 import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal";
@@ -27,6 +27,8 @@ interface Step4Props {
   onCreateTempPolicy: () => Promise<string | null>;
   onDeleteTempPolicy: (policyId: string) => Promise<void>;
   tempPolicyId: string | null;
+  /** If true, this is an ELZAMI policy - hide split button */
+  isElzami?: boolean;
 }
 
 interface PreviewUrls {
@@ -44,6 +46,7 @@ export function Step4Payments({
   onCreateTempPolicy,
   onDeleteTempPolicy,
   tempPolicyId,
+  isElzami = false,
 }: Step4Props) {
   const { toast } = useToast();
   const [showTranzilaModal, setShowTranzilaModal] = useState(false);
@@ -235,61 +238,65 @@ export function Step4Payments({
         <div className="flex items-center justify-between">
           <Label className="text-base font-semibold">الدفعات</Label>
           <div className="flex gap-2">
-            {/* Split Payments Button */}
-            <Popover open={splitPopoverOpen} onOpenChange={setSplitPopoverOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-2"
-                >
-                  <Split className="h-4 w-4" />
-                  تقسيط
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-64" align="end" dir="rtl">
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-sm">تقسيط المبلغ</h4>
-                  <div className="space-y-2">
-                    <Label className="text-xs">عدد الأقساط (2-12)</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        type="number"
-                        min={2}
-                        max={12}
-                        value={splitCount}
-                        onChange={(e) => setSplitCount(Math.min(12, Math.max(2, parseInt(e.target.value) || 2)))}
-                        className="h-9"
-                      />
-                      <Button 
-                        type="button" 
-                        size="sm" 
-                        onClick={handleSplitPayments}
-                        className="h-9 px-4"
-                      >
-                        تقسيم
-                      </Button>
+            {/* Split Payments Button - hidden for ELZAMI */}
+            {!isElzami && (
+              <Popover open={splitPopoverOpen} onOpenChange={setSplitPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                  >
+                    <Split className="h-4 w-4" />
+                    تقسيط
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64" align="end" dir="rtl">
+                  <div className="space-y-4">
+                    <h4 className="font-semibold text-sm">تقسيط المبلغ</h4>
+                    <div className="space-y-2">
+                      <Label className="text-xs">عدد الأقساط (2-12)</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="number"
+                          min={2}
+                          max={12}
+                          value={splitCount}
+                          onChange={(e) => setSplitCount(Math.min(12, Math.max(2, parseInt(e.target.value) || 2)))}
+                          className="h-9"
+                        />
+                        <Button 
+                          type="button" 
+                          size="sm" 
+                          onClick={handleSplitPayments}
+                          className="h-9 px-4"
+                        >
+                          تقسيم
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        سيتم تقسيم {pricing.totalPrice} ₪ إلى {splitCount} دفعات متساوية
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      سيتم تقسيم {pricing.totalPrice} ₪ إلى {splitCount} دفعات متساوية
-                    </p>
                   </div>
-                </div>
-              </PopoverContent>
-            </Popover>
+                </PopoverContent>
+              </Popover>
+            )}
             
-            {/* Add Payment Button */}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={addPayment}
-              className="gap-2"
-            >
-              <Plus className="h-4 w-4" />
-              إضافة دفعة
-            </Button>
+            {/* Add Payment Button - hidden for ELZAMI */}
+            {!isElzami && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addPayment}
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                إضافة دفعة
+              </Button>
+            )}
           </div>
         </div>
 
@@ -306,12 +313,28 @@ export function Step4Payments({
               const visaPaid = payment.tranzila_paid;
               const visaAmount = payment.amount || 0;
               const isProcessing = creatingPolicy && selectedVisaPaymentIndex === index;
+              const isLocked = payment.locked === true;
+              const isDisabled = visaPaid || isLocked;
               
               return (
                 <Card key={payment.id} className={cn(
                   "p-4",
-                  visaPaid && "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800"
+                  visaPaid && "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800",
+                  isLocked && "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800"
                 )}>
+                  {/* Locked Payment Badge */}
+                  {isLocked && payment.locked_label && (
+                    <div className="flex items-center gap-2 mb-3 pb-2 border-b border-amber-200 dark:border-amber-700">
+                      <Lock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      <span className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                        {payment.locked_label}
+                      </span>
+                      <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/50 px-2 py-0.5 rounded-full">
+                        محسوبة تلقائيًا
+                      </span>
+                    </div>
+                  )}
+                  
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
                     {/* Payment Type */}
                     <div>
@@ -319,9 +342,9 @@ export function Step4Payments({
                       <Select
                         value={payment.payment_type}
                         onValueChange={(v) => updatePayment(payment.id, 'payment_type', v)}
-                        disabled={visaPaid}
+                        disabled={isDisabled}
                       >
-                        <SelectTrigger className="h-9">
+                        <SelectTrigger className={cn("h-9", isLocked && "opacity-70 cursor-not-allowed")}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -342,10 +365,11 @@ export function Step4Payments({
                         value={payment.amount || ''}
                         onChange={(e) => updatePayment(payment.id, 'amount', parseFloat(e.target.value) || 0)}
                         placeholder="0"
-                        disabled={visaPaid}
+                        disabled={isDisabled}
                         className={cn(
                           "h-9",
-                          paymentsExceedPrice && "border-destructive"
+                          paymentsExceedPrice && "border-destructive",
+                          isLocked && "opacity-70 cursor-not-allowed"
                         )}
                       />
                     </div>
@@ -356,26 +380,27 @@ export function Step4Payments({
                       <ArabicDatePicker
                         value={payment.payment_date}
                         onChange={(date) => updatePayment(payment.id, 'payment_date', date)}
-                        className="h-9"
-                        disabled={visaPaid}
+                        className={cn("h-9", isLocked && "opacity-70 cursor-not-allowed")}
+                        disabled={isDisabled}
                       />
                     </div>
 
                     {/* Actions */}
                     <div className="flex items-center gap-2">
                       {/* Cheque Number (if cheque) */}
-                      {payment.payment_type === 'cheque' && (
+                      {payment.payment_type === 'cheque' && !isLocked && (
                         <Input
                           value={payment.cheque_number || ''}
                           onChange={(e) => updatePayment(payment.id, 'cheque_number', sanitizeChequeNumber(e.target.value))}
                           placeholder="رقم الشيك"
                           maxLength={CHEQUE_NUMBER_MAX_LENGTH}
                           className="h-9 flex-1 font-mono ltr-input"
+                          disabled={isDisabled}
                         />
                       )}
                       
-                      {/* Visa Pay Button */}
-                      {isVisa && !visaPaid && (
+                      {/* Visa Pay Button - only show if not locked */}
+                      {isVisa && !visaPaid && !isLocked && (
                         <Button
                           type="button"
                           size="sm"
@@ -400,8 +425,16 @@ export function Step4Payments({
                         </span>
                       )}
                       
-                      {/* Delete Button */}
-                      {!visaPaid && (
+                      {/* Locked Badge (for ELZAMI) */}
+                      {isLocked && (
+                        <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
+                          <Lock className="h-3.5 w-3.5" />
+                          مقفلة
+                        </span>
+                      )}
+                      
+                      {/* Delete Button - hide for locked payments */}
+                      {!visaPaid && !isLocked && (
                         <Button
                           type="button"
                           variant="ghost"

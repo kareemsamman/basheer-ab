@@ -2561,12 +2561,14 @@ export type Database = {
           created_by_admin_id: string | null
           id: string
           installments_count: number | null
+          locked: boolean | null
           notes: string | null
           payment_date: string
           payment_type: Database["public"]["Enums"]["payment_type"]
           policy_id: string
           provider: string | null
           refused: boolean | null
+          source: string | null
           transferred_at: string | null
           transferred_payment_id: string | null
           transferred_to_id: string | null
@@ -2589,12 +2591,14 @@ export type Database = {
           created_by_admin_id?: string | null
           id?: string
           installments_count?: number | null
+          locked?: boolean | null
           notes?: string | null
           payment_date?: string
           payment_type: Database["public"]["Enums"]["payment_type"]
           policy_id: string
           provider?: string | null
           refused?: boolean | null
+          source?: string | null
           transferred_at?: string | null
           transferred_payment_id?: string | null
           transferred_to_id?: string | null
@@ -2617,12 +2621,14 @@ export type Database = {
           created_by_admin_id?: string | null
           id?: string
           installments_count?: number | null
+          locked?: boolean | null
           notes?: string | null
           payment_date?: string
           payment_type?: Database["public"]["Enums"]["payment_type"]
           policy_id?: string
           provider?: string | null
           refused?: boolean | null
+          source?: string | null
           transferred_at?: string | null
           transferred_payment_id?: string | null
           transferred_to_id?: string | null
