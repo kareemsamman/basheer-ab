@@ -943,6 +943,53 @@ export type Database = {
           },
         ]
       }
+      client_children: {
+        Row: {
+          birth_date: string | null
+          client_id: string
+          created_at: string | null
+          full_name: string
+          id: string
+          id_number: string
+          notes: string | null
+          phone: string | null
+          relation: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          birth_date?: string | null
+          client_id: string
+          created_at?: string | null
+          full_name: string
+          id?: string
+          id_number: string
+          notes?: string | null
+          phone?: string | null
+          relation?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          birth_date?: string | null
+          client_id?: string
+          created_at?: string | null
+          full_name?: string
+          id?: string
+          id_number?: string
+          notes?: string | null
+          phone?: string | null
+          relation?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_children_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           birth_date: string | null
@@ -2500,6 +2547,49 @@ export type Database = {
           {
             foreignKeyName: "policies_transferred_from_policy_id_fkey"
             columns: ["transferred_from_policy_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_policies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      policy_children: {
+        Row: {
+          child_id: string
+          created_at: string | null
+          id: string
+          policy_id: string
+        }
+        Insert: {
+          child_id: string
+          created_at?: string | null
+          id?: string
+          policy_id: string
+        }
+        Update: {
+          child_id?: string
+          created_at?: string | null
+          id?: string
+          policy_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "policy_children_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "client_children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policy_children_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "policies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policy_children_policy_id_fkey"
+            columns: ["policy_id"]
             isOneToOne: false
             referencedRelation: "v_worker_policies"
             referencedColumns: ["id"]
