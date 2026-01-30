@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { SidebarNotificationBadge } from "./SidebarNotificationBadge";
+import { SidebarDebtBadge } from "./SidebarDebtBadge";
 
 // Navigation items - some are admin-only
 const getNavigation = (isAdmin: boolean) => {
@@ -142,6 +143,7 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
         {getNavigation(isAdmin).map((item) => {
           const isActiveRoute = location.pathname === item.href;
           const isNotifications = item.href === '/notifications';
+          const isDebtTracking = item.href === '/debt-tracking';
           return (
             <NavLink
               key={item.name}
@@ -158,6 +160,7 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
               <item.icon className={cn("h-5 w-5 flex-shrink-0", isActiveRoute && "text-primary")} />
               {!collapsed && <span>{item.name}</span>}
               {isNotifications && <SidebarNotificationBadge collapsed={collapsed} />}
+              {isDebtTracking && <SidebarDebtBadge collapsed={collapsed} />}
             </NavLink>
           );
         })}

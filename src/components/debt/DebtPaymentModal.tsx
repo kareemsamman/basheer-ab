@@ -92,7 +92,7 @@ export function DebtPaymentModal({
   const [splitPopoverOpen, setSplitPopoverOpen] = useState(false);
   const [splitCount, setSplitCount] = useState(2);
   const [previewUrls, setPreviewUrls] = useState<PreviewUrls>({});
-  const [selectedCarFilter, setSelectedCarFilter] = useState<string | null>(null);
+  const [selectedCars, setSelectedCars] = useState<string[]>([]);
 
   // Extract unique car numbers for filter
   const uniqueCars = React.useMemo(() => {
@@ -103,11 +103,20 @@ export function DebtPaymentModal({
     return cars;
   }, [policies]);
 
-  // Filter policies by selected car
+  // Toggle car selection
+  const toggleCar = (car: string) => {
+    setSelectedCars(prev => 
+      prev.includes(car) 
+        ? prev.filter(c => c !== car) 
+        : [...prev, car]
+    );
+  };
+
+  // Filter policies by selected cars (empty array = all cars)
   const filteredPolicies = React.useMemo(() => {
-    if (!selectedCarFilter) return policies;
-    return policies.filter(p => p.carNumber === selectedCarFilter);
-  }, [policies, selectedCarFilter]);
+    if (selectedCars.length === 0) return policies;
+    return policies.filter(p => p.carNumber && selectedCars.includes(p.carNumber));
+  }, [policies, selectedCars]);
 
   const totalRemaining = filteredPolicies.reduce((sum, p) => sum + p.remaining, 0);
   const totalPrice = filteredPolicies.reduce((sum, p) => sum + p.price, 0);
@@ -656,24 +665,29 @@ export function DebtPaymentModal({
               </div>
             </div>
 
-            {/* Car Filter */}
+            {/* Car Filter - Multi-select with Chips */}
             {uniqueCars.length > 1 && (
-              <div className="flex items-center gap-2">
-                <Label className="text-sm whitespace-nowrap">سيارة:</Label>
-                <Select 
-                  value={selectedCarFilter || 'all'} 
-                  onValueChange={(v) => setSelectedCarFilter(v === 'all' ? null : v)}
-                >
-                  <SelectTrigger className="w-40">
-                    <SelectValue placeholder="كل السيارات" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">كل السيارات</SelectItem>
-                    {uniqueCars.map(car => (
-                      <SelectItem key={car} value={car}>{car}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="flex flex-wrap items-center gap-2">
+                <Label className="text-sm whitespace-nowrap">السيارات:</Label>
+                <div className="flex flex-wrap gap-1">
+                  <Badge 
+                    variant={selectedCars.length === 0 ? "default" : "outline"}
+                    className="cursor-pointer hover:bg-primary/80 transition-colors"
+                    onClick={() => setSelectedCars([])}
+                  >
+                    الكل
+                  </Badge>
+                  {uniqueCars.map(car => (
+                    <Badge 
+                      key={car}
+                      variant={selectedCars.includes(car) ? "default" : "outline"}
+                      className="cursor-pointer hover:bg-primary/80 transition-colors font-mono"
+                      onClick={() => toggleCar(car)}
+                    >
+                      {car}
+                    </Badge>
+                  ))}
+                </div>
               </div>
             )}
 
