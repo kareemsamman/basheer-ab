@@ -155,33 +155,47 @@ export function RepairClaimDrawer({ open, onOpenChange, claim }: RepairClaimDraw
     },
   });
 
-  // Search clients
+  // Search clients - improved query
   const { data: clients, isLoading: clientsLoading } = useQuery({
-    queryKey: ["clients-search", clientSearch],
+    queryKey: ["clients-search-repair", clientSearch],
     queryFn: async () => {
       if (!clientSearch || clientSearch.length < 2) return [];
       
+      // Use textSearch approach for better results
+      const searchTerm = `%${clientSearch}%`;
       const { data, error } = await supabase
         .from("clients")
         .select("id, full_name, id_number, phone_number")
-        .or(`full_name.ilike.%${clientSearch}%,id_number.ilike.%${clientSearch}%,phone_number.ilike.%${clientSearch}%`)
-        .limit(10);
+        .is("deleted_at", null)
+        .or(`full_name.ilike.${searchTerm},id_number.ilike.${searchTerm},phone_number.ilike.${searchTerm}`)
+        .limit(15);
       
-      if (error) throw error;
-      return data;
+      if (error) {
+        console.error("Client search error:", error);
+        return [];
+      }
+      return data || [];
     },
     enabled: clientSearch.length >= 2,
   });
 
-  // Fetch policies for selected client (THIRD_PARTY or ROAD_SERVICE only)
+  // Fetch policies for selected client (THIRD_FULL or ROAD_SERVICE only)
   const { data: policies } = useQuery({
-    queryKey: ["client-policies", selectedClientId],
+    queryKey: ["client-policies-repair", selectedClientId],
     queryFn: async () => {
       if (!selectedClientId) return [];
       
       const { data, error } = await supabase
         .from("policies")
-        .select("id, policy_number, policy_type_parent, policy_type_child, start_date, end_date")
+        .select(`
+          id, 
+          policy_number, 
+          policy_type_parent, 
+          policy_type_child, 
+          start_date, 
+          end_date,
+          cars(car_number, manufacturer_name, model, year)
+        `)
         .eq("client_id", selectedClientId)
         .in("policy_type_parent", ["THIRD_FULL", "ROAD_SERVICE"])
         .eq("cancelled", false)
@@ -193,6 +207,17 @@ export function RepairClaimDrawer({ open, onOpenChange, claim }: RepairClaimDraw
     },
     enabled: !!selectedClientId,
   });
+
+  // Auto-fill insurance file number when policy is selected
+  const selectedPolicyId = form.watch("policy_id");
+  useEffect(() => {
+    if (selectedPolicyId && policies) {
+      const selectedPolicy = policies.find(p => p.id === selectedPolicyId);
+      if (selectedPolicy?.policy_number) {
+        form.setValue("insurance_file_number", selectedPolicy.policy_number);
+      }
+    }
+  }, [selectedPolicyId, policies, form]);
 
   // Selected client display
   const selectedClient = clients?.find(c => c.id === selectedClientId) || 
@@ -532,10 +557,19 @@ export function RepairClaimDrawer({ open, onOpenChange, claim }: RepairClaimDraw
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {policies?.map((policy) => (
+                            {policies?.map((policy: any) => (
                               <SelectItem key={policy.id} value={policy.id}>
-                                {policy.policy_type_parent === "THIRD_FULL" ? "شامل" : "خدمات طريق"}
-                                {policy.policy_number ? ` - ${policy.policy_number}` : ""}
+                                <div className="flex flex-col">
+                                  <span>
+                                    {policy.policy_type_parent === "THIRD_FULL" ? "شامل" : "خدمات طريق"}
+                                    {policy.policy_number ? ` - ${policy.policy_number}` : ""}
+                                  </span>
+                                  {policy.cars && (
+                                    <span className="text-xs text-muted-foreground">
+                                      {policy.cars.car_number} - {policy.cars.manufacturer_name} {policy.cars.model}
+                                    </span>
+                                  )}
+                                </div>
                               </SelectItem>
                             ))}
                           </SelectContent>
