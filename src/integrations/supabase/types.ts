@@ -3693,6 +3693,60 @@ export type Database = {
         }
         Relationships: []
       }
+      user_sessions: {
+        Row: {
+          browser_name: string | null
+          browser_version: string | null
+          city: string | null
+          country: string | null
+          created_at: string | null
+          device_type: string | null
+          duration_minutes: number | null
+          ended_at: string | null
+          id: string
+          ip_address: string | null
+          is_active: boolean | null
+          os_name: string | null
+          started_at: string
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          browser_name?: string | null
+          browser_version?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string | null
+          device_type?: string | null
+          duration_minutes?: number | null
+          ended_at?: string | null
+          id?: string
+          ip_address?: string | null
+          is_active?: boolean | null
+          os_name?: string | null
+          started_at?: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          browser_name?: string | null
+          browser_version?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string | null
+          device_type?: string | null
+          duration_minutes?: number | null
+          ended_at?: string | null
+          id?: string
+          ip_address?: string | null
+          is_active?: boolean | null
+          os_name?: string | null
+          started_at?: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       v_worker_brokers: {

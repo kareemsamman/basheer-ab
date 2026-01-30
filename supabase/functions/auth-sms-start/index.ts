@@ -246,13 +246,22 @@ serve(async (req) => {
         );
       }
 
+      // Get IP and User-Agent from request
+      const ip_address = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() 
+        || req.headers.get("cf-connecting-ip") 
+        || req.headers.get("x-real-ip")
+        || null;
+      const user_agent = req.headers.get("user-agent") || null;
+
       // Log in background (don't await)
       supabase.from("login_attempts").insert({
         email: fakeEmail,
         identifier: normalizedPhone,
         method: "sms_registration",
         success: true,
-        user_id: authUser.user.id
+        user_id: authUser.user.id,
+        ip_address,
+        user_agent,
       });
 
       console.log("Created pending profile for phone:", normalizedPhone);
@@ -342,12 +351,21 @@ serve(async (req) => {
       );
     }
 
+    // Get IP and User-Agent from request for OTP
+    const ip_address_otp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() 
+      || req.headers.get("cf-connecting-ip") 
+      || req.headers.get("x-real-ip")
+      || null;
+    const user_agent_otp = req.headers.get("user-agent") || null;
+
     // Log in background (don't await)
     supabase.from("login_attempts").insert({
       email: normalizedPhone,
       identifier: normalizedPhone,
       method: "sms_otp",
       success: false,
+      ip_address: ip_address_otp,
+      user_agent: user_agent_otp,
     });
 
     return new Response(

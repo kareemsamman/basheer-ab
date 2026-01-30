@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
 import { AuthProvider } from "@/hooks/useAuth";
 import { RecentClientProvider } from "@/hooks/useRecentClient";
+import { useSessionTracker } from "@/hooks/useSessionTracker";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AdminRoute } from "@/components/auth/AdminRoute";
 import Index from "./pages/Index";
@@ -64,6 +65,12 @@ const queryClient = new QueryClient({
   },
 });
 
+// Session tracker wrapper component
+function SessionTrackerWrapper({ children }: { children: React.ReactNode }) {
+  useSessionTracker();
+  return <>{children}</>;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <HelmetProvider>
@@ -72,6 +79,7 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <AuthProvider>
+            <SessionTrackerWrapper>
             <RecentClientProvider>
             <Routes>
               <Route path="/login" element={<Login />} />
@@ -291,6 +299,7 @@ const App = () => (
               <Route path="*" element={<NotFound />} />
             </Routes>
             </RecentClientProvider>
+            </SessionTrackerWrapper>
           </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>

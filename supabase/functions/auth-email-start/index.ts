@@ -185,12 +185,21 @@ serve(async (req) => {
         );
       }
 
+      // Get IP and User-Agent from request
+      const ip_address = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() 
+        || req.headers.get("cf-connecting-ip") 
+        || req.headers.get("x-real-ip")
+        || null;
+      const user_agent = req.headers.get("user-agent") || null;
+
       // Log attempt in background (don't wait)
       supabase.from("login_attempts").insert({
         email: normalizedEmail,
         identifier: normalizedEmail,
         method: "email_otp",
         success: false,
+        ip_address,
+        user_agent,
       });
 
       return new Response(
@@ -310,12 +319,21 @@ serve(async (req) => {
       );
     }
 
+    // Get IP and User-Agent from request
+    const ip_address = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() 
+      || req.headers.get("cf-connecting-ip") 
+      || req.headers.get("x-real-ip")
+      || null;
+    const user_agent = req.headers.get("user-agent") || null;
+
     // Log attempt in background (don't await)
     supabase.from("login_attempts").insert({
       email: normalizedEmail,
       identifier: normalizedEmail,
       method: "email_otp",
       success: false,
+      ip_address,
+      user_agent,
     });
 
     return new Response(

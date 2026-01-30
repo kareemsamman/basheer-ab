@@ -46,9 +46,11 @@ import {
   RefreshCw,
   Building2,
   Phone,
+  History,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
+import { UserSessionsTab } from "@/components/admin/UserSessionsTab";
 
 interface UserProfile {
   id: string;
@@ -471,7 +473,7 @@ export default function AdminUsers() {
 
         {/* Tabs */}
         <Tabs defaultValue="pending" className="space-y-4">
-          <TabsList className="grid w-full max-w-md grid-cols-3">
+          <TabsList className="grid w-full max-w-xl grid-cols-4">
             <TabsTrigger value="pending" className="gap-2">
               <Clock className="h-4 w-4" />
               معلق ({pendingUsers.length})
@@ -483,6 +485,10 @@ export default function AdminUsers() {
             <TabsTrigger value="blocked" className="gap-2">
               <XCircle className="h-4 w-4" />
               محظور ({blockedUsers.length})
+            </TabsTrigger>
+            <TabsTrigger value="sessions" className="gap-2">
+              <History className="h-4 w-4" />
+              سجل الجلسات
             </TabsTrigger>
           </TabsList>
 
@@ -771,6 +777,11 @@ export default function AdminUsers() {
                 </Table>
               )}
             </div>
+          </TabsContent>
+
+          {/* User Sessions Tab */}
+          <TabsContent value="sessions">
+            <UserSessionsTab />
           </TabsContent>
         </Tabs>
 

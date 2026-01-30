@@ -36,10 +36,50 @@ function normalizePhone(phone: string): string {
   return normalized;
 }
 
+// Parse User-Agent to extract browser/OS info
+function parseUserAgent(ua: string) {
+  let browserName = 'Unknown';
+  let browserVersion = '';
+  
+  if (ua.includes('Edg/')) {
+    browserName = 'Edge';
+    browserVersion = ua.match(/Edg\/(\d+)/)?.[1] || '';
+  } else if (ua.includes('Chrome/')) {
+    browserName = 'Chrome';
+    browserVersion = ua.match(/Chrome\/(\d+)/)?.[1] || '';
+  } else if (ua.includes('Firefox/')) {
+    browserName = 'Firefox';
+    browserVersion = ua.match(/Firefox\/(\d+)/)?.[1] || '';
+  } else if (ua.includes('Safari/') && !ua.includes('Chrome')) {
+    browserName = 'Safari';
+    browserVersion = ua.match(/Version\/(\d+)/)?.[1] || '';
+  }
+
+  let osName = 'Unknown';
+  if (ua.includes('Windows NT')) osName = 'Windows';
+  else if (ua.includes('Mac OS')) osName = 'macOS';
+  else if (ua.includes('Linux')) osName = 'Linux';
+  else if (ua.includes('Android')) osName = 'Android';
+  else if (ua.includes('iPhone') || ua.includes('iPad')) osName = 'iOS';
+
+  let deviceType = 'desktop';
+  if (ua.includes('Mobile') || ua.includes('Android')) deviceType = 'mobile';
+  else if (ua.includes('iPad') || ua.includes('Tablet')) deviceType = 'tablet';
+
+  return { browserName, browserVersion, osName, deviceType };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // Get IP and User-Agent from request
+  const ip_address = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() 
+    || req.headers.get("cf-connecting-ip") 
+    || req.headers.get("x-real-ip")
+    || null;
+  const user_agent = req.headers.get("user-agent") || '';
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -162,10 +202,10 @@ serve(async (req) => {
         .eq("id", userId);
     }
 
-    // Update login attempt
+    // Update login attempt with IP and user agent
     await supabase
       .from("login_attempts")
-      .update({ success: true, user_id: userId })
+      .update({ success: true, user_id: userId, ip_address, user_agent })
       .eq("identifier", normalizedPhone)
       .eq("method", "sms_otp")
       .eq("success", false)
@@ -180,6 +220,21 @@ serve(async (req) => {
 
     if (sessionError) {
       console.error("Session generation error:", sessionError);
+    }
+
+    // Create user session record for tracking (only for active users)
+    if (userStatus === "active") {
+      const { browserName, browserVersion, osName, deviceType } = parseUserAgent(user_agent);
+      await supabase.from("user_sessions").insert({
+        user_id: userId,
+        ip_address,
+        user_agent,
+        browser_name: browserName,
+        browser_version: browserVersion,
+        os_name: osName,
+        device_type: deviceType,
+        is_active: true,
+      });
     }
 
     return new Response(
