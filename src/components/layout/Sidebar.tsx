@@ -171,11 +171,11 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
     return group.items.some(item => location.pathname === item.href);
   };
 
-  // Initialize open states
+  // Initialize open states - all groups open by default
   useEffect(() => {
     const initialState: Record<string, boolean> = {};
     filteredGroups.forEach(group => {
-      initialState[group.name] = group.defaultOpen || isGroupActive(group);
+      initialState[group.name] = true; // All groups open by default
     });
     setOpenGroups(initialState);
   }, []);
