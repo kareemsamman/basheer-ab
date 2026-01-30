@@ -10,11 +10,14 @@ import {
   CheckCircle2,
   AlertTriangle,
   ListTodo,
+  Users,
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import {
   Popover,
   PopoverContent,
@@ -47,13 +50,26 @@ export default function Tasks() {
     isCreating,
   } = useTasks(selectedDate);
 
+  // Calculate stats for badges and banner
+  const myTasks = tasks.filter(t => t.assigned_to === user?.id);
+  const myPendingCount = myTasks.filter(t => t.status === 'pending').length;
+  const myCompletedCount = myTasks.filter(t => t.status === 'completed').length;
+  const myTotalCount = myPendingCount + myCompletedCount;
+  const completionPercentage = myTotalCount > 0 
+    ? Math.round((myCompletedCount / myTotalCount) * 100) 
+    : 0;
+  const createdForOthersCount = tasks.filter(t => 
+    t.created_by === user?.id && t.assigned_to !== user?.id
+  ).length;
+
   // Filter tasks based on selected tab
   const filteredTasks = tasks.filter(task => {
     switch (filterTab) {
       case 'my-tasks':
         return task.assigned_to === user?.id;
       case 'created-by-me':
-        return task.created_by === user?.id;
+        // Only tasks created for others (not for myself)
+        return task.created_by === user?.id && task.assigned_to !== user?.id;
       case 'all':
         return true;
       default:
@@ -103,12 +119,95 @@ export default function Tasks() {
           </Button>
         </div>
 
-        {/* Filter Tabs */}
+        {/* Stats Summary Banner */}
+        <Card className="bg-gradient-to-l from-violet-50 to-background border-violet-200/50">
+          <CardContent className="py-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              {/* مهامي المعلقة */}
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
+                  <Clock className="h-6 w-6" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold ltr-nums">{myPendingCount}</p>
+                  <p className="text-sm text-muted-foreground">مهامي المعلقة</p>
+                </div>
+              </div>
+
+              {/* مهامي المنجزة */}
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-100 text-green-600">
+                  <CheckCircle2 className="h-6 w-6" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold ltr-nums">{myCompletedCount}</p>
+                  <p className="text-sm text-muted-foreground">أنجزتها اليوم</p>
+                </div>
+              </div>
+
+              {/* Progress */}
+              <div className="flex-1 min-w-[150px] max-w-[200px]">
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-muted-foreground">إنجازي</span>
+                  <span className="font-medium ltr-nums">{completionPercentage}%</span>
+                </div>
+                <Progress value={completionPercentage} className="h-2" />
+              </div>
+
+              {/* المهام للآخرين */}
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-violet-100 text-violet-600">
+                  <Users className="h-6 w-6" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold ltr-nums">{createdForOthersCount}</p>
+                  <p className="text-sm text-muted-foreground">أنشأتها للآخرين</p>
+                </div>
+              </div>
+
+              {/* متأخرة */}
+              {stats.overdue > 0 && (
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-red-100 text-red-600">
+                    <AlertTriangle className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold ltr-nums">{stats.overdue}</p>
+                    <p className="text-sm text-muted-foreground">متأخرة</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Filter Tabs with Badges */}
         <Tabs value={filterTab} onValueChange={(v) => setFilterTab(v as FilterTab)}>
           <TabsList>
-            <TabsTrigger value="my-tasks">مهامي</TabsTrigger>
-            <TabsTrigger value="created-by-me">أنشأتها</TabsTrigger>
-            {isAdmin && <TabsTrigger value="all">الكل</TabsTrigger>}
+            <TabsTrigger value="my-tasks" className="gap-2">
+              مهامي
+              {myPendingCount > 0 && (
+                <Badge variant="secondary" className="h-5 min-w-[20px] px-1.5 text-xs">
+                  {myPendingCount}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="created-by-me" className="gap-2">
+              أنشأتها للآخرين
+              {createdForOthersCount > 0 && (
+                <Badge variant="outline" className="h-5 min-w-[20px] px-1.5 text-xs">
+                  {createdForOthersCount}
+                </Badge>
+              )}
+            </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="all" className="gap-2">
+                الكل
+                <Badge variant="outline" className="h-5 min-w-[20px] px-1.5 text-xs">
+                  {tasks.length}
+                </Badge>
+              </TabsTrigger>
+            )}
           </TabsList>
         </Tabs>
 
@@ -157,51 +256,6 @@ export default function Tasks() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-4">
-          <Card className={cn(
-            "transition-all",
-            stats.pending > 0 && "border-primary/50"
-          )}>
-            <CardContent className="pt-4 pb-3 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
-                <Clock className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{stats.pending}</p>
-                <p className="text-xs text-muted-foreground">معلقة</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-4 pb-3 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 text-green-600">
-                <CheckCircle2 className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{stats.completed}</p>
-                <p className="text-xs text-muted-foreground">منجزة</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className={cn(
-            "transition-all",
-            stats.overdue > 0 && "border-destructive/50"
-          )}>
-            <CardContent className="pt-4 pb-3 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 text-red-600">
-                <AlertTriangle className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{stats.overdue}</p>
-                <p className="text-xs text-muted-foreground">متأخرة</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
 
         {/* Tasks List */}
         <div className="space-y-3">
