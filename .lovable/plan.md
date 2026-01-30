@@ -1,153 +1,167 @@
 
-# خطة: إصلاح نظام الفواتير والإيصالات
+
+# خطة: إصلاح نظام الفواتير وإضافة بيانات التواصل
 
 ## المشاكل المكتشفة
 
-### 1. خطأ في PolicySuccessDialog - "فشل في تحميل الفاتورة"
-**السبب**: عند طباعة فاتورة الباقة، يتم إرسال `{ group_id: policyId }` لكن الـ Edge Function يتوقع `{ policy_ids: [...] }`.
+### 1. الفاتورة الشاملة تعرض `${paymentRows}` كنص حرفي
+**الموقع**: `supabase/functions/generate-client-payments-invoice/index.ts` سطر 349
 
-**الموقع**: `PolicySuccessDialog.tsx` سطر 43-47
+**السبب**: استخدام `\${paymentRows}` مع backslash يجعلها نص عادي بدلاً من template literal interpolation.
 
-### 2. فاتورة شاملة بجدولين منفصلين
-**السبب**: الفاتورة الحالية تعرض قسم "الوثائق" وقسم "الدفعات" كجدولين منفصلين.
+**الكود الحالي**:
+```javascript
+<tbody>
+  \${paymentRows}
+</tbody>
+```
 
-**المطلوب**: جدول واحد يشمل: التاريخ، المبلغ، الطريقة، التفاصيل، **رقم السيارة**، نوع التأمين، الحالة.
+**الحل**: إزالة الـ backslash:
+```javascript
+<tbody>
+  ${paymentRows}
+</tbody>
+```
 
-### 3. لا يوجد زر إيصال لكل دفعة في سجل الدفعات
-**المطلوب**: إضافة زر 🧾 لكل دفعة لتوليد إيصال فردي.
+### 2. فشل إرسال SMS للوثيقة الجديدة
+**السبب**: الـ Edge Function تتطلب رفع ملفات البوليصة أولاً قبل إرسال SMS (شرط أمني).
+
+**من الكود (سطور 140-146)**:
+```javascript
+if (!insuranceFiles || insuranceFiles.length === 0) {
+  return new Response(
+    JSON.stringify({ error: `لا يوجد ملفات بوليصة للوثيقة ${policyNumber}، يجب رفع الملفات أولاً` }),
+    { status: 400, ... }
+  );
+}
+```
+
+**الحل**: في `PolicySuccessDialog.tsx`:
+- إذا لم يكن هناك ملفات بوليصة، يجب إظهار رسالة توضيحية للمستخدم
+- تعطيل زر "إرسال SMS" إذا لم يتم رفع الملفات
+
+### 3. بيانات التواصل (الإيميل، الهواتف، العنوان) غير موجودة
+**الحل**: إضافة حقول جديدة لجدول `sms_settings`:
+
+| الحقل | النوع | الوصف |
+|-------|-------|-------|
+| `company_email` | text | البريد الإلكتروني |
+| `company_phones` | text[] | أرقام الهواتف (مصفوفة) |
+| `company_whatsapp` | text | رقم الواتساب |
+| `company_location` | text | العنوان |
 
 ---
 
 ## التغييرات المطلوبة
 
-### الملف 1: `src/components/policies/PolicySuccessDialog.tsx`
-
+### الملف 1: `generate-client-payments-invoice/index.ts`
 | السطر | التغيير |
 |-------|---------|
-| 43-47 | تعديل الـ request body ليشمل `policy_ids` بدلاً من `group_id` |
+| 349 | إزالة `\` من `\${paymentRows}` |
+| 370-373 | إضافة بيانات التواصل في الـ footer |
 
-**المنطق الجديد**:
-- إذا كانت باقة (`isPackage=true`): جلب جميع policy_ids من `group_id`
-- إذا كانت وثيقة مفردة: إرسال `{ policy_id: policyId }` لـ `send-invoice-sms`
+**الـ Footer الجديد**:
+```html
+<div class="footer">
+  <p class="thank-you">شكراً لتعاملكم معنا</p>
+  <div class="contact-info">
+    <p>📧 ${companySettings.company_email || ''}</p>
+    <p>📞 ${companySettings.company_phones?.join(' | ') || ''}</p>
+    <p>📍 ${companySettings.company_location || ''}</p>
+    <p>💬 واتساب: ${companySettings.company_whatsapp || ''}</p>
+  </div>
+  <button class="print-button no-print" onclick="window.print()">طباعة الفاتورة</button>
+</div>
+```
 
-**الكود المقترح**:
-```typescript
-const handlePrintInvoice = async () => {
-  setPrintingInvoice(true);
-  try {
-    let data, error;
-    
-    if (isPackage) {
-      // For package: first get all policy IDs in the group
-      const { data: groupPolicies, error: fetchError } = await supabase
-        .from('policies')
-        .select('id')
-        .eq('group_id', policyId);
-      
-      if (fetchError) throw fetchError;
-      
-      const policyIds = groupPolicies?.map(p => p.id) || [policyId];
-      
-      const result = await supabase.functions.invoke('send-package-invoice-sms', {
-        body: { policy_ids: policyIds, skip_sms: true }
-      });
-      data = result.data;
-      error = result.error;
-    } else {
-      // Single policy
-      const result = await supabase.functions.invoke('send-invoice-sms', {
-        body: { policy_id: policyId, skip_sms: true }
-      });
-      data = result.data;
-      error = result.error;
-    }
+### الملف 2: `PolicySuccessDialog.tsx`
+| التغيير | التفاصيل |
+|---------|----------|
+| التحقق من وجود ملفات | إظهار رسالة إذا لم يتم رفع ملفات |
+| تعطيل زر SMS | إذا لم تكن هناك ملفات |
 
-    if (error) throw error;
-    // ...
-  }
+### الملف 3: Database Migration
+```sql
+ALTER TABLE sms_settings
+ADD COLUMN IF NOT EXISTS company_email TEXT,
+ADD COLUMN IF NOT EXISTS company_phones TEXT[] DEFAULT ARRAY[]::TEXT[],
+ADD COLUMN IF NOT EXISTS company_whatsapp TEXT,
+ADD COLUMN IF NOT EXISTS company_location TEXT;
+
+-- Example data
+UPDATE sms_settings SET 
+  company_email = 'info@basheer-ab.com',
+  company_phones = ARRAY['04-6555123', '052-1234567'],
+  company_whatsapp = '0521234567',
+  company_location = 'الناصرة - شارع المركز';
+```
+
+### الملف 4: `src/pages/SmsSettings.tsx`
+| التغيير | التفاصيل |
+|---------|----------|
+| إضافة Tab جديدة | "بيانات الشركة" (Company Info) |
+| حقول الإدخال | إيميل، هواتف (متعددة)، واتساب، عنوان |
+
+### الملف 5: جميع Edge Functions التي تولد HTML
+تحديث الـ footer في:
+- `generate-client-payments-invoice/index.ts`
+- `generate-payment-receipt/index.ts`
+- `send-invoice-sms/index.ts`
+- `send-package-invoice-sms/index.ts`
+- `generate-client-report/index.ts`
+
+**كل function يجب أن**:
+1. تجلب `sms_settings` لقراءة بيانات التواصل
+2. تضيف الـ footer الموحد مع البيانات
+
+---
+
+## الـ Footer الموحد (HTML)
+
+```html
+<div class="footer">
+  <p class="thank-you">شكراً لتعاملكم معنا 🙏</p>
+  <div class="contact-info">
+    <div class="contact-row">
+      <span>📧</span>
+      <a href="mailto:${company_email}">${company_email}</a>
+    </div>
+    <div class="contact-row">
+      <span>📞</span>
+      <span>${company_phones.join(' | ')}</span>
+    </div>
+    <div class="contact-row">
+      <span>💬</span>
+      <a href="https://wa.me/${company_whatsapp_normalized}">واتساب</a>
+    </div>
+    <div class="contact-row">
+      <span>📍</span>
+      <span>${company_location}</span>
+    </div>
+  </div>
+  <button class="print-button no-print" onclick="window.print()">🖨️ طباعة</button>
+</div>
+```
+
+**CSS للـ Footer**:
+```css
+.contact-info {
+  margin: 15px 0;
+  padding: 15px;
+  background: #f1f5f9;
+  border-radius: 8px;
 }
-```
-
----
-
-### الملف 2: `supabase/functions/send-package-invoice-sms/index.ts`
-
-| التغيير | التفاصيل |
-|---------|----------|
-| إضافة دعم `skip_sms` | لطباعة الفاتورة بدون إرسال SMS |
-
-**المنطق**:
-```typescript
-const { policy_ids, skip_sms }: { policy_ids: string[], skip_sms?: boolean } = await req.json();
-
-// ... توليد الفاتورة ...
-
-if (!skip_sms) {
-  // إرسال SMS
+.contact-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  color: #1e3a5f;
 }
-
-return Response({ ..., invoice_url: packageInvoiceUrl });
-```
-
----
-
-### الملف 3: `supabase/functions/send-invoice-sms/index.ts`
-
-| التغيير | التفاصيل |
-|---------|----------|
-| إضافة دعم `skip_sms` | نفس المنطق |
-
----
-
-### الملف 4: `supabase/functions/generate-client-payments-invoice/index.ts`
-
-| التغيير | التفاصيل |
-|---------|----------|
-| دمج الجدولين في جدول واحد | إزالة قسم "الوثائق" المنفصل |
-| إضافة عمود "رقم السيارة" | في جدول الدفعات |
-
-**الجدول الجديد**:
-```text
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│ المبلغ │ التاريخ │ طريقة الدفع │ التفاصيل │ رقم السيارة │ نوع التأمين │ الحالة │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│ ₪1,000 │ 29/01/26│   نقدي     │    -     │  12-345-67  │   إلزامي   │  مقبول │
-│ ₪500   │ 29/01/26│ بطاقة ائتمان│****5678  │  12-345-67  │ ثالث/شامل  │  مقبول │
-│        │         │             │ 3 تقسيطات│             │            │        │
-│ ₪2,000 │ 29/01/26│    شيك     │ رقم:123  │  12-345-67  │ ثالث/شامل  │ مقبول  │
-│        │         │             │15/02/26  │             │            │        │
-└─────────────────────────────────────────────────────────────────────────────────┘
-```
-
-**التغييرات في الكود**:
-1. حذف قسم `policiesSummary` المنفصل
-2. تعديل `paymentRows` ليشمل عمود رقم السيارة
-3. JOIN البيانات من `policy → car` لكل دفعة
-
----
-
-### الملف 5: `src/components/clients/ClientDetails.tsx`
-
-| التغيير | التفاصيل |
-|---------|----------|
-| إضافة زر إيصال لكل دفعة | أيقونة 🧾 تفتح `generate-payment-receipt` |
-
-**إضافة في جدول الدفعات**:
-```tsx
-<TableCell>
-  <Button
-    variant="ghost"
-    size="icon"
-    onClick={() => handleGeneratePaymentReceipt(payment.id)}
-    disabled={generatingReceipt === payment.id}
-  >
-    {generatingReceipt === payment.id ? (
-      <Loader2 className="h-4 w-4 animate-spin" />
-    ) : (
-      <Receipt className="h-4 w-4" />
-    )}
-  </Button>
-</TableCell>
+.contact-row a {
+  color: #2563eb;
+  text-decoration: none;
+}
 ```
 
 ---
@@ -156,17 +170,22 @@ return Response({ ..., invoice_url: packageInvoiceUrl });
 
 | الملف | النوع | التغيير |
 |-------|-------|---------|
-| `PolicySuccessDialog.tsx` | تعديل | إصلاح استدعاء API للباقة |
-| `send-package-invoice-sms/index.ts` | تعديل | إضافة `skip_sms` parameter |
-| `send-invoice-sms/index.ts` | تعديل | إضافة `skip_sms` parameter |
-| `generate-client-payments-invoice/index.ts` | تعديل | جدول واحد مع رقم السيارة |
-| `ClientDetails.tsx` | تعديل | زر إيصال لكل دفعة |
+| Migration SQL | جديد | إضافة أعمدة بيانات التواصل |
+| `SmsSettings.tsx` | تعديل | إضافة tab بيانات الشركة |
+| `generate-client-payments-invoice/index.ts` | تعديل | إصلاح `${paymentRows}` + footer |
+| `generate-payment-receipt/index.ts` | تعديل | إضافة footer |
+| `send-invoice-sms/index.ts` | تعديل | إضافة footer |
+| `send-package-invoice-sms/index.ts` | تعديل | إضافة footer |
+| `generate-client-report/index.ts` | تعديل | إضافة footer |
+| `PolicySuccessDialog.tsx` | تعديل | التحقق من وجود ملفات |
 
 ---
 
 ## النتائج المتوقعة
 
-- ✅ زر "طباعة الفاتورة" يعمل بشكل صحيح بعد إنشاء الوثيقة
-- ✅ فاتورة شاملة بجدول واحد يشمل رقم السيارة
-- ✅ زر إيصال لكل دفعة في سجل الدفعات
-- ✅ إمكانية طباعة الفاتورة بدون إرسال SMS
+- ✅ الفاتورة الشاملة تعرض الدفعات بشكل صحيح
+- ✅ رسالة توضيحية عند محاولة إرسال SMS بدون ملفات
+- ✅ بيانات التواصل (إيميل، هواتف، واتساب، عنوان) في كل فاتورة
+- ✅ إمكانية تعديل بيانات التواصل من صفحة الإعدادات
+- ✅ تصميم موحد للـ footer في جميع المستندات
+
