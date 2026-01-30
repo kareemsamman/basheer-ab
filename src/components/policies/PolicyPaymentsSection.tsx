@@ -21,7 +21,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Pencil, Trash2, CreditCard, Loader2, ImageIcon, X, AlertCircle, Upload, ChevronLeft, ChevronRight, RotateCcw, Split, Banknote, Wallet, CheckCircle, FileText } from "lucide-react";
+import { Plus, Pencil, Trash2, CreditCard, Loader2, ImageIcon, X, AlertCircle, Upload, ChevronLeft, ChevronRight, RotateCcw, Split, Banknote, Wallet, CheckCircle, FileText, Receipt } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal";
@@ -146,6 +146,7 @@ export function PolicyPaymentsSection({
   const [editPreviewUrls, setEditPreviewUrls] = useState<{ url: string; isPdf: boolean }[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [removeExistingFiles, setRemoveExistingFiles] = useState(false);
+  const [generatingReceipt, setGeneratingReceipt] = useState<string | null>(null);
 
   // Calculate totals - use package totals if provided
   const effectivePrice = packageTotalPrice ?? insurancePrice;
@@ -698,6 +699,34 @@ export function PolicyPaymentsSection({
 
   const activeVisaPayment = activeVisaPaymentIndex !== null ? paymentLines[activeVisaPaymentIndex] : null;
 
+  // Generate payment receipt
+  const handleGenerateReceipt = async (paymentId: string) => {
+    setGeneratingReceipt(paymentId);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-payment-receipt', {
+        body: { payment_id: paymentId }
+      });
+
+      if (error) throw error;
+
+      if (data?.receipt_url) {
+        window.open(data.receipt_url, '_blank');
+        toast({ title: "تم إنشاء الإيصال", description: "تم فتح الإيصال في نافذة جديدة" });
+      } else if (typeof data === 'string' && data.includes('<!DOCTYPE html>')) {
+        // Direct HTML response
+        const blob = new Blob([data], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        toast({ title: "تم إنشاء الإيصال", description: "تم فتح الإيصال في نافذة جديدة" });
+      }
+    } catch (error: any) {
+      console.error('Error generating receipt:', error);
+      toast({ title: "خطأ", description: error.message || "فشل في إنشاء الإيصال", variant: "destructive" });
+    } finally {
+      setGeneratingReceipt(null);
+    }
+  };
+
   return (
     <>
       <Card className="p-4 space-y-4">
@@ -774,6 +803,20 @@ export function PolicyPaymentsSection({
                   )}
                 </div>
                 <div className="flex items-center gap-1">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10" 
+                    onClick={() => handleGenerateReceipt(payment.id)}
+                    disabled={generatingReceipt === payment.id}
+                    title="إيصال دفع"
+                  >
+                    {generatingReceipt === payment.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Receipt className="h-4 w-4" />
+                    )}
+                  </Button>
                   <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(payment)}>
                     <Pencil className="h-4 w-4" />
                   </Button>
