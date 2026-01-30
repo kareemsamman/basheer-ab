@@ -278,10 +278,16 @@ function buildPaymentReceiptHtml(
       color: #2563eb;
       text-decoration: none;
     }
+    .action-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 15px;
+    }
     .print-button {
-      display: block;
-      width: 100%;
-      padding: 12px;
+      display: inline-block;
+      padding: 12px 25px;
       background: linear-gradient(135deg, #1e3a5f 0%, #2d5a8a 100%);
       color: white;
       border: none;
@@ -289,7 +295,18 @@ function buildPaymentReceiptHtml(
       font-size: 16px;
       font-weight: 700;
       cursor: pointer;
-      margin-top: 15px;
+      font-family: 'Tajawal', sans-serif;
+    }
+    .share-button {
+      display: inline-block;
+      padding: 12px 25px;
+      background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
       font-family: 'Tajawal', sans-serif;
     }
     .print-button:hover {
@@ -387,16 +404,18 @@ function buildPaymentReceiptHtml(
           <a href="mailto:${companySettings.company_email}">${companySettings.company_email}</a>
         </div>
         ` : ''}
-        ${phonesDisplay ? `
+        ${companySettings.company_phones && companySettings.company_phones.length > 0 ? `
         <div class="contact-row">
           <span>📞</span>
-          <span>${phonesDisplay}</span>
+          ${companySettings.company_phones.map((phone: string) => 
+            `<a href="tel:${phone.replace(/[^0-9+]/g, '')}">${phone}</a>`
+          ).join(' | ')}
         </div>
         ` : ''}
-        ${whatsappNormalized ? `
+        ${companySettings.company_whatsapp ? `
         <div class="contact-row">
           <span>💬</span>
-          <a href="https://wa.me/${whatsappNormalized}">واتساب</a>
+          <a href="https://wa.me/${whatsappNormalized}">${companySettings.company_whatsapp}</a>
         </div>
         ` : ''}
         ${companySettings.company_location ? `
@@ -407,8 +426,23 @@ function buildPaymentReceiptHtml(
         ` : ''}
       </div>
       <p>تم إصدار هذا الإيصال بتاريخ ${formatDate(new Date().toISOString())}</p>
-      <button class="print-button no-print" onclick="window.print()">🖨️ طباعة الإيصال</button>
+      <div class="action-buttons no-print">
+        <button class="print-button" onclick="window.print()">🖨️ طباعة الإيصال</button>
+        <button class="share-button" onclick="shareInvoice()">📲 مشاركة</button>
+      </div>
     </div>
+  </div>
+  <script>
+    function shareInvoice() {
+      const currentUrl = window.location.href;
+      const shareText = 'إيصال دفع التأمين: ' + currentUrl;
+      if (navigator.share) {
+        navigator.share({ title: 'إيصال دفع', text: 'إيصال دفع التأمين الخاص بك', url: currentUrl }).catch(console.error);
+      } else {
+        window.open('https://wa.me/?text=' + encodeURIComponent(shareText), '_blank');
+      }
+    }
+  </script>
   </div>
 </body>
 </html>

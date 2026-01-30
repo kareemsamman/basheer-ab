@@ -857,13 +857,30 @@ function generateReportHtml(
         ${(companySettings.company_email || (companySettings.company_phones && companySettings.company_phones.length > 0) || companySettings.company_whatsapp || companySettings.company_location) ? `
         <div class="contact-info" style="margin: 12px 0; padding: 10px; background: #f0fdfa; border-radius: 8px; display: inline-block; text-align: center;">
           ${companySettings.company_email ? `<div style="padding: 4px 0;">📧 <a href="mailto:${companySettings.company_email}" style="color: #0d9488; text-decoration: none;">${companySettings.company_email}</a></div>` : ''}
-          ${companySettings.company_phones && companySettings.company_phones.length > 0 ? `<div style="padding: 4px 0;">📞 ${companySettings.company_phones.join(' | ')}</div>` : ''}
-          ${companySettings.company_whatsapp ? `<div style="padding: 4px 0;">💬 <a href="https://wa.me/${normalizePhoneForWhatsapp(companySettings.company_whatsapp)}" style="color: #0d9488; text-decoration: none;">واتساب</a></div>` : ''}
+          ${companySettings.company_phones && companySettings.company_phones.length > 0 ? `<div style="padding: 4px 0;">📞 ${companySettings.company_phones.map((phone: string) => `<a href="tel:${phone.replace(/[^0-9+]/g, '')}" style="color: #0d9488; text-decoration: none;">${phone}</a>`).join(' | ')}</div>` : ''}
+          ${companySettings.company_whatsapp ? `<div style="padding: 4px 0;">💬 <a href="https://wa.me/${normalizePhoneForWhatsapp(companySettings.company_whatsapp)}" style="color: #0d9488; text-decoration: none;">${companySettings.company_whatsapp}</a></div>` : ''}
           ${companySettings.company_location ? `<div style="padding: 4px 0;">📍 ${companySettings.company_location}</div>` : ''}
         </div>
         ` : ''}
         <div class="footer-date">${formatDate(new Date().toISOString())}</div>
+        <div class="action-buttons no-print" style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+          <button onclick="window.print()" style="display: inline-block; padding: 12px 25px; background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer; font-family: 'Tajawal', sans-serif;">🖨️ طباعة التقرير</button>
+          <button onclick="shareReport()" style="display: inline-block; padding: 12px 25px; background: linear-gradient(135deg, #25D366 0%, #128C7E 100%); color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer; font-family: 'Tajawal', sans-serif;">📲 مشاركة</button>
+        </div>
       </div>
+    </div>
+  </div>
+  <script>
+    function shareReport() {
+      const currentUrl = window.location.href;
+      const shareText = 'تقرير التأمينات: ' + currentUrl;
+      if (navigator.share) {
+        navigator.share({ title: 'تقرير التأمينات', text: 'تقرير التأمينات الخاص بك', url: currentUrl }).catch(console.error);
+      } else {
+        window.open('https://wa.me/?text=' + encodeURIComponent(shareText), '_blank');
+      }
+    }
+  </script>
     </div>
   </div>
 </body>

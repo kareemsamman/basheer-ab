@@ -298,11 +298,17 @@ function buildComprehensiveInvoiceHtml(
     .contact-row a:hover {
       text-decoration: underline;
     }
+    .action-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 15px;
+      padding: 0 20px;
+    }
     .print-button {
-      display: block;
-      width: calc(100% - 40px);
-      margin: 15px 20px 0;
-      padding: 12px;
+      display: inline-block;
+      padding: 12px 25px;
       background: linear-gradient(135deg, #1e3a5f 0%, #2d5a8a 100%);
       color: white;
       border: none;
@@ -312,7 +318,19 @@ function buildComprehensiveInvoiceHtml(
       cursor: pointer;
       font-family: 'Tajawal', sans-serif;
     }
-    .print-button:hover { opacity: 0.9; }
+    .share-button {
+      display: inline-block;
+      padding: 12px 25px;
+      background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: 'Tajawal', sans-serif;
+    }
+    .print-button:hover, .share-button:hover { opacity: 0.9; }
     @media (max-width: 600px) {
       .totals { grid-template-columns: 1fr; }
       .total-value { font-size: 20px; }
@@ -396,16 +414,18 @@ function buildComprehensiveInvoiceHtml(
           <a href="mailto:${companySettings.company_email}">${companySettings.company_email}</a>
         </div>
         ` : ''}
-        ${phonesDisplay ? `
+        ${companySettings.company_phones && companySettings.company_phones.length > 0 ? `
         <div class="contact-row">
           <span>📞</span>
-          <span>${phonesDisplay}</span>
+          ${companySettings.company_phones.map((phone: string) => 
+            `<a href="tel:${phone.replace(/[^0-9+]/g, '')}">${phone}</a>`
+          ).join(' | ')}
         </div>
         ` : ''}
-        ${whatsappNormalized ? `
+        ${companySettings.company_whatsapp ? `
         <div class="contact-row">
           <span>💬</span>
-          <a href="https://wa.me/${whatsappNormalized}">واتساب</a>
+          <a href="https://wa.me/${whatsappNormalized}">${companySettings.company_whatsapp}</a>
         </div>
         ` : ''}
         ${companySettings.company_location ? `
@@ -415,8 +435,23 @@ function buildComprehensiveInvoiceHtml(
         </div>
         ` : ''}
       </div>
-      <button class="print-button no-print" onclick="window.print()">🖨️ طباعة الفاتورة</button>
+      <div class="action-buttons no-print">
+        <button class="print-button" onclick="window.print()">🖨️ طباعة الفاتورة</button>
+        <button class="share-button" onclick="shareInvoice()">📲 مشاركة الفاتورة</button>
+      </div>
     </div>
+  </div>
+  <script>
+    function shareInvoice() {
+      const currentUrl = window.location.href;
+      const shareText = 'فاتورة التأمين الشاملة: ' + currentUrl;
+      if (navigator.share) {
+        navigator.share({ title: 'فاتورة التأمين', text: 'فاتورة التأمين الشاملة الخاصة بك', url: currentUrl }).catch(console.error);
+      } else {
+        window.open('https://wa.me/?text=' + encodeURIComponent(shareText), '_blank');
+      }
+    }
+  </script>
   </div>
 </body>
 </html>
@@ -456,7 +491,7 @@ serve(async (req) => {
       );
     }
 
-    const { client_id } = await req.json();
+    const { client_id, send_sms } = await req.json();
 
     if (!client_id) {
       return new Response(
@@ -603,11 +638,64 @@ serve(async (req) => {
     const invoiceUrl = `${bunnyCdnUrl}/${storagePath}`;
     console.log(`[generate-client-payments-invoice] Invoice uploaded: ${invoiceUrl}`);
 
+    // Send SMS if requested
+    if (send_sms && client.phone_number) {
+      // Fetch SMS settings
+      const { data: smsSettingsData } = await supabase
+        .from("sms_settings")
+        .select("*")
+        .limit(1)
+        .maybeSingle();
+
+      if (smsSettingsData?.is_enabled) {
+        // Normalize phone for 019sms
+        let cleanPhone = client.phone_number.replace(/[^0-9]/g, "");
+        if (cleanPhone.startsWith("972")) {
+          cleanPhone = "0" + cleanPhone.substring(3);
+        }
+
+        const smsMessage = `مرحباً ${client.full_name}، تم إصدار فاتورة شاملة بجميع الدفعات الخاصة بك:\n${invoiceUrl}`;
+
+        const escapeXml = (value: string) =>
+          value
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\"/g, "&quot;")
+            .replace(/'/g, "&apos;");
+
+        const dlr = crypto.randomUUID();
+        const smsXml =
+          `<?xml version="1.0" encoding="UTF-8"?>` +
+          `<sms>` +
+          `<user><username>${escapeXml(smsSettingsData.sms_user || "")}</username></user>` +
+          `<source>${escapeXml(smsSettingsData.sms_source || "")}</source>` +
+          `<destinations><phone id="${dlr}">${escapeXml(cleanPhone)}</phone></destinations>` +
+          `<message>${escapeXml(smsMessage)}</message>` +
+          `</sms>`;
+
+        console.log(`[generate-client-payments-invoice] Sending SMS to ${cleanPhone}`);
+
+        const smsResponse = await fetch("https://019sms.co.il/api", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${smsSettingsData.sms_token}`,
+            "Content-Type": "application/xml; charset=utf-8",
+          },
+          body: smsXml,
+        });
+
+        const smsResult = await smsResponse.text();
+        console.log("[generate-client-payments-invoice] 019sms response:", smsResult);
+      }
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 
         invoice_url: invoiceUrl,
-        totals: { totalInsurance, totalPaid, totalRemaining }
+        totals: { totalInsurance, totalPaid, totalRemaining },
+        sms_sent: send_sms && client.phone_number ? true : false
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

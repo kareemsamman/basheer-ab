@@ -64,6 +64,7 @@ import {
   MessageSquare,
   Loader2,
   Receipt,
+  Send,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -283,6 +284,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
   
   // Comprehensive invoice state
   const [generatingComprehensiveInvoice, setGeneratingComprehensiveInvoice] = useState(false);
+  const [sendingComprehensiveInvoiceSms, setSendingComprehensiveInvoiceSms] = useState(false);
   
   // Individual payment receipt state
   const [generatingReceipt, setGeneratingReceipt] = useState<string | null>(null);
@@ -734,6 +736,30 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
       toast.error("فشل في توليد الفاتورة الشاملة");
     } finally {
       setGeneratingComprehensiveInvoice(false);
+    }
+  };
+
+  // Send comprehensive invoice via SMS
+  const handleSendComprehensiveInvoiceSms = async () => {
+    if (!client.phone_number) {
+      toast.error("رقم هاتف العميل مطلوب لإرسال SMS");
+      return;
+    }
+    
+    setSendingComprehensiveInvoiceSms(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-client-payments-invoice', {
+        body: { client_id: client.id, send_sms: true }
+      });
+
+      if (error) throw error;
+
+      toast.success("تم إرسال الفاتورة الشاملة للعميل عبر SMS");
+    } catch (error) {
+      console.error('Send invoice SMS error:', error);
+      toast.error("فشل في إرسال الفاتورة عبر SMS");
+    } finally {
+      setSendingComprehensiveInvoiceSms(false);
     }
   };
 
@@ -1368,19 +1394,35 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
           <TabsContent value="payments" className="mt-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-lg">سجل الدفعات</h3>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleGenerateAllPaymentsInvoice}
-                disabled={payments.length === 0 || generatingComprehensiveInvoice}
-              >
-                {generatingComprehensiveInvoice ? (
-                  <Loader2 className="h-4 w-4 ml-2 animate-spin" />
-                ) : (
-                  <FileText className="h-4 w-4 ml-2" />
-                )}
-                فاتورة شاملة
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGenerateAllPaymentsInvoice}
+                  disabled={payments.length === 0 || generatingComprehensiveInvoice}
+                >
+                  {generatingComprehensiveInvoice ? (
+                    <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                  ) : (
+                    <FileText className="h-4 w-4 ml-2" />
+                  )}
+                  فاتورة شاملة
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleSendComprehensiveInvoiceSms}
+                  disabled={payments.length === 0 || sendingComprehensiveInvoiceSms || !client.phone_number}
+                  title={!client.phone_number ? "يجب إضافة رقم هاتف العميل أولاً" : "إرسال الفاتورة الشاملة للعميل عبر SMS"}
+                >
+                  {sendingComprehensiveInvoiceSms ? (
+                    <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4 ml-2" />
+                  )}
+                  إرسال SMS
+                </Button>
+              </div>
             </div>
             
             {/* Payment Filters */}
