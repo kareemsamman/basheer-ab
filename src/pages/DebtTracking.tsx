@@ -458,7 +458,15 @@ export default function DebtTracking() {
                           )}
                         </Button>
                         <div>
-                          <p className="font-medium">{client.client_name}</p>
+                          <p 
+                            className="font-medium text-primary cursor-pointer hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.location.href = `/clients?open=${client.client_id}`;
+                            }}
+                          >
+                            {client.client_name}
+                          </p>
                           <p className="text-sm text-muted-foreground flex items-center gap-2">
                             <Phone className="h-3 w-3" />
                             {client.phone_number || "لا يوجد رقم"}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -92,10 +92,26 @@ export function DebtPaymentModal({
   const [splitPopoverOpen, setSplitPopoverOpen] = useState(false);
   const [splitCount, setSplitCount] = useState(2);
   const [previewUrls, setPreviewUrls] = useState<PreviewUrls>({});
+  const [selectedCarFilter, setSelectedCarFilter] = useState<string | null>(null);
 
-  const totalRemaining = policies.reduce((sum, p) => sum + p.remaining, 0);
-  const totalPrice = policies.reduce((sum, p) => sum + p.price, 0);
-  const totalPaid = policies.reduce((sum, p) => sum + p.paid, 0);
+  // Extract unique car numbers for filter
+  const uniqueCars = React.useMemo(() => {
+    const cars = policies
+      .filter(p => p.carNumber)
+      .map(p => p.carNumber!)
+      .filter((v, i, a) => a.indexOf(v) === i);
+    return cars;
+  }, [policies]);
+
+  // Filter policies by selected car
+  const filteredPolicies = React.useMemo(() => {
+    if (!selectedCarFilter) return policies;
+    return policies.filter(p => p.carNumber === selectedCarFilter);
+  }, [policies, selectedCarFilter]);
+
+  const totalRemaining = filteredPolicies.reduce((sum, p) => sum + p.remaining, 0);
+  const totalPrice = filteredPolicies.reduce((sum, p) => sum + p.price, 0);
+  const totalPaid = filteredPolicies.reduce((sum, p) => sum + p.paid, 0);
   
   // Calculate total payments - count paid visa payments as already completed
   const paidVisaTotal = paymentLines
@@ -349,8 +365,8 @@ export function DebtPaymentModal({
     
     if (amount <= 0 || totalRemaining <= 0) return splits;
 
-    // Get policies with remaining balance, sorted by remaining (smallest first for efficient filling)
-    const policiesWithBalance = policies
+    // Get filtered policies with remaining balance, sorted by remaining (smallest first for efficient filling)
+    const policiesWithBalance = filteredPolicies
       .filter(p => p.remaining > 0)
       .sort((a, b) => a.remaining - b.remaining);
 
@@ -432,25 +448,24 @@ export function DebtPaymentModal({
     setActiveTranzilaPolicyId(null);
   };
 
-  const sendPaymentConfirmationSms = async (paidAmount: number) => {
+  const sendPaymentConfirmationSms = async (paidAmount: number, paymentId?: string) => {
     if (!clientPhone) return;
     
     try {
-      // Generate client report
-      const { data: reportData, error: reportError } = await supabase.functions.invoke('generate-client-report', {
-        body: { client_id: clientId }
+      // Generate payment receipt instead of full client report
+      const { data: receiptData, error: receiptError } = await supabase.functions.invoke('generate-payment-receipt', {
+        body: { payment_id: paymentId }
       });
       
-      if (reportError) {
-        console.error('Error generating client report:', reportError);
+      if (receiptError) {
+        console.error('Error generating payment receipt:', receiptError);
         return;
       }
       
-      // Edge function returns 'url' not 'report_url'
-      const reportUrl = reportData?.url;
+      const receiptUrl = receiptData?.receipt_url;
       
-      // Send SMS with payment confirmation and report link
-      const message = `مرحباً ${clientName}، تم استلام دفعة بمبلغ ₪${paidAmount.toLocaleString()}. شكراً لك!\n\nلعرض تقريرك الشامل:\n${reportUrl || 'غير متوفر'}`;
+      // Send SMS with payment confirmation and receipt link
+      const message = `مرحباً ${clientName}، تم استلام دفعة بمبلغ ₪${paidAmount.toLocaleString()}. شكراً لك!\n\nلعرض وصل الدفع:\n${receiptUrl || 'غير متوفر'}`;
       
       await supabase.functions.invoke('send-sms', {
         body: {
@@ -547,11 +562,37 @@ export function DebtPaymentModal({
         }
       }
 
+      // Get the first inserted payment ID for the receipt
+      let firstPaymentId: string | undefined;
+      
+      // Find the first non-visa payment's ID for receipt
+      for (const paymentLine of paymentLines) {
+        if (paymentLine.paymentType !== 'visa' || !paymentLine.tranzilaPaid) {
+          // This payment was just inserted, we need its ID
+          break;
+        }
+      }
+      
+      // Query the most recent payment for this client to get the ID
+      const { data: recentPayment } = await supabase
+        .from('policy_payments')
+        .select('id')
+        .in('policy_id', filteredPolicies.map(p => p.policyId))
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      
+      firstPaymentId = recentPayment?.id;
+
       toast.success('تم تسديد الدفعات بنجاح');
       
-      // Send SMS confirmation with client report link
-      await sendPaymentConfirmationSms(totalPaymentAmount);
+      // Send SMS confirmation with payment receipt link
+      if (firstPaymentId) {
+        await sendPaymentConfirmationSms(totalPaymentAmount, firstPaymentId);
+      }
       
+      // Navigate to client profile to show last transaction
+      window.location.href = `/clients?open=${clientId}`;
       onOpenChange(false);
       onSuccess();
     } catch (error: any) {
@@ -615,9 +656,30 @@ export function DebtPaymentModal({
               </div>
             </div>
 
+            {/* Car Filter */}
+            {uniqueCars.length > 1 && (
+              <div className="flex items-center gap-2">
+                <Label className="text-sm whitespace-nowrap">سيارة:</Label>
+                <Select 
+                  value={selectedCarFilter || 'all'} 
+                  onValueChange={(v) => setSelectedCarFilter(v === 'all' ? null : v)}
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="كل السيارات" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">كل السيارات</SelectItem>
+                    {uniqueCars.map(car => (
+                      <SelectItem key={car} value={car}>{car}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             {/* Policy List */}
             <div className="border rounded-lg divide-y max-h-32 overflow-auto">
-              {policies.map(policy => (
+              {filteredPolicies.map(policy => (
                 <div key={policy.policyId} className="flex items-center justify-between p-2 text-sm">
                   <div className="flex flex-col gap-0.5">
                     <Badge variant="outline" className="text-xs w-fit">
