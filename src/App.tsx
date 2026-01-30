@@ -52,6 +52,8 @@ import Expenses from "./pages/Expenses";
 import AnnouncementSettings from "./pages/AnnouncementSettings";
 import Tasks from "./pages/Tasks";
 import BusinessContacts from "./pages/BusinessContacts";
+import RepairClaims from "./pages/RepairClaims";
+import RepairClaimDetail from "./pages/RepairClaimDetail";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -268,6 +270,17 @@ const App = () => (
                 <ProtectedRoute>
                   <AnnouncementSettings />
                 </ProtectedRoute>
+              } />
+              {/* Admin claims routes */}
+              <Route path="/admin/claims" element={
+                <AdminRoute>
+                  <RepairClaims />
+                </AdminRoute>
+              } />
+              <Route path="/admin/claims/:claimId" element={
+                <AdminRoute>
+                  <RepairClaimDetail />
+                </AdminRoute>
               } />
               {/* Public payment callback routes (loaded in iframe) */}
               <Route path="/payment/success" element={<PaymentSuccess />} />

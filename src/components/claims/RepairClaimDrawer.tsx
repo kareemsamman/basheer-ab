@@ -1,0 +1,581 @@
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Loader2, Check, ChevronsUpDown, Search } from "lucide-react";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+
+const formSchema = z.object({
+  garage_name: z.string().min(1, "اسم الكراج مطلوب"),
+  insurance_company_id: z.string().optional(),
+  insurance_file_number: z.string().optional(),
+  accident_date: z.string().optional(),
+  car_type: z.enum(["external", "insured"]),
+  external_car_number: z.string().optional(),
+  external_car_model: z.string().optional(),
+  client_id: z.string().optional(),
+  policy_id: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof formSchema>;
+
+interface RepairClaimDrawerProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  claim?: any;
+}
+
+export function RepairClaimDrawer({ open, onOpenChange, claim }: RepairClaimDrawerProps) {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const [garagePopoverOpen, setGaragePopoverOpen] = useState(false);
+  const [clientPopoverOpen, setClientPopoverOpen] = useState(false);
+  const [clientSearch, setClientSearch] = useState("");
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      garage_name: "",
+      insurance_company_id: "",
+      insurance_file_number: "",
+      accident_date: "",
+      car_type: "external",
+      external_car_number: "",
+      external_car_model: "",
+      client_id: "",
+      policy_id: "",
+      notes: "",
+    },
+  });
+
+  const carType = form.watch("car_type");
+  const selectedClientId = form.watch("client_id");
+
+  // Reset form when claim changes
+  useEffect(() => {
+    if (open) {
+      if (claim) {
+        form.reset({
+          garage_name: claim.garage_name || "",
+          insurance_company_id: claim.insurance_company_id || "",
+          insurance_file_number: claim.insurance_file_number || "",
+          accident_date: claim.accident_date || "",
+          car_type: claim.car_type || "external",
+          external_car_number: claim.external_car_number || "",
+          external_car_model: claim.external_car_model || "",
+          client_id: claim.client_id || "",
+          policy_id: claim.policy_id || "",
+          notes: claim.notes || "",
+        });
+      } else {
+        form.reset({
+          garage_name: "",
+          insurance_company_id: "",
+          insurance_file_number: "",
+          accident_date: "",
+          car_type: "external",
+          external_car_number: "",
+          external_car_model: "",
+          client_id: "",
+          policy_id: "",
+          notes: "",
+        });
+      }
+    }
+  }, [claim, open, form]);
+
+  // Fetch garages from business_contacts
+  const { data: garages } = useQuery({
+    queryKey: ["business-contacts-garages"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("business_contacts")
+        .select("id, name")
+        .eq("category", "garage")
+        .order("name");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch insurance companies
+  const { data: companies } = useQuery({
+    queryKey: ["insurance-companies-list"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("insurance_companies")
+        .select("id, name, name_ar")
+        .order("name_ar");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Search clients
+  const { data: clients, isLoading: clientsLoading } = useQuery({
+    queryKey: ["clients-search", clientSearch],
+    queryFn: async () => {
+      if (!clientSearch || clientSearch.length < 2) return [];
+      
+      const { data, error } = await supabase
+        .from("clients")
+        .select("id, full_name, id_number, phone_number")
+        .or(`full_name.ilike.%${clientSearch}%,id_number.ilike.%${clientSearch}%,phone_number.ilike.%${clientSearch}%`)
+        .limit(10);
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: clientSearch.length >= 2,
+  });
+
+  // Fetch policies for selected client (THIRD_PARTY or ROAD_SERVICE only)
+  const { data: policies } = useQuery({
+    queryKey: ["client-policies", selectedClientId],
+    queryFn: async () => {
+      if (!selectedClientId) return [];
+      
+      const { data, error } = await supabase
+        .from("policies")
+        .select("id, policy_number, policy_type_parent, policy_type_child, start_date, end_date")
+        .eq("client_id", selectedClientId)
+        .in("policy_type_parent", ["THIRD_FULL", "ROAD_SERVICE"])
+        .eq("cancelled", false)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!selectedClientId,
+  });
+
+  // Selected client display
+  const selectedClient = clients?.find(c => c.id === selectedClientId) || 
+    (claim?.client ? { id: claim.client_id, full_name: claim.client.full_name } : null);
+
+  // Save mutation
+  const saveMutation = useMutation({
+    mutationFn: async (values: FormValues) => {
+      const payload = {
+        garage_name: values.garage_name,
+        insurance_company_id: values.insurance_company_id || null,
+        insurance_file_number: values.insurance_file_number || null,
+        accident_date: values.accident_date || null,
+        car_type: values.car_type,
+        external_car_number: values.car_type === "external" ? values.external_car_number || null : null,
+        external_car_model: values.car_type === "external" ? values.external_car_model || null : null,
+        client_id: values.car_type === "insured" ? values.client_id || null : null,
+        policy_id: values.car_type === "insured" ? values.policy_id || null : null,
+        notes: values.notes || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (claim) {
+        const { error } = await supabase
+          .from("repair_claims")
+          .update(payload)
+          .eq("id", claim.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("repair_claims")
+          .insert({
+            ...payload,
+            created_by: user?.id,
+          });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["repair-claims"] });
+      toast.success(claim ? "تم تحديث المطالبة" : "تم إنشاء المطالبة");
+      onOpenChange(false);
+    },
+    onError: (error) => {
+      console.error("Error saving claim:", error);
+      toast.error("حدث خطأ أثناء الحفظ");
+    },
+  });
+
+  const onSubmit = (values: FormValues) => {
+    saveMutation.mutate(values);
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="left" className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>{claim ? "تعديل المطالبة" : "إضافة مطالبة جديدة"}</SheetTitle>
+        </SheetHeader>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 mt-6">
+            {/* Garage Name with Autocomplete */}
+            <FormField
+              control={form.control}
+              name="garage_name"
+              render={({ field }) => (
+                <FormItem className="flex flex-col">
+                  <FormLabel>اسم الكراج *</FormLabel>
+                  <Popover open={garagePopoverOpen} onOpenChange={setGaragePopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          className={cn(
+                            "w-full justify-between",
+                            !field.value && "text-muted-foreground"
+                          )}
+                        >
+                          {field.value || "اختر أو اكتب اسم الكراج"}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-full p-0" align="start">
+                      <Command>
+                        <CommandInput 
+                          placeholder="ابحث أو اكتب..."
+                          value={field.value}
+                          onValueChange={field.onChange}
+                        />
+                        <CommandList>
+                          <CommandEmpty>
+                            <Button
+                              variant="ghost"
+                              className="w-full"
+                              onClick={() => {
+                                setGaragePopoverOpen(false);
+                              }}
+                            >
+                              استخدم "{field.value}"
+                            </Button>
+                          </CommandEmpty>
+                          <CommandGroup>
+                            {garages?.map((garage) => (
+                              <CommandItem
+                                key={garage.id}
+                                value={garage.name}
+                                onSelect={() => {
+                                  field.onChange(garage.name);
+                                  setGaragePopoverOpen(false);
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "ml-2 h-4 w-4",
+                                    garage.name === field.value ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                {garage.name}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Insurance Company */}
+            <FormField
+              control={form.control}
+              name="insurance_company_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>شركة التأمين</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="اختر شركة التأمين" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {companies?.map((company) => (
+                        <SelectItem key={company.id} value={company.id}>
+                          {company.name_ar || company.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Insurance File Number */}
+            <FormField
+              control={form.control}
+              name="insurance_file_number"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>رقم ملف التأمين</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="رقم الملف" dir="ltr" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Accident Date */}
+            <FormField
+              control={form.control}
+              name="accident_date"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>تاريخ الحادث</FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} dir="ltr" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Car Type */}
+            <FormField
+              control={form.control}
+              name="car_type"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>نوع السيارة *</FormLabel>
+                  <FormControl>
+                    <RadioGroup
+                      onValueChange={field.onChange}
+                      value={field.value}
+                      className="flex gap-4"
+                    >
+                      <div className="flex items-center space-x-2 space-x-reverse">
+                        <RadioGroupItem value="external" id="external" />
+                        <Label htmlFor="external">سيارة خارجية</Label>
+                      </div>
+                      <div className="flex items-center space-x-2 space-x-reverse">
+                        <RadioGroupItem value="insured" id="insured" />
+                        <Label htmlFor="insured">مؤمن عندنا</Label>
+                      </div>
+                    </RadioGroup>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* External Car Fields */}
+            {carType === "external" && (
+              <div className="space-y-4 p-4 rounded-lg bg-muted/50">
+                <FormField
+                  control={form.control}
+                  name="external_car_number"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>رقم السيارة</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="00-000-00" dir="ltr" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="external_car_model"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>موديل السيارة</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="مثال: تويوتا كورولا 2020" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
+
+            {/* Insured Client Fields */}
+            {carType === "insured" && (
+              <div className="space-y-4 p-4 rounded-lg bg-muted/50">
+                {/* Client Search */}
+                <FormField
+                  control={form.control}
+                  name="client_id"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>العميل</FormLabel>
+                      <Popover open={clientPopoverOpen} onOpenChange={setClientPopoverOpen}>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              className={cn(
+                                "w-full justify-between",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              {selectedClient?.full_name || "ابحث عن عميل..."}
+                              <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-full p-0" align="start">
+                          <Command>
+                            <CommandInput 
+                              placeholder="ابحث بالاسم أو الرقم..."
+                              value={clientSearch}
+                              onValueChange={setClientSearch}
+                            />
+                            <CommandList>
+                              {clientsLoading && (
+                                <div className="p-4 text-center">
+                                  <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                                </div>
+                              )}
+                              <CommandEmpty>لا توجد نتائج</CommandEmpty>
+                              <CommandGroup>
+                                {clients?.map((client) => (
+                                  <CommandItem
+                                    key={client.id}
+                                    value={client.id}
+                                    onSelect={() => {
+                                      field.onChange(client.id);
+                                      form.setValue("policy_id", "");
+                                      setClientPopoverOpen(false);
+                                    }}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "ml-2 h-4 w-4",
+                                        client.id === field.value ? "opacity-100" : "opacity-0"
+                                      )}
+                                    />
+                                    <div>
+                                      <div>{client.full_name}</div>
+                                      <div className="text-xs text-muted-foreground">
+                                        {client.id_number} • {client.phone_number}
+                                      </div>
+                                    </div>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Policy Select */}
+                {selectedClientId && (
+                  <FormField
+                    control={form.control}
+                    name="policy_id"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>البوليصة</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="اختر البوليصة" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {policies?.map((policy) => (
+                              <SelectItem key={policy.id} value={policy.id}>
+                                {policy.policy_type_parent === "THIRD_FULL" ? "شامل" : "خدمات طريق"}
+                                {policy.policy_number ? ` - ${policy.policy_number}` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Notes */}
+            <FormField
+              control={form.control}
+              name="notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>ملاحظات</FormLabel>
+                  <FormControl>
+                    <Textarea {...field} placeholder="ملاحظات إضافية..." rows={3} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Submit */}
+            <div className="flex gap-3 pt-4">
+              <Button type="submit" disabled={saveMutation.isPending} className="flex-1">
+                {saveMutation.isPending && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}
+                {claim ? "تحديث" : "إنشاء"}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                إلغاء
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </SheetContent>
+    </Sheet>
+  );
+}

@@ -39,6 +39,11 @@ export default function Login() {
 
   useEffect(() => {
     if (!authLoading && user) {
+      // Set admin session flag for non-super admins
+      if (user.email !== 'morshed500@gmail.com') {
+        sessionStorage.setItem('admin_session_active', 'true');
+      }
+      
       if (isActive) {
         navigate('/', { replace: true });
       } else {

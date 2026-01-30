@@ -31,6 +31,7 @@ import {
   AlertTriangle,
   ListTodo,
   Contact,
+  FileWarning,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
@@ -73,6 +74,7 @@ const getNavigation = (isAdmin: boolean) => {
 // Admin-only navigation section
 const adminNav = [
   { name: "المستخدمون", href: "/admin/users", icon: UserCog },
+  { name: "المطالبات", href: "/admin/claims", icon: FileWarning },
   { name: "SMS تسويقية", href: "/admin/marketing-sms", icon: Megaphone },
   { name: "أنواع التأمين", href: "/admin/insurance-categories", icon: FileText },
   { name: "خدمات الطريق", href: "/admin/road-services", icon: Truck },

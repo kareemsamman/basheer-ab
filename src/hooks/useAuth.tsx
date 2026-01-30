@@ -162,6 +162,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Admin session guard - force logout for non-super admins on new browser session
+  useEffect(() => {
+    const SESSION_KEY = 'admin_session_active';
+    const userEmail = user?.email;
+    const isNonSuperAdmin = userEmail !== SUPER_ADMIN_EMAIL && isAdmin;
+    
+    if (!user || !isNonSuperAdmin) {
+      return;
+    }
+
+    const wasActive = sessionStorage.getItem(SESSION_KEY);
+    
+    if (!wasActive) {
+      // This is a new browser session after browser was closed - force logout
+      console.log('[AdminSessionGuard] New browser session detected for admin, forcing logout');
+      supabase.auth.signOut().then(() => {
+        window.location.href = '/login';
+      });
+      return;
+    }
+
+    // Keep session flag active
+    sessionStorage.setItem(SESSION_KEY, 'true');
+  }, [user, isAdmin]);
+
   // CRITICAL: Super admin and admins bypass status checks entirely
   // Order: super admin → admin → active status
   const isActive = isSuperAdmin || isAdmin || profile?.status === 'active';

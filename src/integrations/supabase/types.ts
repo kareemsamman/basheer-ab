@@ -3167,6 +3167,184 @@ export type Database = {
           },
         ]
       }
+      repair_claim_notes: {
+        Row: {
+          claim_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          note: string
+        }
+        Insert: {
+          claim_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note: string
+        }
+        Update: {
+          claim_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "repair_claim_notes_claim_id_fkey"
+            columns: ["claim_id"]
+            isOneToOne: false
+            referencedRelation: "repair_claims"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      repair_claim_reminders: {
+        Row: {
+          claim_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_done: boolean | null
+          message: string | null
+          reminder_date: string
+          reminder_time: string | null
+          reminder_type: string | null
+        }
+        Insert: {
+          claim_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_done?: boolean | null
+          message?: string | null
+          reminder_date: string
+          reminder_time?: string | null
+          reminder_type?: string | null
+        }
+        Update: {
+          claim_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_done?: boolean | null
+          message?: string | null
+          reminder_date?: string
+          reminder_time?: string | null
+          reminder_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "repair_claim_reminders_claim_id_fkey"
+            columns: ["claim_id"]
+            isOneToOne: false
+            referencedRelation: "repair_claims"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      repair_claims: {
+        Row: {
+          accident_date: string | null
+          car_type: string | null
+          claim_number: string | null
+          client_id: string | null
+          created_at: string
+          created_by: string | null
+          expense_id: string | null
+          external_car_model: string | null
+          external_car_number: string | null
+          garage_name: string
+          id: string
+          insurance_company_id: string | null
+          insurance_file_number: string | null
+          notes: string | null
+          policy_id: string | null
+          repairs_description: string | null
+          status: string | null
+          total_amount: number | null
+          updated_at: string
+        }
+        Insert: {
+          accident_date?: string | null
+          car_type?: string | null
+          claim_number?: string | null
+          client_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          expense_id?: string | null
+          external_car_model?: string | null
+          external_car_number?: string | null
+          garage_name: string
+          id?: string
+          insurance_company_id?: string | null
+          insurance_file_number?: string | null
+          notes?: string | null
+          policy_id?: string | null
+          repairs_description?: string | null
+          status?: string | null
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Update: {
+          accident_date?: string | null
+          car_type?: string | null
+          claim_number?: string | null
+          client_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          expense_id?: string | null
+          external_car_model?: string | null
+          external_car_number?: string | null
+          garage_name?: string
+          id?: string
+          insurance_company_id?: string | null
+          insurance_file_number?: string | null
+          notes?: string | null
+          policy_id?: string | null
+          repairs_description?: string | null
+          status?: string | null
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "repair_claims_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "repair_claims_expense_id_fkey"
+            columns: ["expense_id"]
+            isOneToOne: false
+            referencedRelation: "expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "repair_claims_insurance_company_id_fkey"
+            columns: ["insurance_company_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "repair_claims_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "policies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "repair_claims_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_policies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       road_services: {
         Row: {
           active: boolean
