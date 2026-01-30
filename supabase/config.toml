@@ -95,3 +95,6 @@ verify_jwt = false
 
 [functions.click2call]
 verify_jwt = true
+
+[functions.generate-payment-receipt]
+verify_jwt = true

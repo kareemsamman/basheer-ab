@@ -184,6 +184,21 @@ serve(async (req) => {
       .eq('refused', false)
       .order('created_at', { ascending: true });
 
+    // Get policy children (additional drivers) for all policies
+    const { data: policyChildren, error: childrenError } = await supabase
+      .from('policy_children')
+      .select(`
+        policy_id,
+        child:client_children(full_name, id_number, relation, phone)
+      `)
+      .in('policy_id', policy_ids);
+
+    if (childrenError) {
+      console.error("[send-package-invoice-sms] Error fetching policy children:", childrenError);
+    }
+
+    console.log(`[send-package-invoice-sms] Found ${policyChildren?.length || 0} additional drivers`);
+
     // Group payments by policy
     const paymentsByPolicy: Record<string, any[]> = {};
     (allPayments || []).forEach(p => {
@@ -198,8 +213,8 @@ serve(async (req) => {
     const totalPaid = (allPayments || []).reduce((sum, p) => sum + (p.amount || 0), 0);
     const totalRemaining = totalPrice - totalPaid;
 
-    // Generate Package Invoice HTML with files
-    const packageInvoiceHtml = buildPackageInvoiceHtml(policies, paymentsByPolicy, totalPrice, totalPaid, totalRemaining, insuranceFiles || []);
+    // Generate Package Invoice HTML with files and policy children
+    const packageInvoiceHtml = buildPackageInvoiceHtml(policies, paymentsByPolicy, totalPrice, totalPaid, totalRemaining, insuranceFiles || [], policyChildren || []);
     
     const now = new Date();
     const year = now.getFullYear();
@@ -356,10 +371,28 @@ function buildPackageInvoiceHtml(
   totalPrice: number,
   totalPaid: number,
   remaining: number,
-  policyFiles: { cdn_url: string; original_name: string; mime_type: string; entity_id: string }[]
+  policyFiles: { cdn_url: string; original_name: string; mime_type: string; entity_id: string }[],
+  policyChildren: any[] = []
 ): string {
   const client = policies[0]?.client || {};
   const isPaid = remaining <= 0;
+
+  // Build additional drivers HTML section
+  const additionalDriversHtml = policyChildren.length > 0 ? `
+    <div class="section">
+      <div class="section-title">👥 السائقين الإضافيين / التابعين</div>
+      <div class="section-content">
+        <div class="info-grid">
+          ${policyChildren.map(pc => pc.child ? `
+            <div class="info-item">
+              <span class="info-label">${pc.child.full_name}</span>
+              <span class="info-value">${pc.child.id_number}${pc.child.relation ? ` - ${pc.child.relation}` : ''}</span>
+            </div>
+          ` : '').join('')}
+        </div>
+      </div>
+    </div>
+  ` : '';
 
   // Build files HTML section with lightbox for images
   // Normalize CDN URLs
@@ -747,6 +780,8 @@ function buildPackageInvoiceHtml(
         </div>
       </div>
     </div>
+
+    \${additionalDriversHtml}
 
     <div class="section">
       <div class="section-title">📦 وثائق الباقة</div>
