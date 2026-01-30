@@ -96,15 +96,6 @@ function buildPaymentReceiptHtml(
         </div>
       `;
     }
-  } else if (payment.payment_type === 'transfer') {
-    if (payment.bank_reference) {
-      paymentMethodDetails += `
-        <div class="info-item">
-          <span class="info-label">مرجع البنك:</span>
-          <span class="info-value">${payment.bank_reference}</span>
-        </div>
-      `;
-    }
   }
 
   return `
@@ -421,7 +412,6 @@ serve(async (req) => {
         card_expiry,
         installments_count,
         tranzila_approval_code,
-        bank_reference,
         notes,
         policy:policies(
           id,

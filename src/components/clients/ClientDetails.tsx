@@ -62,6 +62,7 @@ import {
   FileImage,
   DollarSign,
   MessageSquare,
+  Loader2,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -278,6 +279,9 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
   // Payment filters
   const [paymentSearch, setPaymentSearch] = useState('');
   const [paymentTypeFilter, setPaymentTypeFilter] = useState<string>('all');
+  
+  // Comprehensive invoice state
+  const [generatingComprehensiveInvoice, setGeneratingComprehensiveInvoice] = useState(false);
 
   const fetchBroker = async () => {
     if (!client.broker_id) {
@@ -703,6 +707,29 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
       toast.error(error.message || 'فشل في حذف الوثيقة');
     } finally {
       setDeletingPolicy(false);
+    }
+  };
+
+  // Generate comprehensive invoice for all payments
+  const handleGenerateAllPaymentsInvoice = async () => {
+    setGeneratingComprehensiveInvoice(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-client-payments-invoice', {
+        body: { client_id: client.id }
+      });
+
+      if (error) throw error;
+
+      if (data?.invoice_url) {
+        window.open(data.invoice_url, '_blank');
+      } else {
+        toast.error("لم يتم العثور على رابط الفاتورة");
+      }
+    } catch (error) {
+      console.error('Generate invoice error:', error);
+      toast.error("فشل في توليد الفاتورة الشاملة");
+    } finally {
+      setGeneratingComprehensiveInvoice(false);
     }
   };
 
@@ -1313,7 +1340,22 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
 
           {/* Payments Tab */}
           <TabsContent value="payments" className="mt-6 space-y-4">
-            <h3 className="font-semibold text-lg">سجل الدفعات</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-lg">سجل الدفعات</h3>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleGenerateAllPaymentsInvoice}
+                disabled={payments.length === 0 || generatingComprehensiveInvoice}
+              >
+                {generatingComprehensiveInvoice ? (
+                  <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                ) : (
+                  <FileText className="h-4 w-4 ml-2" />
+                )}
+                فاتورة شاملة
+              </Button>
+            </div>
             
             {/* Payment Filters */}
             <Card className="p-4">

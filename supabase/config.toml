@@ -98,3 +98,6 @@ verify_jwt = true
 
 [functions.generate-payment-receipt]
 verify_jwt = true
+
+[functions.generate-client-payments-invoice]
+verify_jwt = true

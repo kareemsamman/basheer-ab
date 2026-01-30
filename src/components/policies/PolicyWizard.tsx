@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { calculatePolicyProfit } from "@/lib/pricingCalculator";
 import { digitsOnly } from "@/lib/validation";
 import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal";
+import { PolicySuccessDialog } from "./PolicySuccessDialog";
 import {
   WizardStepper,
   ResetWarningDialog,
@@ -189,6 +190,15 @@ export function PolicyWizard({
   const [internalCollapsed, setInternalCollapsed] = useState(false);
   const isCollapsed = controlledCollapsed ?? internalCollapsed;
   const setIsCollapsed = onCollapsedChange ?? setInternalCollapsed;
+
+  // Success dialog state
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [successPolicyData, setSuccessPolicyData] = useState<{
+    policyId: string;
+    clientId: string;
+    clientPhone: string | null;
+    isPackage: boolean;
+  } | null>(null);
 
   // Fetch categories and brokers on open
   useEffect(() => {
@@ -1045,31 +1055,27 @@ export function PolicyWizard({
       clearDraft();
       setTempPolicyId(null);
 
-      toast({
-        title: "تم الحفظ بنجاح",
-        description: clientPhone ? "تم إنشاء الوثيقة وإرسال SMS للعميل" : "تم إنشاء الوثيقة بنجاح",
-      });
+      // Get final client ID and phone for success dialog
+      let dialogClientId = selectedClient?.id || newlyCreatedClientId;
+      if (!dialogClientId && policyIdToUse) {
+        const { data: policyData } = await supabase
+          .from('policies')
+          .select('client_id')
+          .eq('id', policyIdToUse)
+          .single();
+        dialogClientId = policyData?.client_id || null;
+      }
 
+      // Show success dialog instead of closing immediately
+      setSuccessPolicyData({
+        policyId: policyIdToUse,
+        clientId: dialogClientId || '',
+        clientPhone: clientPhone || null,
+        isPackage: packageMode && (packageAddons[0]?.enabled || packageAddons[1]?.enabled),
+      });
+      setShowSuccessDialog(true);
+      
       onComplete?.(policyIdToUse);
-      
-      // Close dialog first
-      onOpenChange(false);
-      resetForm();
-      
-      // Always reload page after creating policy to show fresh data (new cards, etc.)
-      // This ensures the client view shows the new policy card immediately
-      setTimeout(() => {
-        if (newlyCreatedClientId) {
-          // Navigate to clients page with the new client open
-          window.location.href = `/clients?open=${newlyCreatedClientId}`;
-        } else if (selectedClient?.id) {
-          // Navigate back to the specific client profile (not just reload)
-          window.location.href = `/clients?open=${selectedClient.id}`;
-        } else {
-          // Fallback - just call onSaved
-          onSaved?.();
-        }
-      }, 150);
     } catch (error: unknown) {
       console.error('Save error:', error);
 
@@ -1357,6 +1363,31 @@ export function PolicyWizard({
           onFailure={() => {
             setTranzilaModalOpen(false);
             setActiveTranzilaPaymentId(null);
+          }}
+        />
+      )}
+
+      {/* Success Dialog */}
+      {showSuccessDialog && successPolicyData && (
+        <PolicySuccessDialog
+          open={showSuccessDialog}
+          onOpenChange={setShowSuccessDialog}
+          policyId={successPolicyData.policyId}
+          clientId={successPolicyData.clientId}
+          clientPhone={successPolicyData.clientPhone}
+          isPackage={successPolicyData.isPackage}
+          onClose={() => {
+            setShowSuccessDialog(false);
+            setSuccessPolicyData(null);
+            onOpenChange(false);
+            resetForm();
+            
+            // Navigate to client page
+            if (successPolicyData.clientId) {
+              window.location.href = `/clients?open=${successPolicyData.clientId}`;
+            } else {
+              onSaved?.();
+            }
           }}
         />
       )}
