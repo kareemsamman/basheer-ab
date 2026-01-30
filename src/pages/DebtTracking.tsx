@@ -269,16 +269,40 @@ export default function DebtTracking() {
     
     // رسالة افتراضية
     const message = `مرحباً ${client.client_name}، لديك مبلغ متبقي ${client.total_owed.toLocaleString()} شيكل. يرجى التواصل معنا لتسوية المبلغ.`;
-    
-    // فتح واتساب - استخدام anchor element لتجاوز popup blocker
     const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    const link = document.createElement('a');
-    link.href = whatsappUrl;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    
+    // محاولة أولى: استخدام window.open مباشرة
+    const newWindow = window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+    
+    // محاولة ثانية: إذا فشل window.open (popup blocked)
+    if (!newWindow || newWindow.closed) {
+      // محاولة باستخدام top window (للخروج من iframe)
+      try {
+        if (window.top && window.top !== window) {
+          window.top.location.href = whatsappUrl;
+          return;
+        }
+      } catch (e) {
+        // تجاهل خطأ cross-origin
+      }
+      
+      // Fallback: نسخ الرابط للحافظة
+      navigator.clipboard.writeText(whatsappUrl).then(() => {
+        toast({
+          title: "تم نسخ الرابط",
+          description: "تعذر فتح WhatsApp تلقائياً. تم نسخ الرابط للحافظة، الصقه في المتصفح.",
+        });
+      }).catch(() => {
+        // آخر محاولة: anchor element
+        const link = document.createElement('a');
+        link.href = whatsappUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      });
+    }
   };
 
   const formatCurrency = (amount: number) => `₪${amount.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;

@@ -3,12 +3,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Loader2, CreditCard, Banknote, Wallet, AlertCircle, CheckCircle, DollarSign, Plus, Trash2, Split, Upload, X, ImageIcon, HelpCircle } from 'lucide-react';
+import { Loader2, CreditCard, Banknote, Wallet, AlertCircle, CheckCircle, DollarSign, Plus, Trash2, Split, Upload, X, ImageIcon, HelpCircle, Car } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -665,30 +666,66 @@ export function DebtPaymentModal({
               </div>
             </div>
 
-            {/* Car Filter - Multi-select with Chips */}
-            {uniqueCars.length > 1 && (
-              <div className="flex flex-wrap items-center gap-2">
-                <Label className="text-sm whitespace-nowrap">السيارات:</Label>
-                <div className="flex flex-wrap gap-1">
-                  <Badge 
-                    variant={selectedCars.length === 0 ? "default" : "outline"}
-                    className="cursor-pointer hover:bg-primary/80 transition-colors"
-                    onClick={() => setSelectedCars([])}
-                  >
-                    الكل
-                  </Badge>
-                  {uniqueCars.map(car => (
-                    <Badge 
-                      key={car}
-                      variant={selectedCars.includes(car) ? "default" : "outline"}
-                      className="cursor-pointer hover:bg-primary/80 transition-colors font-mono"
-                      onClick={() => toggleCar(car)}
+            {/* Car Selection - Clear Checkbox UI */}
+            {uniqueCars.length > 0 && (
+              <Card className="border-2 border-dashed border-primary/30">
+                <CardHeader className="p-3 pb-0">
+                  <Label className="text-base font-semibold flex items-center gap-2">
+                    <Car className="h-4 w-4" />
+                    اختر السيارة للدفع
+                  </Label>
+                </CardHeader>
+                <CardContent className="p-3 pt-2">
+                  <div className="space-y-2">
+                    {/* All Cars Option */}
+                    <div 
+                      onClick={() => setSelectedCars([])}
+                      className={cn(
+                        "flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all",
+                        selectedCars.length === 0 
+                          ? "border-primary bg-primary/5" 
+                          : "border-muted hover:border-primary/50"
+                      )}
                     >
-                      {car}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
+                      <Checkbox checked={selectedCars.length === 0} />
+                      <div className="flex-1">
+                        <p className="font-medium">كل السيارات</p>
+                        <p className="text-sm text-muted-foreground">
+                          {uniqueCars.length} سيارات - إجمالي ₪{totalRemaining.toLocaleString('en-US')}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {/* Individual Cars */}
+                    {uniqueCars.map(car => {
+                      const carPolicies = policies.filter(p => p.carNumber === car);
+                      const carTotal = carPolicies.reduce((sum, p) => sum + p.remaining, 0);
+                      const isSelected = selectedCars.includes(car);
+                      
+                      return (
+                        <div 
+                          key={car}
+                          onClick={() => toggleCar(car)}
+                          className={cn(
+                            "flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all",
+                            isSelected 
+                              ? "border-primary bg-primary/5" 
+                              : "border-muted hover:border-primary/50"
+                          )}
+                        >
+                          <Checkbox checked={isSelected} />
+                          <div className="flex-1">
+                            <p className="font-bold text-lg font-mono ltr-nums">{car}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {carPolicies.length} وثائق - ₪{carTotal.toLocaleString('en-US')}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
             )}
 
             {/* Policy List */}
