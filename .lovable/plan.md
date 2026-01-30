@@ -1,171 +1,191 @@
 
-الأعراض التي تظهر عندك (فشل تحميل الفاتورة + فشل إرسال SMS بعد إنشاء وثيقة جديدة) لها سبب واضح في الكود الحالي:
 
-- زر **طباعة الفاتورة** في `PolicySuccessDialog` يستدعي `send-invoice-sms` مع `skip_sms: true`، لكن **الـ backend function نفسها تُسقِط الطلب قبل الطباعة** لأنها تشترط وجود ملفات بوليصة في `media_files` + تشترط رقم هاتف العميل—even عند `skip_sms=true`.
-- زر **إرسال SMS** يفشل غالبًا لنفس السبب (عدم وجود ملفات بوليصة بعد الإنشاء مباشرة)، بينما المطلوب منك: “أرسل رابط الـ HTML للعميل حتى لو لا توجد ملفات بوليصة”.
+# خطة: إضافة زر "إرسال للعميل" + تعديل Footer الفواتير
 
-هذه الخطة ستصلّح “Create new policy” بالكامل + تجعل كل HTML customer document يحمل Footer موحّد (إيميل/هواتف/واتساب/عنوان) قابل للتعديل من الأدمن، وتضيف “Send HTML link to customer” حيث يلزم.
+## المشكلة الحالية
 
----
+1. **الفواتير HTML** (تقرير شامل + فاتورة مفردة) تحتوي فقط على زر "طباعة الفاتورة" ولا يوجد زر لإرسال الرابط للعميل عبر SMS
+2. **الواتساب** يظهر كرابط `wa.me/` - المستخدم يفضل عرض رقم الهاتف مع `tel:` href أو رابط واتساب
 
-## 1) إصلاح جذري: الطباعة يجب أن تعمل حتى بدون ملفات وبدون رقم هاتف
-### التغيير المطلوب (Backend)
-**الملف:** `supabase/functions/send-invoice-sms/index.ts`
+## أين تعديل بيانات الشركة؟
 
-**المشكلة الحالية:**
-- يوجد شرط صارم:
-  - إذا لا توجد ملفات بوليصة → يرجع 400
-  - إذا لا يوجد رقم هاتف للعميل → يرجع 400  
-وهذا يحدث قبل مسار `skip_sms`.
+**المسار:** الإعدادات ← إعدادات SMS ← تبويب "بيانات الشركة"
 
-**الحل:**
-- تعديل المنطق بحيث:
-  - عند `skip_sms=true`:
-    - لا نمنع الطباعة بسبب عدم وجود ملفات
-    - لا نمنع الطباعة بسبب عدم وجود رقم هاتف
-    - نولّد الـ HTML invoice ونرفعه على الـ CDN ونرجع `ab_invoice_url` دائمًا
-  - عند `skip_sms=false` (إرسال SMS):
-    - الهاتف مطلوب
-    - الملفات ليست شرطًا للإرسال (سنرسل رابط الفاتورة HTML دائمًا + روابط ملفات البوليصة فقط إذا موجودة)
-
-**نتيجة متوقعة:**
-- بعد إنشاء وثيقة جديدة (حتى لو بدون رفع أي ملف)، زر “طباعة الفاتورة” يفتح الرابط فورًا.
+| الحقل | الوصف |
+|-------|-------|
+| البريد الإلكتروني | `company_email` |
+| أرقام الهواتف | `company_phones` (مصفوفة - يمكن إضافة أكثر من رقم) |
+| رقم الواتساب | `company_whatsapp` |
+| العنوان | `company_location` |
 
 ---
 
-## 2) إصلاح جذري للـ SMS: إرسال رابط الـ HTML دائمًا (والملفات اختياري)
-### التغيير المطلوب (Backend)
-**الملف:** `supabase/functions/send-invoice-sms/index.ts`
+## التغييرات المطلوبة
 
-**الحل:**
-- إزالة/تخفيف شرط “وجود ملفات بوليصة” عند الإرسال.
-- بناء رسالة SMS بحيث:
-  - تحتوي دائمًا على رابط الفاتورة HTML (`ab_invoice_url`)
-  - إذا كانت هناك ملفات بوليصة → نضيف `{{all_policy_urls}}`
-  - إذا لا توجد ملفات → نستبدل `{{all_policy_urls}}` بسطر بسيط مثل: “ملفات البوليصة سيتم إرسالها لاحقًا” أو نتركه فارغًا (حسب ما نختاره في التنفيذ)
+### 1) تعديل Footer في جميع HTML Functions
 
-**ملاحظة مهمة:**
-هذا يحقق طلبك: “send for the customer the html to his phone number not only print”.
+**الملفات:**
+- `supabase/functions/generate-client-payments-invoice/index.ts` (التقرير الشامل)
+- `supabase/functions/send-invoice-sms/index.ts` (الفاتورة المفردة)
+- `supabase/functions/send-package-invoice-sms/index.ts` (فاتورة الباقة)
+- `supabase/functions/generate-payment-receipt/index.ts` (إيصال الدفعة)
+- `supabase/functions/generate-client-report/index.ts` (تقرير العميل)
 
----
+**التغيير في Footer:**
 
-## 3) نفس الإصلاح للباقة (Package)
-### التغيير المطلوب (Backend)
-**الملف:** `supabase/functions/send-package-invoice-sms/index.ts`
-
-**المشكلة الحالية:**
-- يوجد شرط صارم يمنع العملية إذا لا توجد ملفات لأي policy أو للـ main policy حتى لو `skip_sms=true`.
-
-**الحل:**
-- عند `skip_sms=true`:
-  - لا نمنع طباعة فاتورة الباقة بسبب نقص الملفات أو رقم الهاتف
-- عند `skip_sms=false`:
-  - الهاتف مطلوب
-  - الملفات ليست شرطًا (نرسل رابط فاتورة الباقة HTML دائمًا، ونرفق روابط الملفات إن وجدت)
-
----
-
-## 4) Footer موحّد في كل HTML “يصل للعميل” مع بيانات قابلة للتعديل من الأدمن
-### ما هو المطلوب بالضبط
-أنت تريد أن كل مستند HTML يُفتح للعميل يحتوي في الأسفل على:
-- Email
-- أكثر من رقم هاتف (array)
-- WhatsApp link
-- Location
-
-وأن الأدمن يقدر يعدلهم (تم إضافة UI في `SmsSettings` بالفعل، وسنستخدم نفس البيانات في كل HTML template).
-
-### التغييرات المطلوبة (Backend – Templates)
-سنُدخل نفس footer block (نفس الشكل) داخل هذه المستندات (الأهم للعميل):
-1) `supabase/functions/send-invoice-sms/index.ts` (فاتورة وثيقة مفردة)
-2) `supabase/functions/send-package-invoice-sms/index.ts` (فاتورة باقة)
-3) (موجودة بالفعل) `supabase/functions/generate-client-payments-invoice/index.ts`
-4) (موجودة/معدلة) `supabase/functions/generate-payment-receipt/index.ts`
-5) (موجودة/معدلة) `supabase/functions/generate-client-report/index.ts`
-
-**تنفيذياً داخل كل function:**
-- قراءة `sms_settings` لأخذ:
-  - `company_email, company_phones, company_whatsapp, company_location`
-- تطبيع رقم الواتساب إلى `wa.me/972...`
-- إضافة HTML/CSS للـ footer بشكل موحّد
-
----
-
-## 5) تحسين UX: إظهار سبب الفشل الحقيقي بدل “فشل في تحميل الفاتورة”
-### التغييرات المطلوبة (Frontend)
-**الملف:** `src/components/policies/PolicySuccessDialog.tsx`
-
-**المشكلة الحالية:**
-- عند الخطأ نعرض toast عام: “فشل في تحميل الفاتورة”
-- هذا يخفي السبب الحقيقي (مثلاً: انتهت الجلسة/الخدمة غير مفعلة/أي رسالة من الـ backend)
-
-**الحل:**
-- عند فشل `supabase.functions.invoke`:
-  - استخراج رسالة الخطأ الحقيقية من response body (نفس أسلوب `Login.tsx` الذي يحاول `ctx.json()`)
-  - عرض الرسالة للمستخدم بالعربي (مثلاً: “خدمة الرسائل غير مفعلة” أو “انتهت الجلسة، سجل الدخول مرة أخرى”)
-- إضافة state بسيط لعرض “معلومة” داخل الـ dialog عندما:
-  - لا يوجد رقم هاتف للعميل
-  - خدمة SMS غير مفعلة
-  - لا توجد ملفات (لكن لن نمنع الإرسال لأننا سنرسل رابط الـ HTML)
-
----
-
-## 6) إصلاح خطأ إضافي يسبب فشل/لخبطة: استدعاء خاطئ لـ send-invoice-sms من PolicyWizard
-### التغيير المطلوب (Frontend)
-**الملف:** `src/components/policies/PolicyWizard.tsx`
-
-**المشكلة الحالية:**
-هناك “fire-and-forget” call عند الحفظ:
-```ts
-supabase.functions.invoke('send-invoice-sms', {
-  body: { policyId: policyIdToUse, phoneNumber: clientPhone }
-})
+**قبل (الحالي):**
+```html
+<div class="contact-row">
+  <span>📞</span>
+  <span>052-1234567 | 04-6555123</span>
+</div>
+<div class="contact-row">
+  <span>💬</span>
+  <a href="https://wa.me/9721234567">واتساب</a>
+</div>
 ```
-لكن الـ function تتوقع `policy_id` (وليس `policyId`) ولا تحتاج `phoneNumber`.
 
-**الحل المقترح (الأفضل مع الـ popup الجديد):**
-- إزالة هذا الاستدعاء التلقائي نهائيًا (لأنك تريد الاختيار من الـ popup: طباعة أو إرسال)
-- هذا يمنع محاولات إرسال غير مقصودة ويمنع أي تعارض مع `invoices_sent_at`.
+**بعد (المقترح):**
+```html
+<div class="contact-row">
+  <span>📞</span>
+  ${companyPhones.map(phone => 
+    `<a href="tel:${phone.replace(/[^0-9+]/g, '')}">${phone}</a>`
+  ).join(' | ')}
+</div>
+<div class="contact-row">
+  <span>💬</span>
+  <a href="https://wa.me/${whatsappNormalized}">${companyWhatsapp}</a>
+</div>
+```
 
----
-
-## 7) التوافق + الجودة
-### تحديث CORS headers (حسب قواعد المشروع)
-في الملفات التي سنعدلها (`send-invoice-sms` و`send-package-invoice-sms`) سنحدّث `corsHeaders` إلى النسخة التي تشمل كل headers المطلوبة.
-
-### عدم تجميد الواجهة
-- أزرار الـ dialog ستبقى non-blocking مع spinner موجود
-- سنضيف skeleton/disabled states عند فحص الإعدادات إن احتجنا (اختياري)
-
----
-
-## ملفات سيتم تعديلها
-### Frontend
-- `src/components/policies/PolicySuccessDialog.tsx`
-- `src/components/policies/PolicyWizard.tsx`
-
-### Backend functions
-- `supabase/functions/send-invoice-sms/index.ts`
-- `supabase/functions/send-package-invoice-sms/index.ts`
-- (تحقق/لمس بسيط فقط إن لزم) `supabase/functions/generate-invoice-pdf/index.ts` لضمان نفس footer لو كان مستخدمًا في أي مسار عندك
+**النتيجة:**
+- أرقام الهواتف قابلة للنقر → تفتح تطبيق الاتصال على الموبايل
+- الواتساب يظهر الرقم بدلاً من "واتساب" فقط
+- الرابطان يعملان: `tel:` للاتصال و`wa.me/` للواتساب
 
 ---
 
-## معايير القبول (Acceptance Criteria)
-1) إنشاء وثيقة جديدة بدون رفع ملفات:
-   - زر “طباعة الفاتورة” يفتح رابط HTML بنجاح
-   - زر “إرسال SMS للعميل” يرسل SMS يحتوي رابط الفاتورة HTML
-2) إنشاء وثيقة مع ملفات:
-   - SMS يحتوي رابط الفاتورة + روابط ملفات البوليصة
-3) تعديل بيانات الشركة من صفحة الأدمن (إيميل/هواتف/واتساب/عنوان):
-   - أي Invoice/Receipt/Report HTML جديد يظهر Footer بالبيانات الجديدة
-4) عند أي فشل:
-   - يظهر سبب واضح للمستخدم بدل رسالة عامة
+### 2) إضافة زر "إرسال للعميل" في HTML Invoices
+
+**المنطق:**
+- الزر سيستخدم `mailto:` أو share API للموبايل
+- أو نجعله يفتح WhatsApp مع رسالة جاهزة تحتوي على رابط الفاتورة
+
+**التغيير في كل HTML Template:**
+
+```html
+<div class="footer">
+  <p class="thank-you">شكراً لتعاملكم معنا 🙏</p>
+  <div class="contact-info">
+    <!-- ... contact details ... -->
+  </div>
+  
+  <!-- Buttons Container -->
+  <div class="action-buttons no-print">
+    <button class="print-button" onclick="window.print()">🖨️ طباعة الفاتورة</button>
+    <button class="share-button" onclick="shareInvoice()">📲 مشاركة الفاتورة</button>
+  </div>
+</div>
+
+<script>
+function shareInvoice() {
+  const currentUrl = window.location.href;
+  const shareText = 'فاتورة التأمين: ' + currentUrl;
+  
+  // Try native share API (mobile)
+  if (navigator.share) {
+    navigator.share({
+      title: 'فاتورة التأمين',
+      text: 'فاتورة التأمين الخاصة بك',
+      url: currentUrl
+    }).catch(console.error);
+  } else {
+    // Fallback: open WhatsApp with pre-filled message
+    const whatsappUrl = 'https://wa.me/?text=' + encodeURIComponent(shareText);
+    window.open(whatsappUrl, '_blank');
+  }
+}
+</script>
+```
+
+**CSS للأزرار:**
+```css
+.action-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 15px;
+}
+
+.share-button {
+  display: inline-block;
+  padding: 12px 25px;
+  background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Tajawal', sans-serif;
+}
+
+.share-button:hover { opacity: 0.9; }
+```
 
 ---
 
-## خطوات اختبار End-to-End (ضرورية قبل الإقفال)
-1) سجّل الدخول ثم أنشئ Policy جديد بدون ملفات واضغط “طباعة الفاتورة”.
-2) اضغط “إرسال SMS” وتأكد وصول الرسالة ورابط الـ HTML يعمل على هاتف العميل.
-3) كرر نفس الاختبار مع Policy فيها ملفات، وتأكد أن روابط الملفات تظهر في الـ SMS.
-4) من “إعدادات SMS → بيانات الشركة” غيّر أرقام الهواتف/الإيميل، ثم ولّد فاتورة جديدة وتأكد أن الـ footer تغيّر.
+### 3) إضافة زر SMS مباشر للموظفين (في CRM)
+
+**الملف:** `src/components/clients/ClientDetails.tsx`
+
+**التغيير:**
+إضافة زر بجانب "فاتورة شاملة" يرسل الرابط مباشرة للعميل عبر 019sms
+
+```tsx
+const handleSendComprehensiveInvoice = async () => {
+  setSendingInvoice(true);
+  try {
+    // First generate the invoice
+    const { data, error } = await supabase.functions.invoke('generate-client-payments-invoice', {
+      body: { client_id: client.id, send_sms: true }
+    });
+    
+    if (error) throw error;
+    toast.success("تم إرسال الفاتورة للعميل");
+  } catch (error) {
+    toast.error("فشل في إرسال الفاتورة");
+  } finally {
+    setSendingInvoice(false);
+  }
+};
+```
+
+**تحديث Edge Function:**
+إضافة parameter `send_sms: boolean` للـ `generate-client-payments-invoice` function
+
+---
+
+## ملخص الملفات
+
+| الملف | النوع | التغيير |
+|-------|-------|---------|
+| `generate-client-payments-invoice/index.ts` | Backend | Footer محدث + زر مشاركة + دعم SMS |
+| `send-invoice-sms/index.ts` | Backend | Footer محدث + زر مشاركة |
+| `send-package-invoice-sms/index.ts` | Backend | Footer محدث + زر مشاركة |
+| `generate-payment-receipt/index.ts` | Backend | Footer محدث + زر مشاركة |
+| `generate-client-report/index.ts` | Backend | Footer محدث + زر مشاركة |
+| `ClientDetails.tsx` | Frontend | زر "إرسال SMS" للفاتورة الشاملة |
+
+---
+
+## النتيجة المتوقعة
+
+1. ✅ كل HTML invoice يحتوي على زر "مشاركة" بجانب زر "طباعة"
+2. ✅ أرقام الهواتف في Footer قابلة للنقر (`tel:` href)
+3. ✅ رابط الواتساب يظهر الرقم + يفتح المحادثة
+4. ✅ الموظف يمكنه إرسال الفاتورة الشاملة للعميل مباشرة من CRM
+5. ✅ تعديل بيانات الشركة من: إعدادات SMS ← بيانات الشركة
+
