@@ -38,6 +38,17 @@ function parseUserAgent(ua: string) {
   return { browserName, browserVersion, osName, deviceType };
 }
 
+// Fetch client's public IP address
+async function getClientIP(): Promise<string | null> {
+  try {
+    const response = await fetch('https://api.ipify.org?format=json');
+    const data = await response.json();
+    return data.ip || null;
+  } catch {
+    return null;
+  }
+}
+
 export function useSessionTracker() {
   const { user } = useAuth();
   const sessionIdRef = useRef<string | null>(null);
@@ -51,6 +62,9 @@ export function useSessionTracker() {
         startedRef.current = true;
         const ua = navigator.userAgent;
         const { browserName, browserVersion, osName, deviceType } = parseUserAgent(ua);
+        
+        // Fetch IP address
+        const ipAddress = await getClientIP();
 
         const { data, error } = await supabase
           .from('user_sessions')
@@ -61,6 +75,7 @@ export function useSessionTracker() {
             browser_version: browserVersion,
             os_name: osName,
             device_type: deviceType,
+            ip_address: ipAddress,
             is_active: true,
           })
           .select('id')

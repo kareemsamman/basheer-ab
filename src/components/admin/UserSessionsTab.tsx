@@ -91,7 +91,7 @@ export function UserSessionsTab() {
         .from('user_sessions')
         .select(`
           *,
-          profile:profiles!user_sessions_user_id_fkey(full_name, email)
+          profile:profiles!user_sessions_user_id_profiles_fkey(full_name, email)
         `)
         .gte('started_at', start.toISOString())
         .lte('started_at', end.toISOString())
