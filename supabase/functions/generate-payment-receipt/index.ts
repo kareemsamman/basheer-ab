@@ -42,11 +42,21 @@ function formatDate(dateStr: string): string {
   });
 }
 
+function normalizePhoneForWhatsapp(phone: string): string {
+  if (!phone) return '';
+  let digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('0')) {
+    digits = '972' + digits.substring(1);
+  }
+  return digits;
+}
+
 function buildPaymentReceiptHtml(
   payment: any,
   policy: any,
   client: any,
-  car: any
+  car: any,
+  companySettings: { company_email?: string; company_phones?: string[]; company_whatsapp?: string; company_location?: string }
 ): string {
   const paymentTypeLabel = PAYMENT_TYPE_LABELS[payment.payment_type] || payment.payment_type;
   const policyTypeLabel = POLICY_TYPE_LABELS[policy.policy_type_parent] || policy.policy_type_parent;
@@ -97,6 +107,10 @@ function buildPaymentReceiptHtml(
       `;
     }
   }
+
+  // Build contact info section
+  const whatsappNormalized = normalizePhoneForWhatsapp(companySettings.company_whatsapp || '');
+  const phonesDisplay = companySettings.company_phones?.join(' | ') || '';
 
   return `
 <!DOCTYPE html>
@@ -241,7 +255,28 @@ function buildPaymentReceiptHtml(
       font-size: 16px;
       font-weight: 700;
       color: #1e3a5f;
-      margin-bottom: 8px;
+      margin-bottom: 12px;
+    }
+    .contact-info {
+      margin: 15px 0;
+      padding: 12px;
+      background: #f1f5f9;
+      border-radius: 8px;
+      display: inline-block;
+      text-align: center;
+    }
+    .contact-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 4px 0;
+      color: #1e3a5f;
+      font-size: 12px;
+    }
+    .contact-row a {
+      color: #2563eb;
+      text-decoration: none;
     }
     .print-button {
       display: block;
@@ -345,6 +380,32 @@ function buildPaymentReceiptHtml(
 
     <div class="footer">
       <p class="thank-you">شكراً لتعاملكم معنا 🙏</p>
+      <div class="contact-info">
+        ${companySettings.company_email ? `
+        <div class="contact-row">
+          <span>📧</span>
+          <a href="mailto:${companySettings.company_email}">${companySettings.company_email}</a>
+        </div>
+        ` : ''}
+        ${phonesDisplay ? `
+        <div class="contact-row">
+          <span>📞</span>
+          <span>${phonesDisplay}</span>
+        </div>
+        ` : ''}
+        ${whatsappNormalized ? `
+        <div class="contact-row">
+          <span>💬</span>
+          <a href="https://wa.me/${whatsappNormalized}">واتساب</a>
+        </div>
+        ` : ''}
+        ${companySettings.company_location ? `
+        <div class="contact-row">
+          <span>📍</span>
+          <span>${companySettings.company_location}</span>
+        </div>
+        ` : ''}
+      </div>
       <p>تم إصدار هذا الإيصال بتاريخ ${formatDate(new Date().toISOString())}</p>
       <button class="print-button no-print" onclick="window.print()">🖨️ طباعة الإيصال</button>
     </div>
@@ -398,6 +459,20 @@ serve(async (req) => {
 
     console.log(`[generate-payment-receipt] Processing payment: ${payment_id}`);
 
+    // Fetch company settings for contact info
+    const { data: smsSettings } = await supabase
+      .from("sms_settings")
+      .select("company_email, company_phones, company_whatsapp, company_location")
+      .limit(1)
+      .maybeSingle();
+
+    const companySettings = {
+      company_email: smsSettings?.company_email || '',
+      company_phones: smsSettings?.company_phones || [],
+      company_whatsapp: smsSettings?.company_whatsapp || '',
+      company_location: smsSettings?.company_location || '',
+    };
+
     // Get payment with policy and client info
     const { data: payment, error: paymentError } = await supabase
       .from("policy_payments")
@@ -442,7 +517,7 @@ serve(async (req) => {
 
     if (!bunnyApiKey || !bunnyStorageZone) {
       // Return HTML directly without storing
-      const receiptHtml = buildPaymentReceiptHtml(payment, policy, client, car);
+      const receiptHtml = buildPaymentReceiptHtml(payment, policy, client, car, companySettings);
       return new Response(receiptHtml, {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" }
@@ -450,7 +525,7 @@ serve(async (req) => {
     }
 
     // Generate receipt HTML
-    const receiptHtml = buildPaymentReceiptHtml(payment, policy, client, car);
+    const receiptHtml = buildPaymentReceiptHtml(payment, policy, client, car, companySettings);
     
     // Upload to Bunny CDN
     const now = new Date();

@@ -3253,6 +3253,10 @@ export type Database = {
           birthday_sms_enabled: boolean | null
           birthday_sms_template: string | null
           cancellation_sms_template: string | null
+          company_email: string | null
+          company_location: string | null
+          company_phones: string[] | null
+          company_whatsapp: string | null
           created_at: string
           default_ab_invoice_template_id: string | null
           default_insurance_invoice_template_id: string | null
@@ -3283,6 +3287,10 @@ export type Database = {
           birthday_sms_enabled?: boolean | null
           birthday_sms_template?: string | null
           cancellation_sms_template?: string | null
+          company_email?: string | null
+          company_location?: string | null
+          company_phones?: string[] | null
+          company_whatsapp?: string | null
           created_at?: string
           default_ab_invoice_template_id?: string | null
           default_insurance_invoice_template_id?: string | null
@@ -3313,6 +3321,10 @@ export type Database = {
           birthday_sms_enabled?: boolean | null
           birthday_sms_template?: string | null
           cancellation_sms_template?: string | null
+          company_email?: string | null
+          company_location?: string | null
+          company_phones?: string[] | null
+          company_whatsapp?: string | null
           created_at?: string
           default_ab_invoice_template_id?: string | null
           default_insurance_invoice_template_id?: string | null

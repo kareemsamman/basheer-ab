@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { Save, Loader2, MessageSquare, Send, Settings2, FileSignature, Image, Upload, X } from "lucide-react";
+import { Save, Loader2, MessageSquare, Send, Settings2, FileSignature, Image, Upload, X, Building2, Plus, Trash2 } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { createSafeHtml } from "@/lib/sanitize";
 
@@ -33,6 +33,13 @@ interface SmsSettings {
   birthday_sms_template?: string | null;
   license_expiry_sms_enabled?: boolean;
   license_expiry_sms_template?: string | null;
+}
+
+interface CompanySettings {
+  company_email: string;
+  company_phones: string[];
+  company_whatsapp: string;
+  company_location: string;
 }
 
 interface SignaturePageSettings {
@@ -77,6 +84,14 @@ export default function SmsSettings() {
   });
   
   const [signatureTemplateId, setSignatureTemplateId] = useState<string | null>(null);
+  
+  const [companySettings, setCompanySettings] = useState<CompanySettings>({
+    company_email: "",
+    company_phones: [],
+    company_whatsapp: "",
+    company_location: "",
+  });
+  const [newPhoneNumber, setNewPhoneNumber] = useState("");
 
   useEffect(() => {
     fetchSettings();
@@ -110,6 +125,14 @@ export default function SmsSettings() {
           birthday_sms_template: data.birthday_sms_template ?? null,
           license_expiry_sms_enabled: data.license_expiry_sms_enabled ?? false,
           license_expiry_sms_template: data.license_expiry_sms_template ?? null,
+        });
+        
+        // Load company settings
+        setCompanySettings({
+          company_email: data.company_email || "",
+          company_phones: data.company_phones || [],
+          company_whatsapp: data.company_whatsapp || "",
+          company_location: data.company_location || "",
         });
 
         // Load signature template settings
@@ -153,6 +176,10 @@ export default function SmsSettings() {
             birthday_sms_template: settings.birthday_sms_template ?? null,
             license_expiry_sms_enabled: settings.license_expiry_sms_enabled ?? false,
             license_expiry_sms_template: settings.license_expiry_sms_template ?? null,
+            company_email: companySettings.company_email || null,
+            company_phones: companySettings.company_phones.length > 0 ? companySettings.company_phones : null,
+            company_whatsapp: companySettings.company_whatsapp || null,
+            company_location: companySettings.company_location || null,
           })
           .eq("id", settings.id);
 
@@ -177,6 +204,10 @@ export default function SmsSettings() {
             birthday_sms_template: settings.birthday_sms_template ?? null,
             license_expiry_sms_enabled: settings.license_expiry_sms_enabled ?? false,
             license_expiry_sms_template: settings.license_expiry_sms_template ?? null,
+            company_email: companySettings.company_email || null,
+            company_phones: companySettings.company_phones.length > 0 ? companySettings.company_phones : null,
+            company_whatsapp: companySettings.company_whatsapp || null,
+            company_location: companySettings.company_location || null,
           })
           .select()
           .single();
@@ -355,10 +386,14 @@ export default function SmsSettings() {
 
       <div className="p-6 space-y-6">
         <Tabs defaultValue="settings" dir="rtl">
-          <TabsList className="grid w-full max-w-lg grid-cols-3">
+          <TabsList className="grid w-full max-w-xl grid-cols-4">
             <TabsTrigger value="settings" className="gap-2">
               <Settings2 className="h-4 w-4" />
               الإعدادات
+            </TabsTrigger>
+            <TabsTrigger value="company" className="gap-2">
+              <Building2 className="h-4 w-4" />
+              بيانات الشركة
             </TabsTrigger>
             <TabsTrigger value="signature" className="gap-2">
               <FileSignature className="h-4 w-4" />
@@ -638,6 +673,169 @@ export default function SmsSettings() {
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          {/* Company Info Tab */}
+          <TabsContent value="company" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className="h-5 w-5 text-primary" />
+                  بيانات الشركة
+                </CardTitle>
+                <CardDescription>
+                  بيانات التواصل التي تظهر في الفواتير والإيصالات المرسلة للعملاء
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Company Email */}
+                <div className="space-y-2">
+                  <Label htmlFor="company_email">البريد الإلكتروني</Label>
+                  <Input
+                    id="company_email"
+                    type="email"
+                    placeholder="info@company.com"
+                    value={companySettings.company_email}
+                    onChange={(e) =>
+                      setCompanySettings((prev) => ({ ...prev, company_email: e.target.value }))
+                    }
+                    className="ltr-input"
+                  />
+                </div>
+
+                {/* Phone Numbers */}
+                <div className="space-y-2">
+                  <Label>أرقام الهواتف</Label>
+                  <div className="space-y-2">
+                    {companySettings.company_phones.map((phone, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <Input
+                          value={phone}
+                          onChange={(e) => {
+                            const newPhones = [...companySettings.company_phones];
+                            newPhones[index] = e.target.value;
+                            setCompanySettings((prev) => ({ ...prev, company_phones: newPhones }));
+                          }}
+                          className="ltr-input"
+                        />
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          onClick={() => {
+                            const newPhones = companySettings.company_phones.filter((_, i) => i !== index);
+                            setCompanySettings((prev) => ({ ...prev, company_phones: newPhones }));
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={newPhoneNumber}
+                        onChange={(e) => setNewPhoneNumber(e.target.value)}
+                        placeholder="أضف رقم جديد..."
+                        className="ltr-input"
+                      />
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          if (newPhoneNumber.trim()) {
+                            setCompanySettings((prev) => ({
+                              ...prev,
+                              company_phones: [...prev.company_phones, newPhoneNumber.trim()],
+                            }));
+                            setNewPhoneNumber("");
+                          }
+                        }}
+                      >
+                        <Plus className="h-4 w-4 ml-2" />
+                        إضافة
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    يمكنك إضافة أكثر من رقم هاتف
+                  </p>
+                </div>
+
+                {/* WhatsApp */}
+                <div className="space-y-2">
+                  <Label htmlFor="company_whatsapp">رقم الواتساب</Label>
+                  <Input
+                    id="company_whatsapp"
+                    placeholder="0521234567"
+                    value={companySettings.company_whatsapp}
+                    onChange={(e) =>
+                      setCompanySettings((prev) => ({ ...prev, company_whatsapp: e.target.value }))
+                    }
+                    className="ltr-input"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    الرقم الذي سيظهر كرابط واتساب في الفواتير
+                  </p>
+                </div>
+
+                {/* Location */}
+                <div className="space-y-2">
+                  <Label htmlFor="company_location">العنوان</Label>
+                  <Input
+                    id="company_location"
+                    placeholder="الناصرة - شارع المركز"
+                    value={companySettings.company_location}
+                    onChange={(e) =>
+                      setCompanySettings((prev) => ({ ...prev, company_location: e.target.value }))
+                    }
+                  />
+                </div>
+
+                {/* Preview */}
+                {(companySettings.company_email || companySettings.company_phones.length > 0 || companySettings.company_whatsapp || companySettings.company_location) && (
+                  <div className="space-y-2">
+                    <Label>معاينة كيف ستظهر البيانات</Label>
+                    <div className="border rounded-lg p-4 bg-muted/30 text-center">
+                      <p className="font-bold text-lg mb-2">شكراً لتعاملكم معنا 🙏</p>
+                      <div className="inline-block text-sm space-y-1 text-right bg-background p-3 rounded-lg">
+                        {companySettings.company_email && (
+                          <div className="flex items-center gap-2">
+                            <span>📧</span>
+                            <span className="text-primary">{companySettings.company_email}</span>
+                          </div>
+                        )}
+                        {companySettings.company_phones.length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <span>📞</span>
+                            <span>{companySettings.company_phones.join(' | ')}</span>
+                          </div>
+                        )}
+                        {companySettings.company_whatsapp && (
+                          <div className="flex items-center gap-2">
+                            <span>💬</span>
+                            <span className="text-primary">واتساب</span>
+                          </div>
+                        )}
+                        {companySettings.company_location && (
+                          <div className="flex items-center gap-2">
+                            <span>📍</span>
+                            <span>{companySettings.company_location}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Save Button */}
+                <Button onClick={handleSave} disabled={saving} className="w-full">
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin ml-2" />
+                  ) : (
+                    <Save className="h-4 w-4 ml-2" />
+                  )}
+                  حفظ بيانات الشركة
+                </Button>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Signature Page Editor Tab */}

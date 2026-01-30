@@ -38,10 +38,22 @@ function formatDate(dateStr: string): string {
   });
 }
 
+function normalizePhoneForWhatsapp(phone: string): string {
+  if (!phone) return '';
+  // Remove all non-digits
+  let digits = phone.replace(/\D/g, '');
+  // If starts with 0, replace with 972
+  if (digits.startsWith('0')) {
+    digits = '972' + digits.substring(1);
+  }
+  return digits;
+}
+
 function buildComprehensiveInvoiceHtml(
   client: any,
   payments: any[],
-  totals: { totalInsurance: number; totalPaid: number; totalRemaining: number }
+  totals: { totalInsurance: number; totalPaid: number; totalRemaining: number },
+  companySettings: { company_email?: string; company_phones?: string[]; company_whatsapp?: string; company_location?: string }
 ): string {
   // Build single unified payments table with car number
   const paymentRows = payments.map(payment => {
@@ -80,6 +92,10 @@ function buildComprehensiveInvoiceHtml(
       </tr>
     `;
   }).join('');
+
+  // Build contact info section
+  const whatsappNormalized = normalizePhoneForWhatsapp(companySettings.company_whatsapp || '');
+  const phonesDisplay = companySettings.company_phones?.join(' | ') || '';
 
   return `
 <!DOCTYPE html>
@@ -173,24 +189,6 @@ function buildComprehensiveInvoiceHtml(
       color: #1e3a5f;
       font-weight: 700;
     }
-    .policies-grid {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .policy-item {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr 100px;
-      gap: 10px;
-      padding: 10px 12px;
-      background: #f8fafc;
-      border-radius: 8px;
-      font-size: 12px;
-    }
-    .policy-type { font-weight: 700; color: #1e3a5f; }
-    .policy-period { color: #718096; }
-    .policy-car { font-family: monospace; }
-    .policy-price { font-weight: 700; color: #047857; text-align: left; }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -275,12 +273,35 @@ function buildComprehensiveInvoiceHtml(
       font-size: 16px;
       font-weight: 700;
       color: #1e3a5f;
-      margin-bottom: 8px;
+      margin-bottom: 12px;
+    }
+    .contact-info {
+      margin: 15px 0;
+      padding: 15px;
+      background: #f1f5f9;
+      border-radius: 8px;
+      display: inline-block;
+      text-align: center;
+    }
+    .contact-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 5px 0;
+      color: #1e3a5f;
+    }
+    .contact-row a {
+      color: #2563eb;
+      text-decoration: none;
+    }
+    .contact-row a:hover {
+      text-decoration: underline;
     }
     .print-button {
       display: block;
       width: calc(100% - 40px);
-      margin: 0 20px;
+      margin: 15px 20px 0;
       padding: 12px;
       background: linear-gradient(135deg, #1e3a5f 0%, #2d5a8a 100%);
       color: white;
@@ -293,7 +314,6 @@ function buildComprehensiveInvoiceHtml(
     }
     .print-button:hover { opacity: 0.9; }
     @media (max-width: 600px) {
-      .policy-item { grid-template-columns: 1fr 1fr; }
       .totals { grid-template-columns: 1fr; }
       .total-value { font-size: 20px; }
     }
@@ -346,7 +366,7 @@ function buildComprehensiveInvoiceHtml(
           </tr>
         </thead>
         <tbody>
-          \${paymentRows}
+          ${paymentRows}
         </tbody>
       </table>
       ` : '<p style="text-align: center; color: #718096; padding: 20px;">لا توجد دفعات مسجلة</p>'}
@@ -369,6 +389,32 @@ function buildComprehensiveInvoiceHtml(
 
     <div class="footer">
       <p class="thank-you">شكراً لتعاملكم معنا 🙏</p>
+      <div class="contact-info">
+        ${companySettings.company_email ? `
+        <div class="contact-row">
+          <span>📧</span>
+          <a href="mailto:${companySettings.company_email}">${companySettings.company_email}</a>
+        </div>
+        ` : ''}
+        ${phonesDisplay ? `
+        <div class="contact-row">
+          <span>📞</span>
+          <span>${phonesDisplay}</span>
+        </div>
+        ` : ''}
+        ${whatsappNormalized ? `
+        <div class="contact-row">
+          <span>💬</span>
+          <a href="https://wa.me/${whatsappNormalized}">واتساب</a>
+        </div>
+        ` : ''}
+        ${companySettings.company_location ? `
+        <div class="contact-row">
+          <span>📍</span>
+          <span>${companySettings.company_location}</span>
+        </div>
+        ` : ''}
+      </div>
       <button class="print-button no-print" onclick="window.print()">🖨️ طباعة الفاتورة</button>
     </div>
   </div>
@@ -420,6 +466,20 @@ serve(async (req) => {
     }
 
     console.log(`[generate-client-payments-invoice] Processing client: ${client_id}`);
+
+    // Fetch company settings for contact info
+    const { data: smsSettings } = await supabase
+      .from("sms_settings")
+      .select("company_email, company_phones, company_whatsapp, company_location")
+      .limit(1)
+      .maybeSingle();
+
+    const companySettings = {
+      company_email: smsSettings?.company_email || '',
+      company_phones: smsSettings?.company_phones || [],
+      company_whatsapp: smsSettings?.company_whatsapp || '',
+      company_location: smsSettings?.company_location || '',
+    };
 
     // Get client info
     const { data: client, error: clientError } = await supabase
@@ -500,7 +560,7 @@ serve(async (req) => {
       totalInsurance,
       totalPaid,
       totalRemaining,
-    });
+    }, companySettings);
 
     // If no Bunny credentials, return HTML directly
     if (!bunnyApiKey || !bunnyStorageZone) {

@@ -217,6 +217,20 @@ serve(async (req) => {
       branchName = branch?.name_ar || branch?.name || null;
     }
 
+    // Fetch company settings for contact info
+    const { data: smsSettings } = await supabase
+      .from("sms_settings")
+      .select("company_email, company_phones, company_whatsapp, company_location")
+      .limit(1)
+      .maybeSingle();
+
+    const companySettings = {
+      company_email: smsSettings?.company_email || '',
+      company_phones: smsSettings?.company_phones || [],
+      company_whatsapp: smsSettings?.company_whatsapp || '',
+      company_location: smsSettings?.company_location || '',
+    };
+
     // Generate HTML
     const html = generateReportHtml(
       client,
@@ -226,7 +240,8 @@ serve(async (req) => {
       policyChildren,
       { totalPaid, totalRemaining, totalInsurance },
       walletBalance,
-      branchName
+      branchName,
+      companySettings
     );
 
     // Upload to Bunny CDN
@@ -306,6 +321,15 @@ function getPolicyStatus(policy: PolicyData): { label: string; class: string; ic
   return { label: "سارية", class: "status-active", icon: "✅" };
 }
 
+function normalizePhoneForWhatsapp(phone: string): string {
+  if (!phone) return '';
+  let digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('0')) {
+    digits = '972' + digits.substring(1);
+  }
+  return digits;
+}
+
 function generateReportHtml(
   client: any,
   cars: CarData[],
@@ -314,7 +338,8 @@ function generateReportHtml(
   policyChildren: Record<string, { full_name: string; id_number: string; relation: string | null }[]>,
   paymentSummary: { totalPaid: number; totalRemaining: number; totalInsurance: number },
   walletBalance: number,
-  branchName: string | null
+  branchName: string | null,
+  companySettings: { company_email?: string; company_phones?: string[]; company_whatsapp?: string; company_location?: string }
 ): string {
   const activePolicies = policies.filter(p => {
     const endDate = new Date(p.end_date);
@@ -829,6 +854,14 @@ function generateReportHtml(
           <div class="footer-brand-ar">بشير للتأمينات</div>
           <div class="footer-brand-en">BASHEER INSURANCE</div>
         </div>
+        ${(companySettings.company_email || (companySettings.company_phones && companySettings.company_phones.length > 0) || companySettings.company_whatsapp || companySettings.company_location) ? `
+        <div class="contact-info" style="margin: 12px 0; padding: 10px; background: #f0fdfa; border-radius: 8px; display: inline-block; text-align: center;">
+          ${companySettings.company_email ? `<div style="padding: 4px 0;">📧 <a href="mailto:${companySettings.company_email}" style="color: #0d9488; text-decoration: none;">${companySettings.company_email}</a></div>` : ''}
+          ${companySettings.company_phones && companySettings.company_phones.length > 0 ? `<div style="padding: 4px 0;">📞 ${companySettings.company_phones.join(' | ')}</div>` : ''}
+          ${companySettings.company_whatsapp ? `<div style="padding: 4px 0;">💬 <a href="https://wa.me/${normalizePhoneForWhatsapp(companySettings.company_whatsapp)}" style="color: #0d9488; text-decoration: none;">واتساب</a></div>` : ''}
+          ${companySettings.company_location ? `<div style="padding: 4px 0;">📍 ${companySettings.company_location}</div>` : ''}
+        </div>
+        ` : ''}
         <div class="footer-date">${formatDate(new Date().toISOString())}</div>
       </div>
     </div>
