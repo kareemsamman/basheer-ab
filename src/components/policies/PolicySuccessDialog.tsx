@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Printer, MessageSquare, X, Loader2, Check } from "lucide-react";
+import { Printer, MessageSquare, X, Loader2, Check, AlertCircle } from "lucide-react";
 
 interface PolicySuccessDialogProps {
   open: boolean;
@@ -33,11 +33,31 @@ export function PolicySuccessDialog({
   const [printingInvoice, setPrintingInvoice] = useState(false);
   const [sendingSms, setSendingSms] = useState(false);
   const [smsSent, setSmsSent] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const extractErrorMessage = async (result: { data: any; error: any }): Promise<string> => {
+    // Handle function invoke error
+    if (result.error) {
+      // Try to extract error message from the error object
+      if (typeof result.error === 'string') return result.error;
+      if (result.error.message) return result.error.message;
+      return 'حدث خطأ غير متوقع';
+    }
+    
+    // Handle error in response data
+    if (result.data?.error) {
+      return result.data.error;
+    }
+    
+    return 'حدث خطأ غير متوقع';
+  };
 
   const handlePrintInvoice = async () => {
     setPrintingInvoice(true);
+    setErrorMessage(null);
+    
     try {
-      let data, error;
+      let result;
       
       if (isPackage) {
         // For package: first get all policy IDs in the group
@@ -50,32 +70,38 @@ export function PolicySuccessDialog({
         
         const policyIds = groupPolicies?.map(p => p.id) || [policyId];
         
-        const result = await supabase.functions.invoke('send-package-invoice-sms', {
+        result = await supabase.functions.invoke('send-package-invoice-sms', {
           body: { policy_ids: policyIds, skip_sms: true }
         });
-        data = result.data;
-        error = result.error;
       } else {
         // Single policy
-        const result = await supabase.functions.invoke('send-invoice-sms', {
+        result = await supabase.functions.invoke('send-invoice-sms', {
           body: { policy_id: policyId, skip_sms: true }
         });
-        data = result.data;
-        error = result.error;
       }
 
-      if (error) throw error;
+      // Check for errors
+      if (result.error || result.data?.error) {
+        const errorMsg = await extractErrorMessage(result);
+        setErrorMessage(errorMsg);
+        toast.error(errorMsg);
+        return;
+      }
 
       // Open the invoice URL in a new tab
-      const invoiceUrl = data?.package_invoice_url || data?.ab_invoice_url || data?.invoice_url;
+      const invoiceUrl = result.data?.package_invoice_url || result.data?.ab_invoice_url || result.data?.invoice_url;
       if (invoiceUrl) {
         window.open(invoiceUrl, '_blank');
+        toast.success("تم فتح الفاتورة");
       } else {
+        setErrorMessage("لم يتم العثور على رابط الفاتورة");
         toast.error("لم يتم العثور على رابط الفاتورة");
       }
     } catch (error) {
       console.error('Print invoice error:', error);
-      toast.error("فشل في تحميل الفاتورة");
+      const errorMsg = error instanceof Error ? error.message : "فشل في تحميل الفاتورة";
+      setErrorMessage(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setPrintingInvoice(false);
     }
@@ -88,8 +114,10 @@ export function PolicySuccessDialog({
     }
 
     setSendingSms(true);
+    setErrorMessage(null);
+    
     try {
-      let error;
+      let result;
       
       if (isPackage) {
         // For package: first get all policy IDs in the group
@@ -102,30 +130,37 @@ export function PolicySuccessDialog({
         
         const policyIds = groupPolicies?.map(p => p.id) || [policyId];
         
-        const result = await supabase.functions.invoke('send-package-invoice-sms', {
+        result = await supabase.functions.invoke('send-package-invoice-sms', {
           body: { policy_ids: policyIds }
         });
-        error = result.error;
       } else {
-        const result = await supabase.functions.invoke('send-invoice-sms', {
+        result = await supabase.functions.invoke('send-invoice-sms', {
           body: { policy_id: policyId, force_resend: true }
         });
-        error = result.error;
       }
 
-      if (error) throw error;
+      // Check for errors
+      if (result.error || result.data?.error) {
+        const errorMsg = await extractErrorMessage(result);
+        setErrorMessage(errorMsg);
+        toast.error(errorMsg);
+        return;
+      }
 
       setSmsSent(true);
       toast.success("تم إرسال SMS بنجاح");
     } catch (error) {
       console.error('Send SMS error:', error);
-      toast.error("فشل في إرسال SMS");
+      const errorMsg = error instanceof Error ? error.message : "فشل في إرسال SMS";
+      setErrorMessage(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setSendingSms(false);
     }
   };
 
   const handleClose = () => {
+    setErrorMessage(null);
     onOpenChange(false);
     onClose();
   };
@@ -142,6 +177,13 @@ export function PolicySuccessDialog({
             يمكنك طباعة الفاتورة أو إرسالها للعميل عبر SMS
           </DialogDescription>
         </DialogHeader>
+
+        {errorMessage && (
+          <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm">
+            <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
 
         <div className="flex flex-col gap-3 mt-4">
           <Button

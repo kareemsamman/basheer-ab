@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.88.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 interface SendPackageInvoiceSmsRequest {
@@ -35,6 +35,15 @@ const CAR_TYPE_LABELS: Record<string, string> = {
   tjeradown4: 'تجارة أقل من 4 طن',
   tjeraup4: 'تجارة أكثر من 4 طن',
 };
+
+function normalizePhoneForWhatsapp(phone: string): string {
+  if (!phone) return '';
+  let digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('0')) {
+    digits = '972' + digits.substring(1);
+  }
+  return digits;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -80,7 +89,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[send-package-invoice-sms] Processing ${policy_ids.length} policies`);
+    console.log(`[send-package-invoice-sms] Processing ${policy_ids.length} policies, skip_sms: ${skip_sms}`);
 
     // Get all policies with related data
     const { data: policies, error: policiesError } = await supabase
@@ -104,9 +113,11 @@ serve(async (req) => {
 
     // All policies should have the same client
     const client = policies[0].client;
-    if (!client?.phone_number) {
+    
+    // Only require phone number when actually sending SMS
+    if (!skip_sms && !client?.phone_number) {
       return new Response(
-        JSON.stringify({ error: "رقم هاتف العميل مطلوب" }),
+        JSON.stringify({ error: "رقم هاتف العميل مطلوب لإرسال SMS" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -124,55 +135,38 @@ serve(async (req) => {
       console.error("[send-package-invoice-sms] Error fetching files:", filesError);
     }
 
-    // For packages: Check if at least the MAIN policy (ELZAMI or THIRD_FULL) has files
-    // Add-ons (ROAD_SERVICE, ACCIDENT_FEE_EXEMPTION) typically don't have separate files
-    const MAIN_POLICY_TYPES = ['ELZAMI', 'THIRD_FULL', 'HEALTH', 'LIFE', 'PROPERTY', 'TRAVEL', 'BUSINESS', 'OTHER'];
-    const mainPolicies = policies.filter(p => MAIN_POLICY_TYPES.includes(p.policy_type_parent));
-    const policyIdsWithFiles = new Set(insuranceFiles?.map(f => f.entity_id) || []);
-    
-    // Check if at least one main policy has files (or if no main policy, check any has files)
-    const hasMainPolicyWithFiles = mainPolicies.some(p => policyIdsWithFiles.has(p.id));
+    // For skip_sms (print only): files are NOT required - we always generate the HTML invoice
+    // For sending SMS: files are optional now (we always send HTML invoice link)
     const hasAnyFiles = insuranceFiles && insuranceFiles.length > 0;
-    
-    if (!hasAnyFiles) {
-      // No files at all in the package
-      const mainPolicyNumbers = mainPolicies.map(p => p.policy_number || p.id.slice(0, 8)).join('، ');
-      console.error(`[send-package-invoice-sms] No files found for any policy in package`);
-      return new Response(
-        JSON.stringify({ error: `لا يوجد ملفات بوليصة، يجب رفع ملفات البوليصة الأساسية (${mainPolicyNumbers}) أولاً` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-    
-    if (!hasMainPolicyWithFiles && mainPolicies.length > 0) {
-      // Has files but not for the main policy
-      const mainPolicyNumbers = mainPolicies.map(p => p.policy_number || POLICY_TYPE_LABELS[p.policy_type_parent] || p.id.slice(0, 8)).join('، ');
-      console.error(`[send-package-invoice-sms] Main policies missing files: ${mainPolicyNumbers}`);
-      return new Response(
-        JSON.stringify({ error: `يجب رفع ملفات البوليصة الأساسية (${mainPolicyNumbers}) أولاً` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-    
-    console.log(`[send-package-invoice-sms] Found ${insuranceFiles?.length || 0} files for ${policies.length} policies`);
+    console.log(`[send-package-invoice-sms] Files found: ${insuranceFiles?.length || 0} for ${policies.length} policies`);
 
-    // Get SMS settings (only needed if not skipping SMS)
-    let smsSettings: any = null;
+    // Fetch company contact settings for footer
+    const { data: smsSettingsData, error: smsSettingsError } = await supabase
+      .from("sms_settings")
+      .select("*")
+      .limit(1)
+      .maybeSingle();
+
+    if (smsSettingsError) {
+      console.error("[send-package-invoice-sms] Error fetching SMS settings:", smsSettingsError);
+    }
+
+    // For SMS sending, require enabled settings
     if (!skip_sms) {
-      const { data: smsSettingsData, error: smsSettingsError } = await supabase
-        .from("sms_settings")
-        .select("*")
-        .limit(1)
-        .maybeSingle();
-
-      if (smsSettingsError || !smsSettingsData || !smsSettingsData.is_enabled) {
+      if (!smsSettingsData || !smsSettingsData.is_enabled) {
         return new Response(
           JSON.stringify({ error: "خدمة الرسائل غير مفعلة" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      smsSettings = smsSettingsData;
     }
+
+    const companySettings = {
+      company_email: smsSettingsData?.company_email || '',
+      company_phones: smsSettingsData?.company_phones || [],
+      company_whatsapp: smsSettingsData?.company_whatsapp || '',
+      company_location: smsSettingsData?.company_location || '',
+    };
 
     if (!bunnyApiKey || !bunnyStorageZone) {
       return new Response(
@@ -219,7 +213,7 @@ serve(async (req) => {
     const totalRemaining = totalPrice - totalPaid;
 
     // Generate Package Invoice HTML with files and policy children
-    const packageInvoiceHtml = buildPackageInvoiceHtml(policies, paymentsByPolicy, totalPrice, totalPaid, totalRemaining, insuranceFiles || [], policyChildren || []);
+    const packageInvoiceHtml = buildPackageInvoiceHtml(policies, paymentsByPolicy, totalPrice, totalPaid, totalRemaining, insuranceFiles || [], policyChildren || [], companySettings);
     
     const now = new Date();
     const year = now.getFullYear();
@@ -256,26 +250,15 @@ serve(async (req) => {
 
     // Build policy file URLs (all files from all policies)
     // Normalize CDN URLs (replace old b-cdn.net with custom domain)
-    const policyFileUrls = insuranceFiles.map(f => 
-      f.cdn_url.replace('https://basheer-ab.b-cdn.net/', 'https://cdn.basheer-ab.com/')
-    );
+    const policyFileUrls = hasAnyFiles 
+      ? insuranceFiles.map(f => f.cdn_url.replace('https://basheer-ab.b-cdn.net/', 'https://cdn.basheer-ab.com/'))
+      : [];
     
     // Build all policy URLs with labels for SMS - include ALL files
-    const allPolicyUrlsText = policyFileUrls.map((url, i) => `البوليصة ${url}`).join('\n');
+    const allPolicyUrlsText = policyFileUrls.length > 0 
+      ? policyFileUrls.map((url) => `البوليصة ${url}`).join('\n')
+      : '';
 
-    // Build SMS message with ALL files included
-    let smsMessage = `مرحباً ${client.full_name}، تم إصدار وثيقة التأمين\n\n${allPolicyUrlsText}`;
-    
-    // Add AB invoice URL
-    smsMessage += `\n\nفاتورة شركة التأمين: ${packageInvoiceUrl}`;
-
-    const escapeXml = (value: string) =>
-      value
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/\"/g, "&quot;")
-        .replace(/'/g, "&apos;");
     // Skip SMS sending if requested (for print only)
     if (skip_sms) {
       console.log(`[send-package-invoice-sms] Skipping SMS (skip_sms=true)`);
@@ -296,6 +279,25 @@ serve(async (req) => {
       );
     }
 
+    // Build SMS message with ALL files included
+    let smsMessage = `مرحباً ${client.full_name}، تم إصدار وثيقة التأمين`;
+    
+    // Add policy files if available
+    if (allPolicyUrlsText) {
+      smsMessage += `\n\n${allPolicyUrlsText}`;
+    }
+    
+    // Always add AB invoice URL
+    smsMessage += `\n\nفاتورة شركة التأمين: ${packageInvoiceUrl}`;
+
+    const escapeXml = (value: string) =>
+      value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&apos;");
+
     // Normalize phone
     let cleanPhone = client.phone_number.replace(/[^0-9]/g, "");
     if (cleanPhone.startsWith("972")) {
@@ -307,8 +309,8 @@ serve(async (req) => {
     const smsXml =
       `<?xml version="1.0" encoding="UTF-8"?>` +
       `<sms>` +
-      `<user><username>${escapeXml(smsSettings.sms_user || "")}</username></user>` +
-      `<source>${escapeXml(smsSettings.sms_source || "")}</source>` +
+      `<user><username>${escapeXml(smsSettingsData.sms_user || "")}</username></user>` +
+      `<source>${escapeXml(smsSettingsData.sms_source || "")}</source>` +
       `<destinations><phone id="${dlr}">${escapeXml(cleanPhone)}</phone></destinations>` +
       `<message>${escapeXml(smsMessage)}</message>` +
       `</sms>`;
@@ -318,7 +320,7 @@ serve(async (req) => {
     const smsResponse = await fetch("https://019sms.co.il/api", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${smsSettings.sms_token}`,
+        Authorization: `Bearer ${smsSettingsData.sms_token}`,
         "Content-Type": "application/xml; charset=utf-8",
       },
       body: smsXml,
@@ -396,7 +398,8 @@ function buildPackageInvoiceHtml(
   totalPaid: number,
   remaining: number,
   policyFiles: { cdn_url: string; original_name: string; mime_type: string; entity_id: string }[],
-  policyChildren: any[] = []
+  policyChildren: any[] = [],
+  companySettings: { company_email?: string; company_phones?: string[]; company_whatsapp?: string; company_location?: string }
 ): string {
   const client = policies[0]?.client || {};
   const isPaid = remaining <= 0;
@@ -483,7 +486,7 @@ function buildPackageInvoiceHtml(
   policies.forEach(p => {
     const policyPayments = paymentsByPolicy[p.id] || [];
     const policyType = POLICY_TYPE_LABELS[p.policy_type_parent] || p.policy_type_parent;
-    policyPayments.forEach((pay, i) => {
+    policyPayments.forEach((pay) => {
       allPaymentsRows.push(`
         <tr>
           <td style="padding: 10px; border: 1px solid #e2e8f0;">${policyType}</td>
@@ -494,6 +497,39 @@ function buildPackageInvoiceHtml(
       `);
     });
   });
+
+  // Build contact footer
+  const whatsappNormalized = normalizePhoneForWhatsapp(companySettings.company_whatsapp || '');
+  const phonesDisplay = companySettings.company_phones?.join(' | ') || '';
+  
+  const contactFooterHtml = `
+    <div class="contact-info">
+      ${companySettings.company_email ? `
+      <div class="contact-row">
+        <span>📧</span>
+        <a href="mailto:${companySettings.company_email}">${companySettings.company_email}</a>
+      </div>
+      ` : ''}
+      ${phonesDisplay ? `
+      <div class="contact-row">
+        <span>📞</span>
+        <span>${phonesDisplay}</span>
+      </div>
+      ` : ''}
+      ${whatsappNormalized ? `
+      <div class="contact-row">
+        <span>💬</span>
+        <a href="https://wa.me/${whatsappNormalized}">واتساب</a>
+      </div>
+      ` : ''}
+      ${companySettings.company_location ? `
+      <div class="contact-row">
+        <span>📍</span>
+        <span>${companySettings.company_location}</span>
+      </div>
+      ` : ''}
+    </div>
+  `;
 
   return `
 <!DOCTYPE html>
@@ -629,6 +665,50 @@ function buildPackageInvoiceHtml(
       color: #718096;
       font-size: 12px;
     }
+    .footer .thank-you {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1e3a5f;
+      margin-bottom: 12px;
+    }
+    .contact-info {
+      margin: 15px auto;
+      padding: 15px;
+      background: #f1f5f9;
+      border-radius: 10px;
+      display: inline-block;
+      text-align: center;
+    }
+    .contact-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 5px 0;
+      color: #1e3a5f;
+      font-size: 13px;
+    }
+    .contact-row a {
+      color: #2563eb;
+      text-decoration: none;
+    }
+    .contact-row a:hover { text-decoration: underline; }
+    .print-button {
+      display: block;
+      width: 100%;
+      max-width: 300px;
+      margin: 15px auto 0;
+      padding: 12px;
+      background: linear-gradient(135deg, #1e3a5f 0%, #2d5a8a 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: 'Tajawal', sans-serif;
+    }
+    .print-button:hover { opacity: 0.9; }
     .signature { text-align: left; margin-top: 15px; font-style: italic; color: #1e3a5f; font-weight: 600; }
     .files-grid {
       display: grid;
@@ -698,59 +778,43 @@ function buildPackageInvoiceHtml(
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0, 0, 0, 0.9);
+      background: rgba(0,0,0,0.9);
       z-index: 9999;
       justify-content: center;
       align-items: center;
-      cursor: pointer;
+      flex-direction: column;
     }
     .lightbox-overlay.active { display: flex; }
     .lightbox-image {
       max-width: 95%;
-      max-height: 95%;
+      max-height: 85vh;
       object-fit: contain;
       border-radius: 8px;
-      box-shadow: 0 10px 50px rgba(0,0,0,0.5);
     }
     .lightbox-close {
-      position: fixed;
+      position: absolute;
       top: 20px;
-      left: 20px;
-      background: white;
-      color: #1e3a5f;
+      right: 30px;
+      font-size: 40px;
+      color: white;
+      background: none;
       border: none;
-      width: 50px;
-      height: 50px;
-      border-radius: 50%;
-      font-size: 28px;
       cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
       z-index: 10000;
     }
-    .lightbox-close:hover { background: #f0f0f0; }
     .lightbox-download {
-      position: fixed;
-      bottom: 30px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: linear-gradient(135deg, #1e3a5f 0%, #2d5a8a 100%);
+      margin-top: 15px;
+      padding: 10px 25px;
+      background: #22c55e;
       color: white;
-      border: none;
-      padding: 12px 30px;
-      border-radius: 25px;
-      font-size: 16px;
-      cursor: pointer;
-      font-weight: 700;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
       text-decoration: none;
+      border-radius: 8px;
+      font-weight: 700;
       display: inline-block;
       z-index: 10000;
     }
     .lightbox-download:hover { opacity: 0.9; }
+    @media print { .no-print { display: none !important; } }
     @media (max-width: 600px) {
       body { padding: 12px; }
       .header { padding: 20px 15px; }
@@ -805,7 +869,7 @@ function buildPackageInvoiceHtml(
       </div>
     </div>
 
-    \${additionalDriversHtml}
+    ${additionalDriversHtml}
 
     <div class="section">
       <div class="section-title">📦 وثائق الباقة</div>
@@ -872,9 +936,11 @@ function buildPackageInvoiceHtml(
     </div>
 
     <div class="footer">
-      <p>تاريخ الإصدار: ${formatDate(new Date().toISOString())}</p>
-      <p>شكراً لثقتكم بوكالة بشير للتأمين</p>
+      <p class="thank-you">شكراً لثقتكم بنا 🙏</p>
+      ${contactFooterHtml}
+      <p style="margin-top: 10px;">تاريخ الإصدار: ${formatDate(new Date().toISOString())}</p>
       <p class="signature">Basheer</p>
+      <button class="print-button no-print" onclick="window.print()">🖨️ طباعة الفاتورة</button>
     </div>
   </div>
   

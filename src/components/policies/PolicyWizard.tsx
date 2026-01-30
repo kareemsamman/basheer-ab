@@ -1040,16 +1040,8 @@ export function PolicyWizard({
             }
           });
 
-        // Invoice SMS (fire-and-forget)
-        supabase.functions.invoke('send-invoice-sms', {
-          body: { 
-            policyId: policyIdToUse,
-            phoneNumber: clientPhone 
-          },
-        }).then(({ error }) => {
-          if (error) console.error('[PolicyWizard] Invoice SMS error:', error);
-          else console.log('[PolicyWizard] Invoice SMS sent');
-        });
+        // Invoice SMS is now handled by PolicySuccessDialog
+        // Removed automatic fire-and-forget call - user chooses from dialog
       }
 
       clearDraft();
