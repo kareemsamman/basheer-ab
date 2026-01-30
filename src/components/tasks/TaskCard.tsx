@@ -63,9 +63,10 @@ export function TaskCard({ task, onComplete, onEdit, onDelete }: TaskCardProps) 
   return (
     <Card
       className={cn(
-        "transition-all duration-200 hover:shadow-md",
-        isCompleted && "opacity-60 bg-muted/30",
-        overdue && "border-destructive/50 bg-destructive/5"
+        "transition-all duration-200 hover:shadow-lg group",
+        isCompleted && "opacity-60 bg-muted/20",
+        overdue && "border-r-4 border-r-destructive bg-destructive/5",
+        !isCompleted && !overdue && "border-r-4 border-r-primary/30"
       )}
     >
       <CardContent className="p-4">
@@ -73,16 +74,16 @@ export function TaskCard({ task, onComplete, onEdit, onDelete }: TaskCardProps) 
           {/* Time badge */}
           <div
             className={cn(
-              "flex flex-col items-center justify-center min-w-[60px] py-2 px-2 rounded-lg",
+              "flex flex-col items-center justify-center min-w-[70px] py-3 px-3 rounded-xl shadow-sm",
               isCompleted
-                ? "bg-green-100 text-green-700"
+                ? "bg-green-50 text-green-700 border border-green-200"
                 : overdue
-                ? "bg-destructive/10 text-destructive"
-                : "bg-primary/10 text-primary"
+                ? "bg-red-50 text-red-600 border border-red-200"
+                : "bg-primary/5 text-primary border border-primary/20"
             )}
           >
             <Clock className="h-4 w-4 mb-1" />
-            <span className="text-sm font-bold font-mono">
+            <span className="text-base font-bold font-mono ltr-nums">
               {formatTime(task.due_time)}
             </span>
           </div>
@@ -123,18 +124,26 @@ export function TaskCard({ task, onComplete, onEdit, onDelete }: TaskCardProps) 
               </div>
             </div>
 
-            {/* Assignment info */}
-            <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
-              <User className="h-3 w-3" />
-              {isCreatedByMe && isAssignedToMe ? (
-                <span>أنشأتها لنفسك</span>
-              ) : (
-                <span className="flex items-center gap-1">
-                  من: {isCreatedByMe ? "أنت" : creatorName}
-                  <ArrowLeft className="h-3 w-3" />
-                  إلى: {isAssignedToMe ? "أنت" : assigneeName}
-                </span>
-              )}
+            {/* Assignment info with better styling */}
+            <div className="flex items-center gap-2 mt-3">
+              <div className={cn(
+                "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs",
+                isCreatedByMe && !isAssignedToMe 
+                  ? "bg-violet-100 text-violet-700" 
+                  : "bg-muted text-muted-foreground"
+              )}>
+                <User className="h-3 w-3" />
+                {isCreatedByMe && isAssignedToMe ? (
+                  <span>مهمة شخصية</span>
+                ) : isCreatedByMe ? (
+                  <span className="flex items-center gap-1">
+                    <ArrowLeft className="h-3 w-3" />
+                    {assigneeName}
+                  </span>
+                ) : (
+                  <span>من: {creatorName}</span>
+                )}
+              </div>
             </div>
 
             {/* Completed info */}
@@ -150,13 +159,16 @@ export function TaskCard({ task, onComplete, onEdit, onDelete }: TaskCardProps) 
             {!isCompleted && (
               <Button
                 size="sm"
-                variant="ghost"
-                className="h-8 px-2 text-green-600 hover:text-green-700 hover:bg-green-50"
+                variant={overdue ? "destructive" : "default"}
+                className={cn(
+                  "h-9 px-4 gap-1.5",
+                  !overdue && "bg-green-600 hover:bg-green-700"
+                )}
                 onClick={handleComplete}
                 disabled={completing}
               >
                 <Check className="h-4 w-4" />
-                <span className="mr-1 hidden sm:inline">إنجاز</span>
+                <span className="hidden sm:inline">إنجاز</span>
               </Button>
             )}
 

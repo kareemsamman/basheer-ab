@@ -40,13 +40,12 @@ interface TaskDrawerProps {
   defaultDate?: Date;
 }
 
-// Time options from 06:00 to 23:00
-const TIME_OPTIONS = Array.from({ length: 18 }, (_, i) => {
-  const hour = i + 6;
-  return {
-    value: `${hour.toString().padStart(2, '0')}:00`,
-    label: `${hour.toString().padStart(2, '0')}:00`,
-  };
+// Time options from 06:00 to 23:30 with 30-minute intervals
+const TIME_OPTIONS = Array.from({ length: 36 }, (_, i) => {
+  const hour = Math.floor(i / 2) + 6;
+  const minutes = (i % 2) * 30;
+  const timeStr = `${hour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+  return { value: timeStr, label: timeStr };
 });
 
 export function TaskDrawer({
