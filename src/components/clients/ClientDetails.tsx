@@ -414,8 +414,13 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
 
       // "refund" and "transfer_refund_owed" = We owe customer
       // "transfer_adjustment_due" = Customer owes us
+      // "refund", "transfer_refund_owed", "manual_refund" = We owe customer
       const weOweCustomer = (data || [])
-        .filter(t => t.transaction_type === 'refund' || t.transaction_type === 'transfer_refund_owed')
+        .filter(t => 
+          t.transaction_type === 'refund' || 
+          t.transaction_type === 'transfer_refund_owed' ||
+          t.transaction_type === 'manual_refund'
+        )
         .reduce((sum, t) => sum + (t.amount || 0), 0);
 
       const customerOwesUs = (data || [])
@@ -997,7 +1002,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
               </div>
               
               <div className="flex gap-2 shrink-0">
-                {paymentSummary.total_remaining > 0 && (
+                {(paymentSummary.total_remaining - walletBalance.total_refunds) > 0 && (
                   <Button 
                     variant="default" 
                     className="gap-2"
@@ -1076,13 +1081,25 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
             </div>
             <div className="flex-1">
               <p className="text-xs text-muted-foreground">إجمالي المتبقي</p>
-              <p className={cn("text-xl font-bold", paymentSummary.total_remaining > 0 ? "text-destructive" : "text-success")}>
-                ₪{paymentSummary.total_remaining.toLocaleString()}
+              {/* صافي المتبقي = الدين - المرتجعات */}
+              <p className={cn("text-xl font-bold", 
+                (paymentSummary.total_remaining - walletBalance.total_refunds) > 0 
+                  ? "text-destructive" 
+                  : "text-success"
+              )}>
+                ₪{Math.max(0, paymentSummary.total_remaining - walletBalance.total_refunds).toLocaleString()}
               </p>
+              {/* عرض تفصيلي في حال وجود مرتجعات */}
+              {walletBalance.total_refunds > 0 && paymentSummary.total_remaining > 0 && (
+                <div className="text-[10px] text-muted-foreground space-y-0.5 mt-1">
+                  <p>المطلوب: ₪{paymentSummary.total_remaining.toLocaleString()}</p>
+                  <p className="text-amber-600">المرتجع: -₪{walletBalance.total_refunds.toLocaleString()}</p>
+                </div>
+              )}
             </div>
             <DebtIndicator
               totalOwed={paymentSummary.total_paid + paymentSummary.total_remaining} 
-              totalPaid={paymentSummary.total_paid} 
+              totalPaid={paymentSummary.total_paid + walletBalance.total_refunds}
               showAmount={false}
             />
           </Card>
@@ -1100,15 +1117,15 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
             </Card>
           )}
 
-          {/* Wallet Balance - Show refunds owed to customer */}
-          {walletBalance.total_refunds > 0 && (
+          {/* Wallet Balance - Show only if we owe customer MORE than their debt (net credit) */}
+          {(walletBalance.total_refunds - paymentSummary.total_remaining) > 0 && (
             <Card className="p-4 flex items-center gap-4 border-amber-500/30 bg-amber-500/5">
               <div className="h-12 w-12 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
                 <Banknote className="h-6 w-6 text-amber-600" />
               </div>
               <div>
                 <p className="text-xs text-amber-700">مرتجع للعميل</p>
-                <p className="text-xl font-bold text-amber-600">₪{walletBalance.total_refunds.toLocaleString()}</p>
+                <p className="text-xl font-bold text-amber-600">₪{(walletBalance.total_refunds - paymentSummary.total_remaining).toLocaleString()}</p>
                 <p className="text-[10px] text-amber-600/70">نحن مدينون للعميل بهذا المبلغ</p>
               </div>
             </Card>
