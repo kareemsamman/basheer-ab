@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -34,6 +35,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { ClickablePhone } from "@/components/shared/ClickablePhone";
+import { LeadChatView } from "./LeadChatView";
 
 interface Lead {
   id: string;
@@ -148,29 +150,41 @@ export function LeadDetailsDrawer({
           </div>
         </DrawerHeader>
 
-        <div className="p-6 space-y-6 overflow-y-auto">
-          {/* Status Selector */}
-          <div className="flex items-center gap-4">
-            <span className="text-sm font-medium">تغيير الحالة:</span>
-            <Select
-              value={selectedStatus}
-              onValueChange={handleStatusChange}
-              disabled={updateStatusMutation.isPending}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {statusOptions.map((status) => (
-                  <SelectItem key={status.value} value={status.value}>
-                    {status.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {updateStatusMutation.isPending && (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            )}
+        <Tabs defaultValue="details" className="flex-1 flex flex-col overflow-hidden">
+          <TabsList className="mx-6 mt-4">
+            <TabsTrigger value="details" className="flex items-center gap-1">
+              <User className="h-4 w-4" />
+              التفاصيل
+            </TabsTrigger>
+            <TabsTrigger value="chat" className="flex items-center gap-1">
+              <MessageSquare className="h-4 w-4" />
+              المحادثة
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="details" className="flex-1 overflow-y-auto p-6 space-y-6 mt-0">
+            {/* Status Selector */}
+            <div className="flex items-center gap-4">
+              <span className="text-sm font-medium">تغيير الحالة:</span>
+              <Select
+                value={selectedStatus}
+                onValueChange={handleStatusChange}
+                disabled={updateStatusMutation.isPending}
+              >
+                <SelectTrigger className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {statusOptions.map((status) => (
+                    <SelectItem key={status.value} value={status.value}>
+                      {status.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {updateStatusMutation.isPending && (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
           </div>
 
           {/* Customer Info */}
@@ -301,7 +315,14 @@ export function LeadDetailsDrawer({
               آخر تحديث: {format(new Date(lead.updated_at), "Pp", { locale: ar })}
             </div>
           </div>
-        </div>
+          </TabsContent>
+
+          <TabsContent value="chat" className="flex-1 overflow-hidden m-0 p-4">
+            <div className="h-[60vh] border rounded-lg overflow-hidden">
+              <LeadChatView leadId={lead.id} phone={lead.phone} />
+            </div>
+          </TabsContent>
+        </Tabs>
       </DrawerContent>
     </Drawer>
   );
