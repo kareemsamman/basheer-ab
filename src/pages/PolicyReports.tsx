@@ -56,6 +56,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import { useAuth } from '@/hooks/useAuth';
 import { ClickablePhone } from '@/components/shared/ClickablePhone';
 
@@ -672,19 +673,13 @@ export default function PolicyReports() {
 
                 {createdDatePreset === 'custom' && (
                   <>
-                    <Input
-                      type="date"
+                    <ArabicDatePicker
                       value={createdFromDate}
-                      onChange={(e) => setCreatedFromDate(e.target.value)}
-                      className="w-[150px]"
-                      placeholder="من"
+                      onChange={(date) => setCreatedFromDate(date)}
                     />
-                    <Input
-                      type="date"
+                    <ArabicDatePicker
                       value={createdToDate}
-                      onChange={(e) => setCreatedToDate(e.target.value)}
-                      className="w-[150px]"
-                      placeholder="إلى"
+                      onChange={(date) => setCreatedToDate(date)}
                     />
                   </>
                 )}

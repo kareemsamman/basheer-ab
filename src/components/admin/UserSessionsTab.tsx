@@ -31,6 +31,7 @@ import {
   MapPin,
   Activity,
 } from "lucide-react";
+import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 
 interface UserSession {
   id: string;
@@ -171,18 +172,14 @@ export function UserSessionsTab() {
 
         {filterPeriod === 'custom' && (
           <div className="flex gap-2 items-center">
-            <Input
-              type="date"
+            <ArabicDatePicker
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-40"
+              onChange={(date) => setStartDate(date)}
             />
             <span className="text-muted-foreground">إلى</span>
-            <Input
-              type="date"
+            <ArabicDatePicker
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-40"
+              onChange={(date) => setEndDate(date)}
             />
           </div>
         )}

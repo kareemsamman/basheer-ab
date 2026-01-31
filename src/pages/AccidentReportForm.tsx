@@ -34,6 +34,7 @@ import {
   Eye,
   Printer,
 } from "lucide-react";
+import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { AccidentThirdPartyForm } from "@/components/accident-reports/AccidentThirdPartyForm";
 
 interface Policy {
@@ -691,10 +692,9 @@ export default function AccidentReportForm() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label>تاريخ الحادث *</Label>
-                      <Input
-                        type="date"
+                      <ArabicDatePicker
                         value={accidentDate}
-                        onChange={(e) => setAccidentDate(e.target.value)}
+                        onChange={(date) => setAccidentDate(date)}
                       />
                     </div>
                     <div className="space-y-2">
@@ -909,26 +909,24 @@ export default function AccidentReportForm() {
                       </div>
                       <div className="space-y-2">
                         <Label>تاريخ الانتهاء</Label>
-                        <Input
-                          type="date"
+                        <ArabicDatePicker
                           value={licenseExpiryDate}
-                          onChange={(e) => setLicenseExpiryDate(e.target.value)}
+                          onChange={(date) => setLicenseExpiryDate(date)}
                         />
                       </div>
                       <div className="space-y-2">
                         <Label>تاريخ الحصول الأول على الرخصة</Label>
-                        <Input
-                          type="date"
+                        <ArabicDatePicker
                           value={firstLicenseDate}
-                          onChange={(e) => setFirstLicenseDate(e.target.value)}
+                          onChange={(date) => setFirstLicenseDate(date)}
+                          isBirthDate
                         />
                       </div>
                       <div className="space-y-2">
                         <Label>تاريخ انتهاء رخصة المركبة</Label>
-                        <Input
-                          type="date"
+                        <ArabicDatePicker
                           value={vehicleLicenseExpiry}
-                          onChange={(e) => setVehicleLicenseExpiry(e.target.value)}
+                          onChange={(date) => setVehicleLicenseExpiry(date)}
                         />
                       </div>
                     </div>

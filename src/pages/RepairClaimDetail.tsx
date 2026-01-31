@@ -29,6 +29,7 @@ import {
   Wrench, Building2, FileText, Calendar, Car, 
   Plus, CheckCircle, MessageSquare, Trash2, Bell
 } from "lucide-react";
+import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { toast } from "sonner";
@@ -576,11 +577,9 @@ export default function RepairClaimDetail() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>التاريخ</Label>
-              <Input
-                type="date"
+              <ArabicDatePicker
                 value={reminderDate}
-                onChange={(e) => setReminderDate(e.target.value)}
-                dir="ltr"
+                onChange={(date) => setReminderDate(date)}
               />
             </div>
             <div className="space-y-2">

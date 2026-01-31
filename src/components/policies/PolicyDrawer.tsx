@@ -28,6 +28,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Loader2, Save } from 'lucide-react';
+import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
@@ -366,10 +367,9 @@ export function PolicyDrawer({ open, onOpenChange, onSaved }: PolicyDrawerProps)
                     <FormItem>
                       <FormLabel>تاريخ البداية *</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="date" 
-                          {...field} 
-                          onChange={(e) => handleStartDateChange(e.target.value)}
+                        <ArabicDatePicker
+                          value={field.value}
+                          onChange={(date) => handleStartDateChange(date)}
                         />
                       </FormControl>
                       <FormMessage />
@@ -384,7 +384,10 @@ export function PolicyDrawer({ open, onOpenChange, onSaved }: PolicyDrawerProps)
                     <FormItem>
                       <FormLabel>تاريخ الانتهاء *</FormLabel>
                       <FormControl>
-                        <Input type="date" {...field} />
+                        <ArabicDatePicker
+                          value={field.value}
+                          onChange={field.onChange}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

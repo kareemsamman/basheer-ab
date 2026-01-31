@@ -15,6 +15,7 @@ import { TranzilaPaymentModal } from '@/components/payments/TranzilaPaymentModal
 import { sanitizeChequeNumber, CHEQUE_NUMBER_MAX_LENGTH } from '@/lib/chequeUtils';
 import { useToast } from '@/hooks/use-toast';
 import type { Enums } from "@/integrations/supabase/types";
+import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 
 interface PaymentLine {
   id: string;
@@ -596,11 +597,11 @@ export function PackagePaymentModal({
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <Label className="text-xs">تاريخ الدفع</Label>
-                        <Input
-                          type="date"
+                        <ArabicDatePicker
                           value={payment.paymentDate}
-                          onChange={e => updatePaymentLine(payment.id, 'paymentDate', e.target.value)}
+                          onChange={(date) => updatePaymentLine(payment.id, 'paymentDate', date)}
                           disabled={payment.tranzilaPaid}
+                          compact
                         />
                       </div>
                       {payment.paymentType === 'cheque' && (

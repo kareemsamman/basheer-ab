@@ -46,6 +46,7 @@ import {
 import { Loader2, Check, ChevronsUpDown, Search, X, Users } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
+import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -401,7 +402,10 @@ export function RepairClaimDrawer({ open, onOpenChange, claim }: RepairClaimDraw
                 <FormItem>
                   <FormLabel>تاريخ الحادث</FormLabel>
                   <FormControl>
-                    <Input type="date" {...field} dir="ltr" />
+                    <ArabicDatePicker
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

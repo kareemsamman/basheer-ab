@@ -30,6 +30,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { format, startOfMonth, endOfMonth, subMonths, addMonths } from "date-fns";
 import { ar } from "date-fns/locale";
+import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 
 interface Expense {
   id: string;
@@ -404,10 +405,9 @@ export default function Expenses() {
               </div>
               <div className="space-y-2">
                 <Label>التاريخ *</Label>
-                <Input
-                  type="date"
+                <ArabicDatePicker
                   value={formData.expense_date}
-                  onChange={(e) => setFormData(prev => ({ ...prev, expense_date: e.target.value }))}
+                  onChange={(date) => setFormData(prev => ({ ...prev, expense_date: date }))}
                 />
               </div>
             </div>

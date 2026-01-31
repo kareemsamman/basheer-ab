@@ -28,6 +28,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Loader2, Save, CheckCircle } from 'lucide-react';
+import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -481,7 +482,10 @@ export function CarDrawer({ open, onOpenChange, clientId, car, onSaved }: CarDra
                   <FormItem>
                     <FormLabel className="text-right block">انتهاء الرخصة</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} className="ltr-input" />
+                      <ArabicDatePicker
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                      />
                     </FormControl>
                   </FormItem>
                 )}
@@ -494,7 +498,10 @@ export function CarDrawer({ open, onOpenChange, clientId, car, onSaved }: CarDra
                   <FormItem>
                     <FormLabel className="text-right block">آخر فحص</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} className="ltr-input" />
+                      <ArabicDatePicker
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                      />
                     </FormControl>
                   </FormItem>
                 )}

@@ -23,10 +23,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowRight, Building2, Download, TrendingUp, Wallet, FileText, Calculator, Printer, Eye, Pencil, Calendar, RotateCcw, Loader2, CreditCard, Plus } from 'lucide-react';
+import { ArrowRight, Building2, Download, TrendingUp, Wallet, FileText, Calculator, Printer, Eye, Pencil, RotateCcw, Loader2, CreditCard, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import { CalculationExplanationModal } from '@/components/reports/CalculationExplanationModal';
 import { PolicyDetailsDrawer } from '@/components/policies/PolicyDetailsDrawer';
 import { 
@@ -455,27 +456,23 @@ export default function CompanySettlementDetail() {
             <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
               <div className="space-y-2">
                 <Label>من تاريخ</Label>
-                <Input
-                  type="date"
+                <ArabicDatePicker
                   value={startDate}
-                  onChange={(e) => {
-                    setStartDate(e.target.value);
+                  onChange={(date) => {
+                    setStartDate(date);
                     setShowAllTime(false);
                   }}
-                  className="ltr-input"
                 />
               </div>
 
               <div className="space-y-2">
                 <Label>إلى تاريخ</Label>
-                <Input
-                  type="date"
+                <ArabicDatePicker
                   value={endDate}
-                  onChange={(e) => {
-                    setEndDate(e.target.value);
+                  onChange={(date) => {
+                    setEndDate(date);
                     setShowAllTime(false);
                   }}
-                  className="ltr-input"
                 />
               </div>
 

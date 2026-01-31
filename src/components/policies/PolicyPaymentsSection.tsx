@@ -958,11 +958,11 @@ export function PolicyPaymentsSection({
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs">تاريخ الدفع</Label>
-                      <Input
-                        type="date"
+                      <ArabicDatePicker
                         value={payment.paymentDate}
-                        onChange={e => updatePaymentLine(payment.id, 'paymentDate', e.target.value)}
+                        onChange={(date) => updatePaymentLine(payment.id, 'paymentDate', date)}
                         disabled={payment.tranzilaPaid}
+                        compact
                       />
                     </div>
                     {payment.paymentType === 'cheque' && (

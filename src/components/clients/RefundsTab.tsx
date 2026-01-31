@@ -41,6 +41,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import { useAuth } from '@/hooks/useAuth';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
@@ -362,11 +363,9 @@ export function RefundsTab({ clientId, branchId, onRefundAdded }: RefundsTabProp
             {/* Refund Date */}
             <div className="space-y-2">
               <Label>تاريخ الارجاع *</Label>
-              <Input
-                type="date"
+              <ArabicDatePicker
                 value={refundDate}
-                onChange={(e) => setRefundDate(e.target.value)}
-                dir="ltr"
+                onChange={(date) => setRefundDate(date)}
               />
             </div>
 

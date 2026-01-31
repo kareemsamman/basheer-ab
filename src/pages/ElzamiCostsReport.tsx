@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertTriangle, Building2, RefreshCw, Calendar, TrendingDown } from "lucide-react";
+import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -139,20 +140,16 @@ export default function ElzamiCostsReport() {
             <div className="flex flex-wrap items-end gap-4">
               <div className="space-y-2">
                 <Label>من تاريخ</Label>
-                <Input
-                  type="date"
+                <ArabicDatePicker
                   value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  className="w-40"
+                  onChange={(date) => setFromDate(date)}
                 />
               </div>
               <div className="space-y-2">
                 <Label>إلى تاريخ</Label>
-                <Input
-                  type="date"
+                <ArabicDatePicker
                   value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                  className="w-40"
+                  onChange={(date) => setToDate(date)}
                 />
               </div>
               <Button variant="outline" onClick={handleClearFilters}>
