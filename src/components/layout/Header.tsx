@@ -1,8 +1,7 @@
 import { useState, ReactNode } from "react";
-import { Search, Plus, FileSearch } from "lucide-react";
+import { Search, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlobalPolicySearch } from "./GlobalPolicySearch";
-import { NavigationSearch } from "./NavigationSearch";
 
 interface HeaderProps {
   title: string;
@@ -16,7 +15,6 @@ interface HeaderProps {
 
 export function Header({ title, subtitle, action }: HeaderProps) {
   const [searchOpen, setSearchOpen] = useState(false);
-  const [navSearchOpen, setNavSearchOpen] = useState(false);
 
   return (
     <>
@@ -29,17 +27,6 @@ export function Header({ title, subtitle, action }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-2 md:gap-4">
-          {/* Navigation Search Button */}
-          <Button 
-            variant="ghost" 
-            size="icon"
-            className="h-9 w-9"
-            onClick={() => setNavSearchOpen(true)}
-            title="بحث عن صفحة (⌘/)"
-          >
-            <FileSearch className="h-4 w-4 text-muted-foreground" />
-          </Button>
-
           {/* Global Policy Search Button */}
           <Button 
             variant="outline" 
@@ -74,9 +61,6 @@ export function Header({ title, subtitle, action }: HeaderProps) {
           )}
         </div>
       </header>
-
-      {/* Navigation Search Dialog */}
-      <NavigationSearch open={navSearchOpen} onOpenChange={setNavSearchOpen} />
 
       {/* Global Policy Search Dialog */}
       <GlobalPolicySearch open={searchOpen} onOpenChange={setSearchOpen} />

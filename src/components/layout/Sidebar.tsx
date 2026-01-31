@@ -42,6 +42,7 @@ import { SidebarNotificationBadge } from "./SidebarNotificationBadge";
 import { SidebarDebtBadge } from "./SidebarDebtBadge";
 import { SidebarTaskBadge } from "./SidebarTaskBadge";
 import { SidebarClaimsBadge } from "./SidebarClaimsBadge";
+import { SidebarSearch } from "./SidebarSearch";
 
 interface NavItem {
   name: string;
@@ -238,6 +239,9 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
           </div>
         )}
       </div>
+
+      {/* Search */}
+      <SidebarSearch collapsed={collapsed} onNavigate={onNavigate} />
 
       {/* Navigation */}
       <nav className="flex-1 flex flex-col gap-1 p-2 overflow-y-auto">
