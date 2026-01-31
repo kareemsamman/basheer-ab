@@ -104,6 +104,7 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const bunnyStorageKey = Deno.env.get("BUNNY_API_KEY");
     const bunnyStorageZone = Deno.env.get("BUNNY_STORAGE_ZONE") || "basheer-ab";
     const bunnyCdnUrl = "https://cdn.basheer-ab.com";
@@ -161,16 +162,22 @@ serve(async (req) => {
         console.log("Found company template, generating HTML overlay report");
         
         try {
+          // Check if there are saved edits to use instead of original mapping
+          const editedFields = report.edited_fields_json;
+          
           // Generate HTML with PDF background and text overlays
           htmlContent = generateHtmlOverlayReport(
             template.template_pdf_url,
             template.mapping_json as MappingJson,
             fieldValues,
             report as AccidentReport,
-            thirdParties || []
+            thirdParties || [],
+            editedFields,
+            supabaseUrl,
+            supabaseAnonKey
           );
           usedTemplate = true;
-          console.log("Successfully generated HTML overlay report");
+          console.log("Successfully generated HTML overlay report", editedFields ? "(with saved edits)" : "(fresh)");
         } catch (templateError) {
           console.error("Error using template, falling back to standard HTML:", templateError);
           htmlContent = generateHtmlReport(report as AccidentReport, thirdParties || []);
@@ -360,26 +367,59 @@ function generateHtmlOverlayReport(
   mapping: MappingJson,
   fieldValues: Record<string, string>,
   report: AccidentReport,
-  thirdParties: ThirdParty[]
+  thirdParties: ThirdParty[],
+  editedFieldsJson: any | null,
+  supabaseUrl: string,
+  supabaseAnonKey: string
 ): string {
-  // Group fields by page
-  const fieldsByPage: Record<number, Array<{ id: string; config: FieldMapping; value: string }>> = {};
+  // Build field data - use edited fields if available, otherwise use mapping
+  let fieldsByPage: Record<number, Array<{ id: string; config: { x: number; y: number; size: number }; value: string }>> = {};
   
-  for (const [fieldId, config] of Object.entries(mapping)) {
-    const pageIndex = config.page || 0;
-    if (!fieldsByPage[pageIndex]) {
-      fieldsByPage[pageIndex] = [];
+  if (editedFieldsJson?.fields && Array.isArray(editedFieldsJson.fields)) {
+    // Use saved edited fields
+    console.log("Using saved edited fields:", editedFieldsJson.fields.length);
+    for (const field of editedFieldsJson.fields) {
+      const pageIndex = field.page || 0;
+      if (!fieldsByPage[pageIndex]) {
+        fieldsByPage[pageIndex] = [];
+      }
+      
+      fieldsByPage[pageIndex].push({
+        id: field.id,
+        config: {
+          x: field.x,
+          y: field.y,
+          size: field.fontSize,
+        },
+        value: field.text,
+      });
     }
-    
-    let value = "";
-    if (config.type === "freetext") {
-      value = config.freeTextValue || "";
-    } else {
-      value = fieldValues[fieldId] || "";
-    }
-    
-    if (value) {
-      fieldsByPage[pageIndex].push({ id: fieldId, config, value });
+  } else {
+    // Use original mapping
+    for (const [fieldId, config] of Object.entries(mapping)) {
+      const pageIndex = config.page || 0;
+      if (!fieldsByPage[pageIndex]) {
+        fieldsByPage[pageIndex] = [];
+      }
+      
+      let value = "";
+      if (config.type === "freetext") {
+        value = config.freeTextValue || "";
+      } else {
+        value = fieldValues[fieldId] || "";
+      }
+      
+      if (value) {
+        fieldsByPage[pageIndex].push({ 
+          id: fieldId, 
+          config: {
+            x: config.x,
+            y: config.y,
+            size: config.size,
+          }, 
+          value 
+        });
+      }
     }
   }
 
@@ -677,6 +717,9 @@ function generateHtmlOverlayReport(
     const TEMPLATE_URL = '${templatePdfUrl}';
     const RENDER_SCALE = ${MAPPER_RENDER_SCALE};
     const FIELD_DATA = JSON.parse('${fieldDataJson}');
+    const SUPABASE_URL = '${supabaseUrl}';
+    const SUPABASE_ANON_KEY = '${supabaseAnonKey}';
+    const REPORT_ID = '${report.id}';
     
     let isEditMode = false;
     let draggedElement = null;
@@ -799,14 +842,83 @@ function generateHtmlOverlayReport(
       el.appendChild(btn);
     }
     
-    function toggleEditMode() {
+    function collectAllFields() {
+      const fields = [];
+      document.querySelectorAll('.overlay-container').forEach((container, pageIndex) => {
+        container.querySelectorAll('.text-overlay').forEach(el => {
+          // Get text without the delete button
+          let text = '';
+          el.childNodes.forEach(node => {
+            if (node.nodeType === Node.TEXT_NODE) {
+              text += node.textContent;
+            }
+          });
+          
+          fields.push({
+            id: el.getAttribute('data-field'),
+            page: pageIndex,
+            x: parseInt(el.style.left) || 0,
+            y: parseInt(el.style.top) || 0,
+            text: text.trim(),
+            fontSize: parseInt(el.style.fontSize) || 18
+          });
+        });
+      });
+      return fields;
+    }
+    
+    async function toggleEditMode() {
+      const btn = document.getElementById('editBtn');
+      
+      if (isEditMode) {
+        // Exiting edit mode - SAVE changes
+        const fields = collectAllFields();
+        btn.disabled = true;
+        btn.innerHTML = '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> جاري الحفظ...';
+        
+        try {
+          const response = await fetch(SUPABASE_URL + '/functions/v1/save-accident-edits', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': SUPABASE_ANON_KEY
+            },
+            body: JSON.stringify({
+              accident_report_id: REPORT_ID,
+              fields: fields
+            })
+          });
+          
+          const result = await response.json();
+          
+          if (!response.ok) {
+            throw new Error(result.error || 'Failed to save');
+          }
+          
+          // Show success briefly
+          btn.innerHTML = '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg> تم الحفظ ✓';
+          setTimeout(() => {
+            btn.innerHTML = '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> تعديل';
+          }, 1500);
+          
+        } catch (error) {
+          console.error('Save error:', error);
+          alert('فشل في الحفظ: ' + error.message);
+          btn.innerHTML = '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg> حفظ';
+          btn.disabled = false;
+          return; // Don't exit edit mode if save failed
+        }
+        
+        btn.disabled = false;
+      }
+      
       isEditMode = !isEditMode;
       document.body.classList.toggle('edit-mode', isEditMode);
-      const btn = document.getElementById('editBtn');
       btn.classList.toggle('active', isEditMode);
-      btn.innerHTML = isEditMode 
-        ? '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg> حفظ'
-        : '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> تعديل';
+      
+      if (isEditMode) {
+        btn.innerHTML = '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg> حفظ';
+      }
       
       document.querySelectorAll('.text-overlay').forEach(el => {
         if (isEditMode) {

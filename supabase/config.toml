@@ -101,3 +101,6 @@ verify_jwt = true
 
 [functions.generate-client-payments-invoice]
 verify_jwt = true
+
+[functions.save-accident-edits]
+verify_jwt = false

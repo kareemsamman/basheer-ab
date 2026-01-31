@@ -278,6 +278,7 @@ export type Database = {
           driver_name: string | null
           driver_occupation: string | null
           driver_phone: string | null
+          edited_fields_json: Json | null
           first_license_date: string | null
           generated_pdf_url: string | null
           id: string
@@ -324,6 +325,7 @@ export type Database = {
           driver_name?: string | null
           driver_occupation?: string | null
           driver_phone?: string | null
+          edited_fields_json?: Json | null
           first_license_date?: string | null
           generated_pdf_url?: string | null
           id?: string
@@ -370,6 +372,7 @@ export type Database = {
           driver_name?: string | null
           driver_occupation?: string | null
           driver_phone?: string | null
+          edited_fields_json?: Json | null
           first_license_date?: string | null
           generated_pdf_url?: string | null
           id?: string
