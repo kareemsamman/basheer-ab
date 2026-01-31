@@ -1,111 +1,130 @@
 
-# خطة: إصلاح حفظ التعديلات في بلاغ الحادث وإضافة زر "العودة للبلاغ"
 
-## المشاكل المُكتشفة
+# خطة: إصلاح مشكلة الـ Cache وجعل رابط المعاينة ثابت
 
-### 1) التعديلات لا تظهر في المعاينة بعد الحفظ
-**السبب:** عند النقر على "عرض / طباعة" أو "إعادة الإنشاء"، يتم إنشاء ملف HTML **جديد** على CDN بتوقيت جديد (timestamp). الرابط المحفوظ في قاعدة البيانات يتغير، لكن الملف **القديم** يبقى على CDN.
+## المشكلة الحالية
 
-**المشكلة الرئيسية:**
-- عند الضغط على "حفظ" في صفحة المعاينة (CDN HTML)، يتم:
-  1. حفظ `edited_fields_json` في قاعدة البيانات ✓
-  2. **تحديث الملف الحالي على CDN** ✓
-- لكن في AccidentReportForm عند الضغط على "عرض / طباعة"، يتم فتح `report.generated_pdf_url` الذي قد يكون **قديم** أو **لم يُحدَّث** بعد الـ caching
+1. **كل مرة يتم إنشاء الـ PDF**، يُنشأ ملف جديد بتوقيت جديد:
+   ```
+   /accident-reports/{report_id}/2026-01-31T10-21-29-608Z.html
+   /accident-reports/{report_id}/2026-01-31T10-34-14-676Z.html  ← ملف جديد!
+   ```
+   
+2. **عند الحفظ من صفحة المعاينة**، يتم تحديث الملف الموجود، لكن:
+   - الـ cache-busting (`?cb=...`) لا يكفي لأن BunnyCDN قد يحتفظ بنسخة مخبأة
+   - أو أن الملف لم يُحدَّث فعلياً
 
-### 2) عدم وجود زر "العودة للبلاغ" في صفحة CDN
-الملف HTML على CDN لا يحتوي على زر للعودة إلى صفحة البلاغ في النظام.
+3. **المستخدم لا يرى التغييرات** لأن:
+   - إما يتم فتح ملف قديم
+   - أو الـ CDN يقدم نسخة cached
 
 ---
 
-## الحلول
+## الحل: رابط ثابت + تحديث في نفس المكان + Purge Cache
 
-### الحل 1: إضافة زر "العودة للبلاغ" في HTML المُنشأ
+### 1) استخدام رابط ثابت لكل بلاغ
 
-**الملفات:**
-- `supabase/functions/generate-accident-pdf/index.ts`
-- `supabase/functions/save-accident-edits/index.ts`
-
-**التعديل:** إضافة زر في الـ toolbar:
-
-```html
-<button onclick="window.open('${crmBaseUrl}/accidents/${report.id}', '_self')">
-  <svg>...</svg>
-  العودة للبلاغ
-</button>
+**قبل:**
+```
+/accident-reports/{report_id}/2026-01-31T10-21-29-608Z.html
 ```
 
-سنحتاج إضافة متغير `CRM_BASE_URL` أو استخدام `window.location.origin` في الـ script.
-
-### الحل 2: تحديث الـ cache في AccidentReportForm
-
-**الملف:** `src/pages/AccidentReportForm.tsx`
-
-عند الضغط على "عرض / طباعة":
-- إضافة cache-busting parameter للـ URL
-- أو استخدام `fetch` لإعادة تحميل البيانات
-
-```tsx
-const handleDownloadPdf = () => {
-  if (report?.generated_pdf_url) {
-    // Add cache-busting parameter
-    const url = new URL(report.generated_pdf_url);
-    url.searchParams.set('t', Date.now().toString());
-    window.open(url.toString(), "_blank");
-  }
-};
+**بعد:**
+```
+/accident-reports/{report_id}/report.html
 ```
 
-### الحل 3: التحقق من صحة حفظ التعديلات
+هذا يعني:
+- كل بلاغ له ملف واحد فقط: `report.html`
+- عند الإنشاء أو الحفظ، يتم **استبدال** نفس الملف
+- الرابط لا يتغير أبداً
 
-**التحقق من Edge Function:** التأكد من أن `save-accident-edits` يقوم بـ:
-1. حفظ `edited_fields_json` في قاعدة البيانات ✓ (موجود)
-2. تحديث الملف HTML على CDN ✓ (موجود)
+### 2) تفعيل Bunny Purge API
 
-المشكلة قد تكون في **التوقيت** - الملف يُحدَّث لكن المتصفح يقرأ نسخة cached.
+عند كل حفظ أو إنشاء:
+1. رفع الملف الجديد على CDN (يستبدل القديم)
+2. طلب `Purge` من Bunny API لإزالة الـ cache
+
+```typescript
+// Purge cache after upload
+const purgeUrl = `https://api.bunny.net/purge?url=${encodeURIComponent(cdnUrl)}`;
+await fetch(purgeUrl, {
+  method: 'POST',
+  headers: { 'AccessKey': BUNNY_API_KEY }
+});
+```
+
+### 3) إزالة الـ timestamp من اسم الملف
+
+في `generate-accident-pdf` و `save-accident-edits`:
+
+```typescript
+// Before:
+const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+const filename = `accident-reports/${report.id}/${timestamp}.html`;
+
+// After:
+const filename = `accident-reports/${report.id}/report.html`;
+```
 
 ---
 
 ## التعديلات المطلوبة
 
-### 1) إضافة زر "العودة للبلاغ" في generate-accident-pdf
+### 1) ملف `supabase/functions/generate-accident-pdf/index.ts`
 
-**ملف:** `supabase/functions/generate-accident-pdf/index.ts`
+**التغييرات:**
+- استخدام اسم ملف ثابت `report.html` بدلاً من timestamp
+- إضافة Purge request بعد الرفع
+- التحقق إذا كان الملف موجود (سيُستبدل تلقائياً)
 
-في الـ HTML template، إضافة زر جديد في الـ toolbar:
+```typescript
+// Fixed filename
+const filename = `accident-reports/${report.id}/report.html`;
 
-```html
-<button onclick="backToReport()" class="back-btn">
-  <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-    <path d="M19 12H5M12 19l-7-7 7-7"/>
-  </svg>
-  العودة للبلاغ
-</button>
+// Upload (overwrites existing)
+await fetch(uploadUrl, { method: "PUT", ... });
+
+// Purge CDN cache
+const purgeUrl = `https://api.bunny.net/purge?url=${encodeURIComponent(cdnUrl)}`;
+await fetch(purgeUrl, {
+  method: 'POST',
+  headers: { 'AccessKey': bunnyStorageKey }
+});
 ```
 
-وإضافة الـ function في JavaScript:
+### 2) ملف `supabase/functions/save-accident-edits/index.ts`
 
-```javascript
-function backToReport() {
-  // Use lovableproject.com or the actual domain
-  window.location.href = 'https://3846f912-c591-4c1e-b01f-723e45f1efc1.lovableproject.com/accidents/' + REPORT_ID;
-}
+**التغييرات:**
+- نفس المنطق: استخدام رابط ثابت
+- إضافة Purge request بعد الحفظ
+
+```typescript
+// Extract path from existing URL or use fixed path
+const storagePath = `accident-reports/${accident_report_id}/report.html`;
+const cdnUrl = `${bunnyCdnUrl}/${storagePath}`;
+
+// Upload updated HTML
+await fetch(uploadUrl, { method: "PUT", ... });
+
+// Purge CDN cache to show changes immediately
+await fetch(`https://api.bunny.net/purge?url=${encodeURIComponent(cdnUrl)}`, {
+  method: 'POST',
+  headers: { 'AccessKey': bunnyStorageKey }
+});
 ```
 
-### 2) نفس التعديل في save-accident-edits
+### 3) ملف `src/pages/AccidentReportForm.tsx`
 
-**ملف:** `supabase/functions/save-accident-edits/index.ts`
+**التغييرات:**
+- إزالة cache-busting من `handleDownloadPdf` (لم يعد ضرورياً بعد الـ Purge)
+- أو الاحتفاظ به كاحتياط إضافي
 
-نفس الإضافة للزر في HTML المُحدَّث.
-
-### 3) إضافة cache-busting في AccidentReportForm
-
-**ملف:** `src/pages/AccidentReportForm.tsx`
-
-```tsx
+```typescript
 const handleDownloadPdf = () => {
   if (report?.generated_pdf_url) {
-    // Add timestamp to bust CDN cache
-    const cacheBuster = `?cb=${Date.now()}`;
+    // Cache-busting as extra safety (Purge should handle it)
+    const cacheBuster = `?t=${Date.now()}`;
     window.open(report.generated_pdf_url + cacheBuster, "_blank");
   }
 };
@@ -117,75 +136,43 @@ const handleDownloadPdf = () => {
 
 | الملف | النوع | الوصف |
 |-------|-------|-------|
-| `supabase/functions/generate-accident-pdf/index.ts` | تعديل | إضافة زر "العودة للبلاغ" + styling |
-| `supabase/functions/save-accident-edits/index.ts` | تعديل | إضافة زر "العودة للبلاغ" |
-| `src/pages/AccidentReportForm.tsx` | تعديل | إضافة cache-busting للـ PDF URL |
+| `supabase/functions/generate-accident-pdf/index.ts` | تعديل | رابط ثابت + Purge API |
+| `supabase/functions/save-accident-edits/index.ts` | تعديل | رابط ثابت + Purge API |
+| `src/pages/AccidentReportForm.tsx` | تعديل طفيف | الاحتفاظ بـ cache-busting كاحتياط |
 
 ---
 
-## التفاصيل التقنية
+## النتيجة النهائية
 
-### زر العودة في HTML
+1. **رابط البلاغ ثابت دائماً:**
+   ```
+   https://cdn.basheer-ab.com/accident-reports/{report_id}/report.html
+   ```
 
-**Style:**
-```css
-.toolbar button.back-btn {
-  background: #6b7280;
-}
+2. **عند الحفظ من صفحة المعاينة:**
+   - يُحدَّث نفس الملف
+   - يُطلب Purge من CDN
+   - التغييرات تظهر فوراً
 
-.toolbar button.back-btn:hover {
-  background: #4b5563;
-}
-```
+3. **عند "إعادة الإنشاء":**
+   - يُستبدل نفس الملف (لا ينشئ ملف جديد)
+   - يُطلب Purge
+   - التغييرات تظهر فوراً
 
-**Button HTML:**
-```html
-<button onclick="backToReport()" class="back-btn">
-  <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-    <path d="M19 12H5M12 19l-7-7 7-7"/>
-  </svg>
-  العودة للبلاغ
-</button>
-```
-
-**JavaScript:**
-```javascript
-const CRM_URL = 'https://3846f912-c591-4c1e-b01f-723e45f1efc1.lovableproject.com';
-
-function backToReport() {
-  window.location.href = CRM_URL + '/accidents/' + REPORT_ID;
-}
-```
-
-### Cache-Busting
-
-لحل مشكلة الـ caching في BunnyCDN:
-1. إضافة query parameter عشوائي عند فتح الرابط
-2. هذا يجبر المتصفح على تحميل نسخة جديدة
+4. **الرابط عام:**
+   - لا يحتاج login
+   - يمكن لأي شخص فتحه
 
 ---
 
-## النتيجة المتوقعة
+## ملاحظة تقنية: Bunny Purge API
 
-1. **صفحة المعاينة على CDN:**
-   - تحتوي على زر "العودة للبلاغ" ينقل المستخدم إلى `/accidents/{reportId}`
-   - عند الحفظ، يتم تحديث الملف على CDN
+الـ Purge API يستخدم نفس الـ `BUNNY_API_KEY` الموجود:
 
-2. **صفحة AccidentReportForm:**
-   - عند الضغط على "عرض / طباعة"، يتم فتح الملف مع تجاوز الـ cache
-   - التعديلات المحفوظة تظهر فوراً
+```
+POST https://api.bunny.net/purge?url=https://cdn.basheer-ab.com/accident-reports/{id}/report.html
+Headers: AccessKey: {BUNNY_API_KEY}
+```
 
-3. **تدفق العمل الكامل:**
-   ```
-   AccidentReportForm → إنشاء PDF → فتح المعاينة
-                                          ↓
-                                    تعديل الحقول
-                                          ↓
-                                    حفظ ← تحديث CDN
-                                          ↓
-                                    "العودة للبلاغ"
-                                          ↓
-                                    AccidentReportForm
-                                          ↓
-                                    "عرض / طباعة" ← يرى التعديلات
-   ```
+هذا سيمسح الـ cache من جميع edge servers في Bunny ليظهر المحتوى الجديد فوراً.
+
