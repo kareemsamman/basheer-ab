@@ -123,7 +123,7 @@ export function LeadDetailsDrawer({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-h-[95vh] flex flex-col">
+      <DrawerContent className="max-h-[85vh] h-[85vh] flex flex-col max-w-lg mx-auto">
         {/* WhatsApp-style Header */}
         <DrawerHeader className="border-b bg-[#075e54] text-white p-0">
           <div className="flex items-center justify-between px-4 py-3">

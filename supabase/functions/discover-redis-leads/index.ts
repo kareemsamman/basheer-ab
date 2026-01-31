@@ -16,6 +16,9 @@ interface ChatMessage {
   };
 }
 
+// Invalid names to filter out
+const INVALID_NAME_PARTS = ["بك في", "AB Insurance", "أنا بوت", "بوت", "تأمين", "Insurance"];
+
 // Parse lead info from chat messages
 function parseLeadInfoFromMessages(messages: ChatMessage[]): {
   customer_name: string | null;
@@ -42,7 +45,7 @@ function parseLeadInfoFromMessages(messages: ChatMessage[]): {
     total_price: null as number | null,
   };
 
-  const seenInsuranceTypes = new Set<string>();
+  const confirmedInsuranceTypes = new Set<string>();
 
   for (const msg of messages) {
     const content = msg.data?.content || "";
@@ -54,95 +57,78 @@ function parseLeadInfoFromMessages(messages: ChatMessage[]): {
 
     // Try to extract info from bot responses
     if (msg.type === "ai") {
-      // Extract customer name from welcome message
-      // Patterns: "مرحباً أحمد،" or "مرحبا يوسف!" or "أهلاً محمد"
-      const namePatterns = [
-        /مرحباً?\s*!?\s*([^،,!؟\n]+)[،,!]/,
-        /أهلاً?\s*!?\s*([^،,!؟\n]+)[،,!]/,
-        /هلا\s+([^،,!؟\n]+)[،,!]/,
-      ];
-      for (const pattern of namePatterns) {
-        const nameMatch = content.match(pattern);
-        if (nameMatch && !result.customer_name) {
-          const name = nameMatch[1].trim();
-          // Avoid false positives (skip if it's a generic phrase)
-          if (name.length > 1 && name.length < 30 && !name.includes("بوت") && !name.includes("تأمين")) {
+      // Extract customer name from greeting (filter out invalid names)
+      if (!result.customer_name) {
+        // Pattern: "أهلاً [name]!" - specific to avoid false matches
+        const greetingMatch = content.match(/أهلاً\s+([^\s،,!؟\n]{2,20})[،,!]/);
+        if (greetingMatch) {
+          const name = greetingMatch[1].trim();
+          const isValid = !INVALID_NAME_PARTS.some(invalid => name.includes(invalid));
+          if (isValid && name.length >= 2 && name.length <= 20) {
             result.customer_name = name;
           }
         }
       }
 
-      // Look for car info patterns
-      // Pattern 1: "سيارتك مازدا 3 موديل 2010"
-      const carMatch1 = content.match(/سيارتك\s+(\S+)\s+(\S+)\s+موديل\s+(\d{4})/);
-      if (carMatch1) {
-        result.car_manufacturer = carMatch1[1];
-        result.car_model = carMatch1[2];
-        result.car_year = carMatch1[3];
+      // Extract car info: "سيارتك مازدا 3 موديل 2010"
+      const carMatch = content.match(/سيارتك\s+(\S+)\s+(\S+)\s+موديل\s+(\d{4})/);
+      if (carMatch) {
+        result.car_manufacturer = carMatch[1];
+        result.car_model = carMatch[2];
+        result.car_year = carMatch[3];
       }
 
-      // Pattern 2: "مازدا 3 - 2010" or "מזדה 3 2010"
-      const carMatch2 = content.match(/(\S+)\s+(\S+)\s*[-–]\s*(\d{4})/);
-      if (carMatch2 && !result.car_manufacturer) {
-        result.car_manufacturer = carMatch2[1];
-        result.car_model = carMatch2[2];
-        result.car_year = carMatch2[3];
-      }
-
-      // Extract price - multiple patterns
-      // Pattern 1: "السعر النهائي: ₪2600" or "السعر: 2600"
-      const pricePatterns = [
-        /السعر\s*(?:النهائي)?[:：]\s*[₪ש]?\s*(\d{3,5})/,
-        /المجموع[:：]?\s*[₪ש]?\s*(\d{3,5})/,
-        /الإجمالي[:：]?\s*[₪ש]?\s*(\d{3,5})/,
-        /סה"כ[:：]?\s*[₪ש]?\s*(\d{3,5})/,
-        /(\d{3,5})\s*[₪ש]/,
-      ];
-      for (const pattern of pricePatterns) {
-        const priceMatch = content.match(pattern);
-        if (priceMatch && !result.total_price) {
-          result.total_price = parseInt(priceMatch[1]);
+      // IMPROVED: Only extract price and insurance from SUMMARY messages
+      const isSummaryMessage = content.includes("تمام!") || content.includes("المجموع:");
+      
+      if (isSummaryMessage) {
+        // Extract total price: "المجموع: 1,250₪"
+        const totalMatch = content.match(/المجموع[:：]?\s*([\d,]+)\s*₪?/);
+        if (totalMatch) {
+          result.total_price = parseInt(totalMatch[1].replace(/,/g, ''));
         }
-      }
 
-      // Extract insurance types
-      if (content.includes("إلزامي") || content.includes("חובה")) {
-        seenInsuranceTypes.add("إلزامي");
-      }
-      if (content.includes("شامل") || content.includes("מקיף")) {
-        seenInsuranceTypes.add("شامل");
-      }
-      if (content.includes("طرف ثالث") || content.includes("צד ג")) {
-        seenInsuranceTypes.add("طرف ثالث");
+        // Extract insurance types ONLY from confirmed price list
+        if (content.match(/طرف ثالث[:：]\s*\d+/)) {
+          confirmedInsuranceTypes.add("طرف ثالث");
+        }
+        if (content.match(/إلزامي[:：]\s*\d+/)) {
+          confirmedInsuranceTypes.add("إلزامي");
+        }
+        if (content.match(/شامل[:：]\s*\d+/)) {
+          confirmedInsuranceTypes.add("شامل");
+        }
+        if (content.match(/خدمات طريق[:：]\s*\d+/)) {
+          confirmedInsuranceTypes.add("خدمات طريق");
+        }
+        if (content.match(/رسوم حوادث[:：]\s*\d+/)) {
+          confirmedInsuranceTypes.add("رسوم حوادث");
+        }
       }
     }
 
     // Extract car number from human messages
     if (msg.type === "human") {
-      // Car number is typically 7-8 digits
       const carNumMatch = content.match(/^\s*(\d{7,8})\s*$/);
       if (carNumMatch) {
         result.car_number = carNumMatch[1];
       }
       
-      // Check for age-related answers
-      if (content.includes("لا") || content === "לא" || content.includes("فوق 24") || content.includes("מעל 24")) {
+      // Driver age
+      if (content.includes("لا") || content === "לא" || content.includes("فوق 24")) {
         result.driver_over_24 = true;
-      } else if ((content.includes("نعم") || content === "כן") && (content.includes("تحت 24") || content.includes("מתחת"))) {
+      } else if (content.includes("نعم") && content.includes("تحت 24")) {
         result.driver_over_24 = false;
       }
       
-      // Check for accidents answers
-      if (content.includes("صحيح") || content === "نعم" || content === "כן" || content.includes("لا يوجد")) {
+      // Accidents
+      if (content.includes("صحيح") || content.includes("لا يوجد")) {
         result.has_accidents = false;
-      }
-      if (content.includes("نعم") && content.includes("حوادث")) {
-        result.has_accidents = true;
       }
     }
   }
 
-  result.insurance_types = Array.from(seenInsuranceTypes);
+  result.insurance_types = Array.from(confirmedInsuranceTypes);
 
   return result;
 }
