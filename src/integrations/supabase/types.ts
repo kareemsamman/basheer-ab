@@ -136,125 +136,6 @@ export type Database = {
         }
         Relationships: []
       }
-      accident_report_files: {
-        Row: {
-          accident_report_id: string
-          created_at: string | null
-          file_name: string | null
-          file_type: string | null
-          file_url: string
-          id: string
-        }
-        Insert: {
-          accident_report_id: string
-          created_at?: string | null
-          file_name?: string | null
-          file_type?: string | null
-          file_url: string
-          id?: string
-        }
-        Update: {
-          accident_report_id?: string
-          created_at?: string | null
-          file_name?: string | null
-          file_type?: string | null
-          file_url?: string
-          id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "accident_report_files_accident_report_id_fkey"
-            columns: ["accident_report_id"]
-            isOneToOne: false
-            referencedRelation: "accident_reports"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      accident_report_notes: {
-        Row: {
-          accident_report_id: string
-          created_at: string | null
-          created_by: string | null
-          id: string
-          note: string
-        }
-        Insert: {
-          accident_report_id: string
-          created_at?: string | null
-          created_by?: string | null
-          id?: string
-          note: string
-        }
-        Update: {
-          accident_report_id?: string
-          created_at?: string | null
-          created_by?: string | null
-          id?: string
-          note?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "accident_report_notes_accident_report_id_fkey"
-            columns: ["accident_report_id"]
-            isOneToOne: false
-            referencedRelation: "accident_reports"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "accident_report_notes_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      accident_report_reminders: {
-        Row: {
-          accident_report_id: string
-          created_at: string | null
-          created_by: string | null
-          id: string
-          is_done: boolean | null
-          reminder_date: string
-          reminder_text: string | null
-        }
-        Insert: {
-          accident_report_id: string
-          created_at?: string | null
-          created_by?: string | null
-          id?: string
-          is_done?: boolean | null
-          reminder_date: string
-          reminder_text?: string | null
-        }
-        Update: {
-          accident_report_id?: string
-          created_at?: string | null
-          created_by?: string | null
-          id?: string
-          is_done?: boolean | null
-          reminder_date?: string
-          reminder_text?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "accident_report_reminders_accident_report_id_fkey"
-            columns: ["accident_report_id"]
-            isOneToOne: false
-            referencedRelation: "accident_reports"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "accident_report_reminders_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       accident_reports: {
         Row: {
           accident_date: string
@@ -266,11 +147,9 @@ export type Database = {
           car_id: string | null
           client_id: string
           company_id: string | null
-          coverage_type: string | null
           created_at: string
           created_by_admin_id: string | null
           croquis_url: string | null
-          deductible_amount: number | null
           driver_address: string | null
           driver_age: number | null
           driver_id_number: string | null
@@ -292,9 +171,7 @@ export type Database = {
           police_reported: boolean | null
           police_station: string | null
           policy_id: string
-          report_number: number
           responsible_party: string | null
-          selected_policy_group_id: string | null
           status: string
           updated_at: string
           vehicle_license_expiry: string | null
@@ -312,11 +189,9 @@ export type Database = {
           car_id?: string | null
           client_id: string
           company_id?: string | null
-          coverage_type?: string | null
           created_at?: string
           created_by_admin_id?: string | null
           croquis_url?: string | null
-          deductible_amount?: number | null
           driver_address?: string | null
           driver_age?: number | null
           driver_id_number?: string | null
@@ -338,9 +213,7 @@ export type Database = {
           police_reported?: boolean | null
           police_station?: string | null
           policy_id: string
-          report_number?: number
           responsible_party?: string | null
-          selected_policy_group_id?: string | null
           status?: string
           updated_at?: string
           vehicle_license_expiry?: string | null
@@ -358,11 +231,9 @@ export type Database = {
           car_id?: string | null
           client_id?: string
           company_id?: string | null
-          coverage_type?: string | null
           created_at?: string
           created_by_admin_id?: string | null
           croquis_url?: string | null
-          deductible_amount?: number | null
           driver_address?: string | null
           driver_age?: number | null
           driver_id_number?: string | null
@@ -384,9 +255,7 @@ export type Database = {
           police_reported?: boolean | null
           police_station?: string | null
           policy_id?: string
-          report_number?: number
           responsible_party?: string | null
-          selected_policy_group_id?: string | null
           status?: string
           updated_at?: string
           vehicle_license_expiry?: string | null
@@ -1208,7 +1077,6 @@ export type Database = {
       }
       clients: {
         Row: {
-          accident_notes: string | null
           birth_date: string | null
           branch_id: string | null
           broker_id: string | null
@@ -1232,7 +1100,6 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          accident_notes?: string | null
           birth_date?: string | null
           branch_id?: string | null
           broker_id?: string | null
@@ -1256,7 +1123,6 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          accident_notes?: string | null
           birth_date?: string | null
           branch_id?: string | null
           broker_id?: string | null

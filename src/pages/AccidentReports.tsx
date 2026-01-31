@@ -23,7 +23,6 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { AccidentReportDrawer } from "@/components/accident-reports/AccidentReportDrawer";
 import {
   Search,
   AlertTriangle,
@@ -34,9 +33,6 @@ import {
   ChevronRight,
   Eye,
   Trash2,
-  Plus,
-  MessageSquare,
-  Bell,
 } from "lucide-react";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 
@@ -45,8 +41,6 @@ interface AccidentReport {
   accident_date: string;
   accident_location: string | null;
   status: string;
-  report_number: number | null;
-  coverage_type: string | null;
   created_at: string;
   clients: {
     id: string;
@@ -76,8 +70,6 @@ interface AccidentReport {
     full_name: string | null;
     email: string | null;
   } | null;
-  notes_count?: number;
-  next_reminder?: string | null;
 }
 
 const statusLabels: Record<string, string> = {
@@ -110,7 +102,6 @@ export default function AccidentReports() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingReportId, setDeletingReportId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const fetchCompanies = useCallback(async () => {
     const { data } = await supabase
@@ -131,8 +122,6 @@ export default function AccidentReports() {
           accident_date,
           accident_location,
           status,
-          report_number,
-          coverage_type,
           created_at,
           clients!inner(id, full_name, file_number),
           cars(id, car_number),
@@ -228,17 +217,13 @@ export default function AccidentReports() {
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
-              <AlertTriangle className="h-6 w-6 text-warning" />
+              <AlertTriangle className="h-6 w-6 text-orange-500" />
               بلاغات الحوادث
             </h1>
             <p className="text-muted-foreground text-sm">
               إدارة ومتابعة بلاغات الحوادث المرتبطة بالوثائق
             </p>
           </div>
-          <Button onClick={() => setDrawerOpen(true)} className="gap-2">
-            <Plus className="h-4 w-4" />
-            بلاغ جديد
-          </Button>
         </div>
 
         {/* Filters */}
@@ -286,10 +271,10 @@ export default function AccidentReports() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-right">رقم البلاغ</TableHead>
                 <TableHead className="text-right">تاريخ الحادث</TableHead>
                 <TableHead className="text-right">العميل</TableHead>
                 <TableHead className="text-right">رقم السيارة</TableHead>
+                <TableHead className="text-right">رقم الوثيقة</TableHead>
                 <TableHead className="text-right">الشركة</TableHead>
                 <TableHead className="text-right">الحالة</TableHead>
                 <TableHead className="text-right">أنشئ بواسطة</TableHead>
@@ -319,15 +304,6 @@ export default function AccidentReports() {
                     onClick={() => navigate(`/policies/${report.policies.id}/accident/${report.id}`)}
                   >
                     <TableCell>
-                      {report.report_number ? (
-                        <Badge variant="outline" className="font-mono">
-                          #{report.report_number}
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="font-mono">جديد</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
                       <div className="flex items-center gap-2">
                         <Calendar className="h-4 w-4 text-muted-foreground" />
                         {formatDate(report.accident_date)}
@@ -343,6 +319,12 @@ export default function AccidentReports() {
                     </TableCell>
                     <TableCell className="font-mono">
                       {report.cars?.car_number || "-"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        {report.policies.policy_number || "-"}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {report.insurance_companies ? (
@@ -429,15 +411,6 @@ export default function AccidentReports() {
           title="حذف بلاغ الحادث"
           description="هل أنت متأكد من حذف هذا البلاغ؟ سيتم حذف جميع البيانات المرتبطة به."
           loading={deleting}
-        />
-
-        <AccidentReportDrawer
-          open={drawerOpen}
-          onOpenChange={setDrawerOpen}
-          onSuccess={() => {
-            setDrawerOpen(false);
-            fetchReports();
-          }}
         />
       </div>
     </MainLayout>
