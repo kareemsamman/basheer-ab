@@ -43,7 +43,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Loader2, Check, ChevronsUpDown, Search } from "lucide-react";
+import { Loader2, Check, ChevronsUpDown, Search, X, Users } from "lucide-react";
+import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -221,7 +222,7 @@ export function RepairClaimDrawer({ open, onOpenChange, claim }: RepairClaimDraw
 
   // Selected client display
   const selectedClient = clients?.find(c => c.id === selectedClientId) || 
-    (claim?.client ? { id: claim.client_id, full_name: claim.client.full_name } : null);
+    (claim?.client ? { id: claim.client_id, full_name: claim.client.full_name, id_number: claim.client.id_number || '', phone_number: claim.client.phone_number || '' } : null);
 
   // Save mutation
   const saveMutation = useMutation({
@@ -419,12 +420,13 @@ export function RepairClaimDrawer({ open, onOpenChange, claim }: RepairClaimDraw
                       onValueChange={field.onChange}
                       value={field.value}
                       className="flex gap-4"
+                      dir="rtl"
                     >
-                      <div className="flex items-center space-x-2 space-x-reverse">
+                      <div className="flex items-center gap-2">
                         <RadioGroupItem value="external" id="external" />
                         <Label htmlFor="external">سيارة خارجية</Label>
                       </div>
-                      <div className="flex items-center space-x-2 space-x-reverse">
+                      <div className="flex items-center gap-2">
                         <RadioGroupItem value="insured" id="insured" />
                         <Label htmlFor="insured">مؤمن عندنا</Label>
                       </div>
@@ -470,73 +472,97 @@ export function RepairClaimDrawer({ open, onOpenChange, claim }: RepairClaimDraw
             {/* Insured Client Fields */}
             {carType === "insured" && (
               <div className="space-y-4 p-4 rounded-lg bg-muted/50">
-                {/* Client Search */}
+                {/* Client Search with Card Results */}
                 <FormField
                   control={form.control}
                   name="client_id"
                   render={({ field }) => (
-                    <FormItem className="flex flex-col">
+                    <FormItem>
                       <FormLabel>العميل</FormLabel>
-                      <Popover open={clientPopoverOpen} onOpenChange={setClientPopoverOpen}>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              role="combobox"
-                              className={cn(
-                                "w-full justify-between",
-                                !field.value && "text-muted-foreground"
-                              )}
-                            >
-                              {selectedClient?.full_name || "ابحث عن عميل..."}
-                              <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-full p-0" align="start">
-                          <Command>
-                            <CommandInput 
-                              placeholder="ابحث بالاسم أو الرقم..."
+                      <div className="space-y-3">
+                        {/* Search Input */}
+                        {!selectedClient && (
+                          <div className="relative">
+                            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              placeholder="ابحث بالاسم أو رقم الهوية أو الهاتف..."
                               value={clientSearch}
-                              onValueChange={setClientSearch}
+                              onChange={(e) => setClientSearch(e.target.value)}
+                              className="pr-10"
                             />
-                            <CommandList>
-                              {clientsLoading && (
-                                <div className="p-4 text-center">
-                                  <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                          </div>
+                        )}
+
+                        {/* Selected Client Card */}
+                        {selectedClient && (
+                          <Card className="p-3 border-primary bg-primary/5">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                                  <Users className="h-5 w-5 text-primary" />
                                 </div>
-                              )}
-                              <CommandEmpty>لا توجد نتائج</CommandEmpty>
-                              <CommandGroup>
+                                <div>
+                                  <p className="font-medium">{selectedClient.full_name}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {selectedClient.id_number} • {selectedClient.phone_number}
+                                  </p>
+                                </div>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  field.onChange("");
+                                  form.setValue("policy_id", "");
+                                  setClientSearch("");
+                                }}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </Card>
+                        )}
+
+                        {/* Search Results as Cards */}
+                        {!selectedClient && clientSearch.length >= 2 && (
+                          <div className="border rounded-lg max-h-60 overflow-auto">
+                            {clientsLoading ? (
+                              <div className="p-4 text-center">
+                                <Loader2 className="h-5 w-5 animate-spin mx-auto" />
+                              </div>
+                            ) : clients?.length === 0 ? (
+                              <div className="p-4 text-center text-muted-foreground">
+                                لا توجد نتائج
+                              </div>
+                            ) : (
+                              <div className="divide-y">
                                 {clients?.map((client) => (
-                                  <CommandItem
+                                  <button
                                     key={client.id}
-                                    value={client.id}
-                                    onSelect={() => {
+                                    type="button"
+                                    onClick={() => {
                                       field.onChange(client.id);
                                       form.setValue("policy_id", "");
-                                      setClientPopoverOpen(false);
                                     }}
+                                    className="w-full p-3 text-right hover:bg-muted/50 transition-colors flex items-center gap-3"
                                   >
-                                    <Check
-                                      className={cn(
-                                        "ml-2 h-4 w-4",
-                                        client.id === field.value ? "opacity-100" : "opacity-0"
-                                      )}
-                                    />
-                                    <div>
-                                      <div>{client.full_name}</div>
-                                      <div className="text-xs text-muted-foreground">
-                                        {client.id_number} • {client.phone_number}
-                                      </div>
+                                    <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+                                      <Users className="h-4 w-4 text-muted-foreground" />
                                     </div>
-                                  </CommandItem>
+                                    <div className="flex-1 text-right">
+                                      <p className="font-medium text-sm">{client.full_name}</p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {client.id_number} • {client.phone_number}
+                                      </p>
+                                    </div>
+                                  </button>
                                 ))}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}

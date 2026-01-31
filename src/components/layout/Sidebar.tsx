@@ -41,6 +41,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { SidebarNotificationBadge } from "./SidebarNotificationBadge";
 import { SidebarDebtBadge } from "./SidebarDebtBadge";
 import { SidebarTaskBadge } from "./SidebarTaskBadge";
+import { SidebarClaimsBadge } from "./SidebarClaimsBadge";
 
 interface NavItem {
   name: string;
@@ -48,7 +49,7 @@ interface NavItem {
   icon: LucideIcon;
   adminOnly?: boolean;
   superAdminOnly?: boolean;
-  badge?: 'notifications' | 'debt' | 'tasks';
+  badge?: 'notifications' | 'debt' | 'tasks' | 'claims';
 }
 
 interface NavGroup {
@@ -108,7 +109,7 @@ const navigationGroups: NavGroup[] = [
     icon: AlertTriangle,
     items: [
       { name: "بلاغات الحوادث", href: "/accidents", icon: AlertTriangle },
-      { name: "المطالبات", href: "/admin/claims", icon: FileWarning, adminOnly: true },
+      { name: "المطالبات", href: "/admin/claims", icon: FileWarning, adminOnly: true, badge: 'claims' },
     ],
   },
   {
@@ -213,6 +214,7 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
     if (item.badge === 'notifications') return <SidebarNotificationBadge collapsed={collapsed} />;
     if (item.badge === 'debt') return <SidebarDebtBadge collapsed={collapsed} />;
     if (item.badge === 'tasks') return <SidebarTaskBadge collapsed={collapsed} />;
+    if (item.badge === 'claims') return <SidebarClaimsBadge collapsed={collapsed} />;
     return null;
   };
 
