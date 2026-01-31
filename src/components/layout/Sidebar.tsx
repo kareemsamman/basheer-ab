@@ -141,6 +141,7 @@ export const navigationGroups: NavGroup[] = [
       { name: "سجل الرسائل", href: "/sms-history", icon: History },
       { name: "استيراد WordPress", href: "/admin/wordpress-import", icon: Upload },
       { name: "إعلانات النظام", href: "/admin/announcements", icon: Megaphone, superAdminOnly: true },
+      { name: "Leads (WhatsApp)", href: "/admin/leads", icon: MessageSquare },
     ],
   },
 ];

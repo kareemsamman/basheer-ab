@@ -110,3 +110,6 @@ verify_jwt = true
 
 [functions.send-correspondence-sms]
 verify_jwt = true
+
+[functions.whatsapp-lead-webhook]
+verify_jwt = false
