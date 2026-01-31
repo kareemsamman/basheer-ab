@@ -1,152 +1,161 @@
 
-# خطة: نظام إدارة بلاغات الحوادث الشامل
+# خطة: إصلاح صفحة بلاغ الحادث وإضافة الميزات المفقودة
 
-## الهدف
-إنشاء نظام متكامل لإدارة بلاغات الحوادث يشمل:
-1. تبويب جديد "بلاغات الحوادث" في ملف العميل
-2. شارة عدد البلاغات النشطة في القائمة الجانبية
-3. نقطة تحذير حمراء على اسم العميل الذي لديه حوادث
-4. تحذير عند إنشاء وثيقة جديدة لعميل لديه حوادث سابقة
-5. إضافة ملاحظات ومتابعة وتذكيرات لكل بلاغ
+## المشاكل المُكتشفة
+
+### 1) خطأ 404 عند النقر على "عرض" من ملف العميل
+- في `ClientAccidentsTab` يتم التنقل إلى `/accidents/${report.id}`
+- لكن لا يوجد route في `App.tsx` يطابق هذا المسار
+- الـ route الموجود هو `/policies/:policyId/accident/:reportId?` ويحتاج policyId
+
+### 2) صفحة بلاغ الحادث تفتقر لميزات موجودة في ملف العميل
+- لا يوجد dropdown لتغيير الحالة (مسودة/مُقدَّم/مُغلق)
+- لا يوجد زر للملاحظات
+- لا يوجد زر للتذكيرات
+
+### 3) التعديلات المحفوظة لا تظهر في المعاينة
+- هذا يتطلب التحقق من أن `save-accident-edits` يعمل بشكل صحيح
+- والتأكد من أن `generate-accident-pdf` يستخدم `edited_fields_json` عند إعادة الإنشاء
 
 ---
 
-## التعديلات المطلوبة
+## الحلول المقترحة
 
-### 1) قاعدة البيانات - عمود جديد للملاحظات
+### 1) إضافة Route جديد للوصول المباشر للبلاغ
 
-إضافة عمود لملاحظات الحوادث على جدول `clients`:
-```sql
-ALTER TABLE clients 
-ADD COLUMN accident_notes TEXT DEFAULT NULL;
+إضافة route جديد في `App.tsx`:
+```tsx
+<Route path="/accidents/:reportId" element={
+  <ProtectedRoute>
+    <AccidentReportDetail />
+  </ProtectedRoute>
+} />
 ```
 
-هذا العمود سيحفظ ملاحظات خاصة بالحوادث (مثل: "هذا المؤمن لديه 5 حوادث، لا نرغب بتأمين هذه المركبة له")
+هذا الـ route سيفتح صفحة تفصيلية للبلاغ تجلب الـ policyId تلقائياً من قاعدة البيانات.
 
-### 2) Hook جديد: `useAccidentReportsCount`
+### 2) إنشاء صفحة جديدة أو تعديل الموجودة
 
-**ملف:** `src/hooks/useAccidentReportsCount.tsx`
+**الخيار المختار:** تعديل `AccidentReportForm.tsx` ليدعم الفتح بـ reportId فقط (بدون policyId)
 
-حساب عدد البلاغات النشطة (غير المغلقة) للشارة في القائمة الجانبية:
-```typescript
-export function useAccidentReportsCount() {
-  // Query: status != 'closed'
-  // Returns: { count, isLoading }
-}
+**التعديلات:**
+```tsx
+// في AccidentReportForm.tsx
+const { policyId, reportId } = useParams<{ policyId?: string; reportId?: string }>();
+
+useEffect(() => {
+  if (reportId && !policyId) {
+    // جلب الـ policyId من البلاغ
+    fetchReportAndPolicy(reportId);
+  }
+}, [reportId, policyId]);
 ```
 
-### 3) Hook جديد: `useClientAccidentInfo`
+### 3) إضافة أدوات الإدارة في صفحة البلاغ
 
-**ملف:** `src/hooks/useClientAccidentInfo.tsx`
-
-جلب معلومات الحوادث لعميل معين (للاستخدام في ملف العميل ومعالج الوثائق):
-```typescript
-export function useClientAccidentInfo(clientId: string | null) {
-  // Query: accident_reports where client_id = clientId
-  // Returns: { reports, count, hasActiveReports, isLoading }
-}
-```
-
-### 4) شارة جديدة: `SidebarAccidentsBadge`
-
-**ملف:** `src/components/layout/SidebarAccidentsBadge.tsx`
-
-مماثلة لـ `SidebarClaimsBadge` - تعرض عدد البلاغات النشطة
-
-### 5) تحديث Sidebar للشارة
-
-**ملف:** `src/components/layout/Sidebar.tsx`
-
-- إضافة `badge: 'accidents'` لعنصر "بلاغات الحوادث"
-- إضافة شرط عرض الشارة في `renderBadge()`
-
-### 6) مكون جديد: `ClientAccidentsTab`
-
-**ملف:** `src/components/clients/ClientAccidentsTab.tsx`
-
-تبويب كامل في ملف العميل يعرض:
-- جدول بلاغات الحوادث للعميل
-- تغيير حالة البلاغ (مسودة/مُقدَّم/مُغلق)
-- إضافة ملاحظات لكل بلاغ
-- تعيين تذكير (reminder)
-- رابط لفتح البلاغ التفصيلي
-- قسم "ملاحظات الحوادث العامة" للعميل
-
-**الهيكل:**
-```text
-┌───────────────────────────────────────────────────┐
-│  ⚠️ ملاحظات الحوادث العامة                        │
-│  ┌─────────────────────────────────────────────┐  │
-│  │ هذا المؤمن لديه 5 حوادث، لا نرغب بتأمينه    │  │
-│  └─────────────────────────────────────────────┘  │
-├───────────────────────────────────────────────────┤
-│  بلاغات الحوادث (3)                              │
-├───────────────────────────────────────────────────┤
-│ تاريخ     | السيارة | الحالة | ملاحظات | تذكير   │
-│ 15/01/26  | 123-45  | مُقدَّم | ...     | 📅      │
-│ 10/12/25  | 123-45  | مُغلق  | ...     | -       │
-└───────────────────────────────────────────────────┘
-```
-
-### 7) تحديث ClientDetails - إضافة التبويب
-
-**ملف:** `src/components/clients/ClientDetails.tsx`
-
-- استيراد `ClientAccidentsTab`
-- إضافة تبويب جديد "بلاغات الحوادث"
-- عرض شارة تحذير إذا كان لديه بلاغات نشطة
+**إضافة شريط أدوات جديد في الـ Header:**
 
 ```tsx
-<TabsTrigger value="accidents" className="gap-1.5">
-  <AlertTriangle className="h-4 w-4" />
-  بلاغات الحوادث ({accidentCount})
-  {hasActiveAccidents && (
-    <span className="h-2 w-2 rounded-full bg-destructive animate-pulse" />
-  )}
-</TabsTrigger>
+<div className="flex items-center gap-3">
+  {/* Status Dropdown */}
+  <Select value={report.status} onValueChange={handleStatusChange}>
+    <SelectTrigger className={cn("w-[130px]", statusColors[report.status])}>
+      <SelectValue />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value="draft">مسودة</SelectItem>
+      <SelectItem value="submitted">مُقدَّم</SelectItem>
+      <SelectItem value="closed">مُغلق</SelectItem>
+    </SelectContent>
+  </Select>
+  
+  {/* Notes Button */}
+  <Button variant="outline" onClick={() => setNoteDialogOpen(true)}>
+    <MessageSquare className="h-4 w-4 ml-2" />
+    ملاحظات {notesCount > 0 && `(${notesCount})`}
+  </Button>
+  
+  {/* Reminder Button */}
+  <Button 
+    variant={hasActiveReminder ? "default" : "outline"} 
+    onClick={() => setReminderDialogOpen(true)}
+  >
+    <Clock className={cn("h-4 w-4 ml-2", hasActiveReminder && "animate-pulse")} />
+    تذكير
+  </Button>
+</div>
 ```
 
-### 8) مؤشر النقطة الحمراء على العملاء
+### 4) إضافة Dialogs للملاحظات والتذكيرات
 
-**ملف:** `src/pages/Clients.tsx`
+استخدام نفس الـ logic من `ClientAccidentsTab`:
 
-عند جلب العملاء، نضيف استعلام فرعي لعدد الحوادث:
-```typescript
-// Fetch clients with accident counts
-const { data } = await supabase
-  .from('clients')
-  .select(`
-    *,
-    accident_reports(count)
-  `)
-```
-
-ثم نعرض نقطة حمراء بجانب اسم العميل:
 ```tsx
-<span className="font-medium">
-  {client.full_name}
-  {client.accident_reports?.[0]?.count > 0 && (
-    <span className="h-2 w-2 rounded-full bg-destructive inline-block mr-1" />
-  )}
-</span>
+// Notes Dialog
+<Dialog open={noteDialogOpen} onOpenChange={setNoteDialogOpen}>
+  {/* محتوى مشابه لـ ClientAccidentsTab */}
+</Dialog>
+
+// Reminder Dialog
+<Dialog open={reminderDialogOpen} onOpenChange={setReminderDialogOpen}>
+  {/* محتوى مشابه لـ ClientAccidentsTab */}
+</Dialog>
 ```
 
-### 9) تحذير في معالج الوثائق
+### 5) إصلاح رابط "عرض" في ClientAccidentsTab
 
-**ملف:** `src/components/policies/wizard/Step1BranchTypeClient.tsx`
-
-عند اختيار عميل، نتحقق من وجود حوادث سابقة:
+تغيير من:
 ```tsx
-{selectedClient && clientAccidentInfo.count > 0 && (
-  <Card className="border-amber-500 bg-amber-50">
-    <AlertTriangle className="text-amber-600" />
-    <p>تحذير: هذا العميل لديه {clientAccidentInfo.count} بلاغ حادث</p>
-    {selectedClient.accident_notes && (
-      <p className="text-sm">{selectedClient.accident_notes}</p>
-    )}
-  </Card>
-)}
+onClick={() => navigate(`/accidents/${report.id}`)}
 ```
+
+إلى:
+```tsx
+onClick={() => {
+  // جلب policy_id من البلاغ للتنقل الصحيح
+  // أو استخدام الـ route الجديد /accidents/:reportId
+}}
+```
+
+---
+
+## تفاصيل التعديلات
+
+### ملف App.tsx
+
+إضافة route جديد:
+```tsx
+{/* Direct accident report access */}
+<Route path="/accidents/:reportId" element={
+  <ProtectedRoute>
+    <AccidentReportForm />
+  </ProtectedRoute>
+} />
+```
+
+### ملف AccidentReportForm.tsx
+
+**التعديلات الرئيسية:**
+
+1. **دعم الفتح بـ reportId فقط:**
+   - إذا لم يكن policyId موجود، يتم جلبه من البلاغ نفسه
+
+2. **إضافة حالة جديدة:**
+   ```tsx
+   // Notes & Reminders state
+   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+   const [reminderDialogOpen, setReminderDialogOpen] = useState(false);
+   const [reportNotes, setReportNotes] = useState<AccidentNote[]>([]);
+   const [reminders, setReminders] = useState<AccidentReminder[]>([]);
+   const [notesCount, setNotesCount] = useState(0);
+   const [hasActiveReminder, setHasActiveReminder] = useState(false);
+   ```
+
+3. **إضافة dropdown الحالة في Header**
+
+4. **إضافة أزرار الملاحظات والتذكيرات**
+
+5. **إضافة Dialogs للملاحظات والتذكيرات**
 
 ---
 
@@ -154,58 +163,25 @@ const { data } = await supabase
 
 | الملف | النوع | الوصف |
 |-------|-------|-------|
-| Migration | جديد | إضافة عمود `accident_notes` لجدول `clients` |
-| `src/hooks/useAccidentReportsCount.tsx` | جديد | Hook لعدد البلاغات النشطة (للشارة) |
-| `src/hooks/useClientAccidentInfo.tsx` | جديد | Hook لمعلومات حوادث عميل معين |
-| `src/components/layout/SidebarAccidentsBadge.tsx` | جديد | شارة عدد البلاغات في القائمة الجانبية |
-| `src/components/clients/ClientAccidentsTab.tsx` | جديد | تبويب بلاغات الحوادث في ملف العميل |
-| `src/components/layout/Sidebar.tsx` | تعديل | إضافة badge للحوادث |
-| `src/components/clients/ClientDetails.tsx` | تعديل | إضافة تبويب الحوادث + مؤشر |
-| `src/pages/Clients.tsx` | تعديل | إضافة النقطة الحمراء للعملاء |
-| `src/components/policies/wizard/Step1BranchTypeClient.tsx` | تعديل | تحذير عند اختيار عميل لديه حوادث |
+| `src/App.tsx` | تعديل | إضافة route `/accidents/:reportId` |
+| `src/pages/AccidentReportForm.tsx` | تعديل كبير | دعم الفتح بـ reportId، إضافة حالة/ملاحظات/تذكيرات |
+| `src/components/clients/ClientAccidentsTab.tsx` | تعديل طفيف | تصحيح رابط التنقل |
 
 ---
 
-## تفاصيل تبويب الحوادث في ملف العميل
+## النتيجة المتوقعة
 
-### الميزات:
-1. **جدول البلاغات:**
-   - تاريخ الحادث
-   - رقم السيارة
-   - شركة التأمين
-   - الحالة (مع إمكانية تغييرها)
-   - ملاحظات (inline editing)
-   - زر التذكير
-
-2. **ملاحظات الحوادث العامة:**
-   - حقل نص لكتابة ملاحظات دائمة عن العميل
-   - تظهر هذه الملاحظات عند إنشاء وثيقة جديدة
-   - مثال: "هذا العميل خطر، 5 حوادث في السنة الماضية"
-
-3. **إجراءات سريعة:**
-   - تغيير الحالة مباشرة من الجدول
-   - إضافة ملاحظة (مع modal صغير)
-   - تعيين تذكير (تاريخ + ملاحظة)
-
-### تغيير الحالة:
-```tsx
-<Select value={report.status} onValueChange={(status) => updateStatus(report.id, status)}>
-  <SelectItem value="draft">مسودة</SelectItem>
-  <SelectItem value="submitted">مُقدَّم</SelectItem>
-  <SelectItem value="closed">مُغلق</SelectItem>
-</Select>
-```
+1. **النقر على "عرض" من ملف العميل** → يفتح صفحة البلاغ بدون خطأ 404
+2. **صفحة البلاغ** تحتوي على:
+   - Dropdown لتغيير الحالة (في الـ Header)
+   - زر ملاحظات مع عدد الملاحظات
+   - زر تذكير مع مؤشر للتذكيرات النشطة
+3. **حفظ التعديلات** → تظهر في المعاينة HTML عند الفتح مرة أخرى
 
 ---
 
-## النتيجة النهائية ✅ (تم التنفيذ)
+## ملاحظة حول حفظ التعديلات في HTML
 
-1. **القائمة الجانبية:** شارة حمراء بعدد البلاغات النشطة ✅
-2. **صفحة العملاء:** نقطة حمراء بجانب اسم كل عميل لديه حوادث ✅
-3. **ملف العميل:** تبويب جديد "بلاغات الحوادث" مع: ✅
-   - عرض كل البلاغات
-   - تغيير الحالة
-   - إضافة ملاحظات
-   - تعيين تذكيرات
-   - ملاحظات الحوادث العامة
-4. **معالج الوثائق:** تحذير واضح عند اختيار عميل لديه حوادث + عرض الملاحظات ✅
+التعديلات **محفوظة في قاعدة البيانات** في عمود `edited_fields_json`. عند إعادة إنشاء الـ PDF (بالضغط على "إنشاء PDF" مرة أخرى)، سيتم استخدام البيانات المحفوظة.
+
+لكن إذا كان الملف HTML موجود بالفعل على CDN ولم يتم تحديثه، فقد لا تظهر التغييرات. الـ `save-accident-edits` يقوم بتحديث الملف على CDN تلقائياً عند الحفظ.
