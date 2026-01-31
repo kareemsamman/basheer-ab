@@ -1500,37 +1500,46 @@ export type Database = {
         Row: {
           amount: number
           branch_id: string | null
+          car_id: string | null
           client_id: string
           created_at: string
           created_by_admin_id: string | null
           description: string | null
           id: string
           notes: string | null
+          payment_method: string | null
           policy_id: string | null
+          refund_date: string | null
           transaction_type: string
         }
         Insert: {
           amount: number
           branch_id?: string | null
+          car_id?: string | null
           client_id: string
           created_at?: string
           created_by_admin_id?: string | null
           description?: string | null
           id?: string
           notes?: string | null
+          payment_method?: string | null
           policy_id?: string | null
+          refund_date?: string | null
           transaction_type?: string
         }
         Update: {
           amount?: number
           branch_id?: string | null
+          car_id?: string | null
           client_id?: string
           created_at?: string
           created_by_admin_id?: string | null
           description?: string | null
           id?: string
           notes?: string | null
+          payment_method?: string | null
           policy_id?: string | null
+          refund_date?: string | null
           transaction_type?: string
         }
         Relationships: [
@@ -1539,6 +1548,13 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_wallet_transactions_car_id_fkey"
+            columns: ["car_id"]
+            isOneToOne: false
+            referencedRelation: "cars"
             referencedColumns: ["id"]
           },
           {

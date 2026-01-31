@@ -84,6 +84,7 @@ import { DeleteConfirmDialog } from '@/components/shared/DeleteConfirmDialog';
 import { DebtPaymentModal } from '@/components/debt/DebtPaymentModal';
 import { ClientNotesSection } from '@/components/clients/ClientNotesSection';
 import { PaymentEditDialog } from '@/components/clients/PaymentEditDialog';
+import { RefundsTab } from '@/components/clients/RefundsTab';
 import { cn } from '@/lib/utils';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { useBranches } from '@/hooks/useBranches';
@@ -1137,6 +1138,10 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
               <MessageSquare className="h-4 w-4" />
               الملاحظات
             </TabsTrigger>
+            <TabsTrigger value="refunds" className="gap-1.5">
+              <Banknote className="h-4 w-4" />
+              المرتجعات
+            </TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -1771,6 +1776,17 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                 </div>
               )}
             </Card>
+          </TabsContent>
+
+          {/* Refunds Tab */}
+          <TabsContent value="refunds" className="mt-6">
+            <RefundsTab 
+              clientId={client.id}
+              branchId={client.branch_id}
+              onRefundAdded={() => {
+                fetchWalletBalance();
+              }}
+            />
           </TabsContent>
         </Tabs>
       </div>
