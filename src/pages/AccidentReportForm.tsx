@@ -734,8 +734,9 @@ export default function AccidentReportForm() {
 
   const handleDownloadPdf = () => {
     if (report?.generated_pdf_url) {
-      // Open in new tab for viewing/printing
-      window.open(report.generated_pdf_url, "_blank");
+      // Add cache-busting parameter to bypass CDN cache and show latest edits
+      const cacheBuster = `?cb=${Date.now()}`;
+      window.open(report.generated_pdf_url + cacheBuster, "_blank");
     }
   };
 

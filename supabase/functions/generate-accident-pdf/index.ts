@@ -502,6 +502,14 @@ function generateHtmlOverlayReport(
       background: #047857;
     }
     
+    .toolbar button.back-btn {
+      background: #6b7280;
+    }
+    
+    .toolbar button.back-btn:hover {
+      background: #4b5563;
+    }
+    
     /* PRINT: Keep original pixel dimensions - no scaling */
     @media print {
       @page {
@@ -684,6 +692,12 @@ function generateHtmlOverlayReport(
 </head>
 <body>
   <div class="toolbar">
+    <button onclick="backToReport()" class="back-btn">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M19 12H5M12 19l-7-7 7-7"/>
+      </svg>
+      العودة للبلاغ
+    </button>
     <button onclick="window.print()">
       <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/>
@@ -727,6 +741,12 @@ function generateHtmlOverlayReport(
     let newFieldCounter = 0;
     let totalPages = 0;
     let pageContainers = [];
+    
+    const CRM_BASE_URL = 'https://3846f912-c591-4c1e-b01f-723e45f1efc1.lovableproject.com';
+    
+    function backToReport() {
+      window.location.href = CRM_BASE_URL + '/accidents/' + REPORT_ID;
+    }
     
     async function renderPdf() {
       try {
