@@ -16,6 +16,110 @@ interface ChatMessage {
   };
 }
 
+// Parse lead info from chat messages
+interface ParsedLeadInfo {
+  customer_name: string | null;
+  car_manufacturer: string | null;
+  car_model: string | null;
+  car_year: string | null;
+  car_number: string | null;
+  insurance_types: string[];
+  driver_over_24: boolean | null;
+  has_accidents: boolean | null;
+  total_price: number | null;
+}
+
+function parseLeadInfoFromMessages(messages: Array<{
+  message_type: string;
+  content: string;
+}>): ParsedLeadInfo {
+  const result: ParsedLeadInfo = {
+    customer_name: null,
+    car_manufacturer: null,
+    car_model: null,
+    car_year: null,
+    car_number: null,
+    insurance_types: [],
+    driver_over_24: null,
+    has_accidents: null,
+    total_price: null,
+  };
+
+  const seenInsuranceTypes = new Set<string>();
+
+  for (const msg of messages) {
+    const content = msg.content || "";
+
+    if (msg.message_type === "ai") {
+      // Extract customer name
+      const namePatterns = [
+        /مرحباً?\s*!?\s*([^،,!؟\n]+)[،,!]/,
+        /أهلاً?\s*!?\s*([^،,!؟\n]+)[،,!]/,
+      ];
+      for (const pattern of namePatterns) {
+        const nameMatch = content.match(pattern);
+        if (nameMatch && !result.customer_name) {
+          const name = nameMatch[1].trim();
+          if (name.length > 1 && name.length < 30 && !name.includes("بوت")) {
+            result.customer_name = name;
+          }
+        }
+      }
+
+      // Extract car info
+      const carMatch = content.match(/سيارتك\s+(\S+)\s+(\S+)\s+موديل\s+(\d{4})/);
+      if (carMatch) {
+        result.car_manufacturer = carMatch[1];
+        result.car_model = carMatch[2];
+        result.car_year = carMatch[3];
+      }
+
+      // Extract price
+      const pricePatterns = [
+        /السعر\s*(?:النهائي)?[:：]\s*[₪ש]?\s*(\d{3,5})/,
+        /المجموع[:：]?\s*[₪ש]?\s*(\d{3,5})/,
+        /(\d{3,5})\s*[₪ש]/,
+      ];
+      for (const pattern of pricePatterns) {
+        const priceMatch = content.match(pattern);
+        if (priceMatch && !result.total_price) {
+          result.total_price = parseInt(priceMatch[1]);
+        }
+      }
+
+      // Extract insurance types
+      if (content.includes("إلزامي") || content.includes("חובה")) {
+        seenInsuranceTypes.add("إلزامي");
+      }
+      if (content.includes("شامل") || content.includes("מקיף")) {
+        seenInsuranceTypes.add("شامل");
+      }
+      if (content.includes("طرف ثالث") || content.includes("צד ג")) {
+        seenInsuranceTypes.add("طرف ثالث");
+      }
+    }
+
+    if (msg.message_type === "human") {
+      const carNumMatch = content.match(/^\s*(\d{7,8})\s*$/);
+      if (carNumMatch) {
+        result.car_number = carNumMatch[1];
+      }
+      
+      if (content.includes("لا") || content.includes("فوق 24")) {
+        result.driver_over_24 = true;
+      } else if (content.includes("نعم") && content.includes("تحت 24")) {
+        result.driver_over_24 = false;
+      }
+      
+      if (content.includes("صحيح") || content.includes("لا يوجد")) {
+        result.has_accidents = false;
+      }
+    }
+  }
+
+  result.insurance_types = Array.from(seenInsuranceTypes);
+  return result;
+}
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -126,7 +230,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Update lead with sync time and callback status
+    // Parse lead info from synced messages
+    const parsedInfo = parseLeadInfoFromMessages(parsedMessages);
+
+    // Update lead with sync time, callback status, and extracted info
     const updateData: Record<string, unknown> = {
       last_sync_at: new Date().toISOString(),
     };
@@ -135,10 +242,41 @@ Deno.serve(async (req) => {
       updateData.requires_callback = true;
     }
 
+    // Only update fields if we found new data
+    if (parsedInfo.customer_name) {
+      updateData.customer_name = parsedInfo.customer_name;
+    }
+    if (parsedInfo.car_manufacturer) {
+      updateData.car_manufacturer = parsedInfo.car_manufacturer;
+    }
+    if (parsedInfo.car_model) {
+      updateData.car_model = parsedInfo.car_model;
+    }
+    if (parsedInfo.car_year) {
+      updateData.car_year = parsedInfo.car_year;
+    }
+    if (parsedInfo.car_number) {
+      updateData.car_number = parsedInfo.car_number;
+    }
+    if (parsedInfo.total_price) {
+      updateData.total_price = parsedInfo.total_price;
+    }
+    if (parsedInfo.insurance_types.length > 0) {
+      updateData.insurance_types = parsedInfo.insurance_types;
+    }
+    if (parsedInfo.driver_over_24 !== null) {
+      updateData.driver_over_24 = parsedInfo.driver_over_24;
+    }
+    if (parsedInfo.has_accidents !== null) {
+      updateData.has_accidents = parsedInfo.has_accidents;
+    }
+
     await supabase
       .from("leads")
       .update(updateData)
       .eq("id", lead_id);
+
+    console.log(`Updated lead with parsed info:`, updateData);
 
     await redis.close();
 
