@@ -1,133 +1,217 @@
 
+# خطة: نظام المراسلات (التوريسات)
 
-# خطة: إصلاح مشكلة الـ Cache وجعل رابط المعاينة ثابت
+## الفكرة العامة
 
-## المشكلة الحالية
+المدير يريد إنشاء رسائل رسمية (توريسة) لإرسالها للشركات أو الأفراد. كل رسالة تحتوي على:
+- **رأس الصفحة:** شعار AB
+- **المحتوى:** نص HTML مُنسَّق (صور، Bold، قوائم...)
+- **ذيل الصفحة:** معلومات الشركة AB
 
-1. **كل مرة يتم إنشاء الـ PDF**، يُنشأ ملف جديد بتوقيت جديد:
-   ```
-   /accident-reports/{report_id}/2026-01-31T10-21-29-608Z.html
-   /accident-reports/{report_id}/2026-01-31T10-34-14-676Z.html  ← ملف جديد!
-   ```
-   
-2. **عند الحفظ من صفحة المعاينة**، يتم تحديث الملف الموجود، لكن:
-   - الـ cache-busting (`?cb=...`) لا يكفي لأن BunnyCDN قد يحتفظ بنسخة مخبأة
-   - أو أن الملف لم يُحدَّث فعلياً
-
-3. **المستخدم لا يرى التغييرات** لأن:
-   - إما يتم فتح ملف قديم
-   - أو الـ CDN يقدم نسخة cached
+ثم يمكن:
+- إرسال الرسالة عبر SMS (رابط للرسالة)
+- طباعة الرسالة
+- إدارة الرسائل (إضافة/تعديل/حذف/عرض)
 
 ---
 
-## الحل: رابط ثابت + تحديث في نفس المكان + Purge Cache
+## هيكل البيانات
 
-### 1) استخدام رابط ثابت لكل بلاغ
+### جدول جديد: `correspondence_letters`
 
-**قبل:**
+| العمود | النوع | الوصف |
+|--------|------|-------|
+| id | uuid | المعرف الأساسي |
+| title | text | عنوان الرسالة (داخلي) |
+| recipient_name | text | اسم المستلم (شركة/شخص) |
+| recipient_phone | text | رقم هاتف المستلم (اختياري) |
+| body_html | text | محتوى الرسالة (HTML) |
+| generated_url | text | رابط الرسالة على CDN |
+| status | text | الحالة (draft/sent/viewed) |
+| sent_at | timestamptz | تاريخ الإرسال |
+| created_by_admin_id | uuid | من أنشأ الرسالة |
+| branch_id | uuid | الفرع (اختياري) |
+| created_at | timestamptz | تاريخ الإنشاء |
+| updated_at | timestamptz | تاريخ التحديث |
+
+---
+
+## المكونات الجديدة
+
+### 1) صفحة الرسائل: `src/pages/CorrespondenceLetters.tsx`
+
+**الميزات:**
+- جدول يعرض جميع الرسائل
+- بحث وفلترة بالحالة
+- أزرار: إضافة جديد، عرض، تعديل، حذف، إرسال SMS، طباعة
+
+**هيكل الصفحة:**
 ```
-/accident-reports/{report_id}/2026-01-31T10-21-29-608Z.html
+┌─────────────────────────────────────────┐
+│  التوريسات                    [+ جديد]  │
+├─────────────────────────────────────────┤
+│ [بحث...] [كل] [مسودة] [مُرسل]           │
+├─────────────────────────────────────────┤
+│ العنوان    المستلم    الحالة   إجراءات  │
+│ ───────────────────────────────────────  │
+│ رسالة 1   شركة X    مُرسل    👁️✏️🗑️📱  │
+│ رسالة 2   أحمد      مسودة   👁️✏️🗑️📱  │
+└─────────────────────────────────────────┘
 ```
 
-**بعد:**
+### 2) مكون المحرر: `src/components/correspondence/LetterEditor.tsx`
+
+**محرر HTML بسيط مع:**
+- شريط أدوات: Bold, Italic, Underline, قائمة، رابط
+- زر رفع صورة
+- معاينة فورية
+
+**الهيكل:**
 ```
-/accident-reports/{report_id}/report.html
+┌─────────────────────────────────────────┐
+│ [B] [I] [U] [📷] [🔗] [☰]              │
+├─────────────────────────────────────────┤
+│                                         │
+│     [منطقة الكتابة - Textarea]         │
+│                                         │
+└─────────────────────────────────────────┘
 ```
 
-هذا يعني:
-- كل بلاغ له ملف واحد فقط: `report.html`
-- عند الإنشاء أو الحفظ، يتم **استبدال** نفس الملف
-- الرابط لا يتغير أبداً
+### 3) مكون المعاينة: `src/components/correspondence/LetterPreview.tsx`
 
-### 2) تفعيل Bunny Purge API
+**معاينة الرسالة الكاملة مع:**
+- شعار AB في الأعلى
+- المحتوى في الوسط
+- تذييل AB في الأسفل
 
-عند كل حفظ أو إنشاء:
-1. رفع الملف الجديد على CDN (يستبدل القديم)
-2. طلب `Purge` من Bunny API لإزالة الـ cache
+### 4) Drawer للإنشاء/التعديل: `src/components/correspondence/LetterDrawer.tsx`
 
+**الحقول:**
+- عنوان الرسالة (داخلي)
+- اسم المستلم
+- رقم الهاتف (اختياري)
+- محرر المحتوى
+- معاينة
+
+---
+
+## Edge Functions
+
+### 1) `generate-correspondence-html/index.ts`
+
+**الوظيفة:** إنشاء ملف HTML على CDN
+
+**المدخلات:**
 ```typescript
-// Purge cache after upload
-const purgeUrl = `https://api.bunny.net/purge?url=${encodeURIComponent(cdnUrl)}`;
-await fetch(purgeUrl, {
-  method: 'POST',
-  headers: { 'AccessKey': BUNNY_API_KEY }
-});
+{
+  letter_id: string;
+}
 ```
 
-### 3) إزالة الـ timestamp من اسم الملف
+**العمل:**
+1. جلب بيانات الرسالة من قاعدة البيانات
+2. جلب إعدادات الشركة (الشعار، معلومات التذييل)
+3. بناء HTML كامل مع التنسيق
+4. رفع إلى BunnyCDN بمسار ثابت: `correspondence/{letter_id}/letter.html`
+5. تحديث `generated_url` في قاعدة البيانات
+6. Purge CDN cache
 
-في `generate-accident-pdf` و `save-accident-edits`:
+**HTML Template:**
+```html
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial; max-width: 800px; margin: 0 auto; padding: 40px; }
+    .header { text-align: center; margin-bottom: 40px; }
+    .header img { max-height: 100px; }
+    .content { line-height: 1.8; min-height: 400px; }
+    .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #ccc; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="{{LOGO_URL}}" alt="AB Insurance" />
+  </div>
+  <div class="content">
+    {{BODY_HTML}}
+  </div>
+  <div class="footer">
+    <p>{{COMPANY_NAME}}</p>
+    <p>{{PHONE_LINKS}}</p>
+  </div>
+</body>
+</html>
+```
 
+### 2) `send-correspondence-sms/index.ts`
+
+**الوظيفة:** إرسال رابط الرسالة عبر SMS
+
+**المدخلات:**
 ```typescript
-// Before:
-const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-const filename = `accident-reports/${report.id}/${timestamp}.html`;
+{
+  letter_id: string;
+  phone_number: string; // يمكن تجاوز الرقم المحفوظ
+}
+```
 
-// After:
-const filename = `accident-reports/${report.id}/report.html`;
+**العمل:**
+1. التحقق من المصادقة
+2. جلب بيانات الرسالة
+3. إذا لم يكن `generated_url` موجود → إنشاء HTML أولاً
+4. إرسال SMS عبر 019sms
+5. تحديث `status` إلى "sent" و `sent_at`
+6. تسجيل في `sms_logs`
+
+**رسالة SMS:**
+```
+رسالة من مكتب بشير للتأمين:
+{{RECIPIENT_NAME}}
+
+للاطلاع على الرسالة:
+{{LETTER_URL}}
 ```
 
 ---
 
-## التعديلات المطلوبة
+## التكامل مع الواجهة
 
-### 1) ملف `supabase/functions/generate-accident-pdf/index.ts`
+### إضافة Route جديد في `App.tsx`
 
-**التغييرات:**
-- استخدام اسم ملف ثابت `report.html` بدلاً من timestamp
-- إضافة Purge request بعد الرفع
-- التحقق إذا كان الملف موجود (سيُستبدل تلقائياً)
-
-```typescript
-// Fixed filename
-const filename = `accident-reports/${report.id}/report.html`;
-
-// Upload (overwrites existing)
-await fetch(uploadUrl, { method: "PUT", ... });
-
-// Purge CDN cache
-const purgeUrl = `https://api.bunny.net/purge?url=${encodeURIComponent(cdnUrl)}`;
-await fetch(purgeUrl, {
-  method: 'POST',
-  headers: { 'AccessKey': bunnyStorageKey }
-});
+```tsx
+<Route path="/admin/correspondence" element={
+  <AdminRoute>
+    <CorrespondenceLetters />
+  </AdminRoute>
+} />
 ```
 
-### 2) ملف `supabase/functions/save-accident-edits/index.ts`
+### إضافة رابط في Sidebar
 
-**التغييرات:**
-- نفس المنطق: استخدام رابط ثابت
-- إضافة Purge request بعد الحفظ
-
-```typescript
-// Extract path from existing URL or use fixed path
-const storagePath = `accident-reports/${accident_report_id}/report.html`;
-const cdnUrl = `${bunnyCdnUrl}/${storagePath}`;
-
-// Upload updated HTML
-await fetch(uploadUrl, { method: "PUT", ... });
-
-// Purge CDN cache to show changes immediately
-await fetch(`https://api.bunny.net/purge?url=${encodeURIComponent(cdnUrl)}`, {
-  method: 'POST',
-  headers: { 'AccessKey': bunnyStorageKey }
-});
+في مجموعة "الإعدادات" أو "إدارة":
+```tsx
+{
+  href: "/admin/correspondence",
+  label: "التوريسات",
+  icon: Mail
+}
 ```
 
-### 3) ملف `src/pages/AccidentReportForm.tsx`
+---
 
-**التغييرات:**
-- إزالة cache-busting من `handleDownloadPdf` (لم يعد ضرورياً بعد الـ Purge)
-- أو الاحتفاظ به كاحتياط إضافي
+## ميزة الطباعة
 
-```typescript
-const handleDownloadPdf = () => {
-  if (report?.generated_pdf_url) {
-    // Cache-busting as extra safety (Purge should handle it)
-    const cacheBuster = `?t=${Date.now()}`;
-    window.open(report.generated_pdf_url + cacheBuster, "_blank");
-  }
-};
+**من صفحة المعاينة:**
+- زر "طباعة" يفتح `window.print()` على الـ HTML المُنشأ
+- أو يفتح الرابط في نافذة جديدة مع إضافة `?print=1` للطباعة التلقائية
+
+**في HTML المُنشأ:**
+```javascript
+if (window.location.search.includes('print=1')) {
+  window.onload = () => window.print();
+}
 ```
 
 ---
@@ -136,43 +220,139 @@ const handleDownloadPdf = () => {
 
 | الملف | النوع | الوصف |
 |-------|-------|-------|
-| `supabase/functions/generate-accident-pdf/index.ts` | تعديل | رابط ثابت + Purge API |
-| `supabase/functions/save-accident-edits/index.ts` | تعديل | رابط ثابت + Purge API |
-| `src/pages/AccidentReportForm.tsx` | تعديل طفيف | الاحتفاظ بـ cache-busting كاحتياط |
+| `src/pages/CorrespondenceLetters.tsx` | جديد | صفحة إدارة الرسائل |
+| `src/components/correspondence/LetterDrawer.tsx` | جديد | Drawer للإنشاء/التعديل |
+| `src/components/correspondence/LetterEditor.tsx` | جديد | محرر HTML بسيط |
+| `src/components/correspondence/LetterPreview.tsx` | جديد | معاينة الرسالة |
+| `supabase/functions/generate-correspondence-html/index.ts` | جديد | إنشاء HTML على CDN |
+| `supabase/functions/send-correspondence-sms/index.ts` | جديد | إرسال SMS |
+| `src/App.tsx` | تعديل | إضافة Route |
+| `src/components/layout/Sidebar.tsx` | تعديل | إضافة رابط |
+| `supabase/config.toml` | تعديل | إضافة Edge Functions |
+| **Migration** | جديد | إنشاء جدول `correspondence_letters` |
 
 ---
 
-## النتيجة النهائية
+## تدفق العمل
 
-1. **رابط البلاغ ثابت دائماً:**
-   ```
-   https://cdn.basheer-ab.com/accident-reports/{report_id}/report.html
-   ```
-
-2. **عند الحفظ من صفحة المعاينة:**
-   - يُحدَّث نفس الملف
-   - يُطلب Purge من CDN
-   - التغييرات تظهر فوراً
-
-3. **عند "إعادة الإنشاء":**
-   - يُستبدل نفس الملف (لا ينشئ ملف جديد)
-   - يُطلب Purge
-   - التغييرات تظهر فوراً
-
-4. **الرابط عام:**
-   - لا يحتاج login
-   - يمكن لأي شخص فتحه
+```text
+1. المدير يفتح صفحة "التوريسات"
+2. يضغط "+ جديد"
+3. يملأ البيانات:
+   - العنوان: "خطاب للشركة س"
+   - المستلم: "شركة س للتأمين"
+   - الهاتف: "0501234567"
+   - المحتوى: [يكتب النص + يضيف صور...]
+4. يضغط "حفظ" → الرسالة تُحفظ كمسودة
+5. يضغط "معاينة" → يرى الشكل النهائي مع الشعار والتذييل
+6. يضغط "إرسال SMS" → يُنشئ HTML على CDN ويُرسل الرابط
+7. أو يضغط "طباعة" → يطبع مباشرة
+```
 
 ---
 
-## ملاحظة تقنية: Bunny Purge API
+## تفاصيل تقنية
 
-الـ Purge API يستخدم نفس الـ `BUNNY_API_KEY` الموجود:
+### محرر HTML البسيط
 
+بدلاً من استخدام مكتبة ثقيلة، سنستخدم `contenteditable` مع أوامر `document.execCommand`:
+
+```tsx
+function LetterEditor({ value, onChange }) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  
+  const execCommand = (command: string, value?: string) => {
+    document.execCommand(command, false, value);
+    onChange(editorRef.current?.innerHTML || '');
+  };
+  
+  return (
+    <div>
+      <div className="toolbar">
+        <button onClick={() => execCommand('bold')}>B</button>
+        <button onClick={() => execCommand('italic')}>I</button>
+        <button onClick={() => execCommand('underline')}>U</button>
+        <button onClick={() => execCommand('insertUnorderedList')}>☰</button>
+      </div>
+      <div
+        ref={editorRef}
+        contentEditable
+        className="editor"
+        dangerouslySetInnerHTML={{ __html: value }}
+        onInput={(e) => onChange(e.currentTarget.innerHTML)}
+      />
+    </div>
+  );
+}
 ```
-POST https://api.bunny.net/purge?url=https://cdn.basheer-ab.com/accident-reports/{id}/report.html
-Headers: AccessKey: {BUNNY_API_KEY}
+
+### رفع الصور
+
+استخدام نفس pattern الموجود في `MarketingSms.tsx`:
+
+```tsx
+const handleImageUpload = async (file: File) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('entity_type', 'correspondence');
+  
+  const { data } = await supabase.functions.invoke('upload-media', {
+    body: formData,
+  });
+  
+  // Insert image at cursor
+  document.execCommand('insertImage', false, data.file.cdn_url);
+};
 ```
 
-هذا سيمسح الـ cache من جميع edge servers في Bunny ليظهر المحتوى الجديد فوراً.
+---
 
+## الأمان
+
+- **RLS على الجدول:** فقط المديرين يمكنهم الإنشاء/التعديل/الحذف
+- **Edge Functions:** التحقق من صلاحية المستخدم (admin)
+- **Sanitization:** تنظيف HTML قبل الحفظ باستخدام DOMPurify
+- **الرابط العام:** أي شخص لديه الرابط يمكنه عرض الرسالة (مثل الفواتير)
+
+---
+
+## Migration SQL
+
+```sql
+-- Create correspondence_letters table
+CREATE TABLE correspondence_letters (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  recipient_name TEXT NOT NULL,
+  recipient_phone TEXT,
+  body_html TEXT,
+  generated_url TEXT,
+  status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'sent', 'viewed')),
+  sent_at TIMESTAMPTZ,
+  created_by_admin_id UUID REFERENCES auth.users(id),
+  branch_id UUID REFERENCES branches(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Enable RLS
+ALTER TABLE correspondence_letters ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Only admins can manage
+CREATE POLICY "Admins can manage correspondence" ON correspondence_letters
+  FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM user_roles
+      WHERE user_id = auth.uid()
+      AND role = 'admin'
+    )
+  );
+
+-- Add to realtime (optional)
+ALTER PUBLICATION supabase_realtime ADD TABLE correspondence_letters;
+
+-- Index for quick lookups
+CREATE INDEX idx_correspondence_status ON correspondence_letters(status);
+CREATE INDEX idx_correspondence_created_at ON correspondence_letters(created_at DESC);
+```
