@@ -1,288 +1,200 @@
 
-# خطة: إصلاح المطالبات وإضافة Badge عدد المطالبات النشطة
+# خطة: توحيد جميع حقول التاريخ لاستخدام ArabicDatePicker
 
-## نظرة عامة
-المشاكل الحالية:
-1. **RTL في Radio Group** - يوجد `dir="ltr"` و `space-x-reverse` يجب إزالتهم
-2. **البحث عن العملاء لا يعمل** - مشكلة في الاستعلام
-3. **تصميم اختيار العميل** - يجب أن يكون بتصميم Cards وليس dropdown عادي
-4. **عدد المطالبات النشطة** - إضافة badge في الـ Sidebar
+## المشكلة
+بعض الصفحات والمكونات تستخدم `<Input type="date" />` الأصلي (الصورة الأولى - نمط LTR إنجليزي) بينما يجب استخدام `ArabicDatePicker` الموحد (الصورة الثانية - نمط RTL عربي مع أشهر عربية).
 
 ---
 
-## الجزء الأول: إصلاح RTL في RepairClaimDrawer
+## الملفات المطلوب تعديلها (15 ملف)
 
-### تعديل Radio Group (سطر 418-431):
+### مجموعة 1: صفحات التقارير والفلاتر
+| الملف | الحقول |
+|-------|--------|
+| `src/pages/PolicyReports.tsx` | createdFromDate, createdToDate |
+| `src/pages/ElzamiCostsReport.tsx` | fromDate, toDate |
+| `src/pages/CompanySettlementDetail.tsx` | startDate, endDate |
+| `src/pages/Expenses.tsx` | formData.expense_date |
+| `src/components/admin/UserSessionsTab.tsx` | startDate, endDate |
 
-**الوضع الحالي:**
-```tsx
-<RadioGroup className="flex gap-4">
-  <div className="flex items-center space-x-2 space-x-reverse">
-```
+### مجموعة 2: مكونات الدفعات
+| الملف | الحقول |
+|-------|--------|
+| `src/components/clients/PackagePaymentModal.tsx` | payment.paymentDate |
+| `src/components/clients/SinglePolicyPaymentModal.tsx` | payment.paymentDate |
+| `src/components/debt/DebtPaymentModal.tsx` | payment.paymentDate |
+| `src/components/policies/PolicyPaymentsSection.tsx` | payment.paymentDate |
 
-**التعديل المطلوب:**
-```tsx
-<RadioGroup className="flex gap-4" dir="rtl">
-  <div className="flex items-center gap-2">
-```
+### مجموعة 3: مكونات البوليصات والسيارات
+| الملف | الحقول |
+|-------|--------|
+| `src/components/policies/PolicyDrawer.tsx` | start_date, end_date |
+| `src/components/cars/CarDrawer.tsx` | license_expiry, last_license |
 
-- إزالة `space-x-2` و `space-x-reverse`
-- استبدالها بـ `gap-2`
-- إضافة `dir="rtl"` للـ RadioGroup
+### مجموعة 4: مكونات المطالبات والعملاء
+| الملف | الحقول |
+|-------|--------|
+| `src/components/claims/RepairClaimDrawer.tsx` | accident_date |
+| `src/components/clients/RefundsTab.tsx` | refundDate |
+| `src/pages/RepairClaimDetail.tsx` | reminderDate |
 
----
-
-## الجزء الثاني: إصلاح بحث العملاء
-
-### المشكلة:
-الاستعلام الحالي يستخدم `or()` بطريقة قد تكون خاطئة
-
-### الحل الجديد:
-```typescript
-const { data: clients, isLoading: clientsLoading } = useQuery({
-  queryKey: ["clients-search-repair", clientSearch],
-  queryFn: async () => {
-    if (!clientSearch || clientSearch.length < 2) return [];
-    
-    const { data, error } = await supabase
-      .from("clients")
-      .select("id, full_name, id_number, phone_number")
-      .is("deleted_at", null)
-      .or(
-        `full_name.ilike.%${clientSearch}%,` +
-        `id_number.ilike.%${clientSearch}%,` +
-        `phone_number.ilike.%${clientSearch}%`
-      )
-      .limit(15);
-    
-    if (error) {
-      console.error("Client search error:", error);
-      return [];
-    }
-    return data || [];
-  },
-  enabled: clientSearch.length >= 2,
-});
-```
+### مجموعة 5: نموذج تقرير الحادث
+| الملف | الحقول |
+|-------|--------|
+| `src/pages/AccidentReportForm.tsx` | accidentDate, licenseExpiryDate, firstLicenseDate, vehicleLicenseExpiry |
 
 ---
 
-## الجزء الثالث: تصميم اختيار العميل كـ Cards
+## التفاصيل التقنية
 
-### التصميم الجديد:
+### نمط التعديل الموحد
 
-بدلاً من Command/Popover عادي، سيتم استخدام:
-
+**قبل (Input type="date"):**
 ```tsx
-{/* Client Search with Card Results */}
-<FormField
-  control={form.control}
-  name="client_id"
-  render={({ field }) => (
-    <FormItem>
-      <FormLabel>العميل</FormLabel>
-      <div className="space-y-3">
-        {/* Search Input */}
-        <div className="relative">
-          <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="ابحث بالاسم أو رقم الهوية أو الهاتف..."
-            value={clientSearch}
-            onChange={(e) => setClientSearch(e.target.value)}
-            className="pr-10"
-          />
-        </div>
+<Input
+  type="date"
+  value={dateValue}
+  onChange={(e) => setDateValue(e.target.value)}
+/>
+```
 
-        {/* Selected Client Card */}
-        {selectedClient && (
-          <Card className="p-3 border-primary bg-primary/5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Users className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <p className="font-medium">{selectedClient.full_name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {selectedClient.id_number} • {selectedClient.phone_number}
-                  </p>
-                </div>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  field.onChange("");
-                  setClientSearch("");
-                }}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </Card>
-        )}
+**بعد (ArabicDatePicker):**
+```tsx
+import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 
-        {/* Search Results as Cards */}
-        {!selectedClient && clientSearch.length >= 2 && (
-          <div className="border rounded-lg max-h-60 overflow-auto">
-            {clientsLoading ? (
-              <div className="p-4 text-center">
-                <Loader2 className="h-5 w-5 animate-spin mx-auto" />
-              </div>
-            ) : clients?.length === 0 ? (
-              <div className="p-4 text-center text-muted-foreground">
-                لا توجد نتائج
-              </div>
-            ) : (
-              <div className="divide-y">
-                {clients?.map((client) => (
-                  <button
-                    key={client.id}
-                    type="button"
-                    onClick={() => {
-                      field.onChange(client.id);
-                      form.setValue("policy_id", "");
-                    }}
-                    className="w-full p-3 text-right hover:bg-muted/50 transition-colors flex items-center gap-3"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
-                      <Users className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <div className="flex-1 text-right">
-                      <p className="font-medium text-sm">{client.full_name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {client.id_number} • {client.phone_number}
-                      </p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-      <FormMessage />
-    </FormItem>
-  )}
+<ArabicDatePicker
+  value={dateValue}
+  onChange={(date) => setDateValue(date)}
+/>
+```
+
+### حالات خاصة
+
+1. **حقول تاريخ الميلاد** - إضافة `isBirthDate` لتوسيع نطاق السنوات:
+```tsx
+<ArabicDatePicker
+  value={birthDate}
+  onChange={setBirthDate}
+  isBirthDate
+/>
+```
+
+2. **حقول مضغوطة (داخل جداول/قوائم)** - إضافة `compact`:
+```tsx
+<ArabicDatePicker
+  value={payment.paymentDate}
+  onChange={(date) => updatePaymentLine(payment.id, 'paymentDate', date)}
+  compact
+/>
+```
+
+3. **حقول مع حدود (min/max)**:
+```tsx
+<ArabicDatePicker
+  value={endDate}
+  onChange={setEndDate}
+  min={startDate}
+/>
+```
+
+4. **حقول معطلة (disabled)**:
+```tsx
+<ArabicDatePicker
+  value={payment.paymentDate}
+  onChange={(date) => updatePaymentLine(payment.id, 'paymentDate', date)}
+  disabled={payment.tranzilaPaid}
 />
 ```
 
 ---
 
-## الجزء الرابع: إضافة Badge عدد المطالبات النشطة
+## تفاصيل كل ملف
 
-### 1) إنشاء Hook جديد: `src/hooks/useClaimsCount.tsx`
+### 1. src/pages/PolicyReports.tsx (سطور 675-688)
+- إضافة import للـ ArabicDatePicker
+- تغيير حقلي `createdFromDate` و `createdToDate`
 
-```typescript
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+### 2. src/pages/ElzamiCostsReport.tsx (سطور 142-156)
+- إضافة import
+- تغيير حقلي `fromDate` و `toDate`
 
-export function useClaimsCount() {
-  const [claimsCount, setClaimsCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
+### 3. src/pages/CompanySettlementDetail.tsx (سطور 458-479)
+- إضافة import
+- تغيير حقلي `startDate` و `endDate`
 
-  const fetchClaimsCount = useCallback(async () => {
-    try {
-      const { count, error } = await supabase
-        .from('repair_claims')
-        .select('id', { count: 'exact', head: true })
-        .neq('status', 'completed');
-      
-      if (error) throw error;
-      setClaimsCount(count || 0);
-    } catch (error) {
-      console.error('Error fetching claims count:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+### 4. src/pages/Expenses.tsx (سطور 407-411)
+- إضافة import
+- تغيير حقل `formData.expense_date`
 
-  useEffect(() => {
-    fetchClaimsCount();
-    const interval = setInterval(fetchClaimsCount, 30000);
-    const handleFocus = () => fetchClaimsCount();
-    window.addEventListener('focus', handleFocus);
-    
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [fetchClaimsCount]);
+### 5. src/components/admin/UserSessionsTab.tsx (سطور 174-186)
+- إضافة import
+- تغيير حقلي `startDate` و `endDate`
 
-  return { claimsCount, isLoading };
-}
-```
+### 6. src/components/clients/PackagePaymentModal.tsx (سطور 599-604)
+- إضافة import
+- تغيير حقل `payment.paymentDate` مع `compact`
 
-### 2) إنشاء Component: `src/components/layout/SidebarClaimsBadge.tsx`
+### 7. src/components/clients/SinglePolicyPaymentModal.tsx (سطور 530-535)
+- إضافة import
+- تغيير حقل `payment.paymentDate` مع `compact`
 
-```typescript
-import { useClaimsCount } from '@/hooks/useClaimsCount';
-import { cn } from '@/lib/utils';
+### 8. src/components/debt/DebtPaymentModal.tsx (سطور 845-850)
+- إضافة import
+- تغيير حقل `payment.paymentDate` مع `compact`
 
-interface SidebarClaimsBadgeProps {
-  collapsed?: boolean;
-}
+### 9. src/components/policies/PolicyPaymentsSection.tsx (سطور 961-966)
+- إضافة import
+- تغيير حقل `payment.paymentDate` مع `compact`
 
-export function SidebarClaimsBadge({ collapsed }: SidebarClaimsBadgeProps) {
-  const { claimsCount, isLoading } = useClaimsCount();
+### 10. src/components/policies/PolicyDrawer.tsx (سطور 369-387)
+- إضافة import
+- تغيير حقلي `start_date` و `end_date`
+- ملاحظة: يستخدم react-hook-form، سيتم التكامل عبر `field.value` و `field.onChange`
 
-  if (isLoading || claimsCount === 0) return null;
+### 11. src/components/cars/CarDrawer.tsx (سطور 484-498)
+- إضافة import
+- تغيير حقلي `license_expiry` و `last_license`
+- ملاحظة: يستخدم react-hook-form
 
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-medium",
-        collapsed ? "absolute -top-1 -left-1 h-4 w-4 min-w-4" : "h-5 min-w-5 px-1.5 mr-auto"
-      )}
-    >
-      <span className="ltr-nums">{claimsCount > 99 ? '99+' : claimsCount}</span>
-    </span>
-  );
-}
-```
+### 12. src/components/claims/RepairClaimDrawer.tsx (سطور 403-405)
+- إضافة import
+- تغيير حقل `accident_date`
+- ملاحظة: يستخدم react-hook-form
 
-### 3) تحديث Sidebar.tsx:
+### 13. src/components/clients/RefundsTab.tsx (سطور 365-370)
+- إضافة import
+- تغيير حقل `refundDate`
 
-إضافة `claims` كنوع badge جديد:
+### 14. src/pages/RepairClaimDetail.tsx (سطور 579-584)
+- إضافة import
+- تغيير حقل `reminderDate`
 
-```typescript
-interface NavItem {
-  // ... existing
-  badge?: 'notifications' | 'debt' | 'tasks' | 'claims';
-}
-
-// في navigationGroups - المطالبات:
-{ name: "المطالبات", href: "/admin/claims", icon: FileWarning, adminOnly: true, badge: 'claims' },
-
-// في renderBadge:
-const renderBadge = (item: NavItem) => {
-  if (!item.badge) return null;
-  if (item.badge === 'notifications') return <SidebarNotificationBadge collapsed={collapsed} />;
-  if (item.badge === 'debt') return <SidebarDebtBadge collapsed={collapsed} />;
-  if (item.badge === 'tasks') return <SidebarTaskBadge collapsed={collapsed} />;
-  if (item.badge === 'claims') return <SidebarClaimsBadge collapsed={collapsed} />;
-  return null;
-};
-```
+### 15. src/pages/AccidentReportForm.tsx (4 حقول)
+- إضافة import
+- تغيير الحقول:
+  - `accidentDate` (سطر 695)
+  - `licenseExpiryDate` (سطر 913)
+  - `firstLicenseDate` (سطر 921)
+  - `vehicleLicenseExpiry` (سطر 929)
 
 ---
 
-## ملخص الملفات المطلوب تعديلها
+## ملخص التنفيذ
 
-| الملف | التعديل |
-|-------|---------|
-| `src/components/claims/RepairClaimDrawer.tsx` | إصلاح RTL + تحسين بحث العملاء + تصميم Cards |
-| `src/hooks/useClaimsCount.tsx` | إنشاء جديد - عدد المطالبات النشطة |
-| `src/components/layout/SidebarClaimsBadge.tsx` | إنشاء جديد - Badge المطالبات |
-| `src/components/layout/Sidebar.tsx` | إضافة badge للمطالبات |
+| الخطوة | الوصف |
+|--------|-------|
+| 1 | إضافة import للـ ArabicDatePicker في كل ملف |
+| 2 | استبدال كل `<Input type="date" />` بـ `<ArabicDatePicker />` |
+| 3 | ضبط الخصائص حسب الحاجة (compact, disabled, isBirthDate, min, max) |
+| 4 | للملفات التي تستخدم react-hook-form: استخدام `field.value` و `field.onChange` |
 
 ---
 
 ## النتيجة المتوقعة
 
-1. **RTL صحيح** - Radio buttons بالاتجاه الصحيح
-2. **بحث العملاء يعمل** - نتائج تظهر عند البحث
-3. **تصميم Cards** - اختيار العميل بشكل أنيق
-4. **Badge المطالبات** - عدد المطالبات النشطة (غير مكتملة) في القائمة الجانبية باللون الأحمر
-
+- جميع حقول التاريخ ستعرض بالشكل العربي الموحد
+- أسماء الأشهر بالعربية (يناير، فبراير، ...)
+- أيام الأسبوع بالعربية (أحد، اثنين، ...)
+- اتجاه RTL صحيح
+- إمكانية الكتابة اليدوية بصيغة DD/MM/YYYY
+- زر "اليوم" للاختيار السريع
