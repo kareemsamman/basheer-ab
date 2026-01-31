@@ -189,9 +189,8 @@ serve(async (req) => {
       htmlContent = generateHtmlReport(report as AccidentReport, thirdParties || []);
     }
 
-    // Generate filename - always HTML now for proper Arabic support
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const filename = `accident-reports/${report.id}/${timestamp}.html`;
+    // Generate filename - FIXED NAME for stable URL (no timestamp)
+    const filename = `accident-reports/${report.id}/report.html`;
     const contentType = "text/html; charset=utf-8";
 
     // Upload to Bunny Storage
@@ -216,6 +215,24 @@ serve(async (req) => {
 
       pdfUrl = `${bunnyCdnUrl}/${filename}`;
       console.log("Generated report URL:", pdfUrl);
+
+      // Purge CDN cache to show updated content immediately
+      try {
+        const purgeUrl = `https://api.bunny.net/purge?url=${encodeURIComponent(pdfUrl)}`;
+        const purgeResponse = await fetch(purgeUrl, {
+          method: "POST",
+          headers: {
+            "AccessKey": bunnyStorageKey,
+          },
+        });
+        if (purgeResponse.ok) {
+          console.log("CDN cache purged successfully for:", pdfUrl);
+        } else {
+          console.warn("CDN purge failed:", await purgeResponse.text());
+        }
+      } catch (purgeError) {
+        console.warn("CDN purge error (non-fatal):", purgeError);
+      }
     } else {
       console.warn("No BUNNY_API_KEY configured");
       throw new Error("Storage not configured");

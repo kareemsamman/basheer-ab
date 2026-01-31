@@ -124,11 +124,12 @@ serve(async (req) => {
       supabaseAnonKey
     );
 
-    // Upload to Bunny Storage (overwrite existing file)
-    if (bunnyStorageKey && report.generated_pdf_url) {
-      // Extract the path from the existing URL
-      const existingPath = report.generated_pdf_url.replace(bunnyCdnUrl + "/", "");
-      const uploadUrl = `https://storage.bunnycdn.com/${bunnyStorageZone}/${existingPath}`;
+    // Upload to Bunny Storage - always use fixed path for stable URL
+    if (bunnyStorageKey) {
+      // Use fixed filename for stable URL
+      const storagePath = `accident-reports/${accident_report_id}/report.html`;
+      const cdnUrl = `${bunnyCdnUrl}/${storagePath}`;
+      const uploadUrl = `https://storage.bunnycdn.com/${bunnyStorageZone}/${storagePath}`;
       
       console.log("Uploading updated HTML to:", uploadUrl);
 
@@ -148,6 +149,33 @@ serve(async (req) => {
         console.warn("Could not update CDN file, but database was updated");
       } else {
         console.log("Successfully updated HTML on CDN");
+        
+        // Purge CDN cache to show updated content immediately
+        try {
+          const purgeUrl = `https://api.bunny.net/purge?url=${encodeURIComponent(cdnUrl)}`;
+          const purgeResponse = await fetch(purgeUrl, {
+            method: "POST",
+            headers: {
+              "AccessKey": bunnyStorageKey,
+            },
+          });
+          if (purgeResponse.ok) {
+            console.log("CDN cache purged successfully for:", cdnUrl);
+          } else {
+            console.warn("CDN purge failed:", await purgeResponse.text());
+          }
+        } catch (purgeError) {
+          console.warn("CDN purge error (non-fatal):", purgeError);
+        }
+      }
+
+      // Update the generated_pdf_url to the stable URL if it was different
+      if (report.generated_pdf_url !== cdnUrl) {
+        await supabase
+          .from("accident_reports")
+          .update({ generated_pdf_url: cdnUrl })
+          .eq("id", accident_report_id);
+        console.log("Updated generated_pdf_url to stable URL:", cdnUrl);
       }
     }
 
