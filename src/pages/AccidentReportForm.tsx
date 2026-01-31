@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { format } from "date-fns";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -33,7 +50,12 @@ import {
   CheckCircle,
   Eye,
   Printer,
+  MessageSquare,
+  Clock,
+  CalendarIcon,
+  Check,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { AccidentThirdPartyForm } from "@/components/accident-reports/AccidentThirdPartyForm";
 
@@ -127,6 +149,20 @@ interface ThirdParty {
   isNew?: boolean;
 }
 
+interface AccidentNote {
+  id: string;
+  note: string;
+  created_at: string;
+  created_by: { full_name: string | null; email: string } | null;
+}
+
+interface AccidentReminder {
+  id: string;
+  reminder_date: string;
+  reminder_text: string | null;
+  is_done: boolean;
+}
+
 const statusLabels: Record<string, string> = {
   draft: "مسودة",
   submitted: "مُقدَّم",
@@ -134,16 +170,19 @@ const statusLabels: Record<string, string> = {
 };
 
 const statusColors: Record<string, string> = {
-  draft: "bg-yellow-500/10 text-yellow-700",
-  submitted: "bg-blue-500/10 text-blue-700",
-  closed: "bg-green-500/10 text-green-700",
+  draft: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20",
+  submitted: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+  closed: "bg-green-500/10 text-green-700 border-green-500/20",
 };
 
 export default function AccidentReportForm() {
-  const { policyId, reportId } = useParams<{ policyId: string; reportId?: string }>();
+  const { policyId, reportId } = useParams<{ policyId?: string; reportId?: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { profile, branchId } = useAuth();
+
+  // Resolved policyId (either from URL or fetched from report)
+  const [resolvedPolicyId, setResolvedPolicyId] = useState<string | null>(policyId || null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -154,6 +193,20 @@ export default function AccidentReportForm() {
   const [report, setReport] = useState<AccidentReport | null>(null);
   const [thirdParties, setThirdParties] = useState<ThirdParty[]>([]);
 
+  // Notes & Reminders state
+  const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [reminderDialogOpen, setReminderDialogOpen] = useState(false);
+  const [reportNotes, setReportNotes] = useState<AccidentNote[]>([]);
+  const [reminders, setReminders] = useState<AccidentReminder[]>([]);
+  const [notesCount, setNotesCount] = useState(0);
+  const [hasActiveReminder, setHasActiveReminder] = useState(false);
+  const [loadingNotes, setLoadingNotes] = useState(false);
+  const [loadingReminders, setLoadingReminders] = useState(false);
+  const [newNote, setNewNote] = useState("");
+  const [addingNote, setAddingNote] = useState(false);
+  const [newReminderDate, setNewReminderDate] = useState<Date | undefined>();
+  const [newReminderText, setNewReminderText] = useState("");
+  const [addingReminder, setAddingReminder] = useState(false);
   // Form state - Accident details
   const [accidentDate, setAccidentDate] = useState("");
   const [accidentTime, setAccidentTime] = useState("");
@@ -194,9 +247,7 @@ export default function AccidentReportForm() {
 
   const [activeTab, setActiveTab] = useState("accident");
 
-  const fetchPolicy = useCallback(async () => {
-    if (!policyId) return;
-
+  const fetchPolicyById = useCallback(async (pid: string) => {
     const { data, error } = await supabase
       .from("policies")
       .select(`
@@ -211,59 +262,46 @@ export default function AccidentReportForm() {
         cars(id, car_number, manufacturer_name, model, year, color, license_expiry),
         insurance_companies(id, name, name_ar)
       `)
-      .eq("id", policyId)
+      .eq("id", pid)
       .single();
 
     if (error) {
       console.error("Error fetching policy:", error);
       toast({ title: "خطأ", description: "فشل في تحميل بيانات الوثيقة", variant: "destructive" });
-      return;
+      return null;
     }
 
-    setPolicy(data as Policy);
+    return data as Policy;
+  }, [toast]);
 
-    // Pre-fill driver info from client (only for new reports)
-    if (!reportId || reportId === "new") {
-      setDriverName(data.clients.full_name);
-      setDriverIdNumber(data.clients.id_number);
-      setDriverPhone(data.clients.phone_number || "");
-      // Pre-fill vehicle license expiry from car
-      if (data.cars?.license_expiry) {
-        setVehicleLicenseExpiry(data.cars.license_expiry);
-      }
-    }
-  }, [policyId, reportId, toast]);
-
-  const fetchReport = useCallback(async () => {
-    if (!reportId || reportId === "new") return;
-
+  const fetchReportById = useCallback(async (rid: string) => {
     const { data, error } = await supabase
       .from("accident_reports")
       .select("*")
-      .eq("id", reportId)
+      .eq("id", rid)
       .single();
 
     if (error) {
       console.error("Error fetching report:", error);
       toast({ title: "خطأ", description: "فشل في تحميل بلاغ الحادث", variant: "destructive" });
-      return;
+      return null;
     }
 
-    setReport(data);
+    return data;
+  }, [toast]);
 
-    // Populate form
+  const populateFormFromReport = (data: AccidentReport) => {
+    setReport(data);
     setAccidentDate(data.accident_date || "");
     setAccidentTime(data.accident_time || "");
     setAccidentLocation(data.accident_location || "");
     setAccidentDescription(data.accident_description || "");
     setVehicleUsagePurpose(data.vehicle_usage_purpose || "");
     setPassengersCount(data.passengers_count ?? "");
-    
     setOwnCarDamages(data.own_car_damages || "");
     setWasAnyoneInjured(data.was_anyone_injured || false);
     setInjuriesDescription(data.injuries_description || "");
     setResponsibleParty(data.responsible_party || "");
-    
     setOwnerAddress(data.owner_address || "");
     setDriverName(data.driver_name || "");
     setDriverAddress(data.driver_address || "");
@@ -276,34 +314,214 @@ export default function AccidentReportForm() {
     setLicenseExpiryDate(data.license_expiry_date || "");
     setFirstLicenseDate(data.first_license_date || "");
     setVehicleLicenseExpiry(data.vehicle_license_expiry || "");
-    
     setPoliceReported(data.police_reported || false);
     setPoliceStation(data.police_station || "");
     setPoliceReportNumber(data.police_report_number || "");
-    
     setWitnessesInfo(data.witnesses_info || "");
     setPassengersInfo(data.passengers_info || "");
     setAdditionalDetails(data.additional_details || "");
+  };
 
-    // Fetch third parties
+  const fetchThirdParties = async (rid: string) => {
     const { data: tpData } = await supabase
       .from("accident_third_parties")
       .select("*")
-      .eq("accident_report_id", reportId)
+      .eq("accident_report_id", rid)
       .order("sort_order");
-
     if (tpData) setThirdParties(tpData);
-  }, [reportId, toast]);
+  };
+
+  const fetchNotesAndReminders = async (rid: string) => {
+    // Fetch notes count
+    const { count } = await supabase
+      .from("accident_report_notes")
+      .select("id", { count: "exact", head: true })
+      .eq("accident_report_id", rid);
+    setNotesCount(count || 0);
+
+    // Fetch active reminders
+    const { data: reminderData } = await supabase
+      .from("accident_report_reminders")
+      .select("id")
+      .eq("accident_report_id", rid)
+      .eq("is_done", false)
+      .limit(1);
+    setHasActiveReminder((reminderData?.length || 0) > 0);
+  };
+
+  // Handle status change
+  const handleStatusChange = async (newStatus: string) => {
+    if (!report) return;
+    try {
+      const { error } = await supabase
+        .from("accident_reports")
+        .update({ status: newStatus })
+        .eq("id", report.id);
+      if (error) throw error;
+      setReport({ ...report, status: newStatus });
+      toast({ title: "تم التحديث", description: "تم تحديث حالة البلاغ" });
+    } catch (error) {
+      console.error("Error updating status:", error);
+      toast({ title: "خطأ", description: "فشل في تحديث الحالة", variant: "destructive" });
+    }
+  };
+
+  // Notes dialog functions
+  const openNoteDialog = async () => {
+    if (!report) return;
+    setNoteDialogOpen(true);
+    setLoadingNotes(true);
+    try {
+      const { data, error } = await supabase
+        .from("accident_report_notes")
+        .select(`id, note, created_at, created_by:profiles(full_name, email)`)
+        .eq("accident_report_id", report.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setReportNotes(data || []);
+    } catch (error) {
+      console.error("Error fetching notes:", error);
+    } finally {
+      setLoadingNotes(false);
+    }
+  };
+
+  const handleAddNote = async () => {
+    if (!newNote.trim() || !report) return;
+    setAddingNote(true);
+    try {
+      const { error } = await supabase
+        .from("accident_report_notes")
+        .insert({
+          accident_report_id: report.id,
+          note: newNote.trim(),
+          created_by: profile?.id,
+        });
+      if (error) throw error;
+      toast({ title: "تمت الإضافة", description: "تمت إضافة الملاحظة بنجاح" });
+      setNewNote("");
+      openNoteDialog();
+      setNotesCount((prev) => prev + 1);
+    } catch (error) {
+      console.error("Error adding note:", error);
+      toast({ title: "خطأ", description: "فشل في إضافة الملاحظة", variant: "destructive" });
+    } finally {
+      setAddingNote(false);
+    }
+  };
+
+  // Reminder dialog functions
+  const openReminderDialog = async () => {
+    if (!report) return;
+    setReminderDialogOpen(true);
+    setLoadingReminders(true);
+    try {
+      const { data, error } = await supabase
+        .from("accident_report_reminders")
+        .select("id, reminder_date, reminder_text, is_done")
+        .eq("accident_report_id", report.id)
+        .order("reminder_date", { ascending: true });
+      if (error) throw error;
+      setReminders(data || []);
+    } catch (error) {
+      console.error("Error fetching reminders:", error);
+    } finally {
+      setLoadingReminders(false);
+    }
+  };
+
+  const handleAddReminder = async () => {
+    if (!newReminderDate || !report) return;
+    setAddingReminder(true);
+    try {
+      const { error } = await supabase
+        .from("accident_report_reminders")
+        .insert({
+          accident_report_id: report.id,
+          reminder_date: format(newReminderDate, "yyyy-MM-dd"),
+          reminder_text: newReminderText.trim() || null,
+          created_by: profile?.id,
+        });
+      if (error) throw error;
+      toast({ title: "تم التعيين", description: "تم تعيين التذكير بنجاح" });
+      setNewReminderDate(undefined);
+      setNewReminderText("");
+      openReminderDialog();
+      setHasActiveReminder(true);
+    } catch (error) {
+      console.error("Error adding reminder:", error);
+      toast({ title: "خطأ", description: "فشل في تعيين التذكير", variant: "destructive" });
+    } finally {
+      setAddingReminder(false);
+    }
+  };
+
+  const handleToggleReminderDone = async (reminderId: string, isDone: boolean) => {
+    try {
+      const { error } = await supabase
+        .from("accident_report_reminders")
+        .update({ is_done: isDone })
+        .eq("id", reminderId);
+      if (error) throw error;
+      openReminderDialog();
+      // Check if there are still active reminders
+      if (isDone && report) {
+        fetchNotesAndReminders(report.id);
+      }
+    } catch (error) {
+      console.error("Error toggling reminder:", error);
+    }
+  };
 
   useEffect(() => {
     const init = async () => {
       setLoading(true);
-      await fetchPolicy();
-      await fetchReport();
+      
+      // Case 1: Direct access via /accidents/:reportId (no policyId in URL)
+      if (reportId && reportId !== "new" && !policyId) {
+        const reportData = await fetchReportById(reportId);
+        if (reportData) {
+          populateFormFromReport(reportData);
+          setResolvedPolicyId(reportData.policy_id);
+          const policyData = await fetchPolicyById(reportData.policy_id);
+          if (policyData) {
+            setPolicy(policyData);
+          }
+          await fetchThirdParties(reportId);
+          await fetchNotesAndReminders(reportId);
+        }
+      }
+      // Case 2: Access via /policies/:policyId/accident/:reportId
+      else if (policyId) {
+        const policyData = await fetchPolicyById(policyId);
+        if (policyData) {
+          setPolicy(policyData);
+          // Pre-fill driver info for new reports
+          if (!reportId || reportId === "new") {
+            setDriverName(policyData.clients.full_name);
+            setDriverIdNumber(policyData.clients.id_number);
+            setDriverPhone(policyData.clients.phone_number || "");
+            if (policyData.cars?.license_expiry) {
+              setVehicleLicenseExpiry(policyData.cars.license_expiry);
+            }
+          }
+        }
+        
+        // Fetch existing report if editing
+        if (reportId && reportId !== "new") {
+          const reportData = await fetchReportById(reportId);
+          if (reportData) {
+            populateFormFromReport(reportData);
+            await fetchThirdParties(reportId);
+            await fetchNotesAndReminders(reportId);
+          }
+        }
+      }
+      
       setLoading(false);
     };
     init();
-  }, [fetchPolicy, fetchReport]);
+  }, [policyId, reportId, fetchPolicyById, fetchReportById]);
 
   const handleSave = async () => {
     if (!policy) return;
@@ -433,7 +651,12 @@ export default function AccidentReportForm() {
       toast({ title: "تم الحفظ", description: "تم حفظ بلاغ الحادث بنجاح" });
       
       // Refresh data
-      await fetchReport();
+      if (savedReportId) {
+        const updatedReport = await fetchReportById(savedReportId);
+        if (updatedReport) {
+          setReport(updatedReport);
+        }
+      }
     } catch (error: any) {
       console.error("Error saving report:", error);
       toast({ title: "خطأ", description: error.message || "فشل في حفظ البلاغ", variant: "destructive" });
@@ -458,7 +681,7 @@ export default function AccidentReportForm() {
       if (error) throw error;
 
       toast({ title: "تم التقديم", description: "تم تقديم بلاغ الحادث بنجاح" });
-      await fetchReport();
+      setReport({ ...report, status: "submitted" });
     } catch (error: any) {
       console.error("Error submitting report:", error);
       toast({ title: "خطأ", description: "فشل في تقديم البلاغ", variant: "destructive" });
@@ -486,7 +709,12 @@ export default function AccidentReportForm() {
       }
 
       toast({ title: "تم الإنشاء", description: "تم إنشاء ملف PDF بنجاح" });
-      await fetchReport();
+      
+      // Update report with new PDF URL
+      const updatedReport = await fetchReportById(report.id);
+      if (updatedReport) {
+        setReport(updatedReport);
+      }
       
       // Open the PDF in new tab for printing
       if (data?.pdf_url) {
@@ -609,11 +837,43 @@ export default function AccidentReportForm() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             {report && (
-              <Badge className={statusColors[report.status]}>
-                {statusLabels[report.status]}
-              </Badge>
+              <>
+                {/* Status Dropdown */}
+                <Select value={report.status} onValueChange={handleStatusChange}>
+                  <SelectTrigger className={cn("w-[120px] h-9", statusColors[report.status])}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">مسودة</SelectItem>
+                    <SelectItem value="submitted">مُقدَّم</SelectItem>
+                    <SelectItem value="closed">مُغلق</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {/* Notes Button */}
+                <Button variant="outline" size="sm" onClick={openNoteDialog} className="gap-1">
+                  <MessageSquare className="h-4 w-4" />
+                  ملاحظات
+                  {notesCount > 0 && (
+                    <Badge variant="secondary" className="mr-1 px-1.5 py-0 text-xs">
+                      {notesCount}
+                    </Badge>
+                  )}
+                </Button>
+
+                {/* Reminder Button */}
+                <Button
+                  variant={hasActiveReminder ? "default" : "outline"}
+                  size="sm"
+                  onClick={openReminderDialog}
+                  className="gap-1"
+                >
+                  <Clock className={cn("h-4 w-4", hasActiveReminder && "animate-pulse")} />
+                  تذكير
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -1158,6 +1418,143 @@ export default function AccidentReportForm() {
             )}
           </div>
         </div>
+
+        {/* Notes Dialog */}
+        <Dialog open={noteDialogOpen} onOpenChange={setNoteDialogOpen}>
+          <DialogContent dir="rtl" className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>ملاحظات البلاغ</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4 max-h-[400px] overflow-y-auto">
+              {loadingNotes ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : reportNotes.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">
+                  لا توجد ملاحظات حتى الآن
+                </p>
+              ) : (
+                reportNotes.map((note) => (
+                  <div key={note.id} className="border-b pb-3 last:border-0">
+                    <p className="text-sm whitespace-pre-wrap">{note.note}</p>
+                    <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+                      <span>{note.created_by?.full_name || note.created_by?.email || "مجهول"}</span>
+                      <span className="ltr-nums">
+                        {format(new Date(note.created_at), "dd/MM/yyyy HH:mm")}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <DialogFooter className="flex-col sm:flex-col gap-3">
+              <Textarea
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                placeholder="أضف ملاحظة جديدة..."
+                rows={3}
+              />
+              <Button onClick={handleAddNote} disabled={addingNote || !newNote.trim()} className="w-full">
+                {addingNote ? <Loader2 className="h-4 w-4 animate-spin ml-2" /> : <Plus className="h-4 w-4 ml-2" />}
+                إضافة ملاحظة
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Reminder Dialog */}
+        <Dialog open={reminderDialogOpen} onOpenChange={setReminderDialogOpen}>
+          <DialogContent dir="rtl" className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>تذكيرات البلاغ</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              {/* Existing Reminders */}
+              {loadingReminders ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : reminders.length === 0 ? (
+                <p className="text-center text-muted-foreground py-4">
+                  لا توجد تذكيرات
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {reminders.map((reminder) => (
+                    <div
+                      key={reminder.id}
+                      className={cn(
+                        "flex items-center justify-between p-3 rounded-lg border",
+                        reminder.is_done ? "bg-muted/50 opacity-60" : "bg-background"
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => handleToggleReminderDone(reminder.id, !reminder.is_done)}
+                        >
+                          {reminder.is_done ? (
+                            <Check className="h-4 w-4 text-primary" />
+                          ) : (
+                            <Clock className="h-4 w-4" />
+                          )}
+                        </Button>
+                        <div>
+                          <p className={cn("text-sm font-medium ltr-nums", reminder.is_done && "line-through")}>
+                            {format(new Date(reminder.reminder_date), "dd/MM/yyyy")}
+                          </p>
+                          {reminder.reminder_text && (
+                            <p className="text-xs text-muted-foreground">{reminder.reminder_text}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add New Reminder */}
+              <div className="border-t pt-4 space-y-3">
+                <Label>إضافة تذكير جديد</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start">
+                      <CalendarIcon className="ml-2 h-4 w-4" />
+                      {newReminderDate ? format(newReminderDate, "dd/MM/yyyy") : "اختر التاريخ"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={newReminderDate}
+                      onSelect={setNewReminderDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <Input
+                  value={newReminderText}
+                  onChange={(e) => setNewReminderText(e.target.value)}
+                  placeholder="ملاحظة التذكير (اختياري)"
+                />
+                <Button
+                  onClick={handleAddReminder}
+                  disabled={addingReminder || !newReminderDate}
+                  className="w-full"
+                >
+                  {addingReminder ? <Loader2 className="h-4 w-4 animate-spin ml-2" /> : <Plus className="h-4 w-4 ml-2" />}
+                  تعيين التذكير
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </MainLayout>
   );

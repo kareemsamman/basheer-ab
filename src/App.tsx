@@ -258,6 +258,12 @@ const App = () => (
                   <AccidentReports />
                 </ProtectedRoute>
               } />
+              {/* Direct accident report access by reportId only */}
+              <Route path="/accidents/:reportId" element={
+                <ProtectedRoute>
+                  <AccidentReportForm />
+                </ProtectedRoute>
+              } />
               <Route path="/policies/:policyId/accident/:reportId?" element={
                 <ProtectedRoute>
                   <AccidentReportForm />
