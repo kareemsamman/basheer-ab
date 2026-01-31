@@ -2167,8 +2167,47 @@ export type Database = {
           },
         ]
       }
+      lead_messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          lead_id: string
+          message_type: string
+          metadata: Json | null
+          phone: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          lead_id: string
+          message_type: string
+          metadata?: Json | null
+          phone: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          lead_id?: string
+          message_type?: string
+          metadata?: Json | null
+          phone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_messages_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
+          callback_notified_at: string | null
           car_color: string | null
           car_manufacturer: string | null
           car_model: string | null
@@ -2180,14 +2219,17 @@ export type Database = {
           has_accidents: boolean | null
           id: string
           insurance_types: string[] | null
+          last_sync_at: string | null
           notes: string | null
           phone: string
+          requires_callback: boolean | null
           source: string | null
           status: string | null
           total_price: number | null
           updated_at: string | null
         }
         Insert: {
+          callback_notified_at?: string | null
           car_color?: string | null
           car_manufacturer?: string | null
           car_model?: string | null
@@ -2199,14 +2241,17 @@ export type Database = {
           has_accidents?: boolean | null
           id?: string
           insurance_types?: string[] | null
+          last_sync_at?: string | null
           notes?: string | null
           phone: string
+          requires_callback?: boolean | null
           source?: string | null
           status?: string | null
           total_price?: number | null
           updated_at?: string | null
         }
         Update: {
+          callback_notified_at?: string | null
           car_color?: string | null
           car_manufacturer?: string | null
           car_model?: string | null
@@ -2218,8 +2263,10 @@ export type Database = {
           has_accidents?: boolean | null
           id?: string
           insurance_types?: string[] | null
+          last_sync_at?: string | null
           notes?: string | null
           phone?: string
+          requires_callback?: boolean | null
           source?: string | null
           status?: string | null
           total_price?: number | null
