@@ -15,6 +15,8 @@ import {
   MoreHorizontal,
   Eye,
   Trash2,
+  Download,
+  Loader2,
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Input } from "@/components/ui/input";
@@ -108,6 +110,41 @@ export default function Leads() {
       const { data, error } = await query;
       if (error) throw error;
       return data as Lead[];
+    },
+  });
+
+  // Discover leads from Redis
+  const discoverMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("discover-redis-leads");
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      if (data.created > 0) {
+        toast({
+          title: `تم اكتشاف ${data.created} عميل جديد`,
+          description: `تم مزامنة ${data.discovered} محادثة من WhatsApp`,
+        });
+      } else if (data.discovered > 0) {
+        toast({
+          title: "لا يوجد عملاء جدد",
+          description: `جميع المحادثات (${data.existing}) موجودة مسبقاً`,
+        });
+      } else {
+        toast({
+          title: "لا توجد محادثات",
+          description: "لم يتم العثور على محادثات في Redis",
+        });
+      }
+    },
+    onError: (error) => {
+      toast({
+        title: "فشل الاكتشاف",
+        description: error instanceof Error ? error.message : "خطأ غير معروف",
+        variant: "destructive",
+      });
     },
   });
 
@@ -277,6 +314,19 @@ export default function Leads() {
             title="تحديث"
           >
             <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => discoverMutation.mutate()}
+            disabled={discoverMutation.isPending}
+            title="اكتشاف المحادثات من WhatsApp"
+          >
+            {discoverMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin ml-2" />
+            ) : (
+              <Download className="h-4 w-4 ml-2" />
+            )}
+            اكتشاف من Redis
           </Button>
         </div>
 
