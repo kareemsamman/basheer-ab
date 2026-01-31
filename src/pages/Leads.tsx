@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import {
@@ -12,6 +12,9 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  MoreHorizontal,
+  Eye,
+  Trash2,
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Input } from "@/components/ui/input";
@@ -33,9 +36,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { LeadDetailsDrawer } from "@/components/leads/LeadDetailsDrawer";
+import { LeadNotesPopover } from "@/components/leads/LeadNotesPopover";
+import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
+import { toast } from "@/hooks/use-toast";
 
 interface Lead {
   id: string;
@@ -71,6 +83,8 @@ export default function Leads() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);
 
   // Fetch leads
   const { data: leads, isLoading, refetch } = useQuery({
@@ -97,6 +111,41 @@ export default function Leads() {
     },
   });
 
+  // Update status mutation
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ leadId, status }: { leadId: string; status: string }) => {
+      const { error } = await supabase
+        .from("leads")
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq("id", leadId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      toast({ title: "تم تحديث الحالة" });
+    },
+    onError: () => {
+      toast({ title: "حدث خطأ", variant: "destructive" });
+    },
+  });
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (leadId: string) => {
+      const { error } = await supabase.from("leads").delete().eq("id", leadId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      toast({ title: "تم حذف العميل المحتمل" });
+      setDeleteDialogOpen(false);
+      setLeadToDelete(null);
+    },
+    onError: () => {
+      toast({ title: "حدث خطأ أثناء الحذف", variant: "destructive" });
+    },
+  });
+
   // Stats
   const stats = {
     new: leads?.filter((l) => l.status === "new").length || 0,
@@ -105,21 +154,29 @@ export default function Leads() {
     rejected: leads?.filter((l) => l.status === "rejected").length || 0,
   };
 
-  const getStatusBadge = (status: string) => {
-    const config = statusOptions.find((s) => s.value === status);
-    return (
-      <Badge
-        variant="outline"
-        className={`${config?.color || "bg-gray-500"} text-white border-0`}
-      >
-        {config?.label || status}
-      </Badge>
-    );
+  const getStatusConfig = (status: string) => {
+    return statusOptions.find((s) => s.value === status);
   };
 
   const handleRowClick = (lead: Lead) => {
     setSelectedLead(lead);
     setDrawerOpen(true);
+  };
+
+  const handleStatusChange = (leadId: string, newStatus: string) => {
+    updateStatusMutation.mutate({ leadId, status: newStatus });
+  };
+
+  const handleDeleteClick = (lead: Lead, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLeadToDelete(lead);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (leadToDelete) {
+      deleteMutation.mutate(leadToDelete.id);
+    }
   };
 
   return (
@@ -235,6 +292,7 @@ export default function Leads() {
                 <TableHead>السعر</TableHead>
                 <TableHead>الحالة</TableHead>
                 <TableHead>التاريخ</TableHead>
+                <TableHead className="w-24">إجراءات</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -246,8 +304,9 @@ export default function Leads() {
                     <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                    <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                   </TableRow>
                 ))
               ) : leads && leads.length > 0 ? (
@@ -291,17 +350,64 @@ export default function Leads() {
                         ? `₪${lead.total_price.toLocaleString()}`
                         : "-"}
                     </TableCell>
-                    <TableCell>{getStatusBadge(lead.status)}</TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Select
+                        value={lead.status}
+                        onValueChange={(value) => handleStatusChange(lead.id, value)}
+                      >
+                        <SelectTrigger className="w-28 h-8">
+                          <div className="flex items-center gap-1">
+                            <div className={`w-2 h-2 rounded-full ${getStatusConfig(lead.status)?.color || 'bg-gray-500'}`} />
+                            <span className="text-xs">{getStatusConfig(lead.status)?.label || lead.status}</span>
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {statusOptions.filter(s => s.value !== 'all').map((status) => (
+                            <SelectItem key={status.value} value={status.value}>
+                              <div className="flex items-center gap-2">
+                                <div className={`w-2 h-2 rounded-full ${status.color}`} />
+                                {status.label}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
                       {format(new Date(lead.created_at), "dd/MM/yyyy", {
                         locale: ar,
                       })}
                     </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-1">
+                        <LeadNotesPopover leadId={lead.id} currentNotes={lead.notes} />
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleRowClick(lead)}>
+                              <Eye className="h-4 w-4 ml-2" />
+                              عرض التفاصيل
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={(e) => handleDeleteClick(lead, e)}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4 ml-2" />
+                              حذف
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
+                  <TableCell colSpan={8} className="text-center py-8">
                     <div className="flex flex-col items-center gap-2 text-muted-foreground">
                       <MessageSquare className="h-12 w-12 opacity-20" />
                       <p>لا يوجد عملاء محتملون</p>
@@ -322,6 +428,16 @@ export default function Leads() {
         lead={selectedLead}
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onConfirm={confirmDelete}
+        title="حذف العميل المحتمل"
+        description={`هل أنت متأكد من حذف "${leadToDelete?.customer_name || leadToDelete?.phone}"؟ لا يمكن التراجع عن هذا الإجراء.`}
+        loading={deleteMutation.isPending}
       />
     </MainLayout>
   );

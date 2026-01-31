@@ -293,11 +293,11 @@ const App = () => (
                   <CorrespondenceLetters />
                 </AdminRoute>
               } />
-              {/* Admin leads from WhatsApp */}
-              <Route path="/admin/leads" element={
-                <AdminRoute>
+              {/* Leads from WhatsApp - accessible to all authenticated users */}
+              <Route path="/leads" element={
+                <ProtectedRoute>
                   <Leads />
-                </AdminRoute>
+                </ProtectedRoute>
               } />
               {/* Admin claims routes */}
               <Route path="/admin/claims" element={

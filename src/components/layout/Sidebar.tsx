@@ -85,6 +85,7 @@ export const navigationGroups: NavGroup[] = [
       { name: "السيارات", href: "/cars", icon: Car },
       { name: "الوثائق", href: "/policies", icon: FileText },
       { name: "جهات الاتصال", href: "/contacts", icon: Contact },
+      { name: "العملاء المحتملون", href: "/leads", icon: MessageSquare },
     ],
   },
   {
@@ -141,7 +142,6 @@ export const navigationGroups: NavGroup[] = [
       { name: "سجل الرسائل", href: "/sms-history", icon: History },
       { name: "استيراد WordPress", href: "/admin/wordpress-import", icon: Upload },
       { name: "إعلانات النظام", href: "/admin/announcements", icon: Megaphone, superAdminOnly: true },
-      { name: "Leads (WhatsApp)", href: "/admin/leads", icon: MessageSquare },
     ],
   },
 ];
