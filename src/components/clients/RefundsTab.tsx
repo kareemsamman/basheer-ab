@@ -39,7 +39,9 @@ import {
   FileText,
   RefreshCw,
   Loader2,
+  Trash2,
 } from 'lucide-react';
+import { DeleteConfirmDialog } from '@/components/shared/DeleteConfirmDialog';
 import { toast } from 'sonner';
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import { useAuth } from '@/hooks/useAuth';
@@ -100,6 +102,8 @@ export function RefundsTab({ clientId, branchId, onRefundAdded }: RefundsTabProp
   const [paymentMethod, setPaymentMethod] = useState<string>('cash');
   const [selectedCarId, setSelectedCarId] = useState<string>('');
   const [notes, setNotes] = useState('');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [refundToDelete, setRefundToDelete] = useState<RefundRecord | null>(null);
 
   // Fetch refunds (wallet transactions)
   const { data: refunds, isLoading, refetch } = useQuery({
@@ -188,6 +192,40 @@ export function RefundsTab({ clientId, branchId, onRefundAdded }: RefundsTabProp
     addRefundMutation.mutate();
   };
 
+  // Delete refund mutation
+  const deleteRefundMutation = useMutation({
+    mutationFn: async (refundId: string) => {
+      const { error } = await supabase
+        .from('customer_wallet_transactions')
+        .delete()
+        .eq('id', refundId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('تم حذف المرتجع بنجاح');
+      queryClient.invalidateQueries({ queryKey: ['client-refunds', clientId] });
+      setDeleteDialogOpen(false);
+      setRefundToDelete(null);
+      onRefundAdded?.();
+    },
+    onError: (error) => {
+      console.error('Error deleting refund:', error);
+      toast.error('حدث خطأ أثناء حذف المرتجع');
+    },
+  });
+
+  const handleDeleteClick = (refund: RefundRecord) => {
+    setRefundToDelete(refund);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (refundToDelete) {
+      deleteRefundMutation.mutate(refundToDelete.id);
+    }
+  };
+
   const totalRefunds = refunds?.reduce((sum, r) => sum + r.amount, 0) || 0;
 
   return (
@@ -236,6 +274,7 @@ export function RefundsTab({ clientId, branchId, onRefundAdded }: RefundsTabProp
                 <TableHead className="text-right">طريقة الدفع</TableHead>
                 <TableHead className="text-right">الوصف</TableHead>
                 <TableHead className="text-right">تاريخ الإنشاء</TableHead>
+                <TableHead className="text-right w-[80px]">إجراءات</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -307,6 +346,18 @@ export function RefundsTab({ clientId, branchId, onRefundAdded }: RefundsTabProp
                     {formatDate(refund.created_at)}
                     {refund.creator?.full_name && (
                       <p className="text-xs">{refund.creator.full_name}</p>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {refund.transaction_type === 'manual_refund' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => handleDeleteClick(refund)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     )}
                   </TableCell>
                 </TableRow>
@@ -409,6 +460,16 @@ export function RefundsTab({ clientId, branchId, onRefundAdded }: RefundsTabProp
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onConfirm={confirmDelete}
+        title="حذف المرتجع"
+        description={`هل أنت متأكد من حذف مرتجع بقيمة ₪${refundToDelete?.amount?.toLocaleString()}؟ لا يمكن التراجع عن هذا الإجراء.`}
+        loading={deleteRefundMutation.isPending}
+      />
     </div>
   );
 }
