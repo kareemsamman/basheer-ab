@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { 
   Plus, 
   Receipt,
@@ -68,6 +69,11 @@ export default function Expenses() {
     notes: '',
   });
   const [saving, setSaving] = useState(false);
+  
+  // Delete state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchExpenses = useCallback(async () => {
     setLoading(true);
@@ -173,21 +179,31 @@ export default function Expenses() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('هل أنت متأكد من حذف هذا المصروف؟')) return;
+  const handleDeleteClick = (id: string) => {
+    setDeletingId(id);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deletingId) return;
     
+    setDeleting(true);
     try {
       const { error } = await supabase
         .from('expenses')
         .delete()
-        .eq('id', id);
+        .eq('id', deletingId);
       
       if (error) throw error;
       toast.success('تم حذف المصروف');
+      setDeleteDialogOpen(false);
+      setDeletingId(null);
       fetchExpenses();
     } catch (error) {
       console.error('Error deleting expense:', error);
       toast.error('حدث خطأ في حذف المصروف');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -325,7 +341,7 @@ export default function Expenses() {
                             <Button variant="ghost" size="icon" onClick={() => handleEdit(expense)}>
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleDelete(expense.id)}>
+                            <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(expense.id)}>
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
                           </div>
@@ -417,6 +433,16 @@ export default function Expenses() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onConfirm={handleDeleteConfirm}
+        title="حذف المصروف"
+        description="هل أنت متأكد من حذف هذا المصروف؟ لا يمكن التراجع عن هذا الإجراء."
+        loading={deleting}
+      />
     </MainLayout>
   );
 }
