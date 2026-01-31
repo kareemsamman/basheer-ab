@@ -56,6 +56,7 @@ import BusinessContacts from "./pages/BusinessContacts";
 import RepairClaims from "./pages/RepairClaims";
 import RepairClaimDetail from "./pages/RepairClaimDetail";
 import CorrespondenceLetters from "./pages/CorrespondenceLetters";
+import Leads from "./pages/Leads";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -290,6 +291,12 @@ const App = () => (
               <Route path="/admin/correspondence" element={
                 <AdminRoute>
                   <CorrespondenceLetters />
+                </AdminRoute>
+              } />
+              {/* Admin leads from WhatsApp */}
+              <Route path="/admin/leads" element={
+                <AdminRoute>
+                  <Leads />
                 </AdminRoute>
               } />
               {/* Admin claims routes */}

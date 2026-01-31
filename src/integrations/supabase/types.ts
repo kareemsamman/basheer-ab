@@ -2167,6 +2167,66 @@ export type Database = {
           },
         ]
       }
+      leads: {
+        Row: {
+          car_color: string | null
+          car_manufacturer: string | null
+          car_model: string | null
+          car_number: string | null
+          car_year: string | null
+          created_at: string | null
+          customer_name: string | null
+          driver_over_24: boolean | null
+          has_accidents: boolean | null
+          id: string
+          insurance_types: string[] | null
+          notes: string | null
+          phone: string
+          source: string | null
+          status: string | null
+          total_price: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          car_color?: string | null
+          car_manufacturer?: string | null
+          car_model?: string | null
+          car_number?: string | null
+          car_year?: string | null
+          created_at?: string | null
+          customer_name?: string | null
+          driver_over_24?: boolean | null
+          has_accidents?: boolean | null
+          id?: string
+          insurance_types?: string[] | null
+          notes?: string | null
+          phone: string
+          source?: string | null
+          status?: string | null
+          total_price?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          car_color?: string | null
+          car_manufacturer?: string | null
+          car_model?: string | null
+          car_number?: string | null
+          car_year?: string | null
+          created_at?: string | null
+          customer_name?: string | null
+          driver_over_24?: boolean | null
+          has_accidents?: boolean | null
+          id?: string
+          insurance_types?: string[] | null
+          notes?: string | null
+          phone?: string
+          source?: string | null
+          status?: string | null
+          total_price?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       login_attempts: {
         Row: {
           created_at: string
