@@ -339,7 +339,7 @@ const WordPressImport = () => {
     setDetectingPackages(true);
     setPackageLinkStats(null);
     try {
-      const { data, error } = await supabase.rpc('find_missing_packages');
+      const { data, error } = await supabase.rpc('find_missing_packages').range(0, 10000);
       
       if (error) throw error;
       
