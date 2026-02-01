@@ -537,20 +537,19 @@ export function PolicyYearTimeline({
   };
 
   const getPackagePaymentStatus = (pkg: PolicyPackage) => {
-    // Calculate remaining for each policy individually then sum
-    // This ensures correct remaining even when payments are on ELZAMI
-    let totalRemaining = 0;
+    // Sum total paid across all package policies
     let totalPaid = 0;
     
     pkg.allPolicyIds.forEach(id => {
-      const policyPaid = paymentInfo[id]?.paid || 0;
-      const policyRemaining = paymentInfo[id]?.remaining || 0;
-      totalPaid += policyPaid;
-      totalRemaining += Math.max(0, policyRemaining);
+      totalPaid += paymentInfo[id]?.paid || 0;
     });
     
-    const isPaid = totalRemaining <= 0 && pkg.totalPrice > 0;
-    return { totalPaid, remaining: totalRemaining, isPaid };
+    // Calculate remaining as package total - all payments
+    // This is the correct way for packages (same as drawer)
+    const remaining = Math.max(0, pkg.totalPrice - totalPaid);
+    const isPaid = remaining <= 0 && pkg.totalPrice > 0;
+    
+    return { totalPaid, remaining, isPaid };
   };
 
   if (policies.length === 0) {
