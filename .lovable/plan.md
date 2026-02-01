@@ -1,225 +1,70 @@
 
+# خطة: تحسين أداة ربط الباقات المفقودة
 
-# خطة: أداة اكتشاف وربط الباقات المفقودة
+## المشكلة الحالية
 
-## كيف ستكتشف الأداة الباقات؟
+### 1) لماذا لا يظهر "امجد ابو سنينة"؟
 
-### منطق الاكتشاف التلقائي
+العميل لديه **4 وثائق** لنفس السيارة (7875071):
 
-ستبحث الأداة عن وثائق تحقق **جميع** الشروط التالية:
+| التاريخ | النوع | السعر |
+|---------|-------|-------|
+| 2026-01-18 09:17:26 | ELZAMI | 2,296₪ |
+| 2026-01-18 09:17:26 | THIRD_FULL/THIRD | 1,000₪ |
+| 2026-01-18 09:17:26 | ROAD_SERVICE | 300₪ |
+| 2026-02-01 09:07:44 | THIRD_FULL | 3,704₪ |
 
-1. **نفس العميل** (`client_id`)
-2. **نفس السيارة** (`car_id`)
-3. **أُنشئت خلال ساعة واحدة** (الفرق بين أول وثيقة وآخر وثيقة < 60 دقيقة)
-4. **بدون group_id** (أي لم يتم ربطها كباقة)
-5. **غير ملغاة** (`cancelled = false`)
-6. **أنواع مختلفة** (مثلاً: THIRD_FULL + ELZAMI + ROAD_SERVICE)
+المشكلة: الاستعلام الحالي يجمع الـ 4 وثائق معاً ويحسب الفرق الزمني = **14 يوم** → أكبر من ساعة → لا يظهر!
 
-### أمثلة من قاعدة البيانات الحالية
+الحل: يجب تجميع الوثائق **حسب اليوم + الساعة** وليس فقط حسب العميل والسيارة.
 
-| العميل | رقم السيارة | عدد الوثائق | الأنواع |
-|--------|-------------|-------------|---------|
-| كريم ابو الفيلات | 6586537 | 2 | THIRD_FULL + ROAD_SERVICE |
-| مريم يوسف برك | 8380758 | 3 | ELZAMI + ROAD_SERVICE + THIRD_FULL |
-| رشيد ابو ميالة | 8285665 | 3 | THIRD_FULL + ROAD_SERVICE + ELZAMI |
-| بيان سموم | 7422461 | 3 | THIRD_FULL + ELZAMI + ROAD_SERVICE |
+### 2) ميزات مطلوبة
+
+- ✅ إمكانية البحث بالاسم أو رقم السيارة
+- ✅ إمكانية التحديد/إلغاء التحديد (موجود بالفعل)
+- ❌ حالياً تختار الكل تلقائياً → نريد تعديل هذا
 
 ---
 
-## التصميم التقني
+## الحل المقترح
 
-### 1) استعلام SQL للاكتشاف
+### 1) تحسين دالة SQL لتجميع حسب "نافذة زمنية"
+
+بدلاً من تجميع كل الوثائق لنفس العميل+السيارة، سنجمع فقط الوثائق التي أُنشئت خلال نفس الساعة:
 
 ```sql
-WITH policy_candidates AS (
-  SELECT 
-    p.id, p.client_id, p.car_id, p.policy_type_parent,
-    p.insurance_price, p.created_at, p.group_id,
-    c.full_name as client_name, cr.car_number
-  FROM policies p
-  JOIN clients c ON p.client_id = c.id
-  JOIN cars cr ON p.car_id = cr.id
-  WHERE p.group_id IS NULL
-    AND p.cancelled = false
-),
-grouped AS (
-  SELECT 
-    client_id, car_id, client_name, car_number,
-    COUNT(*) as policy_count,
-    array_agg(id ORDER BY created_at) as policy_ids,
-    array_agg(policy_type_parent) as types,
-    SUM(insurance_price) as total_price,
-    MIN(created_at) as first_created,
-    MAX(created_at) as last_created
-  FROM policy_candidates
-  GROUP BY client_id, car_id, client_name, car_number
-  HAVING COUNT(*) > 1
-    AND (MAX(created_at) - MIN(created_at)) < interval '1 hour'
-)
-SELECT * FROM grouped ORDER BY first_created DESC
+-- تجميع حسب العميل + السيارة + الساعة (rounded to hour)
+GROUP BY 
+  client_id, 
+  car_id, 
+  date_trunc('hour', created_at)
 ```
 
-### 2) عملية الربط
+هذا سيفصل مجموعتين:
+- **مجموعة 1**: 3 وثائق من 2026-01-18 → تظهر للربط
+- **مجموعة 2**: 1 وثيقة من 2026-02-01 → لا تظهر (وثيقة واحدة فقط)
 
-عند ربط الوثائق كباقة:
-1. إنشاء `group_id` جديد (UUID)
-2. تحديث جميع الوثائق المحددة بنفس `group_id`
-
-```typescript
-const groupId = crypto.randomUUID();
-await supabase
-  .from('policies')
-  .update({ group_id: groupId })
-  .in('id', policyIds);
-```
-
----
-
-## واجهة المستخدم
-
-### بطاقة الأداة (في صفحة WordPress Import)
+### 2) إضافة حقل البحث
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ 📦 ربط الباقات المفقودة                                │
-│ ───────────────────────────────────────────────────────│
-│                                                         │
-│ تبحث عن وثائق يجب أن تكون ضمن باقة واحدة:              │
-│ • نفس العميل والسيارة                                  │
-│ • أُنشئت خلال ساعة واحدة                               │
-│ • أنواع مختلفة (إلزامي، ثالث/شامل، خدمات طريق)         │
-│                                                         │
-│ باقات مفقودة تم اكتشافها: [15]                         │
-│                                                         │
-│ [🔍 اكتشاف الباقات]  [🔗 ربط الكل تلقائياً]            │
-│                                                         │
-│ ┌─────────────────────────────────────────────────────┐│
-│ │ ☑ كريم ابو الفيلات - 6586537                       ││
-│ │   2 وثائق: THIRD_FULL, ROAD_SERVICE                ││
-│ │   المجموع: 3,000₪                                  ││
-│ ├─────────────────────────────────────────────────────┤│
-│ │ ☑ مريم يوسف برك - 8380758                         ││
-│ │   3 وثائق: ELZAMI, ROAD_SERVICE, THIRD_FULL        ││
-│ │   المجموع: 0₪                                      ││
-│ └─────────────────────────────────────────────────────┘│
-│                                                         │
-│ النتائج:                                               │
-│ ✅ تم ربط 15 باقة بنجاح                               │
+│ 🔍 بحث بالاسم أو رقم السيارة...                        │
 └─────────────────────────────────────────────────────────┘
 ```
 
+### 3) تغيير "محددة تلقائياً" إلى "غير محددة"
+
+بدلاً من تحديد الكل تلقائياً، نتركها غير محددة ليختار المستخدم ما يريد.
+
 ---
 
-## التغييرات المطلوبة
+## التغييرات التقنية
 
-### ملف واحد: `src/pages/WordPressImport.tsx`
-
-#### 1) إضافة State
-
-```typescript
-// Missing packages state
-const [detectingPackages, setDetectingPackages] = useState(false);
-const [missingPackages, setMissingPackages] = useState<MissingPackage[]>([]);
-const [linkingPackages, setLinkingPackages] = useState(false);
-const [packageLinkStats, setPackageLinkStats] = useState<{
-  found: number;
-  linked: number;
-  errors: string[];
-} | null>(null);
-
-interface MissingPackage {
-  client_id: string;
-  car_id: string;
-  client_name: string;
-  car_number: string;
-  policy_count: number;
-  policy_ids: string[];
-  types: string[];
-  total_price: number;
-  first_created: string;
-  selected: boolean;
-}
-```
-
-#### 2) دالة اكتشاف الباقات
-
-```typescript
-const detectMissingPackages = async () => {
-  setDetectingPackages(true);
-  try {
-    // Query to find policies that should be packages
-    const { data, error } = await supabase.rpc('find_missing_packages');
-    
-    if (error) throw error;
-    
-    setMissingPackages((data || []).map(pkg => ({
-      ...pkg,
-      selected: true // Selected by default
-    })));
-    
-    toast({
-      title: "تم الاكتشاف",
-      description: `تم العثور على ${data?.length || 0} باقة مفقودة`
-    });
-  } catch (e: any) {
-    toast({ title: "خطأ", description: e.message, variant: "destructive" });
-  } finally {
-    setDetectingPackages(false);
-  }
-};
-```
-
-#### 3) دالة ربط الباقات
-
-```typescript
-const linkMissingPackages = async () => {
-  const selected = missingPackages.filter(p => p.selected);
-  if (selected.length === 0) {
-    toast({ title: "لم يتم تحديد أي باقات" });
-    return;
-  }
-  
-  setLinkingPackages(true);
-  const stats = { found: selected.length, linked: 0, errors: [] as string[] };
-  
-  try {
-    for (const pkg of selected) {
-      // Generate new group_id
-      const groupId = crypto.randomUUID();
-      
-      // Update all policies with this group_id
-      const { error } = await supabase
-        .from('policies')
-        .update({ group_id: groupId })
-        .in('id', pkg.policy_ids);
-      
-      if (error) {
-        stats.errors.push(`${pkg.client_name}: ${error.message}`);
-      } else {
-        stats.linked++;
-      }
-    }
-    
-    toast({
-      title: "تم الربط",
-      description: `تم ربط ${stats.linked} باقة من أصل ${stats.found}`
-    });
-    
-    // Refresh detection
-    await detectMissingPackages();
-    
-  } catch (e: any) {
-    stats.errors.push(e.message);
-  } finally {
-    setPackageLinkStats(stats);
-    setLinkingPackages(false);
-  }
-};
-```
-
-### إضافة RPC Function (Database Migration)
+### ملف 1: `supabase/migrations/xxx.sql` - تحديث RPC
 
 ```sql
+DROP FUNCTION IF EXISTS public.find_missing_packages();
+
 CREATE OR REPLACE FUNCTION public.find_missing_packages()
 RETURNS TABLE (
   client_id uuid,
@@ -242,7 +87,9 @@ AS $$
     SELECT 
       p.id, p.client_id, p.car_id, p.policy_type_parent,
       p.insurance_price, p.created_at,
-      c.full_name as client_name, cr.car_number
+      c.full_name as client_name, cr.car_number,
+      -- Create a time window bucket (rounded to hour)
+      date_trunc('hour', p.created_at) as time_bucket
     FROM policies p
     JOIN clients c ON p.client_id = c.id
     JOIN cars cr ON p.car_id = cr.id
@@ -250,19 +97,72 @@ AS $$
       AND p.cancelled = false
   )
   SELECT 
-    client_id, car_id, client_name, car_number,
+    pc.client_id, 
+    pc.car_id, 
+    pc.client_name, 
+    pc.car_number,
     COUNT(*) as policy_count,
-    array_agg(id ORDER BY created_at) as policy_ids,
-    array_agg(policy_type_parent::text) as types,
-    COALESCE(SUM(insurance_price), 0) as total_price,
-    MIN(created_at) as first_created,
-    MAX(created_at) as last_created
-  FROM policy_candidates
-  GROUP BY client_id, car_id, client_name, car_number
+    array_agg(pc.id ORDER BY pc.created_at) as policy_ids,
+    array_agg(pc.policy_type_parent::text) as types,
+    COALESCE(SUM(pc.insurance_price), 0) as total_price,
+    MIN(pc.created_at) as first_created,
+    MAX(pc.created_at) as last_created
+  FROM policy_candidates pc
+  -- Group by time bucket to separate policies created at different times
+  GROUP BY pc.client_id, pc.car_id, pc.client_name, pc.car_number, pc.time_bucket
   HAVING COUNT(*) > 1
-    AND (MAX(created_at) - MIN(created_at)) < interval '1 hour'
-  ORDER BY MIN(created_at) DESC;
+  ORDER BY MIN(pc.created_at) DESC;
 $$;
+```
+
+### ملف 2: `src/pages/WordPressImport.tsx`
+
+#### أ) إضافة state للبحث
+
+```typescript
+const [packageSearch, setPackageSearch] = useState("");
+```
+
+#### ب) تصفية النتائج حسب البحث
+
+```typescript
+const filteredPackages = missingPackages.filter(pkg => 
+  !packageSearch.trim() || 
+  pkg.client_name.includes(packageSearch) ||
+  pkg.car_number.includes(packageSearch)
+);
+```
+
+#### ج) تغيير التحديد الافتراضي
+
+```typescript
+setMissingPackages((data || []).map((pkg: any) => ({
+  ...pkg,
+  selected: false  // ← تغيير من true إلى false
+})));
+```
+
+#### د) إضافة حقل البحث في UI
+
+```tsx
+{/* Search field */}
+<div className="relative">
+  <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+  <Input
+    placeholder="بحث بالاسم أو رقم السيارة..."
+    value={packageSearch}
+    onChange={(e) => setPackageSearch(e.target.value)}
+    className="pr-10"
+  />
+</div>
+```
+
+#### هـ) عرض النتائج المفلترة
+
+```tsx
+{filteredPackages.map((pkg, i) => (
+  // ... render each package
+))}
 ```
 
 ---
@@ -271,15 +171,14 @@ $$;
 
 | الملف | التغيير |
 |-------|---------|
-| Database Migration | إضافة `find_missing_packages()` RPC function |
-| `src/pages/WordPressImport.tsx` | إضافة UI + دوال الاكتشاف والربط |
+| Database Migration | تحديث `find_missing_packages()` لتجميع حسب الساعة |
+| `src/pages/WordPressImport.tsx` | إضافة حقل بحث + تغيير التحديد الافتراضي |
 
 ---
 
 ## النتيجة المتوقعة
 
-1. ✅ الأداة تكتشف تلقائياً جميع الوثائق التي يجب أن تكون باقات
-2. ✅ يمكن للمدير مراجعة القائمة واختيار ما يريد ربطه
-3. ✅ زر "ربط الكل" يقوم بإنشاء `group_id` لكل مجموعة
-4. ✅ بعد الربط، الوثائق ستظهر كباقات في تفاصيل العميل
-
+1. ✅ وثائق **امجد ابو سنينة** من 2026-01-18 ستظهر كمجموعة منفصلة
+2. ✅ يمكن البحث بسهولة عن أي عميل
+3. ✅ المستخدم يختار ما يريد ربطه بدلاً من ربط الكل
+4. ✅ الوثيقة الجديدة (2026-02-01) لن تُربط مع القديمة لأنها وثيقة واحدة فقط
