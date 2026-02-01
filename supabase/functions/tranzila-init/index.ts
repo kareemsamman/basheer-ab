@@ -78,7 +78,22 @@ Deno.serve(async (req) => {
     // Generate unique index for this transaction
     const tranzilaIndex = `${policy_id}-${Date.now()}`
 
-    // Create pending payment record
+    // First, fetch the policy to get its branch_id (for RLS visibility)
+    const { data: policyData, error: policyError } = await supabase
+      .from('policies')
+      .select('branch_id')
+      .eq('id', policy_id)
+      .single()
+
+    if (policyError) {
+      console.error('Policy fetch error:', policyError)
+      return new Response(JSON.stringify({ error: 'Policy not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Create pending payment record with branch_id for worker visibility
     const { data: payment, error: paymentError } = await supabase
       .from('policy_payments')
       .insert({
@@ -91,6 +106,7 @@ Deno.serve(async (req) => {
         tranzila_index: tranzilaIndex,
         created_by_admin_id: user.id,
         refused: null, // null = pending, false = paid, true = refused
+        branch_id: policyData?.branch_id || null, // Inherit branch from policy for RLS
       })
       .select()
       .single()
