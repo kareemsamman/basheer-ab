@@ -372,15 +372,30 @@ const WordPressImport = () => {
     
     try {
       for (const pkg of selected) {
-        const groupId = crypto.randomUUID();
+        // 1. First create a record in policy_groups (required for foreign key)
+        const { data: groupData, error: groupError } = await supabase
+          .from('policy_groups')
+          .insert({
+            client_id: pkg.client_id,
+            car_id: pkg.car_id,
+            name: `باقة - ${new Date(pkg.first_created).toLocaleDateString('en-GB')}`,
+          })
+          .select()
+          .single();
         
-        const { error } = await supabase
+        if (groupError) {
+          stats.errors.push(`${pkg.client_name}: فشل إنشاء المجموعة - ${groupError.message}`);
+          continue;
+        }
+        
+        // 2. Update policies with the valid group_id
+        const { error: updateError } = await supabase
           .from('policies')
-          .update({ group_id: groupId })
+          .update({ group_id: groupData.id })
           .in('id', pkg.policy_ids);
         
-        if (error) {
-          stats.errors.push(`${pkg.client_name}: ${error.message}`);
+        if (updateError) {
+          stats.errors.push(`${pkg.client_name}: ${updateError.message}`);
         } else {
           stats.linked++;
         }
