@@ -89,6 +89,19 @@ const getTypeName = (p: PackagePolicy) => {
     return null;
   };
 
+  const getCompanyName = (p: PackagePolicy) => {
+    if (p.policy_type_parent === 'ROAD_SERVICE' && p.road_services) {
+      return p.road_services.name_ar || p.road_services.name;
+    }
+    if (p.policy_type_parent === 'ACCIDENT_FEE_EXEMPTION' && p.accident_fee_services) {
+      return p.accident_fee_services.name_ar || p.accident_fee_services.name;
+    }
+    if (p.insurance_companies) {
+      return p.insurance_companies.name_ar || p.insurance_companies.name;
+    }
+    return '-';
+  };
+
   const totalPrice = policies.reduce((sum, p) => sum + p.insurance_price, 0);
   const totalProfit = policies.reduce((sum, p) => sum + (p.profit || 0), 0);
 
@@ -104,6 +117,7 @@ const getTypeName = (p: PackagePolicy) => {
         <TableHeader>
           <TableRow className="bg-muted/30">
             <TableHead className="font-bold">نوع التأمين</TableHead>
+            <TableHead className="font-bold">الشركة</TableHead>
             <TableHead className="font-bold">الفترة</TableHead>
             <TableHead className="font-bold text-left">السعر</TableHead>
             {isAdmin && <TableHead className="font-bold text-left">الربح</TableHead>}
@@ -130,6 +144,9 @@ const getTypeName = (p: PackagePolicy) => {
                       )}
                     </div>
                   </div>
+                </TableCell>
+                <TableCell>
+                  <span className="text-sm font-medium">{getCompanyName(policy)}</span>
                 </TableCell>
                 <TableCell>
                   <div className="text-sm">
@@ -161,7 +178,7 @@ const getTypeName = (p: PackagePolicy) => {
         </TableBody>
         <TableFooter>
           <TableRow className="bg-gradient-to-l from-primary/5 to-primary/10 font-bold">
-            <TableCell colSpan={2} className="text-left">
+            <TableCell colSpan={3} className="text-left">
               <span className="text-lg">المجموع</span>
             </TableCell>
             <TableCell className="text-left">
