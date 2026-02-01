@@ -1,250 +1,202 @@
 
-# خطة: إضافة أداة مسح أرقام البوليصة (POL-)
+# خطة إصلاح ثلاث مشاكل في الباقات والدفعات ورسائل SMS
 
-## المشكلة
+## المشاكل المكتشفة
 
-توجد **4,671 وثيقة** تحتوي على أرقام بوليصة خاطئة بالنمط `POL-XXXX-XXXX` مثل:
-- `POL-2024-105`
-- `POL-2025-5078`
-- `POL-1970-2676`
+### المشكلة 1: الباقة لا تُنشأ بشكل صحيح (group_id = null)
 
-هذه الأرقام تم إنشاؤها تلقائياً بشكل خاطئ ويجب مسحها (تفريغها) لأن رقم البوليصة الحقيقي يأتي من شركة التأمين.
+**السبب الجذري:**
+في ملف `PolicyWizard.tsx` سطر 700 و 1066، الكود يتحقق فقط من `packageAddons[0]` (إلزامي) و `packageAddons[1]` (ثالث/شامل):
+
+```typescript
+// سطر 700 - إنشاء المجموعة
+if (packageMode && (packageAddons[0].enabled || packageAddons[1].enabled))
+
+// سطر 1066 - تحديد isPackage
+isPackage: packageMode && (packageAddons[0]?.enabled || packageAddons[1]?.enabled)
+```
+
+لكن في الحالة الحالية:
+- الوثيقة الرئيسية: **ثالث/شامل** (policy_type_parent = THIRD_FULL)
+- الإضافات: **إلزامي + خدمات طريق**
+
+المشكلة أن:
+- `packageAddons[0]` = elzami (مفعّل)
+- `packageAddons[1]` = third_full (غير مفعّل - لأن الرئيسي هو third_full)
+- `packageAddons[2]` = road_service (مفعّل)
+- `packageAddons[3]` = accident_fee_exemption
+
+الكود يتحقق فقط من [0] و [1]، لكن إذا كان الرئيسي ثالث/شامل والإضافات تشمل خدمات طريق فقط (index 2)، لن يتم إنشاء group_id!
 
 ---
 
-## الحل المقترح
+### المشكلة 2: دفعة الفيزا لا تظهر للعامل (لكن تظهر للمدير)
 
-إضافة أداة صيانة جديدة في صفحة `/admin/wordpress-import` ضمن تبويب "الأدوات" تقوم بـ:
+**السبب الجذري:**
+بيانات الدفعات في قاعدة البيانات:
 
-1. **جلب عدد الوثائق المتأثرة** عند تحميل الصفحة
-2. **عرض العدد** في badge ملونة
-3. **زر لتنفيذ المسح** بشكل دفعات (batches) لتجنب timeout
-4. **شريط تقدم** أثناء العملية
-5. **عرض النتائج** بعد الانتهاء
+| payment_type | amount | branch_id |
+|--------------|--------|-----------|
+| visa | 1500 | **NULL** |
+| cash | 2204 | 146727e4... |
+
+دفعة الفيزا لها `branch_id = NULL`!
+
+سياسة RLS على جدول `policy_payments`:
+```sql
+can_access_branch(auth.uid(), branch_id)
+```
+
+- للمدير: الدالة تُرجع `TRUE` لأي قيمة
+- للعامل: عندما `branch_id = NULL`، الدالة تُرجع `FALSE`
+
+**لماذا branch_id = NULL في دفعة الفيزا؟**
+دفعات الفيزا تُنشأ عبر Tranzila webhook الذي يعمل بخلفية بدون معرفة branch_id الأصلي.
 
 ---
 
-## التغييرات المطلوبة
+### المشكلة 3: خطأ في إرسال SMS للعامل بعد إنشاء الوثيقة
 
-### ملف واحد فقط: `src/pages/WordPressImport.tsx`
-
-#### 1) إضافة State جديدة
+**السبب الجذري:**
+في `PolicySuccessDialog.tsx`، عند `isPackage = true`:
 
 ```typescript
-// Clear POL- policy numbers state
-const [clearingPolNumbers, setClearingPolNumbers] = useState(false);
-const [polNumbersCount, setPolNumbersCount] = useState<number | null>(null);
-const [polNumbersClearStats, setPolNumbersClearStats] = useState<{
-  found: number;
-  cleared: number;
-  errors: string[];
-} | null>(null);
+const { data: groupPolicies } = await supabase
+  .from('policies')
+  .select('id')
+  .eq('group_id', policyId);  // ← خطأ! policyId ليس هو group_id
 ```
 
-#### 2) دالة جلب العدد
+`policyId` هو ID الوثيقة الرئيسية، وليس `group_id`. يجب جلب group_id من الوثيقة أولاً.
 
+بالإضافة لذلك، بما أن الباقة لم تُنشأ بسبب المشكلة 1، الاستعلام لن يجد أي وثائق.
+
+---
+
+## الحلول
+
+### الحل 1: إصلاح شرط إنشاء الباقة
+
+**الملف:** `src/components/policies/PolicyWizard.tsx`
+
+**التغيير في سطر 700:**
 ```typescript
-const fetchPolNumbersCount = async () => {
-  try {
-    // Count policies with POL- prefix
-    const { count, error } = await supabase
-      .from('policies')
-      .select('id', { count: 'exact', head: true })
-      .like('policy_number', 'POL-%');
-    
-    if (error) throw error;
-    setPolNumbersCount(count || 0);
-  } catch (e) {
-    console.error('Error fetching POL- count:', e);
-  }
-};
+// قبل:
+if (packageMode && (packageAddons[0].enabled || packageAddons[1].enabled))
+
+// بعد:
+if (packageMode && packageAddons.some(addon => addon.enabled))
 ```
 
-#### 3) دالة المسح (بدفعات)
+**التغيير في سطر 1066:**
+```typescript
+// قبل:
+isPackage: packageMode && (packageAddons[0]?.enabled || packageAddons[1]?.enabled)
+
+// بعد:
+isPackage: packageMode && packageAddons.some(addon => addon.enabled)
+```
+
+---
+
+### الحل 2: إصلاح branch_id لدفعات الفيزا
+
+**الخيار أ - في wizard:** عند إنشاء دفعة فيزا مؤقتة قبل Tranzila، تمرير branch_id.
+
+**الخيار ب - في Tranzila webhook:** جلب branch_id من الوثيقة وتعيينه للدفعة.
+
+**التنفيذ (الخيار ب) - الملف:** `supabase/functions/tranzila-webhook/index.ts`
+
+عند إنشاء الدفعة، جلب branch_id من الوثيقة:
+```typescript
+// جلب branch_id من الوثيقة
+const { data: policyData } = await supabase
+  .from('policies')
+  .select('branch_id')
+  .eq('id', policyId)
+  .single();
+
+// إنشاء الدفعة مع branch_id
+await supabase.from('policy_payments').insert({
+  policy_id: policyId,
+  amount: amount,
+  payment_type: 'visa',
+  branch_id: policyData?.branch_id || null,  // إضافة branch_id
+  // ...
+});
+```
+
+**إصلاح البيانات الحالية (migration):**
+```sql
+UPDATE policy_payments pp
+SET branch_id = p.branch_id
+FROM policies p
+WHERE pp.policy_id = p.id
+  AND pp.branch_id IS NULL
+  AND pp.payment_type = 'visa';
+```
+
+---
+
+### الحل 3: إصلاح استعلام group_id في PolicySuccessDialog
+
+**الملف:** `src/components/policies/PolicySuccessDialog.tsx`
+
+**تغيير الدالتين handlePrintInvoice و handleSendSms:**
 
 ```typescript
-const handleClearPolNumbers = async () => {
-  setClearingPolNumbers(true);
-  setPolNumbersClearStats(null);
+if (isPackage) {
+  // أولاً: جلب group_id من الوثيقة الرئيسية
+  const { data: mainPolicy, error: mainPolicyError } = await supabase
+    .from('policies')
+    .select('group_id')
+    .eq('id', policyId)
+    .single();
   
-  const stats = { found: 0, cleared: 0, errors: [] as string[] };
+  if (mainPolicyError) throw mainPolicyError;
   
-  try {
-    // 1. Fetch ALL policy IDs with POL- prefix using pagination
-    const allPolicyIds: string[] = [];
-    let offset = 0;
-    const pageSize = 1000;
-    
-    while (true) {
-      const { data: batch, error } = await supabase
-        .from('policies')
-        .select('id')
-        .like('policy_number', 'POL-%')
-        .range(offset, offset + pageSize - 1);
-      
-      if (error) throw error;
-      if (!batch || batch.length === 0) break;
-      
-      allPolicyIds.push(...batch.map(p => p.id));
-      if (batch.length < pageSize) break;
-      offset += pageSize;
-    }
-    
-    stats.found = allPolicyIds.length;
-    
-    if (stats.found === 0) {
-      toast({ title: "لا توجد وثائق", description: "لم يتم العثور على أرقام POL-" });
-      setClearingPolNumbers(false);
-      return;
-    }
-    
-    // 2. Clear policy_number in batches
-    const batchSize = 100;
-    for (let i = 0; i < allPolicyIds.length; i += batchSize) {
-      const chunk = allPolicyIds.slice(i, i + batchSize);
-      
-      const { error: updateError } = await supabase
-        .from('policies')
-        .update({ policy_number: null })
-        .in('id', chunk);
-      
-      if (updateError) {
-        stats.errors.push(`دفعة ${i + 1}-${i + chunk.length}: ${updateError.message}`);
-      } else {
-        stats.cleared += chunk.length;
-      }
-    }
-    
-    toast({
-      title: "تم المسح",
-      description: `تم مسح ${stats.cleared} رقم بوليصة من أصل ${stats.found}`,
+  const groupId = mainPolicy?.group_id;
+  
+  if (!groupId) {
+    // لا توجد باقة - استخدم الوثيقة الفردية
+    result = await supabase.functions.invoke('send-invoice-sms', {
+      body: { policy_id: policyId, skip_sms: true }
     });
+  } else {
+    // جلب جميع وثائق الباقة
+    const { data: groupPolicies, error: fetchError } = await supabase
+      .from('policies')
+      .select('id')
+      .eq('group_id', groupId);
     
-    // Refresh count
-    fetchPolNumbersCount();
+    if (fetchError) throw fetchError;
     
-  } catch (e: any) {
-    stats.errors.push(e.message);
-    toast({ title: "خطأ", description: e.message, variant: "destructive" });
-  } finally {
-    setPolNumbersClearStats(stats);
-    setClearingPolNumbers(false);
+    const policyIds = groupPolicies?.map(p => p.id) || [policyId];
+    
+    result = await supabase.functions.invoke('send-package-invoice-sms', {
+      body: { policy_ids: policyIds, skip_sms: true }
+    });
   }
-};
-```
-
-#### 4) استدعاء جلب العدد عند التحميل
-
-```typescript
-useEffect(() => {
-  fetchUnpaidElzamiCount();
-  fetchPolNumbersCount();  // إضافة هذا السطر
-}, []);
-```
-
-#### 5) إضافة واجهة المستخدم (بعد بطاقة Fix ELZAMI)
-
-```tsx
-{/* Clear POL- Policy Numbers Tool */}
-<Card className="border-2 border-red-500">
-  <CardHeader>
-    <CardTitle className="flex items-center gap-2 text-red-600">
-      <Trash2 className="h-5 w-5" />
-      مسح أرقام البوليصة (POL-)
-    </CardTitle>
-    <CardDescription>
-      يقوم بمسح أرقام البوليصة التي تبدأ بـ POL- لأنها أرقام خاطئة.
-      <br />
-      رقم البوليصة الصحيح يأتي من شركة التأمين.
-    </CardDescription>
-  </CardHeader>
-  <CardContent className="space-y-4">
-    {/* Show count */}
-    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-      <div className="flex items-center justify-between">
-        <span className="text-sm">وثائق تحتوي أرقام POL-:</span>
-        <Badge variant={polNumbersCount && polNumbersCount > 0 ? "destructive" : "secondary"}>
-          {polNumbersCount !== null ? polNumbersCount.toLocaleString() : '...'}
-        </Badge>
-      </div>
-    </div>
-
-    <div className="flex items-center gap-2">
-      <Button 
-        onClick={handleClearPolNumbers} 
-        disabled={clearingPolNumbers || polNumbersCount === 0}
-        variant="destructive"
-      >
-        {clearingPolNumbers ? (
-          <><Loader2 className="h-4 w-4 ml-2 animate-spin" />جاري المسح...</>
-        ) : (
-          <><Trash2 className="h-4 w-4 ml-2" />مسح الأرقام</>
-        )}
-      </Button>
-      
-      <Button 
-        variant="outline" 
-        onClick={fetchPolNumbersCount}
-        disabled={clearingPolNumbers}
-      >
-        <RefreshCw className="h-4 w-4 ml-2" />
-        تحديث العدد
-      </Button>
-    </div>
-
-    {/* Results */}
-    {polNumbersClearStats && (
-      <div className="p-4 border rounded-lg space-y-2 bg-muted">
-        <div className="grid grid-cols-2 gap-4 text-center">
-          <div>
-            <p className="text-sm text-muted-foreground">وثائق تم العثور عليها</p>
-            <p className="text-2xl font-bold">{polNumbersClearStats.found.toLocaleString()}</p>
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">تم مسحها</p>
-            <p className="text-2xl font-bold text-green-600">{polNumbersClearStats.cleared.toLocaleString()}</p>
-          </div>
-        </div>
-        {polNumbersClearStats.errors.length > 0 && (
-          <div className="text-sm text-destructive">
-            <p className="font-medium">أخطاء ({polNumbersClearStats.errors.length}):</p>
-            <ScrollArea className="h-24 mt-1">
-              {polNumbersClearStats.errors.map((err, i) => (
-                <p key={i} className="text-xs">{err}</p>
-              ))}
-            </ScrollArea>
-          </div>
-        )}
-      </div>
-    )}
-  </CardContent>
-</Card>
+}
 ```
 
 ---
 
-## ملخص التغييرات
+## ملخص الملفات المطلوب تعديلها
 
 | الملف | التغيير |
 |-------|---------|
-| `src/pages/WordPressImport.tsx` | إضافة state + دوال + واجهة مستخدم للأداة الجديدة |
+| `src/components/policies/PolicyWizard.tsx` | إصلاح شرط إنشاء الباقة (سطر 700 و 1066) |
+| `src/components/policies/PolicySuccessDialog.tsx` | إصلاح استعلام group_id في handlePrintInvoice و handleSendSms |
+| `supabase/functions/tranzila-webhook/index.ts` | إضافة branch_id لدفعات الفيزا |
+| Database Migration | تحديث branch_id للدفعات الموجودة |
 
 ---
 
-## كيف تعمل الأداة
+## النتائج المتوقعة
 
-1. عند تحميل الصفحة → يجلب عدد الوثائق التي تحتوي `POL-%`
-2. يعرض العدد: **4,671**
-3. عند الضغط على "مسح الأرقام":
-   - يجلب جميع IDs بطريقة paginated (1000 كل مرة)
-   - يحدّث بدفعات 100 وثيقة
-   - يضع `policy_number = null`
-4. يعرض النتائج ويحدّث العدد
-
----
-
-## النتيجة المتوقعة
-
-- ✅ جميع الوثائق الـ 4,671 ستُمسح منها أرقام POL-
-- ✅ حقل `policy_number` سيصبح فارغاً
-- ✅ يمكن إعادة إدخال رقم البوليصة الصحيح من شركة التأمين
+1. ✅ عند إنشاء باقة (ثالث + إلزامي + خدمات طريق)، يتم إنشاء group_id بشكل صحيح
+2. ✅ جميع الوثائق في الباقة تظهر معاً في تفاصيل الوثيقة
+3. ✅ دفعات الفيزا تظهر للعمال وليس فقط للمدراء
+4. ✅ إرسال SMS يعمل للعمال بعد إنشاء الوثيقة
+5. ✅ طباعة الفاتورة تعمل للباقات بشكل صحيح
