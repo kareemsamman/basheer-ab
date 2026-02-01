@@ -50,9 +50,10 @@ interface PolicyDebt {
 }
 
 const POLICY_TYPE_LABELS: Record<string, string> = {
+  'ELZAMI': 'إلزامي',
   'THIRD_FULL': 'ثالث/شامل',
   'THIRD_ONLY': 'طرف ثالث',
-  'ROAD_SERVICE': 'سرفيس',
+  'ROAD_SERVICE': 'خدمات طريق',
   'ACCIDENT_FEE_EXEMPTION': 'إعفاء رسوم الحادث',
 };
 
@@ -138,7 +139,7 @@ export default function DebtTracking() {
         policies: [],
         policies_count: Number(r.policies_count) || 0,
         earliest_expiry: r.earliest_expiry ? String(r.earliest_expiry) : null,
-        days_until_expiry: r.days_until_expiry === null ? null : Number(r.days_until_expiry),
+        days_until_expiry: r.days_until_expiry == null || isNaN(Number(r.days_until_expiry)) ? null : Number(r.days_until_expiry),
       }));
 
       const clientIds = baseClients.map((c) => c.client_id);
@@ -274,8 +275,8 @@ export default function DebtTracking() {
 
   const formatCurrency = (amount: number) => `₪${amount.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 
-  const getExpiryBadge = (days: number | null) => {
-    if (days === null) return null;
+  const getExpiryBadge = (days: number | null | undefined) => {
+    if (days === null || days === undefined || isNaN(days)) return null;
     if (days < 0) {
       return <Badge variant="destructive">منتهي منذ {Math.abs(days)} يوم</Badge>;
     }
