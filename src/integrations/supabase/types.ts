@@ -4457,59 +4457,32 @@ export type Database = {
       }
       is_active_user: { Args: { _user_id: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
-      report_client_debts:
-        | {
-            Args: {
-              p_branch_id?: string
-              p_page?: number
-              p_page_size?: number
-              p_search?: string
-              p_sort_by?: string
-            }
-            Returns: {
-              client_id: string
-              client_name: string
-              earliest_expiry: string
-              phone_number: string
-              policies_count: number
-              total_owed: number
-            }[]
-          }
-        | {
-            Args: {
-              p_filter_days?: number
-              p_limit?: number
-              p_offset?: number
-              p_search?: string
-            }
-            Returns: {
-              client_id: string
-              client_name: string
-              days_until_expiry: number
-              earliest_expiry: string
-              phone_number: string
-              policies_count: number
-              total_owed: number
-              total_rows: number
-            }[]
-          }
-      report_client_debts_summary:
-        | {
-            Args: never
-            Returns: {
-              total_clients: number
-              total_debt: number
-            }[]
-          }
-        | {
-            Args: { p_filter_days?: number; p_search?: string }
-            Returns: {
-              expired: number
-              expiring_soon: number
-              total_clients: number
-              total_owed: number
-            }[]
-          }
+      report_client_debts: {
+        Args: {
+          p_filter_days?: number
+          p_limit?: number
+          p_offset?: number
+          p_search?: string
+        }
+        Returns: {
+          client_id: string
+          file_number: string
+          full_name: string
+          id_number: string
+          phone_number: string
+          total_owed: number
+          total_paid: number
+          total_rows: number
+        }[]
+      }
+      report_client_debts_summary: {
+        Args: { p_filter_days?: number; p_search?: string }
+        Returns: {
+          total_clients: number
+          total_owed: number
+          total_paid: number
+        }[]
+      }
       report_company_settlement: {
         Args: {
           p_broker_id?: string
