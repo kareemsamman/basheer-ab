@@ -48,6 +48,22 @@ const TIME_OPTIONS = Array.from({ length: 36 }, (_, i) => {
   return { value: timeStr, label: timeStr };
 });
 
+// Get current time rounded down to nearest 30 minutes
+function getCurrentTimeRounded(): string {
+  const now = new Date();
+  let hours = now.getHours();
+  const minutes = now.getMinutes();
+  
+  // Round down to nearest 30 minutes
+  const roundedMinutes = minutes < 30 ? 0 : 30;
+  
+  // Clamp to valid range (06:00 - 23:30)
+  if (hours < 6) hours = 6;
+  if (hours > 23) hours = 23;
+  
+  return `${hours.toString().padStart(2, '0')}:${roundedMinutes.toString().padStart(2, '0')}`;
+}
+
 export function TaskDrawer({
   open,
   onOpenChange,
@@ -87,7 +103,7 @@ export function TaskDrawer({
         setDescription("");
         setAssignedTo(user?.id || "");
         setDueDate(defaultDate || new Date());
-        setDueTime("09:00");
+        setDueTime(getCurrentTimeRounded());
       }
     }
   }, [open, task, user?.id, defaultDate]);

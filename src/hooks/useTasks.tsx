@@ -40,24 +40,45 @@ export function useTasks(selectedDate?: Date) {
   const queryClient = useQueryClient();
   const dateStr = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
 
-  // Fetch tasks for selected date
+  // Fetch tasks for selected date using RPC to bypass RLS for user names
   const { data: tasks = [], isLoading, refetch } = useQuery({
     queryKey: ['tasks', dateStr, user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
       
-      const { data, error } = await supabase
-        .from('tasks')
-        .select(`
-          *,
-          creator:profiles!tasks_created_by_fkey(id, full_name, email),
-          assignee:profiles!tasks_assigned_to_fkey(id, full_name, email)
-        `)
-        .eq('due_date', dateStr)
-        .order('due_time', { ascending: true });
+      const { data, error } = await supabase.rpc('get_tasks_with_users', {
+        target_date: dateStr
+      });
 
       if (error) throw error;
-      return (data || []) as Task[];
+      
+      // Transform flat RPC response to nested format matching Task interface
+      return (data || []).map((row: any) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        created_by: row.created_by,
+        assigned_to: row.assigned_to,
+        due_date: row.due_date,
+        due_time: row.due_time,
+        status: row.status,
+        reminder_shown: row.reminder_shown,
+        completed_at: row.completed_at,
+        completed_by: row.completed_by,
+        branch_id: row.branch_id,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        creator: row.creator_id ? { 
+          id: row.creator_id, 
+          full_name: row.creator_full_name, 
+          email: row.creator_email 
+        } : null,
+        assignee: row.assignee_id ? { 
+          id: row.assignee_id, 
+          full_name: row.assignee_full_name, 
+          email: row.assignee_email 
+        } : null,
+      })) as Task[];
     },
     enabled: !!user?.id,
   });
