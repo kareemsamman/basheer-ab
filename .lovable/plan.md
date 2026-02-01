@@ -1,202 +1,285 @@
 
-# خطة إصلاح ثلاث مشاكل في الباقات والدفعات ورسائل SMS
 
-## المشاكل المكتشفة
+# خطة: أداة اكتشاف وربط الباقات المفقودة
 
-### المشكلة 1: الباقة لا تُنشأ بشكل صحيح (group_id = null)
+## كيف ستكتشف الأداة الباقات؟
 
-**السبب الجذري:**
-في ملف `PolicyWizard.tsx` سطر 700 و 1066، الكود يتحقق فقط من `packageAddons[0]` (إلزامي) و `packageAddons[1]` (ثالث/شامل):
+### منطق الاكتشاف التلقائي
 
-```typescript
-// سطر 700 - إنشاء المجموعة
-if (packageMode && (packageAddons[0].enabled || packageAddons[1].enabled))
+ستبحث الأداة عن وثائق تحقق **جميع** الشروط التالية:
 
-// سطر 1066 - تحديد isPackage
-isPackage: packageMode && (packageAddons[0]?.enabled || packageAddons[1]?.enabled)
-```
+1. **نفس العميل** (`client_id`)
+2. **نفس السيارة** (`car_id`)
+3. **أُنشئت خلال ساعة واحدة** (الفرق بين أول وثيقة وآخر وثيقة < 60 دقيقة)
+4. **بدون group_id** (أي لم يتم ربطها كباقة)
+5. **غير ملغاة** (`cancelled = false`)
+6. **أنواع مختلفة** (مثلاً: THIRD_FULL + ELZAMI + ROAD_SERVICE)
 
-لكن في الحالة الحالية:
-- الوثيقة الرئيسية: **ثالث/شامل** (policy_type_parent = THIRD_FULL)
-- الإضافات: **إلزامي + خدمات طريق**
+### أمثلة من قاعدة البيانات الحالية
 
-المشكلة أن:
-- `packageAddons[0]` = elzami (مفعّل)
-- `packageAddons[1]` = third_full (غير مفعّل - لأن الرئيسي هو third_full)
-- `packageAddons[2]` = road_service (مفعّل)
-- `packageAddons[3]` = accident_fee_exemption
-
-الكود يتحقق فقط من [0] و [1]، لكن إذا كان الرئيسي ثالث/شامل والإضافات تشمل خدمات طريق فقط (index 2)، لن يتم إنشاء group_id!
+| العميل | رقم السيارة | عدد الوثائق | الأنواع |
+|--------|-------------|-------------|---------|
+| كريم ابو الفيلات | 6586537 | 2 | THIRD_FULL + ROAD_SERVICE |
+| مريم يوسف برك | 8380758 | 3 | ELZAMI + ROAD_SERVICE + THIRD_FULL |
+| رشيد ابو ميالة | 8285665 | 3 | THIRD_FULL + ROAD_SERVICE + ELZAMI |
+| بيان سموم | 7422461 | 3 | THIRD_FULL + ELZAMI + ROAD_SERVICE |
 
 ---
 
-### المشكلة 2: دفعة الفيزا لا تظهر للعامل (لكن تظهر للمدير)
+## التصميم التقني
 
-**السبب الجذري:**
-بيانات الدفعات في قاعدة البيانات:
+### 1) استعلام SQL للاكتشاف
 
-| payment_type | amount | branch_id |
-|--------------|--------|-----------|
-| visa | 1500 | **NULL** |
-| cash | 2204 | 146727e4... |
-
-دفعة الفيزا لها `branch_id = NULL`!
-
-سياسة RLS على جدول `policy_payments`:
 ```sql
-can_access_branch(auth.uid(), branch_id)
+WITH policy_candidates AS (
+  SELECT 
+    p.id, p.client_id, p.car_id, p.policy_type_parent,
+    p.insurance_price, p.created_at, p.group_id,
+    c.full_name as client_name, cr.car_number
+  FROM policies p
+  JOIN clients c ON p.client_id = c.id
+  JOIN cars cr ON p.car_id = cr.id
+  WHERE p.group_id IS NULL
+    AND p.cancelled = false
+),
+grouped AS (
+  SELECT 
+    client_id, car_id, client_name, car_number,
+    COUNT(*) as policy_count,
+    array_agg(id ORDER BY created_at) as policy_ids,
+    array_agg(policy_type_parent) as types,
+    SUM(insurance_price) as total_price,
+    MIN(created_at) as first_created,
+    MAX(created_at) as last_created
+  FROM policy_candidates
+  GROUP BY client_id, car_id, client_name, car_number
+  HAVING COUNT(*) > 1
+    AND (MAX(created_at) - MIN(created_at)) < interval '1 hour'
+)
+SELECT * FROM grouped ORDER BY first_created DESC
 ```
 
-- للمدير: الدالة تُرجع `TRUE` لأي قيمة
-- للعامل: عندما `branch_id = NULL`، الدالة تُرجع `FALSE`
+### 2) عملية الربط
 
-**لماذا branch_id = NULL في دفعة الفيزا؟**
-دفعات الفيزا تُنشأ عبر Tranzila webhook الذي يعمل بخلفية بدون معرفة branch_id الأصلي.
-
----
-
-### المشكلة 3: خطأ في إرسال SMS للعامل بعد إنشاء الوثيقة
-
-**السبب الجذري:**
-في `PolicySuccessDialog.tsx`، عند `isPackage = true`:
+عند ربط الوثائق كباقة:
+1. إنشاء `group_id` جديد (UUID)
+2. تحديث جميع الوثائق المحددة بنفس `group_id`
 
 ```typescript
-const { data: groupPolicies } = await supabase
+const groupId = crypto.randomUUID();
+await supabase
   .from('policies')
-  .select('id')
-  .eq('group_id', policyId);  // ← خطأ! policyId ليس هو group_id
-```
-
-`policyId` هو ID الوثيقة الرئيسية، وليس `group_id`. يجب جلب group_id من الوثيقة أولاً.
-
-بالإضافة لذلك، بما أن الباقة لم تُنشأ بسبب المشكلة 1، الاستعلام لن يجد أي وثائق.
-
----
-
-## الحلول
-
-### الحل 1: إصلاح شرط إنشاء الباقة
-
-**الملف:** `src/components/policies/PolicyWizard.tsx`
-
-**التغيير في سطر 700:**
-```typescript
-// قبل:
-if (packageMode && (packageAddons[0].enabled || packageAddons[1].enabled))
-
-// بعد:
-if (packageMode && packageAddons.some(addon => addon.enabled))
-```
-
-**التغيير في سطر 1066:**
-```typescript
-// قبل:
-isPackage: packageMode && (packageAddons[0]?.enabled || packageAddons[1]?.enabled)
-
-// بعد:
-isPackage: packageMode && packageAddons.some(addon => addon.enabled)
+  .update({ group_id: groupId })
+  .in('id', policyIds);
 ```
 
 ---
 
-### الحل 2: إصلاح branch_id لدفعات الفيزا
+## واجهة المستخدم
 
-**الخيار أ - في wizard:** عند إنشاء دفعة فيزا مؤقتة قبل Tranzila، تمرير branch_id.
+### بطاقة الأداة (في صفحة WordPress Import)
 
-**الخيار ب - في Tranzila webhook:** جلب branch_id من الوثيقة وتعيينه للدفعة.
-
-**التنفيذ (الخيار ب) - الملف:** `supabase/functions/tranzila-webhook/index.ts`
-
-عند إنشاء الدفعة، جلب branch_id من الوثيقة:
-```typescript
-// جلب branch_id من الوثيقة
-const { data: policyData } = await supabase
-  .from('policies')
-  .select('branch_id')
-  .eq('id', policyId)
-  .single();
-
-// إنشاء الدفعة مع branch_id
-await supabase.from('policy_payments').insert({
-  policy_id: policyId,
-  amount: amount,
-  payment_type: 'visa',
-  branch_id: policyData?.branch_id || null,  // إضافة branch_id
-  // ...
-});
 ```
-
-**إصلاح البيانات الحالية (migration):**
-```sql
-UPDATE policy_payments pp
-SET branch_id = p.branch_id
-FROM policies p
-WHERE pp.policy_id = p.id
-  AND pp.branch_id IS NULL
-  AND pp.payment_type = 'visa';
+┌─────────────────────────────────────────────────────────┐
+│ 📦 ربط الباقات المفقودة                                │
+│ ───────────────────────────────────────────────────────│
+│                                                         │
+│ تبحث عن وثائق يجب أن تكون ضمن باقة واحدة:              │
+│ • نفس العميل والسيارة                                  │
+│ • أُنشئت خلال ساعة واحدة                               │
+│ • أنواع مختلفة (إلزامي، ثالث/شامل، خدمات طريق)         │
+│                                                         │
+│ باقات مفقودة تم اكتشافها: [15]                         │
+│                                                         │
+│ [🔍 اكتشاف الباقات]  [🔗 ربط الكل تلقائياً]            │
+│                                                         │
+│ ┌─────────────────────────────────────────────────────┐│
+│ │ ☑ كريم ابو الفيلات - 6586537                       ││
+│ │   2 وثائق: THIRD_FULL, ROAD_SERVICE                ││
+│ │   المجموع: 3,000₪                                  ││
+│ ├─────────────────────────────────────────────────────┤│
+│ │ ☑ مريم يوسف برك - 8380758                         ││
+│ │   3 وثائق: ELZAMI, ROAD_SERVICE, THIRD_FULL        ││
+│ │   المجموع: 0₪                                      ││
+│ └─────────────────────────────────────────────────────┘│
+│                                                         │
+│ النتائج:                                               │
+│ ✅ تم ربط 15 باقة بنجاح                               │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-### الحل 3: إصلاح استعلام group_id في PolicySuccessDialog
+## التغييرات المطلوبة
 
-**الملف:** `src/components/policies/PolicySuccessDialog.tsx`
+### ملف واحد: `src/pages/WordPressImport.tsx`
 
-**تغيير الدالتين handlePrintInvoice و handleSendSms:**
+#### 1) إضافة State
 
 ```typescript
-if (isPackage) {
-  // أولاً: جلب group_id من الوثيقة الرئيسية
-  const { data: mainPolicy, error: mainPolicyError } = await supabase
-    .from('policies')
-    .select('group_id')
-    .eq('id', policyId)
-    .single();
-  
-  if (mainPolicyError) throw mainPolicyError;
-  
-  const groupId = mainPolicy?.group_id;
-  
-  if (!groupId) {
-    // لا توجد باقة - استخدم الوثيقة الفردية
-    result = await supabase.functions.invoke('send-invoice-sms', {
-      body: { policy_id: policyId, skip_sms: true }
-    });
-  } else {
-    // جلب جميع وثائق الباقة
-    const { data: groupPolicies, error: fetchError } = await supabase
-      .from('policies')
-      .select('id')
-      .eq('group_id', groupId);
-    
-    if (fetchError) throw fetchError;
-    
-    const policyIds = groupPolicies?.map(p => p.id) || [policyId];
-    
-    result = await supabase.functions.invoke('send-package-invoice-sms', {
-      body: { policy_ids: policyIds, skip_sms: true }
-    });
-  }
+// Missing packages state
+const [detectingPackages, setDetectingPackages] = useState(false);
+const [missingPackages, setMissingPackages] = useState<MissingPackage[]>([]);
+const [linkingPackages, setLinkingPackages] = useState(false);
+const [packageLinkStats, setPackageLinkStats] = useState<{
+  found: number;
+  linked: number;
+  errors: string[];
+} | null>(null);
+
+interface MissingPackage {
+  client_id: string;
+  car_id: string;
+  client_name: string;
+  car_number: string;
+  policy_count: number;
+  policy_ids: string[];
+  types: string[];
+  total_price: number;
+  first_created: string;
+  selected: boolean;
 }
 ```
 
+#### 2) دالة اكتشاف الباقات
+
+```typescript
+const detectMissingPackages = async () => {
+  setDetectingPackages(true);
+  try {
+    // Query to find policies that should be packages
+    const { data, error } = await supabase.rpc('find_missing_packages');
+    
+    if (error) throw error;
+    
+    setMissingPackages((data || []).map(pkg => ({
+      ...pkg,
+      selected: true // Selected by default
+    })));
+    
+    toast({
+      title: "تم الاكتشاف",
+      description: `تم العثور على ${data?.length || 0} باقة مفقودة`
+    });
+  } catch (e: any) {
+    toast({ title: "خطأ", description: e.message, variant: "destructive" });
+  } finally {
+    setDetectingPackages(false);
+  }
+};
+```
+
+#### 3) دالة ربط الباقات
+
+```typescript
+const linkMissingPackages = async () => {
+  const selected = missingPackages.filter(p => p.selected);
+  if (selected.length === 0) {
+    toast({ title: "لم يتم تحديد أي باقات" });
+    return;
+  }
+  
+  setLinkingPackages(true);
+  const stats = { found: selected.length, linked: 0, errors: [] as string[] };
+  
+  try {
+    for (const pkg of selected) {
+      // Generate new group_id
+      const groupId = crypto.randomUUID();
+      
+      // Update all policies with this group_id
+      const { error } = await supabase
+        .from('policies')
+        .update({ group_id: groupId })
+        .in('id', pkg.policy_ids);
+      
+      if (error) {
+        stats.errors.push(`${pkg.client_name}: ${error.message}`);
+      } else {
+        stats.linked++;
+      }
+    }
+    
+    toast({
+      title: "تم الربط",
+      description: `تم ربط ${stats.linked} باقة من أصل ${stats.found}`
+    });
+    
+    // Refresh detection
+    await detectMissingPackages();
+    
+  } catch (e: any) {
+    stats.errors.push(e.message);
+  } finally {
+    setPackageLinkStats(stats);
+    setLinkingPackages(false);
+  }
+};
+```
+
+### إضافة RPC Function (Database Migration)
+
+```sql
+CREATE OR REPLACE FUNCTION public.find_missing_packages()
+RETURNS TABLE (
+  client_id uuid,
+  car_id uuid,
+  client_name text,
+  car_number text,
+  policy_count bigint,
+  policy_ids uuid[],
+  types text[],
+  total_price numeric,
+  first_created timestamptz,
+  last_created timestamptz
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  WITH policy_candidates AS (
+    SELECT 
+      p.id, p.client_id, p.car_id, p.policy_type_parent,
+      p.insurance_price, p.created_at,
+      c.full_name as client_name, cr.car_number
+    FROM policies p
+    JOIN clients c ON p.client_id = c.id
+    JOIN cars cr ON p.car_id = cr.id
+    WHERE p.group_id IS NULL
+      AND p.cancelled = false
+  )
+  SELECT 
+    client_id, car_id, client_name, car_number,
+    COUNT(*) as policy_count,
+    array_agg(id ORDER BY created_at) as policy_ids,
+    array_agg(policy_type_parent::text) as types,
+    COALESCE(SUM(insurance_price), 0) as total_price,
+    MIN(created_at) as first_created,
+    MAX(created_at) as last_created
+  FROM policy_candidates
+  GROUP BY client_id, car_id, client_name, car_number
+  HAVING COUNT(*) > 1
+    AND (MAX(created_at) - MIN(created_at)) < interval '1 hour'
+  ORDER BY MIN(created_at) DESC;
+$$;
+```
+
 ---
 
-## ملخص الملفات المطلوب تعديلها
+## ملخص الملفات
 
 | الملف | التغيير |
 |-------|---------|
-| `src/components/policies/PolicyWizard.tsx` | إصلاح شرط إنشاء الباقة (سطر 700 و 1066) |
-| `src/components/policies/PolicySuccessDialog.tsx` | إصلاح استعلام group_id في handlePrintInvoice و handleSendSms |
-| `supabase/functions/tranzila-webhook/index.ts` | إضافة branch_id لدفعات الفيزا |
-| Database Migration | تحديث branch_id للدفعات الموجودة |
+| Database Migration | إضافة `find_missing_packages()` RPC function |
+| `src/pages/WordPressImport.tsx` | إضافة UI + دوال الاكتشاف والربط |
 
 ---
 
-## النتائج المتوقعة
+## النتيجة المتوقعة
 
-1. ✅ عند إنشاء باقة (ثالث + إلزامي + خدمات طريق)، يتم إنشاء group_id بشكل صحيح
-2. ✅ جميع الوثائق في الباقة تظهر معاً في تفاصيل الوثيقة
-3. ✅ دفعات الفيزا تظهر للعمال وليس فقط للمدراء
-4. ✅ إرسال SMS يعمل للعمال بعد إنشاء الوثيقة
-5. ✅ طباعة الفاتورة تعمل للباقات بشكل صحيح
+1. ✅ الأداة تكتشف تلقائياً جميع الوثائق التي يجب أن تكون باقات
+2. ✅ يمكن للمدير مراجعة القائمة واختيار ما يريد ربطه
+3. ✅ زر "ربط الكل" يقوم بإنشاء `group_id` لكل مجموعة
+4. ✅ بعد الربط، الوثائق ستظهر كباقات في تفاصيل العميل
+
