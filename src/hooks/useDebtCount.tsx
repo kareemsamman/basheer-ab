@@ -12,7 +12,11 @@ export function useDebtCount(): DebtCountResult {
 
   const fetchDebtCount = useCallback(async () => {
     try {
-      const { data, error } = await supabase.rpc('report_client_debts_summary');
+      // Call with explicit parameters to avoid function overload ambiguity
+      const { data, error } = await supabase.rpc('report_client_debts_summary', {
+        p_search: null,
+        p_filter_days: null
+      });
       
       if (error) {
         console.error('Error fetching debt count:', error);
