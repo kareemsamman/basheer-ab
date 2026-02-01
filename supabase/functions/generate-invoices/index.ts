@@ -248,10 +248,13 @@ serve(async (req: Request) => {
       JSON.stringify({ success: true, results, duration_ms: duration }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
+    // Log full error details server-side for debugging
     console.error('[generate-invoices] Fatal error:', error);
+    
+    // Return generic error message to client - never expose internal details
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: 'Failed to generate invoices. Please try again.' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

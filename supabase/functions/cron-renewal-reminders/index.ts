@@ -268,10 +268,13 @@ serve(async (req) => {
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    // Log full error details server-side for debugging
     console.error("[cron-renewal-reminders] Fatal error:", error);
+    
+    // Return generic error message to client - never expose internal details
     return new Response(
-      JSON.stringify({ error: error.message || "Internal server error" }),
+      JSON.stringify({ error: "An error occurred during processing. Please try again." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

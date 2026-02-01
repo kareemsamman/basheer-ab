@@ -143,7 +143,10 @@ Deno.serve(async (req) => {
 
       if (policiesError) {
         console.error('Error fetching policies:', policiesError);
-        throw new Error('Failed to fetch policies');
+        return new Response(
+          JSON.stringify({ error: 'Unable to load policy data. Please try again.' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
 
       // Calculate remaining for each policy and filter unpaid ones
@@ -278,10 +281,13 @@ ${policyLines.join('\n')}
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    // Log full error details server-side for debugging
     console.error('Error in send-manual-reminder:', error);
+    
+    // Return generic error message to client - never expose internal details
     return new Response(
-      JSON.stringify({ error: error.message || 'Internal server error' }),
+      JSON.stringify({ error: 'Unable to send reminder at this time. Please try again.' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
