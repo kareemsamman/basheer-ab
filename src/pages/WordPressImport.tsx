@@ -122,6 +122,15 @@ const WordPressImport = () => {
   } | null>(null);
   const [elzamiUnpaidCount, setElzamiUnpaidCount] = useState<number | null>(null);
 
+  // Clear POL- policy numbers state
+  const [clearingPolNumbers, setClearingPolNumbers] = useState(false);
+  const [polNumbersCount, setPolNumbersCount] = useState<number | null>(null);
+  const [polNumbersClearStats, setPolNumbersClearStats] = useState<{
+    found: number;
+    cleared: number;
+    errors: string[];
+  } | null>(null);
+
   const entityLabels: Record<string, string> = {
     companies: "شركات التأمين",
     brokers: "الوسطاء",
@@ -211,8 +220,94 @@ const WordPressImport = () => {
     }
   };
 
+  // Fetch POL- policy numbers count
+  const fetchPolNumbersCount = async () => {
+    try {
+      const { count, error } = await supabase
+        .from('policies')
+        .select('id', { count: 'exact', head: true })
+        .like('policy_number', 'POL-%');
+      
+      if (error) throw error;
+      setPolNumbersCount(count || 0);
+    } catch (e) {
+      console.error('Error fetching POL- count:', e);
+    }
+  };
+
+  // Handle clearing POL- policy numbers
+  const handleClearPolNumbers = async () => {
+    setClearingPolNumbers(true);
+    setPolNumbersClearStats(null);
+    
+    const stats = { found: 0, cleared: 0, errors: [] as string[] };
+    
+    try {
+      // 1. Fetch ALL policy IDs with POL- prefix using pagination
+      const allPolicyIds: string[] = [];
+      let offset = 0;
+      const pageSize = 1000;
+      
+      while (true) {
+        const { data: batch, error } = await supabase
+          .from('policies')
+          .select('id')
+          .like('policy_number', 'POL-%')
+          .range(offset, offset + pageSize - 1);
+        
+        if (error) throw error;
+        if (!batch || batch.length === 0) break;
+        
+        allPolicyIds.push(...batch.map(p => p.id));
+        if (batch.length < pageSize) break;
+        offset += pageSize;
+      }
+      
+      stats.found = allPolicyIds.length;
+      
+      if (stats.found === 0) {
+        toast({ title: "لا توجد وثائق", description: "لم يتم العثور على أرقام POL-" });
+        setClearingPolNumbers(false);
+        return;
+      }
+      
+      // 2. Clear policy_number in batches
+      const batchSize = 100;
+      for (let i = 0; i < allPolicyIds.length; i += batchSize) {
+        const chunk = allPolicyIds.slice(i, i + batchSize);
+        
+        const { error: updateError } = await supabase
+          .from('policies')
+          .update({ policy_number: null })
+          .in('id', chunk);
+        
+        if (updateError) {
+          stats.errors.push(`دفعة ${i + 1}-${i + chunk.length}: ${updateError.message}`);
+        } else {
+          stats.cleared += chunk.length;
+        }
+      }
+      
+      toast({
+        title: "تم المسح",
+        description: `تم مسح ${stats.cleared} رقم بوليصة من أصل ${stats.found}`,
+      });
+      
+      // Refresh count
+      fetchPolNumbersCount();
+      
+    } catch (e: any) {
+      stats.errors.push(e.message);
+      toast({ title: "خطأ", description: e.message, variant: "destructive" });
+    } finally {
+      setPolNumbersClearStats(stats);
+      setClearingPolNumbers(false);
+    }
+  };
+
   useEffect(() => {
     fetchUnpaidElzamiCount();
+    fetchPolNumbersCount();
   }, []);
 
   const handleFixElzamiPayments = async () => {
@@ -1942,6 +2037,81 @@ const WordPressImport = () => {
                         <p className="font-medium">أخطاء ({elzamiFixStats.errors.length}):</p>
                         <ScrollArea className="h-24 mt-1">
                           {elzamiFixStats.errors.map((err, i) => (
+                            <p key={i} className="text-xs">{err}</p>
+                          ))}
+                        </ScrollArea>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Clear POL- Policy Numbers Tool */}
+            <Card className="border-2 border-destructive">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-destructive">
+                  <Trash2 className="h-5 w-5" />
+                  مسح أرقام البوليصة (POL-)
+                </CardTitle>
+                <CardDescription>
+                  يقوم بمسح أرقام البوليصة التي تبدأ بـ POL- لأنها أرقام خاطئة.
+                  <br />
+                  رقم البوليصة الصحيح يأتي من شركة التأمين.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Show count */}
+                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">وثائق تحتوي أرقام POL-:</span>
+                    <Badge variant={polNumbersCount && polNumbersCount > 0 ? "destructive" : "secondary"}>
+                      {polNumbersCount !== null ? polNumbersCount.toLocaleString() : '...'}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button 
+                    onClick={handleClearPolNumbers} 
+                    disabled={clearingPolNumbers || polNumbersCount === 0}
+                    variant="destructive"
+                  >
+                    {clearingPolNumbers ? (
+                      <><Loader2 className="h-4 w-4 ml-2 animate-spin" />جاري المسح...</>
+                    ) : (
+                      <><Trash2 className="h-4 w-4 ml-2" />مسح الأرقام</>
+                    )}
+                  </Button>
+                  
+                  <Button 
+                    variant="outline" 
+                    onClick={fetchPolNumbersCount}
+                    disabled={clearingPolNumbers}
+                  >
+                    <RefreshCw className="h-4 w-4 ml-2" />
+                    تحديث العدد
+                  </Button>
+                </div>
+
+                {/* Results */}
+                {polNumbersClearStats && (
+                  <div className="p-4 border rounded-lg space-y-2 bg-muted">
+                    <div className="grid grid-cols-2 gap-4 text-center">
+                      <div>
+                        <p className="text-sm text-muted-foreground">وثائق تم العثور عليها</p>
+                        <p className="text-2xl font-bold">{polNumbersClearStats.found.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">تم مسحها</p>
+                        <p className="text-2xl font-bold text-green-600">{polNumbersClearStats.cleared.toLocaleString()}</p>
+                      </div>
+                    </div>
+                    {polNumbersClearStats.errors.length > 0 && (
+                      <div className="text-sm text-destructive">
+                        <p className="font-medium">أخطاء ({polNumbersClearStats.errors.length}):</p>
+                        <ScrollArea className="h-24 mt-1">
+                          {polNumbersClearStats.errors.map((err, i) => (
                             <p key={i} className="text-xs">{err}</p>
                           ))}
                         </ScrollArea>
