@@ -70,12 +70,13 @@ export function PackageComponentsTable({ policies, isAdmin }: PackageComponentsT
     return `₪${Math.abs(amount).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
   };
 
-  const getTypeName = (p: PackagePolicy) => {
-    let name = policyTypeLabels[p.policy_type_parent] || p.policy_type_parent;
-    if (p.policy_type_child) {
-      name += ` - ${policyChildLabels[p.policy_type_child] || p.policy_type_child}`;
+const getTypeName = (p: PackagePolicy) => {
+    // For THIRD_FULL with a child type, show only the child type (ثالث or شامل)
+    if (p.policy_type_parent === 'THIRD_FULL' && p.policy_type_child) {
+      return policyChildLabels[p.policy_type_child] || p.policy_type_child;
     }
-    return name;
+    // For other types, use the parent label
+    return policyTypeLabels[p.policy_type_parent] || p.policy_type_parent;
   };
 
   const getServiceName = (p: PackagePolicy) => {

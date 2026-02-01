@@ -111,6 +111,20 @@ const MAIN_POLICY_TYPES = ['ELZAMI', 'THIRD_FULL', 'HEALTH', 'LIFE', 'PROPERTY',
 // Add-on types (children)
 const ADDON_POLICY_TYPES = ['ROAD_SERVICE', 'ACCIDENT_FEE_EXEMPTION'];
 
+// Child type labels (for THIRD_FULL)
+const policyChildLabels: Record<string, string> = {
+  THIRD: 'ثالث',
+  FULL: 'شامل',
+};
+
+// Helper: get display label (child type if exists for THIRD_FULL, otherwise parent)
+const getDisplayLabel = (policy: PolicyRecord) => {
+  if (policy.policy_type_parent === 'THIRD_FULL' && policy.policy_type_child) {
+    return policyChildLabels[policy.policy_type_child] || policy.policy_type_child;
+  }
+  return policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent;
+};
+
 const formatDate = (dateStr: string | null) => {
   if (!dateStr) return '-';
   return new Date(dateStr).toLocaleDateString('en-GB');
@@ -748,7 +762,7 @@ function UnifiedPolicyCard({
                 <div className="flex-1 grid grid-cols-2 sm:grid-cols-5 gap-2 text-sm">
                   <div>
                     <Badge className={cn("border text-xs", policyTypeColors[policy.policy_type_parent])}>
-                      {policyTypeLabels[policy.policy_type_parent]}
+                      {getDisplayLabel(policy)}
                     </Badge>
                   </div>
                   <div>
@@ -790,7 +804,7 @@ function UnifiedPolicyCard({
                   <div className="flex-1 grid grid-cols-2 sm:grid-cols-5 gap-2 text-sm">
                     <div>
                       <Badge className={cn("border text-xs", policyTypeColors[addon.policy_type_parent])}>
-                        {policyTypeLabels[addon.policy_type_parent]}
+                        {getDisplayLabel(addon)}
                       </Badge>
                     </div>
                     <div>
@@ -917,21 +931,21 @@ function PolicyCardHeader({
           <div className="flex flex-wrap gap-1 items-center">
             {/* Main policy type */}
             <Badge className={cn("border text-xs", policyTypeColors[policy.policy_type_parent])}>
-              {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
+              {getDisplayLabel(policy)}
             </Badge>
             {/* All addon types - show as chips with + between them */}
             {addons.map((addon) => (
               <span key={addon.id} className="flex items-center gap-1">
                 <span className="text-muted-foreground">+</span>
                 <Badge className={cn("border text-xs", policyTypeColors[addon.policy_type_parent])}>
-                  {policyTypeLabels[addon.policy_type_parent] || addon.policy_type_parent}
+                  {getDisplayLabel(addon)}
                 </Badge>
               </span>
             ))}
           </div>
         ) : (
           <Badge className={cn("border font-semibold", policyTypeColors[policy.policy_type_parent])}>
-            {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
+            {getDisplayLabel(policy)}
           </Badge>
         )}
         
