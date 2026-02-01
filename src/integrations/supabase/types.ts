@@ -4457,33 +4457,59 @@ export type Database = {
       }
       is_active_user: { Args: { _user_id: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
-      report_client_debts: {
-        Args: {
-          p_filter_days?: number
-          p_limit?: number
-          p_offset?: number
-          p_search?: string
-        }
-        Returns: {
-          client_id: string
-          client_name: string
-          days_until_expiry: number
-          earliest_expiry: string
-          phone_number: string
-          policies_count: number
-          total_owed: number
-          total_rows: number
-        }[]
-      }
-      report_client_debts_summary: {
-        Args: { p_filter_days?: number; p_search?: string }
-        Returns: {
-          expired: number
-          expiring_soon: number
-          total_clients: number
-          total_owed: number
-        }[]
-      }
+      report_client_debts:
+        | {
+            Args: {
+              p_branch_id?: string
+              p_page?: number
+              p_page_size?: number
+              p_search?: string
+              p_sort_by?: string
+            }
+            Returns: {
+              client_id: string
+              client_name: string
+              earliest_expiry: string
+              phone_number: string
+              policies_count: number
+              total_owed: number
+            }[]
+          }
+        | {
+            Args: {
+              p_filter_days?: number
+              p_limit?: number
+              p_offset?: number
+              p_search?: string
+            }
+            Returns: {
+              client_id: string
+              client_name: string
+              days_until_expiry: number
+              earliest_expiry: string
+              phone_number: string
+              policies_count: number
+              total_owed: number
+              total_rows: number
+            }[]
+          }
+      report_client_debts_summary:
+        | {
+            Args: never
+            Returns: {
+              total_clients: number
+              total_debt: number
+            }[]
+          }
+        | {
+            Args: { p_filter_days?: number; p_search?: string }
+            Returns: {
+              expired: number
+              expiring_soon: number
+              total_clients: number
+              total_owed: number
+            }[]
+          }
       report_company_settlement: {
         Args: {
           p_broker_id?: string
@@ -4562,19 +4588,19 @@ export type Database = {
       report_debt_policies_for_clients: {
         Args: { p_client_ids: string[] }
         Returns: {
+          car_id: string
           car_number: string
           client_id: string
-          days_until_expiry: number
+          company_name: string
           end_date: string
           group_id: string
           insurance_price: number
-          paid: number
           policy_id: string
-          policy_number: string
           policy_type_child: string
           policy_type_parent: string
           remaining: number
-          status: string
+          start_date: string
+          total_paid: number
         }[]
       }
       report_renewals: {

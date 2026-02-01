@@ -1372,12 +1372,13 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                       </Section>
                     )}
 
-                    {/* Creator Info */}
-                    {creatorName && (
-                      <p className="text-xs text-center text-muted-foreground pt-4 border-t">
-                        أنشئ بواسطة: {creatorName}
+                    {/* Creator Info with Date/Time */}
+                    <div className="text-xs text-center text-muted-foreground pt-4 border-t space-y-1">
+                      <p>
+                        تاريخ الإنشاء: {new Date(policy.created_at).toLocaleDateString('en-GB')} الساعة {new Date(policy.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                       </p>
-                    )}
+                      {creatorName && <p>أنشئ بواسطة: {creatorName}</p>}
+                    </div>
                   </div>
                 )}
 
