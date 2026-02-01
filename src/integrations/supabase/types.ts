@@ -4314,6 +4314,21 @@ export type Database = {
       }
       can_view_financials: { Args: { _user_id: string }; Returns: boolean }
       clear_data_for_import: { Args: never; Returns: Json }
+      find_missing_packages: {
+        Args: never
+        Returns: {
+          car_id: string
+          car_number: string
+          client_id: string
+          client_name: string
+          first_created: string
+          last_created: string
+          policy_count: number
+          policy_ids: string[]
+          total_price: number
+          types: string[]
+        }[]
+      }
       fix_service_policies_company: { Args: never; Returns: Json }
       generate_file_number: { Args: never; Returns: string }
       generate_invoice_number: { Args: never; Returns: string }

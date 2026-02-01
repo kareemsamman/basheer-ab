@@ -131,6 +131,27 @@ const WordPressImport = () => {
     errors: string[];
   } | null>(null);
 
+  // Missing packages detection state
+  const [detectingPackages, setDetectingPackages] = useState(false);
+  const [missingPackages, setMissingPackages] = useState<{
+    client_id: string;
+    car_id: string;
+    client_name: string;
+    car_number: string;
+    policy_count: number;
+    policy_ids: string[];
+    types: string[];
+    total_price: number;
+    first_created: string;
+    selected: boolean;
+  }[]>([]);
+  const [linkingPackages, setLinkingPackages] = useState(false);
+  const [packageLinkStats, setPackageLinkStats] = useState<{
+    found: number;
+    linked: number;
+    errors: string[];
+  } | null>(null);
+
   const entityLabels: Record<string, string> = {
     companies: "شركات التأمين",
     brokers: "الوسطاء",
@@ -302,6 +323,74 @@ const WordPressImport = () => {
     } finally {
       setPolNumbersClearStats(stats);
       setClearingPolNumbers(false);
+    }
+  };
+
+  // Detect missing packages function
+  const detectMissingPackages = async () => {
+    setDetectingPackages(true);
+    setPackageLinkStats(null);
+    try {
+      const { data, error } = await supabase.rpc('find_missing_packages');
+      
+      if (error) throw error;
+      
+      setMissingPackages((data || []).map((pkg: any) => ({
+        ...pkg,
+        selected: true
+      })));
+      
+      toast({
+        title: "تم الاكتشاف",
+        description: `تم العثور على ${data?.length || 0} باقة مفقودة`
+      });
+    } catch (e: any) {
+      toast({ title: "خطأ", description: e.message, variant: "destructive" });
+    } finally {
+      setDetectingPackages(false);
+    }
+  };
+
+  // Link missing packages function
+  const linkMissingPackages = async () => {
+    const selected = missingPackages.filter(p => p.selected);
+    if (selected.length === 0) {
+      toast({ title: "لم يتم تحديد أي باقات" });
+      return;
+    }
+    
+    setLinkingPackages(true);
+    const stats = { found: selected.length, linked: 0, errors: [] as string[] };
+    
+    try {
+      for (const pkg of selected) {
+        const groupId = crypto.randomUUID();
+        
+        const { error } = await supabase
+          .from('policies')
+          .update({ group_id: groupId })
+          .in('id', pkg.policy_ids);
+        
+        if (error) {
+          stats.errors.push(`${pkg.client_name}: ${error.message}`);
+        } else {
+          stats.linked++;
+        }
+      }
+      
+      toast({
+        title: "تم الربط",
+        description: `تم ربط ${stats.linked} باقة من أصل ${stats.found}`
+      });
+      
+      // Refresh detection
+      await detectMissingPackages();
+      
+    } catch (e: any) {
+      stats.errors.push(e.message);
+    } finally {
+      setPackageLinkStats(stats);
+      setLinkingPackages(false);
     }
   };
 
@@ -2037,6 +2126,128 @@ const WordPressImport = () => {
                         <p className="font-medium">أخطاء ({elzamiFixStats.errors.length}):</p>
                         <ScrollArea className="h-24 mt-1">
                           {elzamiFixStats.errors.map((err, i) => (
+                            <p key={i} className="text-xs">{err}</p>
+                          ))}
+                        </ScrollArea>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Missing Packages Detection Tool */}
+            <Card className="border-2 border-primary">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-primary">
+                  <Link2 className="h-5 w-5" />
+                  ربط الباقات المفقودة
+                </CardTitle>
+                <CardDescription>
+                  تبحث عن وثائق يجب أن تكون ضمن باقة واحدة:
+                  <br />
+                  • نفس العميل والسيارة
+                  <br />
+                  • أُنشئت خلال ساعة واحدة
+                  <br />
+                  • أنواع مختلفة (إلزامي، ثالث/شامل، خدمات طريق)
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Detection count */}
+                <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">باقات مفقودة تم اكتشافها:</span>
+                    <Badge variant={missingPackages.length > 0 ? "default" : "secondary"}>
+                      {missingPackages.length}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button 
+                    onClick={detectMissingPackages} 
+                    disabled={detectingPackages}
+                    variant="outline"
+                  >
+                    {detectingPackages ? (
+                      <><Loader2 className="h-4 w-4 ml-2 animate-spin" />جاري الاكتشاف...</>
+                    ) : (
+                      <><RefreshCw className="h-4 w-4 ml-2" />اكتشاف الباقات</>
+                    )}
+                  </Button>
+                  
+                  <Button 
+                    onClick={linkMissingPackages} 
+                    disabled={linkingPackages || missingPackages.filter(p => p.selected).length === 0}
+                    className="bg-primary hover:bg-primary/90"
+                  >
+                    {linkingPackages ? (
+                      <><Loader2 className="h-4 w-4 ml-2 animate-spin" />جاري الربط...</>
+                    ) : (
+                      <><Link2 className="h-4 w-4 ml-2" />ربط المحددة ({missingPackages.filter(p => p.selected).length})</>
+                    )}
+                  </Button>
+                </div>
+
+                {/* List of missing packages */}
+                {missingPackages.length > 0 && (
+                  <ScrollArea className="h-64 border rounded-lg">
+                    <div className="divide-y">
+                      {missingPackages.map((pkg, i) => (
+                        <div 
+                          key={`${pkg.client_id}-${pkg.car_id}`} 
+                          className={`p-3 flex items-start gap-3 hover:bg-muted/50 cursor-pointer ${pkg.selected ? 'bg-primary/5' : ''}`}
+                          onClick={() => {
+                            setMissingPackages(prev => prev.map((p, idx) => 
+                              idx === i ? { ...p, selected: !p.selected } : p
+                            ));
+                          }}
+                        >
+                          <Checkbox 
+                            checked={pkg.selected}
+                            onCheckedChange={(checked) => {
+                              setMissingPackages(prev => prev.map((p, idx) => 
+                                idx === i ? { ...p, selected: !!checked } : p
+                              ));
+                            }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium truncate">{pkg.client_name}</span>
+                              <Badge variant="outline">{pkg.car_number}</Badge>
+                            </div>
+                            <div className="text-sm text-muted-foreground mt-1">
+                              {pkg.policy_count} وثائق: {pkg.types.join('، ')}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              المجموع: ₪{(pkg.total_price || 0).toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+
+                {/* Results */}
+                {packageLinkStats && (
+                  <div className="p-4 border rounded-lg space-y-2 bg-muted">
+                    <div className="grid grid-cols-2 gap-4 text-center">
+                      <div>
+                        <p className="text-sm text-muted-foreground">باقات تم تحديدها</p>
+                        <p className="text-2xl font-bold">{packageLinkStats.found}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">تم ربطها</p>
+                        <p className="text-2xl font-bold text-green-600">{packageLinkStats.linked}</p>
+                      </div>
+                    </div>
+                    {packageLinkStats.errors.length > 0 && (
+                      <div className="text-sm text-destructive">
+                        <p className="font-medium">أخطاء ({packageLinkStats.errors.length}):</p>
+                        <ScrollArea className="h-24 mt-1">
+                          {packageLinkStats.errors.map((err, i) => (
                             <p key={i} className="text-xs">{err}</p>
                           ))}
                         </ScrollArea>
