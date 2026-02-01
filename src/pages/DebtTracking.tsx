@@ -134,7 +134,7 @@ export default function DebtTracking() {
       const baseClients: ClientDebt[] = (clientRows || []).map((r: any) => ({
         client_id: r.client_id,
         client_name: r.client_name,
-        phone_number: r.phone_number,
+        phone_number: r.client_phone,
         total_owed: Number(r.total_owed) || 0,
         policies: [],
         policies_count: Number(r.policies_count) || 0,
