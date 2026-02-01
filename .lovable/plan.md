@@ -1,162 +1,133 @@
 
-# خطة: تحسين واجهة Lead WhatsApp
+# خطة: إصلاح مشكلتين - الملاحظات والقائمة المنسدلة للمهام
 
-## المشاكل المحددة
+## المشاكل المكتشفة
 
-بناءً على الصور والكود:
+### المشكلة 1: الملاحظات في صفحة متابعة الديون لا تعمل للعمال
 
-1. **مشكلة التمرير (Scrolling)**: المحادثة لا تتمرر لأن container لا يحتوي على overflow handling صحيح
-2. **العرض كبير جداً**: الـ Drawer يأخذ كامل عرض الشاشة
-3. **السعر خاطئ**: يعرض ₪900 بدلاً من ₪1,250 (المجموع الفعلي)
-4. **أنواع التأمين خاطئة**: يعرض كل الخيارات المذكورة بدلاً من المختارة فقط
-5. **الاسم خاطئ**: يستخرج "بك في AB Insurance" من رسالة الترحيب
+**السبب الجذري:**
+- مكون `ClientNotesPopover` يُستدعى بدون تمرير `branchId`
+- عند الإدراج، يُرسل `branch_id: null`
+- سياسة RLS `client_notes_insert` تتحقق من `can_access_branch(auth.uid(), branch_id)`
+- دالة `can_access_branch` تُرجع `false` إذا كان `branch_id = NULL` للعمال (غير المدراء)
 
----
-
-## الحلول المقترحة
-
-### 1) إصلاح UI/UX
-
-**LeadDetailsDrawer.tsx:**
-- إضافة `max-w-lg` أو `max-w-md` للحد من العرض
-- إضافة `mx-auto` للتوسيط
-- إصلاح flexbox للسماح بالتمرير
-
-**LeadChatView.tsx:**
-- إصلاح `ScrollArea` ليعمل بشكل صحيح
-- إضافة `overflow-y-auto` كـ fallback
-
-### 2) إصلاح Parser (sync-whatsapp-chat)
-
-**المشكلة الحالية:**
-```
-// يستخرج كل أنواع التأمين المذكورة (حتى الخيارات)
-if (content.includes("إلزامي")) seenInsuranceTypes.add("إلزامي")
-```
-
-**الحل - منطق جديد:**
-```
-// فقط من رسالة التأكيد النهائية التي تبدأ بـ "تمام! السعر:"
-if (content.startsWith("تمام!") || content.includes("المجموع:")) {
-  // استخراج الأنواع المختارة فقط من قائمة السعر
-  if (content.includes("طرف ثالث:")) types.add("طرف ثالث")
-  if (content.includes("إلزامي:") && content.match(/إلزامي:\s*\d/)) types.add("إلزامي")
-  // ...
-  
-  // استخراج المجموع
-  const totalMatch = content.match(/المجموع[:：]?\s*[\d,]+/)
-}
-```
-
-**إصلاح الاسم:**
-```
-// تجنب "بك في" و "AB Insurance"
-const namePatterns = [
-  /مرحباً?\s*!?\s*([^،,!؟\n]+)[،,!]/,
-  /أهلاً\s+([^\s،!]+)[،!]/, // "أهلاً محمد!" → "محمد"
-];
-// مع فلتر لاستبعاد "بك في" و "AB" و "Insurance"
-```
-
-### 3) اقتراح n8n (اختياري)
-
-n8n يمكنه معالجة البيانات قبل إرسالها:
-
-```text
-WhatsApp Bot → n8n Workflow → Structured JSON → Supabase
-
-الـ Workflow:
-1. Trigger: Webhook from Bot
-2. Parse: استخراج البيانات بـ Code Node
-3. Store: إرسال لـ Supabase مع البيانات المنظمة
-
-فائدة: Bot يرسل البيانات منظمة من البداية
-```
-
-هذا يتطلب تعديل Bot أو إضافة webhook، لكن سيجعل البيانات أدق.
+**الحل:**
+- تمرير `branchId` من `useAuth()` إلى مكون `ClientNotesPopover` في صفحة `DebtTracking`
 
 ---
 
-## التغييرات التفصيلية
+### المشكلة 2: القائمة المنسدلة في المهام تعرض المستخدم الحالي فقط
 
-### الملف: `src/components/leads/LeadDetailsDrawer.tsx`
+**السبب الجذري:**
+- سياسة RLS على جدول `profiles`:
+  - "Users can view their own profile" → `id = auth.uid()` 
+  - "Admins can view all profiles" → `has_role(auth.uid(), 'admin')`
+- العامل (worker) يرى ملفه الشخصي فقط، ولا يستطيع رؤية الآخرين
+- هذا يجعل `TaskDrawer` يعرض المستخدم الحالي فقط في قائمة "مسندة إلى"
 
-تغييرات:
-- تحديد عرض أقصى للـ drawer
-- تحسين layout للتمرير
+**الحل:**
+- إضافة سياسة RLS جديدة تسمح للمستخدمين النشطين برؤية جميع الملفات النشطة
+- أو استخدام view/function خاصة للحصول على قائمة المستخدمين
 
-```typescript
-// قبل
-<DrawerContent className="max-h-[95vh] flex flex-col">
+---
 
-// بعد  
-<DrawerContent className="max-h-[85vh] h-[85vh] flex flex-col max-w-md mx-auto">
-```
+## التغييرات المطلوبة
 
-### الملف: `src/components/leads/LeadChatView.tsx`
-
-تغييرات:
-- إصلاح overflow handling
-- تحسين responsive design
+### 1) إصلاح الملاحظات - `src/pages/DebtTracking.tsx`
 
 ```typescript
-// قبل
-<div className="flex flex-col h-full ...">
-  <ScrollArea ref={scrollRef} className="flex-1 relative z-10">
+// إضافة useAuth للحصول على branchId
+const { profile } = useAuth();
 
-// بعد
-<div className="flex flex-col h-full overflow-hidden ...">
-  <ScrollArea className="flex-1 overflow-y-auto ...">
+// تمرير branchId إلى ClientNotesPopover
+<ClientNotesPopover
+  clientId={client.client_id}
+  clientName={client.client_name}
+  branchId={profile?.branch_id}  // إضافة هذا السطر
+/>
 ```
 
-### الملف: `supabase/functions/sync-whatsapp-chat/index.ts`
+### 2) إصلاح قائمة المستخدمين - `TaskDrawer.tsx`
 
-**تغيير منطق Parser:**
+**خياران:**
 
-1. **السعر**: فقط من رسالة المجموع النهائية
-2. **أنواع التأمين**: فقط من قائمة السعر المؤكدة (التي تحتوي على سعر)
-3. **الاسم**: تجنب استخراج أسماء خاطئة
+**الخيار أ (الأبسط):** إنشاء RPC function لجلب المستخدمين
 
+```sql
+CREATE OR REPLACE FUNCTION get_active_users_for_tasks()
+RETURNS TABLE (id uuid, full_name text, email text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT p.id, p.full_name, p.email
+  FROM profiles p
+  WHERE p.status = 'active'
+  ORDER BY p.full_name NULLS LAST;
+$$;
+```
+
+ثم في `TaskDrawer.tsx`:
 ```typescript
-// منطق جديد للسعر
-const summaryMatch = content.match(/المجموع[:：]?\s*([\d,]+)/);
-if (summaryMatch) {
-  result.total_price = parseInt(summaryMatch[1].replace(',', ''));
-}
-
-// منطق جديد للتأمين - من رسالة السعر فقط
-if (content.includes("تمام! السعر:") || content.includes("المجموع:")) {
-  if (content.includes("طرف ثالث:")) types.add("طرف ثالث");
-  if (content.includes("إلزامي") && content.match(/إلزامي.*?\d+₪/)) {
-    types.add("إلزامي");
-  }
-  if (content.includes("شامل") && content.match(/شامل.*?\d+₪/)) {
-    types.add("شامل");
-  }
-  if (content.includes("خدمات طريق:")) types.add("خدمات طريق");
-}
-
-// إصلاح الاسم - استبعاد العبارات الخاطئة
-const invalidNames = ["بك في", "AB Insurance", "أنا بوت"];
+const { data: users = [] } = useQuery({
+  queryKey: ['active-users-for-tasks'],
+  queryFn: async () => {
+    const { data, error } = await supabase.rpc('get_active_users_for_tasks');
+    if (error) throw error;
+    return data || [];
+  },
+});
 ```
+
+**الخيار ب:** تعديل سياسة RLS
+
+إضافة سياسة جديدة للسماح للمستخدمين النشطين برؤية ملفات المستخدمين النشطين:
+
+```sql
+CREATE POLICY "Active users can view active profiles for task assignment"
+ON profiles FOR SELECT
+TO authenticated
+USING (
+  is_active_user(auth.uid()) 
+  AND status = 'active'
+);
+```
+
+**ملاحظة:** الخيار أ أفضل لأنه:
+- أكثر تحديداً (فقط للمهام)
+- لا يؤثر على الأمان العام
+- `SECURITY DEFINER` يتجاوز RLS
 
 ---
 
 ## ملخص الملفات
 
-| الملف | التغيير | الأولوية |
-|-------|---------|---------|
-| LeadDetailsDrawer.tsx | عرض أضيق + تمرير | عالية |
-| LeadChatView.tsx | إصلاح scroll | عالية |
-| sync-whatsapp-chat/index.ts | parser جديد | عالية |
-| discover-redis-leads/index.ts | نفس تحسينات parser | عالية |
+| الملف | التغيير | الوصف |
+|-------|---------|-------|
+| `src/pages/DebtTracking.tsx` | تعديل | إضافة useAuth وتمرير branchId |
+| `src/components/tasks/TaskDrawer.tsx` | تعديل | استخدام RPC بدلاً من query مباشر |
+| Database Migration | جديد | إنشاء function `get_active_users_for_tasks` |
+
+---
+
+## خطوات التنفيذ
+
+1. **إنشاء Database Migration:**
+   - إضافة `get_active_users_for_tasks()` function
+
+2. **تعديل `DebtTracking.tsx`:**
+   - استيراد `useAuth`
+   - تمرير `profile?.branch_id` لكل `ClientNotesPopover`
+
+3. **تعديل `TaskDrawer.tsx`:**
+   - تغيير الـ query لاستخدام RPC function
+   - التأكد من عرض جميع المستخدمين النشطين
 
 ---
 
 ## النتيجة المتوقعة
 
-1. Drawer بعرض محدود ومريح
-2. تمرير سلس للمحادثة
-3. السعر الصحيح: ₪1,250 (المجموع)
-4. أنواع التأمين الصحيحة: "طرف ثالث"، "خدمات طريق"
-5. بدون اسم خاطئ (سيبقى فارغ إذا لم يتوفر اسم حقيقي)
+1. ✅ الملاحظات تعمل للعمال في صفحة متابعة الديون
+2. ✅ قائمة المستخدمين تعرض جميع الموظفين (مدراء + عمال)
+3. ✅ العامل يستطيع إسناد مهمة لأي شخص نشط
