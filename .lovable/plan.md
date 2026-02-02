@@ -1,99 +1,105 @@
 
-# خطة: إصلاح عرض مبلغ الدين الخاطئ
+## لماذا “تفاصيل التجديدات” لا تظهر رغم أنها مكتوبة في الصفحة؟
+السبب الحقيقي ليس في الواجهة فقط، بل في **وظيفة الملخص في الباكند**:
 
-## المشكلة
-الواجهة تعرض `total_owed` (إجمالي أسعار الوثائق = ₪6,300) بدلاً من `total_remaining` (المتبقي الفعلي = ₪1,600).
+- وظيفة الملخص `report_renewals_summary` حالياً **تتعطّل بخطأ** لأن حقل `policies.policy_type_parent` نوعه **Enum** اسمه `policy_type_parent` (USER-DEFINED) وليس `text`.
+- داخل الوظيفة يوجد شرط:
+  ```sql
+  p.policy_type_parent = p_policy_type
+  ```
+  وهذا يسبب الخطأ: **operator does not exist: policy_type_parent = text**
+- وفي الواجهة `PolicyReports.tsx` يتم عمل `Promise.all` لاستدعاء:
+  - `report_renewals` (يعمل)
+  - `report_renewals_summary` (يفشل)
+- لكن الكود الحالي **لا يفحص `summaryRes.error`**، لذلك:
+  - الجدول يظهر طبيعي
+  - الملخص يبقى `null`
+  - كروت الإحصائيات لا تُعرض إطلاقاً
+  - ولا يظهر Toast خطأ (لأن الخطأ لم يتم التعامل معه)
 
-**البيانات من قاعدة البيانات:**
-```
-total_owed: 6300       ← مجموع أسعار الوثائق المدينة
-total_paid: 4700       ← المدفوع  
-total_remaining: 1600  ← المتبقي الفعلي ← يجب عرض هذا!
-```
-
----
-
-## الحل التقني
-
-### 1. تحديث الـ Interface
-**الملف:** `src/pages/DebtTracking.tsx` (السطور 26-35)
-
-```typescript
-interface ClientDebt {
-  client_id: string;
-  client_name: string;
-  phone_number: string | null;
-  total_owed: number;      // إجمالي السعر
-  total_paid: number;      // إضافة: المدفوع
-  total_remaining: number; // إضافة: المتبقي الفعلي
-  policies: PolicyDebt[];
-  policies_count: number;
-  earliest_expiry: string | null;
-  days_until_expiry: number | null;
-}
-```
-
-### 2. تحديث الـ Mapping
-**السطور 134-143:**
-
-```typescript
-const baseClients: ClientDebt[] = (clientRows || []).map((r: any) => ({
-  client_id: r.client_id,
-  client_name: r.client_name,
-  phone_number: r.client_phone,
-  total_owed: Number(r.total_owed) || 0,
-  total_paid: Number(r.total_paid) || 0,       // إضافة
-  total_remaining: Number(r.total_remaining) || 0,  // إضافة
-  policies: [],
-  policies_count: Number(r.policies_count) || 0,
-  earliest_expiry: r.oldest_end_date ? String(r.oldest_end_date) : null,
-  days_until_expiry: r.days_until_oldest == null || isNaN(Number(r.days_until_oldest)) ? null : Number(r.days_until_oldest),
-}));
-```
-
-### 3. تغيير العرض
-**السطور 478-482:**
-
-من:
-```typescript
-<p className="font-bold text-lg text-destructive">
-  {formatCurrency(client.total_owed)}
-</p>
-```
-
-إلى:
-```typescript
-<p className="font-bold text-lg text-destructive">
-  {formatCurrency(client.total_remaining)}
-</p>
-```
-
-### 4. تحديث رسالة WhatsApp
-**السطر 272:**
-
-من:
-```typescript
-const message = `... ${client.total_owed.toLocaleString()} شيكل...`;
-```
-
-إلى:
-```typescript
-const message = `... ${client.total_remaining.toLocaleString()} شيكل...`;
-```
+هذه بالضبط “ليش ما تشوف أي تفاصيل” رغم أنك طلبتها أكثر من مرة.
 
 ---
 
-## ملخص الملفات المتأثرة
-
-| الملف | التغيير |
-|-------|---------|
-| `src/pages/DebtTracking.tsx` | إصلاح الـ interface + mapping + عرض المبلغ |
+## المطلوب (حسب كلامك)
+في تبويب التجديدات داخل **تقارير الوثائق** نريد إحصائيات “خبير” مثل:
+- كم **تم تجديدهم** (Renewed)
+- كم **لازم يتجددوا** (Not contacted / Pending)
+- كم **تم الاتصال بهم** (Called)
+- كم **تم إرسال SMS**
+- **الباقات** (Packages) + **المفرد** (Single)
+- **إجمالي القيمة** المتوقعة للتجديد
 
 ---
 
-## النتيجة المتوقعة
+## التعديل المقترح (سيُنفّذ بعد موافقتك في وضع التنفيذ)
 
-**قبل:** العميل "سند شواورة" يظهر ₪6,300  
-**بعد:** العميل "سند شواورة" يظهر ₪1,600 ✓
+### 1) إصلاح وظيفة الملخص في الباكند (أهم خطوة)
+سنضيف Migration جديدة لتعديل `public.report_renewals_summary` بحيث:
+1) نحول `p_policy_type` إلى Enum صحيح مثل `report_renewals`:
+   - `v_policy_type := NULLIF(p_policy_type, '')::public.policy_type_parent;`
+   - ونستخدم: `(v_policy_type IS NULL OR p.policy_type_parent = v_policy_type)`
+2) نجعل شرط “استبعاد من تم تجديده” مطابق تماماً للـ `report_renewals` (حتى تتطابق الأرقام مع الجدول):
+   - `newer.start_date > p.start_date`
+   - `newer.end_date > CURRENT_DATE`
+3) نحسب الحالة **لكل عميل** بنفس منطق “أسوأ حالة” الموجود بالجدول (حتى الأرقام تطابق ما تراه):
+   - `not_contacted` ثم `sms_sent` ثم `called` ثم `renewed` وإلا `not_interested`
+4) نضيف حقول الملخص الإضافية التي اتفقنا عليها:
+   - `total_packages`, `total_single`, `total_value`
 
-المبلغ المعروض الآن يطابق مجموع الأعمدة "المتبقي" في الجدول.
+> النتيجة: RPC يرجع صف واحد دائماً (حتى لو الأرقام صفر)، والكروت ترجع تظهر.
+
+#### SQL (مستوى تقني)
+سنُعيد بناء الوظيفة بنفس الهيكل لكن مع:
+- `v_policy_type public.policy_type_parent;`
+- واستخدام `v_policy_type` في الفلترة بدل المقارنة النصية
+- وتجميع على مستوى `client_id` للحالات + الباقات + القيمة
+
+---
+
+### 2) إصلاح الواجهة كي لا “تسكت” إذا فشل الملخص
+في `src/pages/PolicyReports.tsx` داخل `fetchRenewals` سنعمل:
+1) **فحص خطأ الملخص**:
+   - إذا `summaryRes.error` نعرض Toast واضح: “فشل في تحميل ملخص التجديدات”
+   - ونطبع الخطأ في console للتشخيص
+2) **Reset للملخص عند أي فلترة/تحميل**:
+   - `setRenewalsSummary(null)` قبل الطلب، حتى لا تظهر أرقام قديمة
+3) **Skeleton للكروت** أثناء التحميل (حسب قواعد الأداء عندك):
+   - بدل ما تختفي المنطقة بالكامل، تظهر كروت Skeleton لتجنب “فراغ/فلاش”
+
+> النتيجة: حتى لو حدث خطأ مستقبلاً، لن تظل الصفحة “ساكتة” بدون تفاصيل.
+
+---
+
+### 3) (اختياري لكنه مهم) إصلاح شارة التجديدات في السايدبار لو كانت تختفي
+`src/hooks/useRenewalsCount.tsx`:
+- إضافة تعامل مع `error` (log + `setIsLoading(false)`) حتى لا تبقى معلّقة أو ترجع 0 بدون تفسير.
+
+---
+
+## الاختبار المطلوب بعد التنفيذ (End-to-End)
+1) افتح: **تقارير الوثائق → التجديدات**
+2) تأكد أن كروت الملخص تظهر فوق الفلاتر:
+   - إجمالي بحاجة للتجديد
+   - لم يتم التواصل
+   - تم التجديد + نسبة التحويل
+   - SMS / تم الاتصال / غير مهتم / باقات / مفردة
+3) جرّب تغيير الفلاتر (الشهر، الأيام، النوع، المستخدم، البحث) وتأكد أن الأرقام تتغير وتطابق الجدول.
+4) غيّر حالة عميل إلى (تم الاتصال / تم التجديد) وتأكد أن العدّاد يتحدث.
+5) تأكد أن شارة التجديدات في السايدبار ترجع تعكس الرقم الصحيح.
+
+---
+
+## الملفات المتأثرة
+- `supabase/migrations/NEW_*.sql`  
+  إصلاح `report_renewals_summary` (Casting للـ Enum + منطق مطابق للجدول + الحقول الجديدة)
+- `src/pages/PolicyReports.tsx`  
+  التعامل مع `summaryRes.error` + Skeleton + Reset state للملخص
+- `src/hooks/useRenewalsCount.tsx` (اختياري)  
+  تحسين التعامل مع الأخطاء
+
+---
+
+## ملاحظة مهمة
+أنت الآن على `/login`. بعد تسجيل الدخول ارجع إلى **تقارير الوثائق** لتشوف النتيجة. الكروت لن تظهر إذا لم يتم تحميل بيانات التجديدات أصلاً.
+
