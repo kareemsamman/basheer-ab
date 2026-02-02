@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
   ChevronDown, 
@@ -23,6 +24,9 @@ import {
   AlertTriangle,
   Trash2,
   Users,
+  MessageSquare,
+  Save,
+  X,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -52,6 +56,7 @@ interface PolicyRecord {
   transferred_to_car_number: string | null;
   transferred_from_policy_id: string | null;
   group_id: string | null;
+  notes: string | null;
   company: { name: string; name_ar: string | null } | null;
   car: { id: string; car_number: string } | null;
   creator: { full_name: string | null; email: string } | null;
@@ -68,6 +73,7 @@ interface PolicyYearTimelineProps {
   onTransferPackage?: (policyIds: string[]) => void;
   onCancelPackage?: (policyIds: string[]) => void;
   onDeletePolicy?: (policyIds: string[]) => void;
+  onPoliciesUpdate?: () => void;
 }
 
 const policyTypeLabels: Record<string, string> = {
@@ -194,7 +200,8 @@ export function PolicyYearTimeline({
   onCancelPolicy,
   onTransferPackage,
   onCancelPackage,
-  onDeletePolicy
+  onDeletePolicy,
+  onPoliciesUpdate
 }: PolicyYearTimelineProps) {
   const { isSuperAdmin } = useAuth();
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo>({});
@@ -205,6 +212,33 @@ export function PolicyYearTimeline({
   const [selectedPackagePolicyIds, setSelectedPackagePolicyIds] = useState<string[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [sendingPolicy, setSendingPolicy] = useState<string | null>(null);
+  
+  // Notes editing state
+  const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
+  const [editedNotesValue, setEditedNotesValue] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
+
+  // Handle notes update
+  const handleNotesUpdate = async (policyId: string, notes: string) => {
+    setSavingNotes(true);
+    try {
+      const { error } = await supabase
+        .from('policies')
+        .update({ notes: notes.trim() || null })
+        .eq('id', policyId);
+      
+      if (error) throw error;
+      
+      toast.success('تم حفظ الملاحظات');
+      setEditingNotesId(null);
+      if (onPoliciesUpdate) onPoliciesUpdate();
+    } catch (err) {
+      console.error('Error updating notes:', err);
+      toast.error('فشل حفظ الملاحظات');
+    } finally {
+      setSavingNotes(false);
+    }
+  };
 
   // Fetch payment info
   useEffect(() => {
@@ -640,24 +674,35 @@ export function PolicyYearTimeline({
                 {yearGroup.packages.map((pkg, pkgIndex) => {
                   const accidentCount = pkg.allPolicyIds.reduce((sum, id) => sum + (accidentInfo[id] || 0), 0);
                   const childrenCount = pkg.allPolicyIds.reduce((sum, id) => sum + (childrenInfo[id] || 0), 0);
-                  return (
-                    <PolicyPackageCard
-                      key={pkgIndex}
-                      pkg={pkg}
-                      paymentStatus={getPackagePaymentStatus(pkg)}
-                      accidentCount={accidentCount}
-                      childrenCount={childrenCount}
-                      onPolicyClick={onPolicyClick}
-                      onPaymentClick={(e) => handlePackagePayment(e, pkg.allPolicyIds, pkg.mainPolicy?.branch_id || pkg.addons[0]?.branch_id || null)}
-                      onSendInvoice={(e) => handleSendInvoice(e, pkg.allPolicyIds)}
-                      isSending={sendingPolicy === pkg.allPolicyIds[0]}
-                      onTransfer={onTransferPolicy}
-                      onCancel={onCancelPolicy}
-                      onTransferPackage={onTransferPackage}
-                      onCancelPackage={onCancelPackage}
-                      onDeletePolicy={onDeletePolicy}
-                      isSuperAdmin={isSuperAdmin}
-                    />
+                    const mainPolicy = pkg.mainPolicy || pkg.addons[0];
+                    return (
+                      <PolicyPackageCard
+                        key={pkgIndex}
+                        pkg={pkg}
+                        paymentStatus={getPackagePaymentStatus(pkg)}
+                        accidentCount={accidentCount}
+                        childrenCount={childrenCount}
+                        onPolicyClick={onPolicyClick}
+                        onPaymentClick={(e) => handlePackagePayment(e, pkg.allPolicyIds, pkg.mainPolicy?.branch_id || pkg.addons[0]?.branch_id || null)}
+                        onSendInvoice={(e) => handleSendInvoice(e, pkg.allPolicyIds)}
+                        isSending={sendingPolicy === pkg.allPolicyIds[0]}
+                        onTransfer={onTransferPolicy}
+                        onCancel={onCancelPolicy}
+                        onTransferPackage={onTransferPackage}
+                        onCancelPackage={onCancelPackage}
+                        onDeletePolicy={onDeletePolicy}
+                        isSuperAdmin={isSuperAdmin}
+                        isEditingNotes={editingNotesId === mainPolicy?.id}
+                        editedNotesValue={editedNotesValue}
+                        savingNotes={savingNotes}
+                        onStartEditNotes={(policyId, currentNotes) => {
+                          setEditingNotesId(policyId);
+                          setEditedNotesValue(currentNotes || '');
+                        }}
+                        onCancelEditNotes={() => setEditingNotesId(null)}
+                        onNotesValueChange={setEditedNotesValue}
+                        onSaveNotes={(policyId) => handleNotesUpdate(policyId, editedNotesValue)}
+                      />
                   );
                 })}
               </div>
@@ -695,7 +740,14 @@ function PolicyPackageCard({
   onTransferPackage,
   onCancelPackage,
   onDeletePolicy,
-  isSuperAdmin
+  isSuperAdmin,
+  isEditingNotes,
+  editedNotesValue,
+  savingNotes,
+  onStartEditNotes,
+  onCancelEditNotes,
+  onNotesValueChange,
+  onSaveNotes,
 }: {
   pkg: PolicyPackage;
   paymentStatus: { totalPaid: number; remaining: number; isPaid: boolean };
@@ -711,6 +763,13 @@ function PolicyPackageCard({
   onCancelPackage?: (ids: string[]) => void;
   onDeletePolicy?: (ids: string[]) => void;
   isSuperAdmin?: boolean;
+  isEditingNotes?: boolean;
+  editedNotesValue?: string;
+  savingNotes?: boolean;
+  onStartEditNotes?: (policyId: string, currentNotes: string | null) => void;
+  onCancelEditNotes?: () => void;
+  onNotesValueChange?: (value: string) => void;
+  onSaveNotes?: (policyId: string) => void;
 }) {
   const policy = pkg.mainPolicy || pkg.addons[0];
   if (!policy) return null;
@@ -1004,6 +1063,77 @@ function PolicyPackageCard({
               </p>
             </div>
           </div>
+        </div>
+
+        {/* Notes Section - Inline Edit */}
+        <div 
+          className="mt-3 pt-3 border-t border-border/50"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {isEditingNotes ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">ملاحظات الوثيقة</span>
+              </div>
+              <Textarea
+                value={editedNotesValue || ''}
+                onChange={(e) => onNotesValueChange?.(e.target.value)}
+                placeholder="أدخل ملاحظات الوثيقة..."
+                className="min-h-[60px] text-sm resize-none"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    onCancelEditNotes?.();
+                  } else if (e.key === 'Enter' && e.ctrlKey) {
+                    onSaveNotes?.(policy.id);
+                  }
+                }}
+              />
+              <div className="flex items-center gap-2 justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onCancelEditNotes}
+                  disabled={savingNotes}
+                >
+                  <X className="h-4 w-4 ml-1" />
+                  إلغاء
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => onSaveNotes?.(policy.id)}
+                  disabled={savingNotes}
+                >
+                  {savingNotes ? (
+                    <Loader2 className="h-4 w-4 ml-1 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4 ml-1" />
+                  )}
+                  حفظ
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div 
+              className="flex items-start gap-2 cursor-pointer hover:bg-muted/50 rounded-md p-2 -m-2 transition-colors"
+              onClick={() => onStartEditNotes?.(policy.id, policy.notes)}
+            >
+              <MessageSquare className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">ملاحظات</p>
+                {policy.notes ? (
+                  <p className="text-sm text-foreground whitespace-pre-wrap break-words">
+                    {policy.notes}
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">
+                    لا توجد ملاحظات - اضغط للإضافة
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Card>

@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { supabase } from "@/integrations/supabase/client";
-import { AlertCircle, Package, ArrowLeftRight, ImageIcon, FolderOpen, Upload, X, ChevronDown, ChevronUp, Printer, Loader2, RefreshCw } from "lucide-react";
+import { AlertCircle, Package, ArrowLeftRight, ImageIcon, FolderOpen, Upload, X, ChevronDown, ChevronUp, Printer, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import '@/types/scanner.d.ts';
 import { cn } from "@/lib/utils";
@@ -148,7 +148,7 @@ export function Step3PolicyDetails({
   const insuranceInputRef = useRef<HTMLInputElement>(null);
   const crmInputRef = useRef<HTMLInputElement>(null);
   const [loadingPrice, setLoadingPrice] = useState(false);
-  const [fetchingCarValue, setFetchingCarValue] = useState(false);
+  
   const [scanning, setScanning] = useState<'insurance' | 'crm' | null>(null);
 
   // Convert base64 to Blob for scanner
@@ -693,68 +693,17 @@ export function Step3PolicyDetails({
       {policy.policy_type_parent === 'THIRD_FULL' && policy.policy_type_child === 'FULL' && (
         <div>
           <Label>قيمة السيارة (₪) *</Label>
-          <div className="flex gap-2">
-            <Input
-              type="number"
-              value={policy.full_car_value || ''}
-              onChange={(e) => setPolicy({ ...policy, full_car_value: e.target.value })}
-              placeholder={
-                selectedCar?.car_value?.toString() || 
-                existingCar?.car_value?.toString() || 
-                (createNewCar && newCar.car_value ? newCar.car_value : 'أدخل قيمة السيارة')
-              }
-              className={cn(errors.full_car_value ? "border-destructive" : "")}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={async () => {
-                const car = selectedCar || existingCar || (createNewCar ? {
-                  manufacturer_name: newCar.manufacturer_name,
-                  model: newCar.model,
-                  year: newCar.year ? parseInt(newCar.year) : null
-                } : null);
-                
-                if (!car?.manufacturer_name || !car?.year) {
-                  toast.error('بيانات السيارة غير كافية لجلب السعر');
-                  return;
-                }
-                
-                setFetchingCarValue(true);
-                try {
-                  const { data, error } = await supabase.functions.invoke('fetch-car-price', {
-                    body: {
-                      manufacturer: car.manufacturer_name,
-                      model: car.model || '',
-                      year: car.year
-                    }
-                  });
-                  
-                  if (error) {
-                    toast.error('فشل في جلب سعر السيارة');
-                  } else if (data?.found && data?.data?.price) {
-                    setPolicy({ ...policy, full_car_value: data.data.price.toString() });
-                    toast.success('تم جلب قيمة السيارة بنجاح');
-                  } else {
-                    toast.warning('لم يتم العثور على سعر مطابق');
-                  }
-                } catch (err) {
-                  toast.error('خطأ في جلب سعر السيارة');
-                } finally {
-                  setFetchingCarValue(false);
-                }
-              }}
-              disabled={fetchingCarValue}
-              title="جلب قيمة السيارة من الحكومة"
-            >
-              {fetchingCarValue ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
+          <Input
+            type="number"
+            value={policy.full_car_value || ''}
+            onChange={(e) => setPolicy({ ...policy, full_car_value: e.target.value })}
+            placeholder={
+              selectedCar?.car_value?.toString() || 
+              existingCar?.car_value?.toString() || 
+              (createNewCar && newCar.car_value ? newCar.car_value : 'أدخل قيمة السيارة')
+            }
+            className={cn(errors.full_car_value ? "border-destructive" : "")}
+          />
           <p className="text-xs text-muted-foreground mt-1">
             مطلوب لحساب سعر التأمين الشامل
           </p>

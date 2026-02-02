@@ -151,6 +151,7 @@ interface PolicyRecord {
   transferred_to_car_number: string | null;
   transferred_from_policy_id: string | null;
   group_id: string | null;
+  notes: string | null;
   company: { name: string; name_ar: string | null } | null;
   car: { id: string; car_number: string } | null;
   creator: { full_name: string | null; email: string } | null;
@@ -344,7 +345,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
           id, policy_number, policy_type_parent, policy_type_child, start_date, end_date, 
           insurance_price, profit, cancelled, transferred, group_id,
           transferred_car_number, transferred_to_car_number, transferred_from_policy_id,
-          created_at, branch_id,
+          created_at, branch_id, notes,
           company:insurance_companies(name, name_ar),
           car:cars(id, car_number),
           creator:profiles!policies_created_by_admin_id_fkey(full_name, email)
@@ -1337,6 +1338,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
                   setDeletePolicyIds(policyIds);
                   setDeletePolicyDialogOpen(true);
                 } : undefined}
+                onPoliciesUpdate={fetchPolicies}
               />
             )}
           </TabsContent>
