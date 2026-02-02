@@ -191,6 +191,7 @@ interface ClientDetailsProps {
   client: Client;
   onBack: () => void;
   onRefresh: () => void;
+  initialCarFilter?: string | null;
 }
 
 const policyTypeLabels: Record<string, string> = {
@@ -228,7 +229,7 @@ const carTypeLabels: Record<string, string> = {
   tjeraup4: 'تجاري (أكثر من 4 طن)',
 };
 
-export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps) {
+export function ClientDetails({ client, onBack, onRefresh, initialCarFilter }: ClientDetailsProps) {
   const { getBranchName } = useBranches();
   const { isAdmin, isSuperAdmin } = useAuth();
   const { setRecentClient } = useRecentClient();
@@ -282,7 +283,7 @@ export function ClientDetails({ client, onBack, onRefresh }: ClientDetailsProps)
   const [policySearch, setPolicySearch] = useState('');
   const [policyTypeFilter, setPolicyTypeFilter] = useState<string>('all');
   const [policyStatusFilter, setPolicyStatusFilter] = useState<string>('all');
-  const [policyCarFilter, setPolicyCarFilter] = useState<string>('all');
+  const [policyCarFilter, setPolicyCarFilter] = useState<string>(initialCarFilter || 'all');
 
   // Payment filters
   const [paymentSearch, setPaymentSearch] = useState('');

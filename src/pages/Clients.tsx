@@ -77,6 +77,7 @@ export default function Clients() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [viewingClient, setViewingClient] = useState<Client | null>(null);
+  const [initialCarFilter, setInitialCarFilter] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingClient, setDeletingClient] = useState<Client | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -84,6 +85,7 @@ export default function Clients() {
   // Handle URL param to open client directly
   useEffect(() => {
     const openClientId = searchParams.get('open');
+    const carId = searchParams.get('car');
     if (openClientId && !viewingClient) {
       // Fetch the client and open their details
       supabase
@@ -95,6 +97,7 @@ export default function Clients() {
         .then(({ data, error }) => {
           if (data && !error) {
             setViewingClient(data);
+            setInitialCarFilter(carId || null);
             // Clear the URL param
             setSearchParams({});
           }
@@ -187,7 +190,11 @@ export default function Clients() {
     return (
       <ClientDetails
         client={viewingClient}
-        onBack={() => setViewingClient(null)}
+        initialCarFilter={initialCarFilter}
+        onBack={() => {
+          setViewingClient(null);
+          setInitialCarFilter(null);
+        }}
         onRefresh={() => {
           fetchClients();
           // Refresh the viewing client data

@@ -13,6 +13,7 @@ interface ClientResult {
   id_number: string;
   phone_number: string | null;
   cars: string[];
+  matchedCarId?: string;
 }
 
 interface BottomToolbarInlineSearchProps {
@@ -63,7 +64,7 @@ export function BottomToolbarInlineSearch({ className }: BottomToolbarInlineSear
           .limit(10),
         supabase
           .from("cars")
-          .select("client_id, car_number, clients(id, full_name, id_number, phone_number)")
+          .select("id, client_id, car_number, clients(id, full_name, id_number, phone_number)")
           .is("deleted_at", null)
           .ilike("car_number", `%${searchTerm}%`)
           .limit(10),
@@ -95,6 +96,10 @@ export function BottomToolbarInlineSearch({ className }: BottomToolbarInlineSear
         } | null;
         if (!client) continue;
 
+        const carNumber = (row as any).car_number as string;
+        const carId = (row as any).id as string;
+        const isCarMatch = carNumber.toLowerCase().includes(searchTerm.toLowerCase());
+
         if (!map.has(client.id)) {
           map.set(client.id, {
             id: client.id,
@@ -102,7 +107,11 @@ export function BottomToolbarInlineSearch({ className }: BottomToolbarInlineSear
             id_number: client.id_number,
             phone_number: client.phone_number,
             cars: [],
+            matchedCarId: isCarMatch ? carId : undefined,
           });
+        } else if (isCarMatch && !map.get(client.id)?.matchedCarId) {
+          // If this car matches the search and we don't have a matched car yet
+          map.get(client.id)!.matchedCarId = carId;
         }
       }
 
@@ -163,12 +172,13 @@ export function BottomToolbarInlineSearch({ className }: BottomToolbarInlineSear
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [closeDropdown]);
 
-  const handleSelect = (clientId: string) => {
+  const handleSelect = (clientId: string, matchedCarId?: string) => {
     clearSearch();
-    // Force navigation with state reset by using replace
-    navigate(`/clients?open=${clientId}`, { replace: false });
-    // Force page reload to reset any existing viewingClient state
-    window.location.href = `/clients?open=${clientId}`;
+    // Navigate with car filter if a car was matched
+    const url = matchedCarId 
+      ? `/clients?open=${clientId}&car=${matchedCarId}`
+      : `/clients?open=${clientId}`;
+    window.location.href = url;
   };
 
   const handleFocus = () => {
@@ -240,7 +250,7 @@ export function BottomToolbarInlineSearch({ className }: BottomToolbarInlineSear
                   onMouseDown={(e) => {
                     // Use mouseDown to prevent input blur before navigation
                     e.preventDefault();
-                    handleSelect(r.id);
+                    handleSelect(r.id, r.matchedCarId);
                   }}
                 >
                   <div className="flex items-start justify-between gap-2">

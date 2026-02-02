@@ -18,6 +18,7 @@ interface ClientSearchResult {
     car_number: string;
   }[];
   policies_count: number;
+  matchedCarId?: string;
 }
 
 interface GlobalPolicySearchProps {
@@ -72,6 +73,7 @@ export function GlobalPolicySearch({ open, onOpenChange }: GlobalPolicySearchPro
       const { data: carsData, error: carsError } = await supabase
         .from("cars")
         .select(`
+          id,
           client_id,
           car_number,
           clients(id, full_name, id_number, phone_number)
@@ -117,6 +119,10 @@ export function GlobalPolicySearch({ open, onOpenChange }: GlobalPolicySearchPro
       // Add clients from car search
       for (const car of carsData || []) {
         const client = car.clients as any;
+        const carId = (car as any).id as string;
+        const carNumber = car.car_number;
+        const isCarMatch = carNumber.toLowerCase().includes(searchTerm.toLowerCase());
+        
         if (client && !clientMap.has(client.id)) {
           // Fetch all cars for this client
           const { data: clientCars } = await supabase
@@ -140,7 +146,11 @@ export function GlobalPolicySearch({ open, onOpenChange }: GlobalPolicySearchPro
             phone_number: client.phone_number,
             cars: clientCars || [],
             policies_count: count || 0,
+            matchedCarId: isCarMatch ? carId : undefined,
           });
+        } else if (client && isCarMatch && !clientMap.get(client.id)?.matchedCarId) {
+          // If this car matches and we don't have a matched car yet
+          clientMap.get(client.id)!.matchedCarId = carId;
         }
       }
 
@@ -163,10 +173,13 @@ export function GlobalPolicySearch({ open, onOpenChange }: GlobalPolicySearchPro
     }
   }, [query, handleSearch]);
 
-  const handleSelectClient = (clientId: string) => {
+  const handleSelectClient = (clientId: string, matchedCarId?: string) => {
     onOpenChange(false);
-    // Navigate to client details page
-    navigate(`/clients?open=${clientId}`);
+    // Navigate to client details page with car filter if matched
+    const url = matchedCarId 
+      ? `/clients?open=${clientId}&car=${matchedCarId}`
+      : `/clients?open=${clientId}`;
+    window.location.href = url;
   };
 
   return (
@@ -222,7 +235,7 @@ export function GlobalPolicySearch({ open, onOpenChange }: GlobalPolicySearchPro
                     "w-full text-right p-3 border rounded-lg transition-colors",
                     "hover:bg-secondary/50 focus:bg-secondary/50 focus:outline-none"
                   )}
-                  onClick={() => handleSelectClient(result.id)}
+                  onClick={() => handleSelectClient(result.id, result.matchedCarId)}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
