@@ -781,37 +781,45 @@ export function DebtPaymentModal({
             </div>
 
             {/* Grouped Policy List */}
-            <div className="border rounded-lg divide-y max-h-48 overflow-auto">
-              {groupedPoliciesDisplay.map(group => (
-                <div key={group.groupKey} className="flex items-center justify-between p-3 text-sm hover:bg-muted/30">
-                  <div className="flex items-center gap-3">
-                    {group.isPackage ? (
-                      <Package className="h-5 w-5 text-primary" />
-                    ) : (
-                      <FileText className="h-5 w-5 text-muted-foreground" />
-                    )}
-                    <div className="flex flex-col gap-0.5">
-                      <div className="flex items-center gap-2">
-                        <Badge variant={group.isPackage ? "default" : "outline"} className="text-xs">
-                          {group.isPackage ? `📦 باقة - ${group.policies.length} وثائق` : '📄 منفردة'}
-                        </Badge>
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        {group.policyTypes.join(' + ')}
-                      </span>
-                      {group.carNumber && (
-                        <span className="text-xs text-muted-foreground font-mono">🚗 {group.carNumber}</span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-semibold">الوثائق</Label>
+                <Badge variant="secondary" className="text-xs">
+                  {groupedPoliciesDisplay.length} عناصر
+                </Badge>
+              </div>
+              <div className="border rounded-lg divide-y max-h-60 overflow-auto scrollbar-thin">
+                {groupedPoliciesDisplay.map(group => (
+                  <div key={group.groupKey} className="flex items-center justify-between p-3 text-sm hover:bg-muted/30">
+                    <div className="flex items-center gap-3">
+                      {group.isPackage ? (
+                        <Package className="h-5 w-5 text-primary" />
+                      ) : (
+                        <FileText className="h-5 w-5 text-muted-foreground" />
                       )}
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <Badge variant={group.isPackage ? "default" : "outline"} className="text-xs">
+                            {group.isPackage ? `📦 باقة - ${group.policies.length} وثائق` : '📄 منفردة'}
+                          </Badge>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {group.policyTypes.join(' + ')}
+                        </span>
+                        {group.carNumber && (
+                          <span className="text-xs text-muted-foreground font-mono">🚗 {group.carNumber}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-0.5">
+                      <span className="text-muted-foreground ltr-nums text-xs">السعر: ₪{group.totalPrice.toLocaleString('en-US')}</span>
+                      <span className="font-medium text-destructive ltr-nums">
+                        المتبقي: ₪{group.totalRemaining.toLocaleString('en-US')}
+                      </span>
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-0.5">
-                    <span className="text-muted-foreground ltr-nums text-xs">السعر: ₪{group.totalPrice.toLocaleString('en-US')}</span>
-                    <span className="font-medium text-destructive ltr-nums">
-                      المتبقي: ₪{group.totalRemaining.toLocaleString('en-US')}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
 
             {/* Payment Lines */}
