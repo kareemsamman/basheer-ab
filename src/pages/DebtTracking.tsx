@@ -28,6 +28,8 @@ interface ClientDebt {
   client_name: string;
   phone_number: string | null;
   total_owed: number;
+  total_paid: number;
+  total_remaining: number;
   policies: PolicyDebt[];
   policies_count: number;
   earliest_expiry: string | null;
@@ -136,6 +138,8 @@ export default function DebtTracking() {
         client_name: r.client_name,
         phone_number: r.client_phone,
         total_owed: Number(r.total_owed) || 0,
+        total_paid: Number(r.total_paid) || 0,
+        total_remaining: Number(r.total_remaining) || 0,
         policies: [],
         policies_count: Number(r.policies_count) || 0,
         earliest_expiry: r.oldest_end_date ? String(r.oldest_end_date) : null,
@@ -269,7 +273,7 @@ export default function DebtTracking() {
     }
     phone = phone.replace('+', '');
     
-    const message = `مرحباً ${client.client_name}، لديك مبلغ متبقي ${client.total_owed.toLocaleString()} شيكل. يرجى التواصل معنا لتسوية المبلغ.`;
+    const message = `مرحباً ${client.client_name}، لديك مبلغ متبقي ${client.total_remaining.toLocaleString()} شيكل. يرجى التواصل معنا لتسوية المبلغ.`;
     return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   };
 
@@ -477,7 +481,7 @@ export default function DebtTracking() {
                         <Badge variant="outline">{client.policies_count} وثيقة</Badge>
                         <div className="text-left min-w-[100px]">
                           <p className="font-bold text-lg text-destructive">
-                            {formatCurrency(client.total_owed)}
+                            {formatCurrency(client.total_remaining)}
                           </p>
                         </div>
                         <Button
