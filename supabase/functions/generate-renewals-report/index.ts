@@ -71,7 +71,7 @@ serve(async (req) => {
 
     console.log(`[generate-renewals-report] Generating report for month: ${month}`);
 
-    // Fetch renewals data using service function (no auth check)
+    // Fetch renewals data using service function - now grouped by client
     const { data: renewals, error: renewalsError } = await supabase.rpc('report_renewals_service', {
       p_end_month: `${month}-01`,
       p_days_remaining: days_filter,
@@ -92,8 +92,8 @@ serve(async (req) => {
       .eq('id', user.id)
       .single();
 
-    // Generate HTML report
-    const monthName = new Date(`${month}-01`).toLocaleDateString('ar-SA', { year: 'numeric', month: 'long' });
+    // Generate HTML report - now with grouped data
+    const monthName = new Date(`${month}-01`).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long' });
     const html = buildReportHtml(renewals || [], monthName, userProfile?.full_name || userProfile?.email || 'Unknown');
 
     if (!bunnyApiKey || !bunnyStorageZone) {
@@ -142,8 +142,24 @@ serve(async (req) => {
   }
 });
 
-function buildReportHtml(renewals: any[], monthName: string, generatedBy: string): string {
-  const now = new Date().toLocaleDateString('ar-SA', { 
+interface ClientData {
+  client_id: string;
+  client_name: string;
+  client_file_number: string | null;
+  client_phone: string | null;
+  policies_count: number;
+  earliest_end_date: string;
+  days_remaining: number;
+  total_price: number;
+  car_numbers: string[] | null;
+  policy_types: string[] | null;
+  renewal_status: string;
+  renewal_notes: string | null;
+}
+
+function buildReportHtml(clients: ClientData[], monthName: string, generatedBy: string): string {
+  // Use Gregorian calendar (ar-EG) instead of Hijri (ar-SA)
+  const now = new Date().toLocaleDateString('ar-EG', { 
     year: 'numeric', month: 'long', day: 'numeric', 
     hour: '2-digit', minute: '2-digit' 
   });
@@ -153,22 +169,38 @@ function buildReportHtml(renewals: any[], monthName: string, generatedBy: string
     return new Date(dateStr).toLocaleDateString('en-GB');
   };
 
-  const rows = renewals.map((r, index) => `
-    <tr>
-      <td>${index + 1}</td>
-      <td>${formatDate(r.end_date)}</td>
-      <td class="${r.days_remaining <= 7 ? 'urgent' : r.days_remaining <= 14 ? 'warning' : ''}">${r.days_remaining} يوم</td>
-      <td>${r.client_name || '-'}</td>
-      <td>${r.client_file_number || '-'}</td>
-      <td dir="ltr">${r.client_phone || '-'}</td>
-      <td>${r.car_number || '-'}</td>
-      <td>${POLICY_TYPE_LABELS[r.policy_type_parent] || r.policy_type_parent}</td>
-      <td>${r.company_name_ar || r.company_name || '-'}</td>
-      <td class="price">₪${(r.insurance_price || 0).toLocaleString()}</td>
-      <td>${RENEWAL_STATUS_LABELS[r.renewal_status] || r.renewal_status}</td>
-      <td>${r.renewal_notes || ''}</td>
-    </tr>
-  `).join('');
+  // Calculate totals
+  const totalCustomers = clients.length;
+  const totalPolicies = clients.reduce((sum, c) => sum + (c.policies_count || 0), 0);
+  const notContacted = clients.filter(c => c.renewal_status === 'not_contacted').length;
+  const smsSent = clients.filter(c => c.renewal_status === 'sms_sent').length;
+  const called = clients.filter(c => c.renewal_status === 'called').length;
+  const urgentCount = clients.filter(c => c.days_remaining <= 7).length;
+
+  const rows = clients.map((c, index) => {
+    const isUrgent = c.days_remaining <= 7;
+    const isWarning = c.days_remaining > 7 && c.days_remaining <= 14;
+    const rowClass = isUrgent ? 'urgent' : isWarning ? 'warning' : '';
+    const carNumbersStr = c.car_numbers?.join(', ') || '-';
+    const policyTypesStr = c.policy_types?.map(t => POLICY_TYPE_LABELS[t] || t).join(', ') || '-';
+    
+    return `
+    <tr class="client-row ${rowClass}">
+      <td class="row-num">${index + 1}</td>
+      <td class="client-info">
+        <div class="client-name">${c.client_name}</div>
+        ${c.client_file_number ? `<div class="file-number">#${c.client_file_number}</div>` : ''}
+      </td>
+      <td dir="ltr" class="phone">${c.client_phone || '-'}</td>
+      <td class="cars">${carNumbersStr}</td>
+      <td class="policies-count">${c.policies_count} وثيقة</td>
+      <td class="policy-types">${policyTypesStr}</td>
+      <td class="end-date">${formatDate(c.earliest_end_date)}</td>
+      <td class="days ${isUrgent ? 'urgent-text' : isWarning ? 'warning-text' : ''}">${c.days_remaining} يوم</td>
+      <td class="price">₪${(c.total_price || 0).toLocaleString()}</td>
+      <td class="status">${RENEWAL_STATUS_LABELS[c.renewal_status] || c.renewal_status}</td>
+    </tr>`;
+  }).join('');
 
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -186,63 +218,179 @@ function buildReportHtml(renewals: any[], monthName: string, generatedBy: string
       padding: 20px;
     }
     .container {
-      max-width: 1200px;
+      max-width: 1400px;
       margin: 0 auto;
       background: white;
-      border-radius: 12px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
       overflow: hidden;
     }
     .header {
       background: linear-gradient(135deg, #1e3a5f 0%, #0f766e 100%);
       color: white;
-      padding: 30px;
+      padding: 40px 30px;
       text-align: center;
     }
-    .header h1 { font-size: 28px; margin-bottom: 8px; }
-    .header p { opacity: 0.9; font-size: 16px; }
+    .header h1 { font-size: 32px; margin-bottom: 8px; font-weight: 700; }
+    .header p { opacity: 0.9; font-size: 18px; }
+    
+    /* Summary Cards */
     .summary {
       display: flex;
       justify-content: center;
       gap: 20px;
-      padding: 20px;
-      background: #f1f5f9;
+      padding: 30px;
+      background: linear-gradient(to bottom, #f1f5f9, #f8fafc);
       flex-wrap: wrap;
     }
     .summary-card {
       background: white;
-      padding: 15px 25px;
-      border-radius: 8px;
+      padding: 24px 32px;
+      border-radius: 16px;
       text-align: center;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+      min-width: 160px;
+      border: 1px solid #e2e8f0;
     }
-    .summary-card .value { font-size: 24px; font-weight: bold; color: #1e3a5f; }
-    .summary-card .label { font-size: 12px; color: #64748b; margin-top: 4px; }
+    .summary-card .value { 
+      font-size: 36px; 
+      font-weight: 800; 
+      color: #1e3a5f; 
+      line-height: 1;
+    }
+    .summary-card .label { 
+      font-size: 13px; 
+      color: #64748b; 
+      margin-top: 8px;
+      font-weight: 500;
+    }
+    .summary-card.primary { border-color: #0f766e; }
+    .summary-card.primary .value { color: #0f766e; }
+    .summary-card.urgent { border-color: #dc2626; }
+    .summary-card.urgent .value { color: #dc2626; }
+    .summary-card.warning { border-color: #f59e0b; }
+    .summary-card.warning .value { color: #f59e0b; }
+    .summary-card.info { border-color: #3b82f6; }
+    .summary-card.info .value { color: #3b82f6; }
+    
+    /* Table */
     .table-container { padding: 20px; overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { padding: 12px 10px; text-align: right; border-bottom: 1px solid #e2e8f0; }
-    th { background: #f8fafc; font-weight: 600; color: #475569; }
-    tr:hover { background: #f1f5f9; }
-    .urgent { color: #dc2626; font-weight: bold; }
-    .warning { color: #f59e0b; font-weight: bold; }
-    .price { font-weight: bold; color: #0f766e; }
+    table { 
+      width: 100%; 
+      border-collapse: collapse; 
+      font-size: 13px;
+    }
+    th, td { 
+      padding: 14px 12px; 
+      text-align: right; 
+      border-bottom: 1px solid #e2e8f0;
+    }
+    th { 
+      background: #f8fafc; 
+      font-weight: 600; 
+      color: #475569;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    /* Client Row Styles */
+    .client-row {
+      transition: background 0.2s;
+    }
+    .client-row:hover { background: #f8fafc; }
+    .client-row.urgent {
+      background: linear-gradient(to left, #fef2f2, white);
+      border-right: 4px solid #dc2626;
+    }
+    .client-row.warning {
+      background: linear-gradient(to left, #fffbeb, white);
+      border-right: 4px solid #f59e0b;
+    }
+    
+    /* Cell Styles */
+    .row-num { 
+      color: #94a3b8; 
+      font-weight: 500;
+      width: 40px;
+    }
+    .client-info { min-width: 150px; }
+    .client-name { font-weight: 600; color: #1e293b; }
+    .file-number { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+    .phone { 
+      font-family: 'Consolas', monospace; 
+      direction: ltr;
+      text-align: left;
+      color: #475569;
+    }
+    .cars { 
+      font-family: 'Consolas', monospace; 
+      direction: ltr;
+      text-align: left;
+      font-size: 12px;
+      max-width: 150px;
+      color: #0f766e;
+    }
+    .policies-count {
+      font-weight: 600;
+      color: #1e3a5f;
+    }
+    .policy-types {
+      font-size: 11px;
+      color: #64748b;
+      max-width: 120px;
+    }
+    .end-date {
+      font-family: 'Consolas', monospace;
+      color: #475569;
+    }
+    .days {
+      font-weight: 600;
+      color: #475569;
+    }
+    .urgent-text { color: #dc2626 !important; }
+    .warning-text { color: #f59e0b !important; }
+    .price { 
+      font-weight: 700; 
+      color: #0f766e;
+      font-family: 'Consolas', monospace;
+    }
+    .status {
+      font-size: 11px;
+      color: #64748b;
+    }
+    
+    /* Footer */
     .footer {
-      padding: 20px;
+      padding: 24px;
       text-align: center;
       background: #f8fafc;
       border-top: 1px solid #e2e8f0;
       font-size: 12px;
       color: #64748b;
     }
+    .footer p { margin: 4px 0; }
+    
+    /* Print Styles */
     @media print {
       body { padding: 0; background: white; }
       .container { box-shadow: none; }
       .header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .summary { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .client-row.urgent, .client-row.warning { 
+        -webkit-print-color-adjust: exact; 
+        print-color-adjust: exact; 
+      }
     }
+    
+    /* Responsive */
     @media (max-width: 768px) {
-      .header h1 { font-size: 22px; }
+      .header h1 { font-size: 24px; }
+      .summary { gap: 12px; padding: 20px; }
+      .summary-card { padding: 16px 20px; min-width: 120px; }
+      .summary-card .value { font-size: 28px; }
       table { font-size: 11px; }
-      th, td { padding: 8px 6px; }
+      th, td { padding: 10px 8px; }
     }
   </style>
 </head>
@@ -254,17 +402,25 @@ function buildReportHtml(renewals: any[], monthName: string, generatedBy: string
     </div>
     
     <div class="summary">
+      <div class="summary-card primary">
+        <div class="value">${totalCustomers}</div>
+        <div class="label">إجمالي بحاجة للتجديد</div>
+      </div>
       <div class="summary-card">
-        <div class="value">${renewals.length}</div>
+        <div class="value">${totalPolicies}</div>
         <div class="label">إجمالي الوثائق</div>
       </div>
-      <div class="summary-card">
-        <div class="value">${renewals.filter(r => r.days_remaining <= 7).length}</div>
-        <div class="label">تنتهي خلال 7 أيام</div>
+      <div class="summary-card urgent">
+        <div class="value">${urgentCount}</div>
+        <div class="label">عاجل (7 أيام)</div>
       </div>
-      <div class="summary-card">
-        <div class="value">${renewals.filter(r => r.renewal_status === 'not_contacted').length}</div>
+      <div class="summary-card warning">
+        <div class="value">${notContacted}</div>
         <div class="label">لم يتم التواصل</div>
+      </div>
+      <div class="summary-card info">
+        <div class="value">${smsSent}</div>
+        <div class="label">تم إرسال SMS</div>
       </div>
     </div>
     
@@ -273,21 +429,19 @@ function buildReportHtml(renewals: any[], monthName: string, generatedBy: string
         <thead>
           <tr>
             <th>#</th>
-            <th>تاريخ الانتهاء</th>
-            <th>الأيام المتبقية</th>
             <th>العميل</th>
-            <th>رقم الملف</th>
             <th>الهاتف</th>
-            <th>السيارة</th>
-            <th>النوع</th>
-            <th>الشركة</th>
+            <th>السيارات</th>
+            <th>الوثائق</th>
+            <th>الأنواع</th>
+            <th>أقرب انتهاء</th>
+            <th>الأيام</th>
             <th>السعر</th>
             <th>الحالة</th>
-            <th>ملاحظات</th>
           </tr>
         </thead>
         <tbody>
-          ${rows || '<tr><td colspan="12" style="text-align:center;padding:40px;color:#64748b;">لا توجد وثائق</td></tr>'}
+          ${rows || '<tr><td colspan="10" style="text-align:center;padding:40px;color:#64748b;">لا يوجد عملاء</td></tr>'}
         </tbody>
       </table>
     </div>

@@ -145,6 +145,7 @@ interface RenewalClient {
   total_insurance_price: number;
   policy_types: string[] | null;
   policy_ids: string[] | null;
+  car_numbers: string[] | null;
   worst_renewal_status: string;
   renewal_notes: string | null;
   total_count: number;
@@ -1231,6 +1232,7 @@ export default function PolicyReports() {
                         <TableHead className="text-right">العميل</TableHead>
                         <TableHead className="text-right">الهاتف</TableHead>
                         <TableHead className="text-right">الوثائق</TableHead>
+                        <TableHead className="text-right">السيارات</TableHead>
                         <TableHead className="text-right">الأنواع</TableHead>
                         <TableHead className="text-right">أقرب انتهاء</TableHead>
                         <TableHead className="text-right">الأيام المتبقية</TableHead>
@@ -1284,6 +1286,18 @@ export default function PolicyReports() {
                               <Badge variant="outline" className="font-bold">
                                 {client.policies_count} وثيقة
                               </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap gap-1">
+                                {client.car_numbers?.slice(0, 3).map((num, i) => (
+                                  <span key={i} className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">
+                                    {num}
+                                  </span>
+                                ))}
+                                {(client.car_numbers?.length || 0) > 3 && (
+                                  <span className="text-xs text-muted-foreground">+{client.car_numbers!.length - 3}</span>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-wrap gap-1">
@@ -1355,7 +1369,7 @@ export default function PolicyReports() {
                           {/* Expanded Policies Row */}
                           {expandedClientId === client.client_id && clientPolicies[client.client_id] && (
                             <TableRow key={`${client.client_id}-policies`} className="bg-muted/20">
-                              <TableCell colSpan={11} className="p-0">
+                              <TableCell colSpan={12} className="p-0">
                                 <div className="px-6 py-4 border-t border-dashed">
                                   <div className="flex items-center gap-2 mb-3">
                                     <FileText className="h-4 w-4 text-primary" />

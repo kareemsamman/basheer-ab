@@ -4620,6 +4620,7 @@ export type Database = {
           p_start_date?: string
         }
         Returns: {
+          car_numbers: string[]
           client_file_number: string
           client_id: string
           client_name: string
@@ -4644,25 +4645,18 @@ export type Database = {
           p_policy_type?: string
         }
         Returns: {
-          car_number: string
+          car_numbers: string[]
           client_file_number: string
           client_id: string
           client_name: string
           client_phone: string
-          company_name: string
-          company_name_ar: string
-          created_by_id: string
-          created_by_name: string
           days_remaining: number
-          end_date: string
-          id: string
-          insurance_price: number
-          last_contacted_at: string
-          policy_type_child: string
-          policy_type_parent: string
-          reminder_sent_at: string
+          earliest_end_date: string
+          policies_count: number
+          policy_types: string[]
           renewal_notes: string
           renewal_status: string
+          total_price: number
           total_rows: number
         }[]
       }
