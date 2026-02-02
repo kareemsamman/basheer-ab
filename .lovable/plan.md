@@ -1,104 +1,314 @@
 
-## الهدف (حسب طلبك)
-إصلاح نافذة **"تسديد ديون"** بحيث تعرض نفس منطق “الباقة” الموجود في صفحة الوثائق:
+# خطة: إظهار اسم من قام بالتجديد في صفحة "تم التجديد"
 
-- تظهر **2 كروت فقط** لكريم Test:
-  1) **باقة تأمين** (group_id = e514…):  
-     - **سعر الباقة الكامل** = 2,530 (يشمل الإلزامي 1,000)  
-     - **مدفوع** = 1,000 (إلزامي)  
-     - **المتبقي للدفع** = 1,530  
-  2) **وثيقة منفردة (ثالث)**:  
-     - **السعر** = 1,500  
-     - **المتبقي** = 1,500  
+## المتطلب
 
-والمهم: لا يتم “خصم” 300 شيكل من الباقة (كما يحدث الآن) بسبب فائض إلزامي من باقة أخرى. الفائض/التغطية تُحسب **داخل نفس الباقة فقط**.
+في صفحة `/reports/policies` تبويب "تم التجديد"، إضافة عمود جديد يُظهر **من قام بالتجديد** (أي المستخدم الذي أنشأ الوثيقة الجديدة).
 
 ---
 
-## لماذا يحدث رقم 1,230 الآن؟
-من بيانات العميل في قاعدة البيانات:
-- الباقة e514 مجموعها 2,530 = (إلزامي 1,000 + ثالث 1,230 + طريق 300)
-- المدفوع داخل هذه الباقة: فقط 1,000 على الإلزامي
-- إذن المتبقي الصحيح: 1,530
+## التحليل التقني
 
-لكن الكود الحالي في `DebtPaymentModal` يطبق “فائض الإلزامي” بشكل **عالمي على كل ديون العميل** (من باقة أخرى فيها إلزامي مدفوع زيادة 1,000)، فيغطي 300 خدمات طريق ويُبقي 1,230 فقط. هذا يخالف ما تريده في الـ popup.
+### الحالة الحالية:
+- الـ RPC function `report_renewed_clients` تُرجع بيانات العميل والوثائق القديمة والجديدة
+- الوثائق الجديدة (`new_policy_ids`) موجودة في النتيجة
+- كل وثيقة لديها حقل `created_by_admin_id` في جدول `policies`
+- يمكن الحصول على اسم المستخدم من جدول `profiles`
 
----
-
-## التغيير المطلوب (تصميم الحل)
-### 1) إعادة بناء بيانات النافذة على مستوى “العناصر” (Items) وليس على مستوى “وثائق غير إلزامي”
-بدلاً من:
-- جلب وثائق غير إلزامي فقط + محاولة خصم فائض إلزامي عالمي
-
-سنفعل:
-- نجلب **كل وثائق العميل** (بما فيها ELZAMI) + كل الدفعات (مرة واحدة)  
-- نُكوّن **Debt Items**:
-  - Item = باقة (group_id) أو وثيقة منفردة (policy_id)
-  - لكل Item نحسب:
-    - `full_price` = مجموع أسعار كل وثائق العنصر (يشمل الإلزامي)
-    - `paid_total` = مجموع الدفعات لكل وثائق العنصر (مع استثناء refused)
-    - `remaining_total` = max(0, full_price - paid_total)
-  - نعرض فقط العناصر التي `remaining_total > 0` => في Kareem Test ستكون 2 عناصر بالضبط.
-
-### 2) تطبيق “التغطية/الفائض” داخل نفس الباقة فقط (لأجل عرض تفاصيل المكونات بشكل صحيح)
-لما نعرض تفاصيل الباقة (المكونات):
-- نحتاج نعرف أي مكونات “مدفوعة” وأيها “متبقي”.
-- سنستخدم توزيع داخلي للدفعات **داخل نفس الباقة فقط**:
-  - نأخذ `poolPaid = paid_total` للباقة
-  - نوزعها داخلياً على مكونات الباقة بترتيب ثابت (مثلاً: إلزامي أولاً ثم ثالث ثم خدمات…)
-  - هذا يضمن:
-    - باقة 55a6 تصبح “مدفوعة بالكامل” ولا تظهر
-    - باقة e514 تبقى “متبقي 1,530” وتظهر كاملة
-
-ملاحظة: هذا التوزيع لأغراض العرض فقط. “المتبقي الإجمالي للباقة” يظل دائمًا = full_price - paid_total (واضح وبدون لبس).
-
-### 3) تعديل واجهة الكروت لتطابق المطلوب
-داخل قائمة الوثائق في `DebtPaymentModal`:
-- الكرت للباقة يعرض:
-  - العنوان: “باقة تأمين”
-  - **سعر الباقة:** ₪2,530
-  - **المدفوع:** ₪1,000
-  - **المتبقي للدفع:** ₪1,530
-  - سطر صغير: “يشمل الإلزامي”
-  - (اختياري لكن مفيد): عرض مكونات الباقة في سطرين/ثلاثة (إلزامي/ثالث/طريق) مع المتبقي لكل واحد
-
-- الكرت للمنفردة:
-  - العنوان: “ثالث”
-  - السعر 1,500
-  - المتبقي 1,500
-
-### 4) تعديل منطق توزيع الدفعة عند الحفظ (Submit) ليطابق العناصر المعروضة
-الدفعة التي يُدخلها المستخدم يجب أن تُوزع فقط على “الأجزاء القابلة للدفع” من العناصر الظاهرة:
-- داخل باقة e514: ثالث 1,230 + طريق 300
-- الوثيقة المنفردة: 1,500
-المجموع: 3,030
-
-نقطة مهمة: لن نوزع الدفعات على وثائق باقات “غير ظاهرة” (مثل باقة 55a6 التي تصبح مدفوعة بالكامل حسب منطق الباقة).
+### ما يجب إضافته:
+- حقل `renewed_by_admin_id` (UUID)
+- حقل `renewed_by_name` (اسم من قام بالتجديد)
 
 ---
 
-## نطاق التعديل (ملفات)
-- `src/components/debt/DebtPaymentModal.tsx` (الملف الأساسي)
-  - إزالة منطق `netDebt / surplusApplied / elzamiPaymentsTotal` الحالي الذي تسبب بالخلط
-  - إضافة بناء “Debt Items” على مستوى group_id
-  - تعديل UI للكروت لعرض full price + remaining الصحيحين
-  - تعديل `calculateSplitPayments` ليستخدم قائمة “payable policies” المشتقة من العناصر الظاهرة فقط
+## التغييرات المطلوبة
+
+### 1. تعديل الـ Database Function `report_renewed_clients`
+
+```sql
+-- إضافة في قسم renewal_mappings:
+np.created_by_admin_id AS renewed_by_admin_id
+
+-- إضافة في قسم client_aggregates:
+-- اختيار أحدث مستخدم قام بالتجديد
+(ARRAY_AGG(rm.renewed_by_admin_id ORDER BY rm.new_start DESC))[1] AS renewed_by_admin_id
+
+-- إضافة JOIN مع profiles في النتيجة النهائية:
+LEFT JOIN profiles p ON p.id = ca.renewed_by_admin_id
+...
+p.full_name AS renewed_by_name
+```
+
+**الـ RETURN TABLE تصبح:**
+```sql
+RETURNS TABLE(
+  ...existing columns...,
+  renewed_by_admin_id uuid,
+  renewed_by_name text,
+  total_count bigint
+)
+```
 
 ---
 
-## اعتبارات مهمة لتفادي مشاكل جديدة
-- استثناء الدفعات `refused = true`
-- استثناء السياسات `cancelled = true` و `deleted_at is not null`
-- مطابقة صفحة العميل: أيضًا سنستثني `transferred = true` لتفادي اختلاف الأرقام
-- بدون N+1: سنجلب policies + payments كل واحدة مرة واحدة فقط
+### 2. تحديث الـ Interface في الـ Frontend
+
+**الملف:** `src/pages/PolicyReports.tsx`
+
+```typescript
+// تحديث RenewedClient interface (السطر 186-203)
+interface RenewedClient {
+  client_id: string;
+  client_name: string;
+  client_file_number: string | null;
+  client_phone: string | null;
+  policies_count: number;
+  earliest_end_date: string;
+  total_insurance_price: number;
+  policy_types: string[] | null;
+  policy_ids: string[] | null;
+  new_policies_count: number;
+  new_policy_ids: string[] | null;
+  new_policy_types: string[] | null;
+  new_total_price: number;
+  new_start_date: string | null;
+  has_package: boolean;
+  renewed_by_admin_id: string | null;  // ← جديد
+  renewed_by_name: string | null;       // ← جديد
+  total_count: number;
+}
+```
 
 ---
 
-## خطة اختبار سريعة (بعد التنفيذ)
-1) سجل دخول (أنت حالياً على `/login`) ثم افتح Kareem Test (id_number 321997371)
-2) افتح “تسديد ديون”
-3) تأكد أنه يظهر **2 كروت فقط**:
-   - باقة: السعر 2,530 — المتبقي 1,530
-   - منفردة: السعر 1,500 — المتبقي 1,500
-4) تأكد أن إجمالي المتبقي في النافذة = 3,030
-5) جرّب إدخال دفعة 300: يجب أن تنقص من نفس الباقة (مثلاً خدمات طريق أولاً) بدون لمس باقات مدفوعة
+### 3. إضافة عمود "التجديد بواسطة" في الجدول
+
+**الملف:** `src/pages/PolicyReports.tsx`
+
+**في الـ TableHeader (بعد السعر الجديد):**
+```tsx
+<TableHead className="text-right">التجديد بواسطة</TableHead>
+```
+
+**في الـ TableBody (بعد السعر الجديد):**
+```tsx
+<TableCell>
+  {client.renewed_by_name ? (
+    <div className="flex items-center gap-2">
+      <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center">
+        <span className="text-xs font-medium text-primary">
+          {client.renewed_by_name.charAt(0)}
+        </span>
+      </div>
+      <span className="text-sm">{client.renewed_by_name}</span>
+    </div>
+  ) : (
+    <span className="text-muted-foreground text-sm">—</span>
+  )}
+</TableCell>
+```
+
+**تحديث colSpan في الـ Expanded Row:**
+```tsx
+// من:
+<TableCell colSpan={9} className="p-0">
+// إلى:
+<TableCell colSpan={10} className="p-0">
+```
+
+---
+
+## الملفات المتأثرة
+
+| الملف/المكان | التغيير |
+|--------------|---------|
+| **Database Migration** | تعديل `report_renewed_clients` لإضافة `renewed_by_admin_id` و `renewed_by_name` |
+| `src/pages/PolicyReports.tsx` | تحديث interface + إضافة عمود جديد في الجدول |
+
+---
+
+## SQL Migration الكامل
+
+```sql
+CREATE OR REPLACE FUNCTION public.report_renewed_clients(
+  p_end_month text DEFAULT NULL::text,
+  p_policy_type text DEFAULT NULL::text,
+  p_created_by uuid DEFAULT NULL::uuid,
+  p_search text DEFAULT NULL::text,
+  p_limit integer DEFAULT 25,
+  p_offset integer DEFAULT 0
+)
+RETURNS TABLE(
+  client_id uuid,
+  client_name text,
+  client_file_number text,
+  client_phone text,
+  policies_count bigint,
+  earliest_end_date date,
+  total_insurance_price numeric,
+  policy_types text[],
+  policy_ids uuid[],
+  new_policies_count bigint,
+  new_policy_ids uuid[],
+  new_policy_types text[],
+  new_total_price numeric,
+  new_start_date date,
+  has_package boolean,
+  renewed_by_admin_id uuid,
+  renewed_by_name text,
+  total_count bigint
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_month_start date;
+  v_month_end date;
+  v_policy_type public.policy_type_parent;
+BEGIN
+  IF p_end_month IS NOT NULL AND p_end_month != '' THEN
+    v_month_start := date_trunc('month', p_end_month::date);
+    v_month_end := (date_trunc('month', p_end_month::date) + interval '1 month' - interval '1 day')::date;
+  ELSE
+    v_month_start := date_trunc('month', CURRENT_DATE);
+    v_month_end := (date_trunc('month', CURRENT_DATE) + interval '1 month' - interval '1 day')::date;
+  END IF;
+  
+  v_policy_type := NULLIF(p_policy_type, '')::public.policy_type_parent;
+  
+  RETURN QUERY
+  WITH expiring_policies AS (
+    SELECT
+      p.id,
+      p.client_id,
+      p.car_id,
+      p.policy_type_parent AS ptype,
+      p.group_id,
+      p.insurance_price,
+      p.end_date,
+      p.start_date
+    FROM policies p
+    WHERE p.end_date BETWEEN v_month_start AND v_month_end
+      AND p.cancelled = false
+      AND p.transferred = false
+      AND p.deleted_at IS NULL
+      AND (v_policy_type IS NULL OR p.policy_type_parent = v_policy_type)
+      AND (p_created_by IS NULL OR p.created_by_admin_id = p_created_by)
+      AND (
+        p_search IS NULL OR p_search = '' OR EXISTS (
+          SELECT 1 FROM clients c
+          WHERE c.id = p.client_id
+            AND (
+              c.full_name ILIKE '%' || p_search || '%'
+              OR c.id_number ILIKE '%' || p_search || '%'
+              OR c.phone_number ILIKE '%' || p_search || '%'
+              OR c.file_number ILIKE '%' || p_search || '%'
+            )
+        )
+      )
+      AND EXISTS (
+        SELECT 1 FROM policies newer
+        WHERE newer.client_id = p.client_id
+          AND newer.car_id IS NOT DISTINCT FROM p.car_id
+          AND newer.policy_type_parent = p.policy_type_parent
+          AND newer.start_date > p.start_date
+          AND newer.end_date > CURRENT_DATE
+          AND newer.cancelled = false
+          AND newer.transferred = false
+          AND newer.deleted_at IS NULL
+      )
+  ),
+  renewal_mappings AS (
+    SELECT DISTINCT ON (ep.id)
+      ep.id AS old_policy_id,
+      ep.client_id,
+      np.id AS new_policy_id,
+      np.policy_type_parent AS new_ptype,
+      np.insurance_price AS new_price,
+      np.start_date AS new_start,
+      np.group_id AS new_group_id,
+      np.created_by_admin_id AS renewed_by  -- ← جديد
+    FROM expiring_policies ep
+    JOIN policies np ON 
+      np.client_id = ep.client_id
+      AND np.car_id IS NOT DISTINCT FROM ep.car_id
+      AND np.policy_type_parent = ep.ptype
+      AND np.start_date > ep.start_date
+      AND np.end_date > CURRENT_DATE
+      AND np.cancelled = false
+      AND np.transferred = false
+      AND np.deleted_at IS NULL
+    ORDER BY ep.id, np.start_date ASC
+  ),
+  client_aggregates AS (
+    SELECT
+      ep.client_id,
+      c.full_name AS client_name,
+      c.file_number AS client_file_number,
+      c.phone_number AS client_phone,
+      COUNT(DISTINCT ep.id) AS policies_count,
+      MIN(ep.end_date) AS earliest_end_date,
+      COALESCE(SUM(ep.insurance_price), 0) AS total_insurance_price,
+      ARRAY_AGG(DISTINCT ep.ptype::text) AS policy_types,
+      ARRAY_AGG(DISTINCT ep.id) AS policy_ids,
+      COUNT(DISTINCT rm.new_policy_id) AS new_policies_count,
+      ARRAY_AGG(DISTINCT rm.new_policy_id) FILTER (WHERE rm.new_policy_id IS NOT NULL) AS new_policy_ids,
+      ARRAY_AGG(DISTINCT rm.new_ptype::text) FILTER (WHERE rm.new_ptype IS NOT NULL) AS new_policy_types,
+      COALESCE(SUM(DISTINCT rm.new_price) FILTER (WHERE rm.new_policy_id IS NOT NULL), 0) AS new_total_price,
+      MIN(rm.new_start) AS new_start_date,
+      bool_or(ep.group_id IS NOT NULL OR rm.new_group_id IS NOT NULL) AS has_package,
+      -- جديد: اختيار أول مستخدم قام بالتجديد (حسب تاريخ البدء)
+      (ARRAY_AGG(rm.renewed_by ORDER BY rm.new_start ASC) FILTER (WHERE rm.renewed_by IS NOT NULL))[1] AS renewed_by_admin_id
+    FROM expiring_policies ep
+    JOIN clients c ON c.id = ep.client_id
+    LEFT JOIN renewal_mappings rm ON rm.old_policy_id = ep.id
+    GROUP BY ep.client_id, c.full_name, c.file_number, c.phone_number
+  )
+  SELECT
+    ca.client_id,
+    ca.client_name,
+    ca.client_file_number,
+    ca.client_phone,
+    ca.policies_count,
+    ca.earliest_end_date,
+    ca.total_insurance_price,
+    ca.policy_types,
+    ca.policy_ids,
+    ca.new_policies_count,
+    ca.new_policy_ids,
+    ca.new_policy_types,
+    ca.new_total_price,
+    ca.new_start_date,
+    ca.has_package,
+    ca.renewed_by_admin_id,
+    pr.full_name AS renewed_by_name,  -- ← جديد
+    COUNT(*) OVER()::bigint AS total_count
+  FROM client_aggregates ca
+  LEFT JOIN profiles pr ON pr.id = ca.renewed_by_admin_id  -- ← جديد
+  ORDER BY ca.earliest_end_date ASC, ca.client_name
+  LIMIT p_limit
+  OFFSET p_offset;
+END;
+$function$;
+```
+
+---
+
+## النتيجة المتوقعة
+
+| العميل | الهاتف | ... | السعر الجديد | التجديد بواسطة |
+|--------|--------|-----|--------------|----------------|
+| جهاد ابو خلف | 0522387817 | ... | ₪5,500 | 🟢 raghda |
+| ناجح ابو حلاوة | 0528588052 | ... | ₪3,361 | 🟢 أحمد |
+| ... | ... | ... | ... | ... |
+
+---
+
+## اختبار بعد التنفيذ
+
+1. افتح صفحة `/reports/policies`
+2. اذهب لتبويب "تم التجديد"
+3. تأكد أن عمود "التجديد بواسطة" يظهر
+4. تأكد أن الأسماء تظهر بشكل صحيح (raghda، أحمد، إلخ)
+5. إذا لم يكن هناك مستخدم، يظهر "—"
