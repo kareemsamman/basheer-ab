@@ -143,6 +143,7 @@ export interface PolicyForm {
   end_date: string;
   insurance_price: string;
   broker_buy_price: string; // Price we buy from broker (when company has broker_id)
+  full_car_value: string; // Car value for FULL insurance pricing (entered in Step 3)
   cancelled: boolean;
   transferred: boolean;
   notes: string;

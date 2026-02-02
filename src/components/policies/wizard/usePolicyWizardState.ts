@@ -136,6 +136,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     end_date: getInitialEndDate(),
     insurance_price: "",
     broker_buy_price: "",
+    full_car_value: "",
     cancelled: false,
     transferred: false,
     notes: "",
@@ -295,6 +296,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
       end_date: getInitialEndDate(),
       insurance_price: "",
       broker_buy_price: "",
+      full_car_value: "",
       cancelled: false,
       transferred: false,
       notes: "",
@@ -401,6 +403,15 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
         else if (parseFloat(policy.insurance_price) <= 0) newErrors.insurance_price = "السعر يجب أن يكون أكبر من صفر";
         if (policy.policy_type_parent === "THIRD_FULL" && !policy.policy_type_child) {
           newErrors.policy_type_child = "النوع الفرعي مطلوب";
+        }
+        // Validate car value for FULL insurance
+        if (policy.policy_type_parent === "THIRD_FULL" && policy.policy_type_child === "FULL") {
+          const carValue = policy.full_car_value || 
+                           selectedCar?.car_value?.toString() || 
+                           (createNewCar ? newCar.car_value : existingCar?.car_value?.toString());
+          if (!carValue || parseFloat(carValue) <= 0) {
+            newErrors.full_car_value = "قيمة السيارة مطلوبة للتأمين الشامل";
+          }
         }
         if (policy.policy_type_parent === "ROAD_SERVICE" && !policy.road_service_id) {
           newErrors.road_service_id = "الرجاء اختيار خدمة الطريق";
