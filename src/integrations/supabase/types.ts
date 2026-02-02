@@ -4689,8 +4689,8 @@ export type Database = {
         Args: {
           p_created_by?: string
           p_end_month?: string
-          p_page?: number
-          p_page_size?: number
+          p_limit?: number
+          p_offset?: number
           p_policy_type?: string
           p_search?: string
         }

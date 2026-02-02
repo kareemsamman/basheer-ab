@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useLocation, useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Header } from "@/components/layout/Header";
 import { Card } from "@/components/ui/card";
@@ -61,6 +61,8 @@ interface Client {
 
 export default function Clients() {
   const { toast } = useToast();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -187,13 +189,24 @@ export default function Clients() {
   const totalPages = Math.ceil(totalCount / pageSize);
 
   if (viewingClient) {
+    // Check if we came from a report page - handle proper back navigation
+    const fromReportPath = location.state?.from;
+    const fromReportTab = location.state?.tab;
+    
     return (
       <ClientDetails
         client={viewingClient}
         initialCarFilter={initialCarFilter}
+        returnPath={fromReportPath}
+        returnTab={fromReportTab}
         onBack={() => {
-          setViewingClient(null);
-          setInitialCarFilter(null);
+          // If came from a report, navigate back to it
+          if (fromReportPath) {
+            navigate(fromReportPath, { state: { tab: fromReportTab } });
+          } else {
+            setViewingClient(null);
+            setInitialCarFilter(null);
+          }
         }}
         onRefresh={() => {
           fetchClients();

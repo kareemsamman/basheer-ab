@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Helmet } from 'react-helmet-async';
+import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -215,6 +216,7 @@ interface User {
 const PAGE_SIZE = 25;
 
 export default function PolicyReports() {
+  const navigate = useNavigate();
   const { isAdmin, user } = useAuth();
   const [activeTab, setActiveTab] = useState('created');
   
@@ -1264,7 +1266,9 @@ export default function PolicyReports() {
                             <TableCell onClick={(e) => e.stopPropagation()}>
                               <div>
                                 <button
-                                  onClick={() => window.location.href = `/clients?open=${client.client_id}`}
+                                  onClick={() => navigate(`/clients?open=${client.client_id}`, { 
+                                    state: { from: '/reports/policies', tab: 'renewals' }
+                                  })}
                                   className="font-medium hover:text-primary hover:underline transition-colors text-right"
                                 >
                                   {client.client_name}
@@ -1540,7 +1544,9 @@ export default function PolicyReports() {
                             <TableCell onClick={(e) => e.stopPropagation()}>
                               <div>
                                 <button
-                                  onClick={() => window.location.href = `/clients?open=${client.client_id}`}
+                                  onClick={() => navigate(`/clients?open=${client.client_id}`, { 
+                                    state: { from: '/reports/policies', tab: 'renewed' }
+                                  })}
                                   className="font-medium hover:text-primary hover:underline transition-colors text-right"
                                 >
                                   {client.client_name}

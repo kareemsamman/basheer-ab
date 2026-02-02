@@ -192,6 +192,10 @@ interface ClientDetailsProps {
   onBack: () => void;
   onRefresh: () => void;
   initialCarFilter?: string | null;
+  /** Path to return to (e.g., '/reports/policies') */
+  returnPath?: string | null;
+  /** Tab to restore when returning */
+  returnTab?: string | null;
 }
 
 const policyTypeLabels: Record<string, string> = {
@@ -229,7 +233,7 @@ const carTypeLabels: Record<string, string> = {
   tjeraup4: 'تجاري (أكثر من 4 طن)',
 };
 
-export function ClientDetails({ client, onBack, onRefresh, initialCarFilter }: ClientDetailsProps) {
+export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, returnPath, returnTab }: ClientDetailsProps) {
   const { getBranchName } = useBranches();
   const { isAdmin, isSuperAdmin } = useAuth();
   const { setRecentClient } = useRecentClient();
@@ -907,9 +911,20 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter }: C
         <Card className="overflow-hidden">
           <div className="bg-gradient-to-l from-primary/10 via-primary/5 to-transparent p-6">
             <div className="flex items-start gap-4">
-              <Button variant="ghost" size="icon" onClick={onBack} className="mt-1">
-                <ArrowRight className="h-5 w-5" />
-              </Button>
+              {returnPath ? (
+                <Button variant="outline" onClick={onBack} className="mt-1 gap-2">
+                  <ArrowRight className="h-4 w-4" />
+                  <span className="text-sm">
+                    {returnTab === 'renewed' ? 'العودة للتجديدات' : 
+                     returnTab === 'renewals' ? 'العودة للتجديدات' : 
+                     'العودة للتقارير'}
+                  </span>
+                </Button>
+              ) : (
+                <Button variant="ghost" size="icon" onClick={onBack} className="mt-1">
+                  <ArrowRight className="h-5 w-5" />
+                </Button>
+              )}
               
               {/* Avatar */}
               <div className="relative">
