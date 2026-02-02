@@ -1,164 +1,58 @@
 
-# خطة: إصلاح عرض الديون وتجميع الباقات
+# إصلاح: تاب "تم التجديد" لا يعرض البيانات
 
-## المشكلة الأولى: فرق الـ 1,000 ₪ بين العرضين
+## المشكلة
+الدالة `report_renewed_clients` في قاعدة البيانات تستخدم معاملات مختلفة عن الكود:
 
-### السبب الجذري
-| المكان | المبلغ | السبب |
-|--------|--------|-------|
-| ملف العميل | **3,030 ₪** | يشمل كل الوثائق (بما فيها الإلزامي). الإلزامي في الباقة الأولى **مدفوع بالزيادة 1,000 ₪** |
-| نافذة تسديد الديون | **4,030 ₪** | يستثني الإلزامي (لأنه يُدفع للشركة مباشرة). لذلك الزيادة لا تُخصم |
+| الدالة SQL | الكود TypeScript |
+|------------|------------------|
+| `p_limit` | `p_page_size` ❌ |
+| `p_offset` | `p_page` ❌ |
 
-### بيانات Kareem Test:
-
-| الباقة | النوع | السعر | المدفوع | المتبقي |
-|--------|-------|-------|---------|---------|
-| **Package 1** | ELZAMI | 5,555 | 6,555 | **-1,000** (زيادة!) |
-| **Package 1** | THIRD_FULL | 1,000 | 0 | 1,000 |
-| **Package 1** | ROAD_SERVICE | 500 | 500 | 0 |
-| **Package 2** | ELZAMI | 1,000 | 1,000 | 0 |
-| **Package 2** | THIRD_FULL | 1,230 | 0 | 1,230 |
-| **Package 2** | ROAD_SERVICE | 300 | 0 | 300 |
-| **Single** | THIRD_FULL | 1,500 | 0 | 1,500 |
-
-**حساب ملف العميل:**
-- إجمالي السعر: 11,085 ₪
-- إجمالي المدفوع: 8,055 ₪
-- **المتبقي: 3,030 ₪** ✓
-
-**حساب نافذة الديون (بدون ELZAMI):**
-- 1,000 + 0 + 1,230 + 300 + 1,500 = **4,030 ₪** ✓
-
-### الحل المقترح
-إضافة توضيح في نافذة الديون يشرح أن هذا المبلغ هو "دين الوكالة" فقط (بدون الإلزامي):
-
-```text
-"ملاحظة: المبلغ المعروض هو دين الوكالة فقط (لا يشمل الإلزامي)"
-```
+هذا يتسبب في فشل الاستعلام لأن المعاملات غير متطابقة.
 
 ---
 
-## المشكلة الثانية: عرض 4 بطاقات بدلاً من 3
+## الحل
 
-### الوضع الحالي
-النظام يعرض كل وثيقة بشكل منفصل (4 وثائق بها متبقي)
+تعديل استدعاء الدالة في `PolicyReports.tsx`:
 
-### المطلوب
-تجميع الوثائق حسب `group_id`:
-- **باقة 1** (Package 55a645f6): THIRD_FULL + ROAD_SERVICE = 1,000 ₪
-- **باقة 2** (Package e5146d6d): THIRD_FULL + ROAD_SERVICE = 1,530 ₪  
-- **منفردة** (NULL group_id): THIRD_FULL = 1,500 ₪
-
-### الحل
-تعديل `DebtPaymentModal.tsx` لتجميع الوثائق حسب `group_id`:
-
+**قبل:**
 ```typescript
-// Group policies by group_id
-const groupedPolicies = useMemo(() => {
-  const groups: { 
-    groupId: string | null; 
-    policies: PolicyPaymentInfo[]; 
-    totalRemaining: number;
-    totalPrice: number;
-  }[] = [];
-  
-  const policyMap = new Map<string | null, PolicyPaymentInfo[]>();
-  
-  filteredPolicies.forEach(p => {
-    const key = p.groupId || p.policyId; // Single policies use their own ID
-    if (!policyMap.has(key)) {
-      policyMap.set(key, []);
-    }
-    policyMap.get(key)!.push(p);
-  });
-  
-  policyMap.forEach((policies, key) => {
-    groups.push({
-      groupId: policies[0].groupId,
-      policies,
-      totalRemaining: policies.reduce((sum, p) => sum + p.remaining, 0),
-      totalPrice: policies.reduce((sum, p) => sum + p.price, 0),
-    });
-  });
-  
-  return groups;
-}, [filteredPolicies]);
+const { data, error } = await supabase.rpc('report_renewed_clients', {
+  p_end_month: renewedMonth ? `${renewedMonth}-01` : null,
+  p_policy_type: renewedPolicyTypeFilter !== 'all' ? renewedPolicyTypeFilter : null,
+  p_created_by: renewedCreatedByFilter !== 'all' ? renewedCreatedByFilter : null,
+  p_search: renewedSearch || null,
+  p_page_size: PAGE_SIZE,      // ❌ خطأ
+  p_page: renewedPage + 1       // ❌ خطأ
+});
 ```
 
-### عرض البطاقات المُجمّعة
-
-```text
-┌──────────────────────────────────────────────────┐
-│ 📦 باقة - 3 وثائق                               │
-│ 🚗 21212121                                      │
-│ ثالث + إلزامي + خدمات طريق                       │
-│ السعر: ₪2,530  |  المتبقي: ₪1,530               │
-└──────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────┐
-│ 📦 باقة - 3 وثائق                               │
-│ 🚗 21212121                                      │
-│ ثالث + إلزامي + خدمات طريق                       │
-│ السعر: ₪7,055  |  المتبقي: ₪1,000               │
-└──────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────┐
-│ 📄 منفردة                                        │
-│ 🚗 21212121                                      │
-│ ثالث/شامل                                        │
-│ السعر: ₪1,500  |  المتبقي: ₪1,500               │
-└──────────────────────────────────────────────────┘
+**بعد:**
+```typescript
+const { data, error } = await supabase.rpc('report_renewed_clients', {
+  p_end_month: renewedMonth ? `${renewedMonth}-01` : null,
+  p_policy_type: renewedPolicyTypeFilter !== 'all' ? renewedPolicyTypeFilter : null,
+  p_created_by: renewedCreatedByFilter !== 'all' ? renewedCreatedByFilter : null,
+  p_search: renewedSearch || null,
+  p_limit: PAGE_SIZE,                    // ✅ صحيح
+  p_offset: renewedPage * PAGE_SIZE      // ✅ صحيح
+});
 ```
 
 ---
 
-## المشكلة الثالثة: كيف يتم توزيع الدفعات
-
-### المنطق الحالي (صحيح ✓)
-
-**للنقد والتحويل:**
-```text
-Sequential fill - يملأ وثيقة وثيقة حتى تكتمل
-مثال: دفع 2,000 ₪
-
-1. THIRD_FULL (Package 2, remaining: 1,000) → يدفع 1,000 ✓
-2. ROAD_SERVICE (Package 2, remaining: 300) → يدفع 300 ✓
-3. THIRD_FULL (Package 1, remaining: 1,230) → يدفع 700 (المتبقي من 2,000)
-```
-
-**للشيكات:**
-```text
-Single policy - الشيك كامل على وثيقة واحدة (لا يمكن تقسيمه)
-مثال: شيك بـ 1,500 ₪
-
-1. يبحث عن وثيقة متبقيها >= 1,500 ₪
-2. يجد THIRD_FULL (Single) = 1,500 ₪ → يضع الشيك كاملاً
-```
-
----
-
-## الملفات المتأثرة
+## الملف المتأثر
 
 | الملف | التغيير |
 |-------|---------|
-| `src/components/debt/DebtPaymentModal.tsx` | تجميع العرض حسب `group_id` + إضافة توضيح عن الإلزامي |
+| `src/pages/PolicyReports.tsx` | تصحيح أسماء المعاملات |
 
 ---
 
-## الخلاصة
+## الاختبار
 
-| البند | الحالة |
-|-------|--------|
-| فرق 1,000 ₪ | متوقع - الإلزامي مدفوع بالزيادة في Package 1 |
-| عرض 4 بطاقات | **يحتاج إصلاح** - يجب تجميعها إلى 3 |
-| توزيع الدفعات | يعمل بشكل صحيح ✓ |
-
----
-
-## الاختبار بعد التنفيذ
-
-1. افتح ملف العميل "Kareem Test"
-2. اضغط على زر "دفع" للديون
-3. تأكد أن القائمة تعرض **3 بطاقات فقط** (2 باقة + 1 منفردة)
-4. تأكد من وجود رسالة توضيحية عن استثناء الإلزامي
-5. جرب دفع مبلغ وتأكد من توزيعه بشكل صحيح
+1. افتح **تقارير الوثائق → تم التجديد**
+2. تأكد أن البيانات تظهر بدون رسالة خطأ
+3. جرب تغيير الشهر والفلاتر
