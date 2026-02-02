@@ -4709,6 +4709,8 @@ export type Database = {
           policies_count: number
           policy_ids: string[]
           policy_types: string[]
+          renewed_by_admin_id: string
+          renewed_by_name: string
           total_count: number
           total_insurance_price: number
         }[]

@@ -199,6 +199,8 @@ interface RenewedClient {
   new_total_price: number;
   new_start_date: string | null;
   has_package: boolean;
+  renewed_by_admin_id: string | null;
+  renewed_by_name: string | null;
   total_count: number;
 }
 
@@ -1519,6 +1521,7 @@ export default function PolicyReports() {
                         <TableHead className="text-right">الوثائق الجديدة</TableHead>
                         <TableHead className="text-right">بدأت بتاريخ</TableHead>
                         <TableHead className="text-right">السعر الجديد</TableHead>
+                        <TableHead className="text-right">التجديد بواسطة</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1593,12 +1596,26 @@ export default function PolicyReports() {
                             </TableCell>
                             <TableCell className="font-mono text-green-600">{formatDate(client.new_start_date)}</TableCell>
                             <TableCell className="font-bold text-green-600">₪{client.new_total_price.toLocaleString()}</TableCell>
+                            <TableCell>
+                              {client.renewed_by_name ? (
+                                <div className="flex items-center gap-2">
+                                  <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center">
+                                    <span className="text-xs font-medium text-primary">
+                                      {client.renewed_by_name.charAt(0)}
+                                    </span>
+                                  </div>
+                                  <span className="text-sm">{client.renewed_by_name}</span>
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground text-sm">—</span>
+                              )}
+                            </TableCell>
                           </TableRow>
                           
                           {/* Expanded Details Row */}
                           {expandedRenewedClientId === client.client_id && (
                             <TableRow key={`${client.client_id}-details`} className="bg-muted/20">
-                              <TableCell colSpan={9} className="p-0">
+                              <TableCell colSpan={10} className="p-0">
                                 <div className="px-6 py-4 border-t border-dashed">
                                   <div className="grid grid-cols-2 gap-6">
                                     {/* Old Policies */}
