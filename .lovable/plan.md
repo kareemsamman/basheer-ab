@@ -1,176 +1,154 @@
 
-# خطة: تحسين تقرير التجديدات + إضافة رابط لملف العميل
+# خطة: إضافة رابط "التجديدات" مع شارة العدد في القائمة الجانبية
 
-## المشكلتان
-
-### 1. رابط إلى ملف العميل
-في جدول التجديدات، عند النقر على اسم العميل، يجب فتح ملف العميل مباشرة.
-
-### 2. إزالة العملاء الذين جددوا بالفعل
-العميل "احمد محمود سالم" يظهر في قائمة التجديدات لأن لديه وثائق انتهت في `2026-01-31` و `2026-02-04`، **لكنه فعلياً جدد وثائق جديدة لنفس السيارة** تبدأ من `2026-02-01` وتنتهي `2027-01-31`.
-
-المشكلة في دالة `report_renewals` أنها لا تتحقق من وجود وثائق أحدث لنفس السيارة.
+## المطلوب
+إضافة رابط مباشر "التجديدات" تحت "تقارير الوثائق" في القائمة الجانبية، مع شارة (badge) تعرض عدد العملاء الذين تحتاج وثائقهم للتجديد.
 
 ---
 
-## الحل التقني
+## التغييرات التقنية
 
-### 1. إضافة رابط إلى ملف العميل
+### 1. إنشاء hook جديد: `useRenewalsCount.tsx`
+**المسار:** `src/hooks/useRenewalsCount.tsx`
 
-**الملف:** `src/pages/PolicyReports.tsx`
+مثل `useDebtCount`، هذا الـ hook سيستدعي `report_renewals_summary` للحصول على عدد العملاء المحتاجين للتجديد.
 
 ```typescript
-// في السطور 1104-1110 - تحويل اسم العميل إلى رابط قابل للنقر
-<TableCell onClick={(e) => e.stopPropagation()}>
-  <div>
-    <button
-      onClick={() => window.location.href = `/clients?open=${client.client_id}`}
-      className="font-medium hover:text-primary hover:underline transition-colors text-right"
-    >
-      {client.client_name}
-    </button>
-    {client.client_file_number && (
-      <p className="text-xs text-muted-foreground">{client.client_file_number}</p>
-    )}
-  </div>
-</TableCell>
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+
+export function useRenewalsCount() {
+  const [renewalsCount, setRenewalsCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchCount = useCallback(async () => {
+    // Get current month for default filter
+    const now = new Date();
+    const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
+    
+    const { data, error } = await supabase.rpc('report_renewals_summary', {
+      p_end_month: `${currentMonth}-01`,
+      p_policy_type: null,
+      p_created_by: null,
+      p_search: null
+    });
+    
+    if (!error && data && data.length > 0) {
+      setRenewalsCount(data[0].total_expiring || 0);
+    }
+    setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchCount();
+    const interval = setInterval(fetchCount, 60000); // Refresh every minute
+    window.addEventListener('focus', fetchCount);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', fetchCount);
+    };
+  }, [fetchCount]);
+
+  return { renewalsCount, isLoading };
+}
 ```
 
 ---
 
-### 2. تحديث دالة `report_renewals` لاستبعاد الوثائق المجددة
+### 2. إنشاء مكون الشارة: `SidebarRenewalsBadge.tsx`
+**المسار:** `src/components/layout/SidebarRenewalsBadge.tsx`
 
-**المنطق الجديد:**
-- للكل وثيقة منتهية، نتحقق هل يوجد وثيقة **أحدث** لنفس السيارة ونفس نوع التأمين
-- إذا وُجدت وثيقة أحدث (start_date أكبر) → نستبعد الوثيقة القديمة من التقرير
+```typescript
+import { useRenewalsCount } from '@/hooks/useRenewalsCount';
+import { cn } from '@/lib/utils';
 
-**تحديث الـ SQL:**
+export function SidebarRenewalsBadge({ collapsed }: { collapsed?: boolean }) {
+  const { renewalsCount, isLoading } = useRenewalsCount();
 
-```sql
-CREATE OR REPLACE FUNCTION public.report_renewals(...)
-RETURNS TABLE(...)
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_offset integer;
-  v_total bigint;
-  v_policy_type public.policy_type_parent;
-BEGIN
-  v_offset := (p_page - 1) * p_page_size;
-  v_policy_type := NULLIF(p_policy_type, '')::public.policy_type_parent;
+  if (isLoading || renewalsCount === 0) return null;
 
-  -- Count total distinct clients (only those without renewed policies)
-  SELECT COUNT(DISTINCT c.id)
-  INTO v_total
-  FROM policies p
-  JOIN clients c ON c.id = p.client_id
-  WHERE p.deleted_at IS NULL
-    AND p.cancelled IS NOT TRUE
-    AND p.transferred IS NOT TRUE
-    AND (p_start_date IS NULL OR p.end_date >= p_start_date)
-    AND (p_end_date IS NULL OR p.end_date <= p_end_date)
-    AND (v_policy_type IS NULL OR p.policy_type_parent = v_policy_type)
-    AND (p_created_by IS NULL OR p.created_by_admin_id = p_created_by)
-    AND (
-      p_search IS NULL
-      OR c.full_name ILIKE '%' || p_search || '%'
-      OR c.phone_number ILIKE '%' || p_search || '%'
-      OR c.file_number ILIKE '%' || p_search || '%'
-      OR c.id_number ILIKE '%' || p_search || '%'
-    )
-    -- ⭐ NEW: Exclude policies that have been renewed (newer policy exists for same car + type)
-    AND NOT EXISTS (
-      SELECT 1 FROM policies newer
-      WHERE newer.client_id = p.client_id
-        AND newer.car_id = p.car_id
-        AND newer.policy_type_parent = p.policy_type_parent
-        AND newer.deleted_at IS NULL
-        AND newer.cancelled IS NOT TRUE
-        AND newer.transferred IS NOT TRUE
-        AND newer.start_date > p.start_date  -- Newer policy
-        AND newer.end_date > CURRENT_DATE    -- Still active
-    );
-
-  RETURN QUERY
-  WITH client_policies AS (
-    SELECT
-      c.id as cid,
-      c.full_name,
-      c.file_number,
-      c.phone_number,
-      p.id as pid,
-      p.end_date,
-      p.insurance_price,
-      p.policy_type_parent,
-      COALESCE(prt.renewal_status, 'not_contacted') as rstatus,
-      prt.notes as rnotes
-    FROM policies p
-    JOIN clients c ON c.id = p.client_id
-    LEFT JOIN policy_renewal_tracking prt ON prt.policy_id = p.id
-    WHERE p.deleted_at IS NULL
-      AND p.cancelled IS NOT TRUE
-      AND p.transferred IS NOT TRUE
-      AND (p_start_date IS NULL OR p.end_date >= p_start_date)
-      AND (p_end_date IS NULL OR p.end_date <= p_end_date)
-      AND (v_policy_type IS NULL OR p.policy_type_parent = v_policy_type)
-      AND (p_created_by IS NULL OR p.created_by_admin_id = p_created_by)
-      AND (
-        p_search IS NULL
-        OR c.full_name ILIKE '%' || p_search || '%'
-        OR c.phone_number ILIKE '%' || p_search || '%'
-        OR c.file_number ILIKE '%' || p_search || '%'
-        OR c.id_number ILIKE '%' || p_search || '%'
-      )
-      -- ⭐ NEW: Exclude renewed policies
-      AND NOT EXISTS (
-        SELECT 1 FROM policies newer
-        WHERE newer.client_id = p.client_id
-          AND newer.car_id = p.car_id
-          AND newer.policy_type_parent = p.policy_type_parent
-          AND newer.deleted_at IS NULL
-          AND newer.cancelled IS NOT TRUE
-          AND newer.transferred IS NOT TRUE
-          AND newer.start_date > p.start_date
-          AND newer.end_date > CURRENT_DATE
-      )
-  ),
-  aggregated AS (
-    -- ... باقي المنطق كما هو
-  )
-  -- ...
-END;
-$function$
+  return (
+    <span className={cn(
+      "inline-flex items-center justify-center rounded-full bg-amber-500 text-white text-[10px] font-medium",
+      collapsed 
+        ? "absolute -top-1 -left-1 h-4 w-4 min-w-4" 
+        : "h-5 min-w-5 px-1.5 mr-auto"
+    )}>
+      <span className="ltr-nums">{renewalsCount > 99 ? '99+' : renewalsCount}</span>
+    </span>
+  );
+}
 ```
 
 ---
 
-### 3. تحديث دالة `get_client_renewal_policies` أيضاً
+### 3. تحديث `Sidebar.tsx`
 
-نفس المنطق يُطبق على الدالة التي تجلب وثائق العميل المفصلة.
+#### أ) إضافة import للشارة الجديدة
+```typescript
+import { SidebarRenewalsBadge } from "./SidebarRenewalsBadge";
+```
+
+#### ب) إضافة نوع جديد للـ badge
+```typescript
+// السطر 55
+badge?: 'notifications' | 'debt' | 'tasks' | 'claims' | 'accidents' | 'renewals';
+```
+
+#### ج) إضافة رابط "التجديدات" تحت "تقارير الوثائق"
+```typescript
+// السطر 103-110 - مجموعة التقارير
+{
+  name: "التقارير",
+  icon: BarChart3,
+  items: [
+    { name: "تقارير الوثائق", href: "/reports/policies", icon: BarChart3 },
+    { name: "التجديدات", href: "/reports/policies?tab=renewals", icon: RefreshCw, badge: 'renewals' },  // ← جديد
+    { name: "تقرير الشركات", href: "/reports/company-settlement", icon: BarChart3, adminOnly: true },
+    { name: "التقارير المالية", href: "/reports/financial", icon: Wallet, adminOnly: true },
+  ],
+},
+```
+
+#### د) إضافة RefreshCw للـ imports
+```typescript
+import { ..., RefreshCw } from "lucide-react";
+```
+
+#### هـ) تحديث دالة renderBadge
+```typescript
+const renderBadge = (item: NavItem) => {
+  if (!item.badge) return null;
+  // ... الموجود
+  if (item.badge === 'renewals') return <SidebarRenewalsBadge collapsed={collapsed} />;
+  return null;
+};
+```
 
 ---
 
-### 4. تحديث دالة `report_renewals_summary`
+## ملخص الملفات
 
-لضمان تطابق الأرقام في الملخص مع الجدول.
-
----
-
-## ملخص التغييرات
-
-| الملف/الدالة | التغيير |
-|-------------|---------|
-| `PolicyReports.tsx` | إضافة رابط للعميل قابل للنقر |
-| `report_renewals` (SQL) | إضافة شرط NOT EXISTS لاستبعاد الوثائق المجددة |
-| `get_client_renewal_policies` (SQL) | نفس شرط الاستبعاد |
-| `report_renewals_summary` (SQL) | نفس شرط الاستبعاد |
+| الملف | التغيير |
+|-------|---------|
+| `src/hooks/useRenewalsCount.tsx` | إنشاء جديد - hook لجلب عدد التجديدات |
+| `src/components/layout/SidebarRenewalsBadge.tsx` | إنشاء جديد - مكون الشارة |
+| `src/components/layout/Sidebar.tsx` | إضافة رابط التجديدات + دعم الشارة |
 
 ---
 
 ## النتيجة المتوقعة
 
-1. **النقر على اسم العميل** → يفتح ملفه في `/clients?open={client_id}`
-2. **العميل "احمد محمود سالم"** → يختفي من قائمة التجديدات لأنه جدد بالفعل
-3. **التقرير يعرض فقط** الوثائق التي تحتاج فعلاً للتجديد (لا يوجد بديل أحدث)
+```text
+التقارير
+├── تقارير الوثائق
+├── التجديدات [12]  ← شارة برتقالية بعدد العملاء
+├── تقرير الشركات (admin)
+└── التقارير المالية (admin)
+```
+
+1. رابط "التجديدات" يظهر تحت "تقارير الوثائق"
+2. الشارة البرتقالية تعرض عدد العملاء المحتاجين للتجديد
+3. النقر على الرابط يفتح `/reports/policies` مع تبويب التجديدات محدد
+4. العدد يتحدث تلقائياً كل دقيقة
