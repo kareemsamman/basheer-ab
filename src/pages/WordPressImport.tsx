@@ -73,8 +73,9 @@ const WordPressImport = () => {
   const [jsonData, setJsonData] = useState<any>(null);
   const [fileName, setFileName] = useState<string>("");
   const [preview, setPreview] = useState<PreviewCounts | null>(null);
-  const [clearBeforeImport, setClearBeforeImport] = useState(true);
-  const [resetCompanies, setResetCompanies] = useState(true);
+  const [incrementalMode, setIncrementalMode] = useState(true); // Default: incremental (safe)
+  const [clearBeforeImport, setClearBeforeImport] = useState(false); // Default: DO NOT clear
+  const [resetCompanies, setResetCompanies] = useState(false); // Default: DO NOT reset companies
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [importing, setImporting] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -84,6 +85,15 @@ const WordPressImport = () => {
   const [steps, setSteps] = useState<ImportStep[]>([]);
   const [estimatedTime, setEstimatedTime] = useState<string>("");
   const [startTime, setStartTime] = useState<Date | null>(null);
+  
+  // Incremental analysis state
+  const [analyzingJson, setAnalyzingJson] = useState(false);
+  const [incrementalAnalysis, setIncrementalAnalysis] = useState<{
+    clients: { new: number; existing: number };
+    cars: { new: number; existing: number };
+    policies: { new: number; existing: number };
+    payments: { new: number; existing: number };
+  } | null>(null);
   
   // Resume mode state
   const [savedProgress, setSavedProgress] = useState<SavedProgress | null>(null);
@@ -791,6 +801,65 @@ const WordPressImport = () => {
     return formatTime(seconds);
   };
 
+  // Analyze JSON for incremental import - shows what's new vs existing
+  const analyzeJsonForIncrementalImport = async (data: any) => {
+    if (!data) return;
+    
+    setAnalyzingJson(true);
+    setIncrementalAnalysis(null);
+    
+    try {
+      // Fetch existing data in parallel
+      const [clientsRes, carsRes, policiesRes] = await Promise.all([
+        supabase.from('clients').select('id_number').is('deleted_at', null),
+        supabase.from('cars').select('car_number').is('deleted_at', null),
+        supabase.from('policies').select('legacy_wp_id').not('legacy_wp_id', 'is', null),
+      ]);
+      
+      const existingClientIds = new Set((clientsRes.data || []).map(c => c.id_number));
+      const existingCarNumbers = new Set((carsRes.data || []).map(c => c.car_number));
+      const existingPolicyWpIds = new Set((policiesRes.data || []).map(p => p.legacy_wp_id));
+      
+      // Analyze clients
+      const jsonClients = data.clients || [];
+      const newClients = jsonClients.filter((c: any) => !existingClientIds.has(c.id_number));
+      
+      // Extract cars from policies
+      const carsMap = new Map<string, boolean>();
+      for (const policy of data.policies || []) {
+        if (policy.car_number) {
+          carsMap.set(policy.car_number, existingCarNumbers.has(policy.car_number));
+        }
+      }
+      const newCars = Array.from(carsMap.entries()).filter(([_, exists]) => !exists).length;
+      const existingCars = carsMap.size - newCars;
+      
+      // Analyze policies
+      const jsonPolicies = data.policies || [];
+      const newPolicies = jsonPolicies.filter((p: any) => !existingPolicyWpIds.has(p.legacy_wp_id));
+      
+      // Count payments
+      let totalPayments = 0;
+      for (const policy of jsonPolicies) {
+        totalPayments += (policy.payments || []).length;
+      }
+      
+      setIncrementalAnalysis({
+        clients: { new: newClients.length, existing: jsonClients.length - newClients.length },
+        cars: { new: newCars, existing: existingCars },
+        policies: { new: newPolicies.length, existing: jsonPolicies.length - newPolicies.length },
+        payments: { new: totalPayments, existing: 0 }, // Payments will be linked to policies
+      });
+      
+      toast({ title: "تم التحليل", description: "يمكنك مراجعة ما سيتم استيراده" });
+    } catch (err: any) {
+      console.error('Analysis error:', err);
+      toast({ title: "خطأ في التحليل", description: err.message, variant: "destructive" });
+    } finally {
+      setAnalyzingJson(false);
+    }
+  };
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -882,11 +951,14 @@ const WordPressImport = () => {
     let mappings = isResume && savedProgress?.mappings ? { ...savedProgress.mappings } : { companies: {}, brokers: {}, clients: {}, cars: {}, policies: {} };
     let mediaOffset = isResume && savedProgress?.mediaOffset ? savedProgress.mediaOffset : 0;
 
-    const initialSteps: ImportStep[] = [
-      { key: 'preserveRules', label: 'حفظ قواعد التسعير', status: completedSteps.includes('preserveRules') ? 'done' : 'pending', count: 0 },
-      { key: 'clear', label: 'تنظيف البيانات', status: completedSteps.includes('clear') ? 'done' : 'pending', count: 0 },
+    // In incremental mode, skip clear/preserve/restore steps
+    const isIncremental = incrementalMode && !clearBeforeImport;
+    
+    const allSteps: ImportStep[] = [
+      { key: 'preserveRules', label: 'حفظ قواعد التسعير', status: completedSteps.includes('preserveRules') ? 'done' : (isIncremental ? 'skipped' : 'pending'), count: 0 },
+      { key: 'clear', label: 'تنظيف البيانات', status: completedSteps.includes('clear') ? 'done' : (isIncremental ? 'skipped' : 'pending'), count: 0 },
       { key: 'companies', label: 'شركات التأمين', status: completedSteps.includes('companies') ? 'done' : 'pending', count: 0 },
-      { key: 'restoreRules', label: 'استعادة قواعد التسعير', status: completedSteps.includes('restoreRules') ? 'done' : 'pending', count: 0 },
+      { key: 'restoreRules', label: 'استعادة قواعد التسعير', status: completedSteps.includes('restoreRules') ? 'done' : (isIncremental ? 'skipped' : 'pending'), count: 0 },
       { key: 'brokers', label: 'الوسطاء', status: completedSteps.includes('brokers') ? 'done' : 'pending', count: 0 },
       { key: 'clients', label: 'العملاء', status: completedSteps.includes('clients') ? 'done' : 'pending', count: 0 },
       { key: 'cars', label: 'السيارات', status: completedSteps.includes('cars') ? 'done' : 'pending', count: 0 },
@@ -896,6 +968,11 @@ const WordPressImport = () => {
       { key: 'invoices', label: 'فواتير PDF', status: completedSteps.includes('invoices') ? 'done' : 'pending', count: 0 },
       { key: 'outsideCheques', label: 'الشيكات الخارجية', status: completedSteps.includes('outsideCheques') ? 'done' : 'pending', count: 0 },
     ];
+    
+    // Filter out skipped steps from view in incremental mode for cleaner UI
+    const initialSteps = isIncremental 
+      ? allSteps.filter(s => !['preserveRules', 'clear', 'restoreRules'].includes(s.key))
+      : allSteps;
     setSteps(initialSteps);
 
     const updateStep = (key: string, status: ImportStep['status'], count?: number, processed?: number, lastError?: string) => {
@@ -919,9 +996,9 @@ const WordPressImport = () => {
       const media = extractMedia(jsonData?.policies || []);
       const totalMedia = media.length;
 
-      // Step 1: Preserve pricing rules if resetting companies
+      // Step 1: Preserve pricing rules if resetting companies (skip in incremental mode)
       if (!completedSteps.includes('preserveRules')) {
-        if (resetCompanies) {
+        if (!isIncremental && resetCompanies) {
           updateStep('preserveRules', 'running');
           const { data: rulesResult } = await supabase.functions.invoke('wordpress-import', {
             body: { action: 'preservePricingRules' }
@@ -929,17 +1006,17 @@ const WordPressImport = () => {
           preservedRules = rulesResult?.preservedRules || {};
           updateStep('preserveRules', 'done', rulesResult?.count || 0);
         } else {
-          updateStep('preserveRules', 'skipped');
+          // In incremental mode, just mark as skipped
+          if (!isIncremental) updateStep('preserveRules', 'skipped');
         }
         completedSteps.push('preserveRules');
-        await saveProgress(0, completedSteps, mappings, stats, mediaOffset, totalMedia);
+        if (!isIncremental) await saveProgress(0, completedSteps, mappings, stats, mediaOffset, totalMedia);
       }
       setProgress(3);
 
-      // Step 2: Clear data - ALWAYS clear if checkbox is checked, even if resuming
-      // (only skip if this specific step was already completed in this session)
+      // Step 2: Clear data - SKIP ENTIRELY in incremental mode
       if (!completedSteps.includes('clear')) {
-        if (clearBeforeImport) {
+        if (!isIncremental && clearBeforeImport) {
           updateStep('clear', 'running');
 
           // 1) Clear transactional data first (policies/cars/clients/brokers/...) so FK deletion is safe
@@ -958,10 +1035,11 @@ const WordPressImport = () => {
 
           updateStep('clear', 'done');
         } else {
-          updateStep('clear', 'skipped');
+          // In incremental mode, just skip
+          if (!isIncremental) updateStep('clear', 'skipped');
         }
         completedSteps.push('clear');
-        await saveProgress(1, completedSteps, mappings, stats, mediaOffset, totalMedia);
+        if (!isIncremental) await saveProgress(1, completedSteps, mappings, stats, mediaOffset, totalMedia);
       }
       setProgress(6);
 
@@ -999,19 +1077,19 @@ const WordPressImport = () => {
       }
       setProgress(10);
 
-      // Step 5: Restore pricing rules
+      // Step 5: Restore pricing rules (skip in incremental mode)
       if (!completedSteps.includes('restoreRules')) {
-        if (resetCompanies && Object.keys(preservedRules).length > 0 && !isResume) {
+        if (!isIncremental && resetCompanies && Object.keys(preservedRules).length > 0 && !isResume) {
           updateStep('restoreRules', 'running');
           const { data: restoreResult } = await supabase.functions.invoke('wordpress-import', {
             body: { action: 'restorePricingRules', data: { preservedRules } }
           });
           updateStep('restoreRules', 'done', restoreResult?.restored || 0);
         } else {
-          updateStep('restoreRules', 'skipped');
+          if (!isIncremental) updateStep('restoreRules', 'skipped');
         }
         completedSteps.push('restoreRules');
-        await saveProgress(3, completedSteps, mappings, stats, mediaOffset, totalMedia);
+        if (!isIncremental) await saveProgress(3, completedSteps, mappings, stats, mediaOffset, totalMedia);
       }
       setProgress(12);
 
@@ -1650,11 +1728,100 @@ const WordPressImport = () => {
               </CardContent>
             </Card>
 
-            {/* Import Options */}
+            {/* Incremental Import Mode Card */}
             {jsonData && !resumeMode && (
-              <Card>
+              <Card className={incrementalMode ? "border-green-500 bg-green-50 dark:bg-green-900/10" : "border-muted"}>
                 <CardHeader>
-                  <CardTitle>خيارات الاستيراد</CardTitle>
+                  <CardTitle className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
+                      <RefreshCw className="h-5 w-5" />
+                      وضع الاستيراد التفاضلي (آمن)
+                    </div>
+                    <Checkbox
+                      id="incrementalMode"
+                      checked={incrementalMode}
+                      onCheckedChange={(v) => {
+                        setIncrementalMode(v === true);
+                        if (v === true) {
+                          setClearBeforeImport(false);
+                          setResetCompanies(false);
+                        }
+                      }}
+                    />
+                  </CardTitle>
+                  <CardDescription className={incrementalMode ? "text-green-700 dark:text-green-400" : ""}>
+                    {incrementalMode ? (
+                      <>
+                        ✅ سيتم استيراد السجلات الجديدة فقط التي غير موجودة في النظام.
+                        <br />
+                        <strong>لن يتم حذف أي بيانات موجودة.</strong>
+                      </>
+                    ) : (
+                      "قم بتفعيل هذا الوضع لاستيراد الجديد فقط بدون حذف"
+                    )}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Analyze Button */}
+                  {incrementalMode && (
+                    <Button
+                      onClick={() => analyzeJsonForIncrementalImport(jsonData)}
+                      disabled={analyzingJson}
+                      variant="outline"
+                      className="w-full border-green-500 text-green-700 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900/30"
+                    >
+                      {analyzingJson ? (
+                        <><Loader2 className="h-4 w-4 ml-2 animate-spin" />جاري التحليل...</>
+                      ) : (
+                        <><RefreshCw className="h-4 w-4 ml-2" />تحليل الملف (معاينة ما سيتم استيراده)</>
+                      )}
+                    </Button>
+                  )}
+
+                  {/* Analysis Results */}
+                  {incrementalAnalysis && incrementalMode && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="p-3 rounded-lg border border-green-300 bg-white dark:bg-green-900/20">
+                        <div className="text-xs text-muted-foreground mb-1">العملاء</div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-green-500">🆕 {incrementalAnalysis.clients.new}</Badge>
+                          <Badge variant="secondary">🔄 {incrementalAnalysis.clients.existing}</Badge>
+                        </div>
+                      </div>
+                      <div className="p-3 rounded-lg border border-green-300 bg-white dark:bg-green-900/20">
+                        <div className="text-xs text-muted-foreground mb-1">السيارات</div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-green-500">🆕 {incrementalAnalysis.cars.new}</Badge>
+                          <Badge variant="secondary">🔄 {incrementalAnalysis.cars.existing}</Badge>
+                        </div>
+                      </div>
+                      <div className="p-3 rounded-lg border border-green-300 bg-white dark:bg-green-900/20">
+                        <div className="text-xs text-muted-foreground mb-1">الوثائق</div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-green-500">🆕 {incrementalAnalysis.policies.new}</Badge>
+                          <Badge variant="secondary">🔄 {incrementalAnalysis.policies.existing}</Badge>
+                        </div>
+                      </div>
+                      <div className="p-3 rounded-lg border border-green-300 bg-white dark:bg-green-900/20">
+                        <div className="text-xs text-muted-foreground mb-1">المدفوعات</div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-green-500">🆕 {incrementalAnalysis.payments.new}</Badge>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Import Options (only shown when NOT in incremental mode) */}
+            {jsonData && !resumeMode && !incrementalMode && (
+              <Card className="border-destructive/50">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-destructive">
+                    <AlertTriangle className="h-5 w-5" />
+                    خيارات الاستيراد المتقدمة (خطر)
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-3">
@@ -1681,13 +1848,21 @@ const WordPressImport = () => {
                       </Label>
                     </div>
                   </div>
-
-                  <Button onClick={() => handleImport(false)} disabled={importing} className="w-full">
-                    {importing ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : <Upload className="h-4 w-4 ml-2" />}
-                    {importing ? "جاري الاستيراد..." : "بدء الاستيراد"}
-                  </Button>
                 </CardContent>
               </Card>
+            )}
+
+            {/* Start Import Button */}
+            {jsonData && !resumeMode && (
+              <Button 
+                onClick={() => handleImport(false)} 
+                disabled={importing} 
+                className={`w-full ${incrementalMode ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                size="lg"
+              >
+                {importing ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : <Upload className="h-4 w-4 ml-2" />}
+                {importing ? "جاري الاستيراد..." : (incrementalMode ? "🚀 بدء الاستيراد التفاضلي (آمن)" : "بدء الاستيراد")}
+              </Button>
             )}
 
             {/* Import Progress */}
