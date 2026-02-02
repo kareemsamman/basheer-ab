@@ -1101,9 +1101,14 @@ export default function PolicyReports() {
                                 />
                               )}
                             </TableCell>
-                            <TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
                               <div>
-                                <p className="font-medium">{client.client_name}</p>
+                                <button
+                                  onClick={() => window.location.href = `/clients?open=${client.client_id}`}
+                                  className="font-medium hover:text-primary hover:underline transition-colors text-right"
+                                >
+                                  {client.client_name}
+                                </button>
                                 {client.client_file_number && (
                                   <p className="text-xs text-muted-foreground">{client.client_file_number}</p>
                                 )}
