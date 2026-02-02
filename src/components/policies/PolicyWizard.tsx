@@ -479,7 +479,7 @@ export function PolicyWizard({
         companyId: policy.company_id,
         carType: carTypeValue,
         ageBand: ageBandValue,
-        carValue: selectedCar?.car_value || (newCar.car_value ? parseFloat(newCar.car_value) : null),
+        carValue: policy.full_car_value ? parseFloat(policy.full_car_value) : (selectedCar?.car_value || (newCar.car_value ? parseFloat(newCar.car_value) : null)),
         carYear: selectedCar?.year || (newCar.year ? parseInt(newCar.year) : null),
         insurancePrice: pricing.totalPrice,
         roadServiceId: policy.road_service_id || null,
@@ -681,7 +681,7 @@ export function PolicyWizard({
           companyId: policy.company_id,
           carType: carTypeValue,
           ageBand: ageBandValue,
-          carValue: selectedCar?.car_value || (newCar.car_value ? parseFloat(newCar.car_value) : null),
+          carValue: policy.full_car_value ? parseFloat(policy.full_car_value) : (selectedCar?.car_value || (newCar.car_value ? parseFloat(newCar.car_value) : null)),
           carYear: selectedCar?.year || (newCar.year ? parseInt(newCar.year) : null),
           insurancePrice: parseFloat(policy.insurance_price) || pricing.totalPrice,
           brokerBuyPrice: brokerBuyPriceValue,
@@ -771,7 +771,7 @@ export function PolicyWizard({
               companyId: addon.company_id || '',
               carType: (selectedCar?.car_type || newCar.car_type || 'car') as CarType,
               ageBand: isUnder24 ? 'UNDER_24' as const : 'UP_24' as const,
-              carValue: selectedCar?.car_value || (newCar.car_value ? parseFloat(newCar.car_value) : null),
+              carValue: policy.full_car_value ? parseFloat(policy.full_car_value) : (selectedCar?.car_value || (newCar.car_value ? parseFloat(newCar.car_value) : null)),
               carYear: selectedCar?.year || (newCar.year ? parseInt(newCar.year) : null),
               insurancePrice: addonInsurancePrice,
               roadServiceId: addon.road_service_id || null,
@@ -876,7 +876,17 @@ export function PolicyWizard({
       // Upload files
       await uploadFiles(policyIdToUse);
 
-      // Save new children and link selected children to policy
+      // Update car value if FULL insurance and value was entered in wizard
+      if (policy.policy_type_child === 'FULL' && policy.full_car_value) {
+        const carIdToUpdate = selectedCar?.id || existingCar?.id;
+        if (carIdToUpdate) {
+          await supabase
+            .from('cars')
+            .update({ car_value: parseFloat(policy.full_car_value) })
+            .eq('id', carIdToUpdate);
+        }
+      }
+
       let clientIdForChildren = selectedClient?.id || newlyCreatedClientId;
       // If we used a temp policy (Tranzila flow), we might not have clientId in state
       if (!clientIdForChildren && policyIdToUse) {
