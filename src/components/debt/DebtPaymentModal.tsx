@@ -107,6 +107,8 @@ export function DebtPaymentModal({
   const [splitCount, setSplitCount] = useState(2);
   const [previewUrls, setPreviewUrls] = useState<PreviewUrls>({});
   const [selectedCars, setSelectedCars] = useState<string[]>([]);
+  const [netDebt, setNetDebt] = useState(0); // Net debt matching client profile calculation
+  const [surplusApplied, setSurplusApplied] = useState(0); // Amount of ELZAMI surplus applied
 
   // Extract unique car numbers for filter
   const uniqueCars = React.useMemo(() => {
@@ -281,79 +283,99 @@ export function DebtPaymentModal({
   const fetchPolicyPaymentInfo = async () => {
     setLoading(true);
     try {
-      // Fetch ALL unpaid policies for this client (including expired) - excluding ELZAMI
-      // This matches the debt tracking page logic
-      const { data: policiesData, error: policiesError } = await supabase
+      // Fetch ALL policies for this client (including ELZAMI and expired) to calculate global totals
+      const { data: allPoliciesData, error: allPoliciesError } = await supabase
         .from('policies')
         .select('id, policy_type_parent, policy_type_child, insurance_price, branch_id, group_id, car:cars(car_number)')
         .eq('client_id', clientId)
         .eq('cancelled', false)
-        .is('deleted_at', null)
-        .neq('policy_type_parent', 'ELZAMI');
+        .is('deleted_at', null);
 
-      if (policiesError) throw policiesError;
+      if (allPoliciesError) throw allPoliciesError;
 
-      // Also fetch ELZAMI policies for this client to get their payments (for total display)
-      const { data: elzamiPoliciesData } = await supabase
-        .from('policies')
-        .select('id')
-        .eq('client_id', clientId)
-        .eq('cancelled', false)
-        .is('deleted_at', null)
-        .eq('policy_type_parent', 'ELZAMI');
+      const allPolicyIds = (allPoliciesData || []).map(p => p.id);
 
-      const elzamiPolicyIds = (elzamiPoliciesData || []).map(p => p.id);
-      let elzamiTotal = 0;
-
-      if (elzamiPolicyIds.length > 0) {
-        const { data: elzamiPayments } = await supabase
+      // Fetch ALL payments for ALL policies (including ELZAMI)
+      let allPaymentsMap: Record<string, number> = {};
+      if (allPolicyIds.length > 0) {
+        const { data: allPaymentsData, error: allPaymentsError } = await supabase
           .from('policy_payments')
-          .select('amount, refused')
-          .in('policy_id', elzamiPolicyIds);
+          .select('policy_id, amount, refused')
+          .in('policy_id', allPolicyIds);
 
-        elzamiTotal = (elzamiPayments || [])
-          .filter(p => !p.refused)
-          .reduce((sum, p) => sum + p.amount, 0);
-      }
-      setElzamiPaymentsTotal(elzamiTotal);
+        if (allPaymentsError) throw allPaymentsError;
 
-      const policyIds = (policiesData || []).map(p => p.id);
-
-      if (policyIds.length === 0) {
-        setPolicies([]);
-        setLoading(false);
-        return;
+        (allPaymentsData || []).forEach(p => {
+          if (!p.refused) {
+            allPaymentsMap[p.policy_id] = (allPaymentsMap[p.policy_id] || 0) + p.amount;
+          }
+        });
       }
 
-      const { data: paymentsData, error: paymentsError } = await supabase
-        .from('policy_payments')
-        .select('policy_id, amount, refused')
-        .in('policy_id', policyIds);
+      // Calculate global totals (same logic as client profile)
+      const totalAllPrices = (allPoliciesData || []).reduce((sum, p) => sum + p.insurance_price, 0);
+      const totalAllPayments = Object.values(allPaymentsMap).reduce((sum, amt) => sum + amt, 0);
+      const calculatedNetDebt = Math.max(0, totalAllPrices - totalAllPayments);
+      setNetDebt(calculatedNetDebt);
 
-      if (paymentsError) throw paymentsError;
+      // Separate ELZAMI vs agency policies
+      const elzamiPolicies = (allPoliciesData || []).filter(p => p.policy_type_parent === 'ELZAMI');
+      const agencyPolicies = (allPoliciesData || []).filter(p => p.policy_type_parent !== 'ELZAMI');
 
-      const policyPayments: Record<string, number> = {};
-      (paymentsData || []).forEach(p => {
-        if (!p.refused) {
-          policyPayments[p.policy_id] = (policyPayments[p.policy_id] || 0) + p.amount;
-        }
-      });
+      // Calculate ELZAMI totals
+      const elzamiTotalPrice = elzamiPolicies.reduce((sum, p) => sum + p.insurance_price, 0);
+      const elzamiTotalPaid = elzamiPolicies.reduce((sum, p) => sum + (allPaymentsMap[p.id] || 0), 0);
+      setElzamiPaymentsTotal(elzamiTotalPaid);
 
-      const policyInfo = (policiesData || [])
+      // Calculate surplus from ELZAMI overpayments
+      const elzamiSurplus = Math.max(0, elzamiTotalPaid - elzamiTotalPrice);
+      setSurplusApplied(elzamiSurplus);
+
+      // Calculate agency-only totals
+      const agencyTotalPrice = agencyPolicies.reduce((sum, p) => sum + p.insurance_price, 0);
+      const agencyTotalPaid = agencyPolicies.reduce((sum, p) => sum + (allPaymentsMap[p.id] || 0), 0);
+
+      // Build policy info for agency policies (with remaining debt)
+      const policyInfo = agencyPolicies
         .map(p => ({
           policyId: p.id,
           policyType: p.policy_type_parent,
           policyTypeChild: p.policy_type_child,
           carNumber: (p.car as any)?.car_number || null,
           price: p.insurance_price,
-          paid: policyPayments[p.id] || 0,
-          remaining: p.insurance_price - (policyPayments[p.id] || 0),
+          paid: allPaymentsMap[p.id] || 0,
+          remaining: p.insurance_price - (allPaymentsMap[p.id] || 0),
           branchId: p.branch_id,
           groupId: p.group_id,
         }))
         .filter(p => p.remaining > 0);
 
-      setPolicies(policyInfo);
+      // Apply ELZAMI surplus to reduce displayed agency debt (sorted by smallest first)
+      let remainingSurplus = elzamiSurplus;
+      const adjustedPolicyInfo: PolicyPaymentInfo[] = [];
+      
+      // Sort by remaining (smallest first) to eliminate fully-covered cards
+      const sortedPolicies = [...policyInfo].sort((a, b) => a.remaining - b.remaining);
+      
+      for (const policy of sortedPolicies) {
+        if (remainingSurplus >= policy.remaining) {
+          // This policy is fully covered by surplus - skip it
+          remainingSurplus -= policy.remaining;
+        } else if (remainingSurplus > 0) {
+          // Partially covered by surplus
+          adjustedPolicyInfo.push({
+            ...policy,
+            paid: policy.paid + remainingSurplus,
+            remaining: policy.remaining - remainingSurplus,
+          });
+          remainingSurplus = 0;
+        } else {
+          // No surplus left
+          adjustedPolicyInfo.push(policy);
+        }
+      }
+
+      setPolicies(adjustedPolicyInfo);
     } catch (error) {
       console.error('Error fetching policy payment info:', error);
       toast.error('خطأ في جلب بيانات الدفع');
@@ -693,12 +715,12 @@ export function DebtPaymentModal({
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-muted/50 rounded-lg p-3 text-center">
                 <p className="text-xs text-muted-foreground">إجمالي الدين</p>
-                <p className="text-lg font-bold ltr-nums">₪{totalPrice.toLocaleString('en-US')}</p>
+                <p className="text-lg font-bold ltr-nums">₪{totalRemaining.toLocaleString('en-US')}</p>
               </div>
               <div className="bg-green-500/10 rounded-lg p-3 text-center">
-                <p className="text-xs text-muted-foreground">المدفوع</p>
+                <p className="text-xs text-muted-foreground">المدفوع (وكالة)</p>
                 <p className="text-lg font-bold text-green-600 ltr-nums">
-                  ₪{(totalPaid + paidVisaTotal).toLocaleString('en-US')}
+                  ₪{(totalPaid + paidVisaTotal + surplusApplied).toLocaleString('en-US')}
                 </p>
               </div>
               <div className="bg-destructive/10 rounded-lg p-3 text-center">
