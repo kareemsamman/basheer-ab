@@ -537,8 +537,8 @@ export default function PolicyReports() {
         p_policy_type: renewedPolicyTypeFilter !== 'all' ? renewedPolicyTypeFilter : null,
         p_created_by: renewedCreatedByFilter !== 'all' ? renewedCreatedByFilter : null,
         p_search: renewedSearch || null,
-        p_page_size: PAGE_SIZE,
-        p_page: renewedPage + 1
+        p_limit: PAGE_SIZE,
+        p_offset: renewedPage * PAGE_SIZE
       });
 
       if (error) throw error;
