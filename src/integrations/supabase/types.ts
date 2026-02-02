@@ -4609,57 +4609,142 @@ export type Database = {
           status: string
         }[]
       }
-      report_renewals: {
-        Args: {
-          p_created_by?: string
-          p_end_date?: string
-          p_page?: number
-          p_page_size?: number
-          p_policy_type?: string
-          p_search?: string
-          p_start_date?: string
-        }
-        Returns: {
-          car_numbers: string[]
-          client_file_number: string
-          client_id: string
-          client_name: string
-          client_phone: string
-          days_remaining: number
-          earliest_end_date: string
-          policies_count: number
-          policy_ids: string[]
-          policy_types: string[]
-          renewal_notes: string
-          total_count: number
-          total_insurance_price: number
-          worst_renewal_status: string
-        }[]
-      }
-      report_renewals_service: {
-        Args: {
-          p_days_remaining?: number
-          p_end_month?: string
-          p_limit?: number
-          p_offset?: number
-          p_policy_type?: string
-        }
-        Returns: {
-          car_numbers: string[]
-          client_file_number: string
-          client_id: string
-          client_name: string
-          client_phone: string
-          days_remaining: number
-          earliest_end_date: string
-          policies_count: number
-          policy_types: string[]
-          renewal_notes: string
-          renewal_status: string
-          total_price: number
-          total_rows: number
-        }[]
-      }
+      report_renewals:
+        | {
+            Args: {
+              p_branch_id?: string
+              p_broker_id?: string
+              p_company_id?: string
+              p_end_date?: string
+              p_policy_type?: string
+              p_show_cancelled?: boolean
+              p_show_renewed?: boolean
+              p_start_date?: string
+            }
+            Returns: {
+              branch_id: string
+              branch_name: string
+              broker_id: string
+              broker_name: string
+              car_details: string
+              car_id: string
+              car_number: string
+              client_id: string
+              client_id_number: string
+              client_name: string
+              client_phone: string
+              company_id: string
+              company_name: string
+              company_payment: number
+              created_at: string
+              end_date: string
+              is_renewed: boolean
+              policy_id: string
+              policy_number: string
+              policy_type: string
+              policy_type_parent: string
+              profit: number
+              renewed_policy_id: string
+              start_date: string
+              status: string
+              total_price: number
+            }[]
+          }
+        | {
+            Args: {
+              p_created_by?: string
+              p_end_date?: string
+              p_page?: number
+              p_page_size?: number
+              p_policy_type?: string
+              p_search?: string
+              p_start_date?: string
+            }
+            Returns: {
+              car_numbers: string[]
+              client_file_number: string
+              client_id: string
+              client_name: string
+              client_phone: string
+              days_remaining: number
+              earliest_end_date: string
+              policies_count: number
+              policy_ids: string[]
+              policy_types: string[]
+              renewal_notes: string
+              total_count: number
+              total_insurance_price: number
+              worst_renewal_status: string
+            }[]
+          }
+      report_renewals_service:
+        | {
+            Args: {
+              p_days_remaining?: number
+              p_end_month?: string
+              p_limit?: number
+              p_offset?: number
+              p_policy_type?: string
+            }
+            Returns: {
+              car_numbers: string[]
+              client_file_number: string
+              client_id: string
+              client_name: string
+              client_phone: string
+              days_remaining: number
+              earliest_end_date: string
+              policies_count: number
+              policy_types: string[]
+              renewal_notes: string
+              renewal_status: string
+              total_price: number
+              total_rows: number
+            }[]
+          }
+        | {
+            Args: {
+              p_branch_id?: string
+              p_broker_id?: string
+              p_company_id?: string
+              p_end_date?: string
+              p_page_number?: number
+              p_page_size?: number
+              p_policy_type?: string
+              p_show_cancelled?: boolean
+              p_show_renewed?: boolean
+              p_start_date?: string
+            }
+            Returns: {
+              branch_id: string
+              branch_name: string
+              broker_id: string
+              broker_name: string
+              car_details: string
+              car_id: string
+              car_number: string
+              client_id: string
+              client_id_number: string
+              client_name: string
+              client_phone: string
+              company_id: string
+              company_name: string
+              company_payment: number
+              created_at: string
+              end_date: string
+              is_renewed: boolean
+              policy_id: string
+              policy_number: string
+              policy_type: string
+              policy_type_parent: string
+              profit: number
+              renewed_policy_id: string
+              start_date: string
+              status: string
+              total_count: number
+              total_price: number
+            }[]
+          }
       report_renewals_summary: {
         Args: {
           p_created_by?: string
