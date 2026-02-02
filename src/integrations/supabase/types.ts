@@ -4680,6 +4680,9 @@ export type Database = {
           renewed: number
           sms_sent: number
           total_expiring: number
+          total_packages: number
+          total_single: number
+          total_value: number
         }[]
       }
       reverse_ledger_entry: {

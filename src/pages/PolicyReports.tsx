@@ -175,6 +175,10 @@ interface RenewalSummary {
   called: number;
   renewed: number;
   not_interested: number;
+  // New fields for enhanced stats
+  total_packages: number;
+  total_single: number;
+  total_value: number;
 }
 
 interface Company {
@@ -949,33 +953,77 @@ export default function PolicyReports() {
 
           {/* Renewals Tab */}
           <TabsContent value="renewals" className="space-y-4 mt-6">
-            {/* Summary Cards */}
+            {/* Enhanced Summary Cards */}
             {renewalsSummary && (
-              <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-                <Card className="p-4 text-center">
-                  <p className="text-xs text-muted-foreground">إجمالي المنتهية</p>
-                  <p className="text-2xl font-bold text-primary">{renewalsSummary.total_expiring}</p>
-                </Card>
-                <Card className="p-4 text-center">
-                  <p className="text-xs text-muted-foreground">لم يتم التواصل</p>
-                  <p className="text-2xl font-bold text-gray-600">{renewalsSummary.not_contacted}</p>
-                </Card>
-                <Card className="p-4 text-center">
-                  <p className="text-xs text-muted-foreground">تم إرسال SMS</p>
-                  <p className="text-2xl font-bold text-blue-600">{renewalsSummary.sms_sent}</p>
-                </Card>
-                <Card className="p-4 text-center">
-                  <p className="text-xs text-muted-foreground">تم الاتصال</p>
-                  <p className="text-2xl font-bold text-amber-600">{renewalsSummary.called}</p>
-                </Card>
-                <Card className="p-4 text-center">
-                  <p className="text-xs text-muted-foreground">تم التجديد</p>
-                  <p className="text-2xl font-bold text-green-600">{renewalsSummary.renewed}</p>
-                </Card>
-                <Card className="p-4 text-center">
-                  <p className="text-xs text-muted-foreground">غير مهتم</p>
-                  <p className="text-2xl font-bold text-red-600">{renewalsSummary.not_interested}</p>
-                </Card>
+              <div className="space-y-4">
+                {/* Main Stats Row - 3 Large Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* إجمالي بحاجة للتجديد */}
+                  <Card className="p-6 bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">إجمالي بحاجة للتجديد</p>
+                        <p className="text-4xl font-bold text-primary mt-1">{renewalsSummary.total_expiring}</p>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          عميل • ₪{(renewalsSummary.total_value || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                        </p>
+                      </div>
+                      <RefreshCw className="h-12 w-12 text-primary/30" />
+                    </div>
+                  </Card>
+
+                  {/* لم يتم التواصل - أولوية عالية */}
+                  <Card className="p-6 bg-gradient-to-br from-amber-500/10 to-amber-500/5 border-amber-500/20">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">لم يتم التواصل</p>
+                        <p className="text-4xl font-bold text-amber-600 mt-1">{renewalsSummary.not_contacted}</p>
+                        <p className="text-xs text-amber-600/70 mt-2">بحاجة لاتخاذ إجراء</p>
+                      </div>
+                      <AlertCircle className="h-12 w-12 text-amber-500/30" />
+                    </div>
+                  </Card>
+
+                  {/* تم التجديد */}
+                  <Card className="p-6 bg-gradient-to-br from-green-500/10 to-green-500/5 border-green-500/20">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">تم التجديد</p>
+                        <p className="text-4xl font-bold text-green-600 mt-1">{renewalsSummary.renewed}</p>
+                        <p className="text-xs text-green-600/70 mt-2">
+                          {renewalsSummary.total_expiring > 0 
+                            ? `${Math.round((renewalsSummary.renewed / renewalsSummary.total_expiring) * 100)}% نسبة التحويل`
+                            : '0% نسبة التحويل'}
+                        </p>
+                      </div>
+                      <CheckCircle className="h-12 w-12 text-green-500/30" />
+                    </div>
+                  </Card>
+                </div>
+
+                {/* Secondary Stats Row - 5 Small Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <Card className="p-4 text-center">
+                    <p className="text-xs text-muted-foreground">تم إرسال SMS</p>
+                    <p className="text-2xl font-bold text-blue-600">{renewalsSummary.sms_sent}</p>
+                  </Card>
+                  <Card className="p-4 text-center">
+                    <p className="text-xs text-muted-foreground">تم الاتصال</p>
+                    <p className="text-2xl font-bold text-amber-600">{renewalsSummary.called}</p>
+                  </Card>
+                  <Card className="p-4 text-center">
+                    <p className="text-xs text-muted-foreground">غير مهتم</p>
+                    <p className="text-2xl font-bold text-red-600">{renewalsSummary.not_interested}</p>
+                  </Card>
+                  <Card className="p-4 text-center">
+                    <p className="text-xs text-muted-foreground">باقات</p>
+                    <p className="text-2xl font-bold text-purple-600">{renewalsSummary.total_packages || 0}</p>
+                  </Card>
+                  <Card className="p-4 text-center">
+                    <p className="text-xs text-muted-foreground">وثائق مفردة</p>
+                    <p className="text-2xl font-bold text-slate-600">{renewalsSummary.total_single || 0}</p>
+                  </Card>
+                </div>
               </div>
             )}
 
