@@ -33,6 +33,7 @@ import {
   Contact,
   FileWarning,
   Mail,
+  RefreshCw,
   LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,7 @@ import { SidebarDebtBadge } from "./SidebarDebtBadge";
 import { SidebarTaskBadge } from "./SidebarTaskBadge";
 import { SidebarClaimsBadge } from "./SidebarClaimsBadge";
 import { SidebarAccidentsBadge } from "./SidebarAccidentsBadge";
+import { SidebarRenewalsBadge } from "./SidebarRenewalsBadge";
 import { SidebarSearch } from "./SidebarSearch";
 
 interface NavItem {
@@ -52,7 +54,7 @@ interface NavItem {
   icon: LucideIcon;
   adminOnly?: boolean;
   superAdminOnly?: boolean;
-  badge?: 'notifications' | 'debt' | 'tasks' | 'claims' | 'accidents';
+  badge?: 'notifications' | 'debt' | 'tasks' | 'claims' | 'accidents' | 'renewals';
 }
 
 interface NavGroup {
@@ -104,6 +106,7 @@ export const navigationGroups: NavGroup[] = [
     icon: BarChart3,
     items: [
       { name: "تقارير الوثائق", href: "/reports/policies", icon: BarChart3 },
+      { name: "التجديدات", href: "/reports/policies?tab=renewals", icon: RefreshCw, badge: 'renewals' },
       { name: "تقرير الشركات", href: "/reports/company-settlement", icon: BarChart3, adminOnly: true },
       { name: "التقارير المالية", href: "/reports/financial", icon: Wallet, adminOnly: true },
     ],
@@ -221,6 +224,7 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
     if (item.badge === 'tasks') return <SidebarTaskBadge collapsed={collapsed} />;
     if (item.badge === 'claims') return <SidebarClaimsBadge collapsed={collapsed} />;
     if (item.badge === 'accidents') return <SidebarAccidentsBadge collapsed={collapsed} />;
+    if (item.badge === 'renewals') return <SidebarRenewalsBadge collapsed={collapsed} />;
     return null;
   };
 
