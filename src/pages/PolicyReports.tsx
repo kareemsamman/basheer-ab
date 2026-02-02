@@ -631,11 +631,6 @@ export default function PolicyReports() {
 
   // Send bulk SMS reminders
   const handleSendReminders = async () => {
-    if (!isAdmin) {
-      toast.error('هذه الميزة للمسؤولين فقط');
-      return;
-    }
-    
     setSendingReminders(true);
     try {
       const { data, error } = await supabase.functions.invoke('send-renewal-reminders', {
@@ -1199,18 +1194,20 @@ export default function PolicyReports() {
                   />
                 </div>
 
-                {isAdmin && (
-                  <div className="flex gap-2 mr-auto">
+                <div className="flex gap-2 mr-auto">
+                  {/* PDF للمسؤولين فقط */}
+                  {isAdmin && (
                     <Button variant="outline" onClick={handleGeneratePdf} disabled={generatingPdf}>
                       {generatingPdf ? <Loader2 className="h-4 w-4 animate-spin ml-2" /> : <Download className="h-4 w-4 ml-2" />}
                       تصدير PDF
                     </Button>
-                    <Button onClick={handleSendReminders} disabled={sendingReminders || renewalClients.length === 0}>
-                      {sendingReminders ? <Loader2 className="h-4 w-4 animate-spin ml-2" /> : <Send className="h-4 w-4 ml-2" />}
-                      إرسال تذكيرات SMS {renewalClients.length > 0 && `(${renewalsTotalRows})`}
-                    </Button>
-                  </div>
-                )}
+                  )}
+                  {/* SMS للجميع */}
+                  <Button onClick={handleSendReminders} disabled={sendingReminders || renewalClients.length === 0}>
+                    {sendingReminders ? <Loader2 className="h-4 w-4 animate-spin ml-2" /> : <Send className="h-4 w-4 ml-2" />}
+                    إرسال تذكيرات SMS {renewalClients.length > 0 && `(${renewalsTotalRows})`}
+                  </Button>
+                </div>
               </div>
             </Card>
 
