@@ -1,132 +1,106 @@
 
-# خطة: تسجيل جميع رسائل SMS المُرسلة عبر 019sms في سجل الرسائل
+# خطة: تحسين نموذج إضافة العميل الجديد
 
 ## المشكلة الحالية
 
-صفحة "سجل الرسائل النصية" لا تعرض جميع الرسائل المرسلة عبر 019sms لأن العديد من Edge Functions تُرسل SMS ولكن **لا تُسجّل في جدول `sms_logs`**.
+في صفحة العملاء عند الضغط على "إضافة عميل جديد" (`ClientDrawer.tsx`):
+- حقل تاريخ الميلاد يستخدم `Calendar` component القديم
+- لا يسمح بالكتابة اليدوية للتاريخ (DD/MM/YYYY)
+- يختلف عن نموذج إنشاء العميل في wizard الذي يستخدم `ArabicDatePicker`
 
-### تحليل المشكلة
+## الحل
 
-| Edge Function | يُرسل SMS | يُسجّل في sms_logs |
-|--------------|-----------|------------------|
-| `send-invoice-sms` | ✅ | ❌ **غير مُسجّل** |
-| `send-package-invoice-sms` | ✅ | ❌ **غير مُسجّل** |
-| `send-sms` (يدوي) | ✅ | ⚠️ التسجيل من الـ caller |
-| `cron-renewal-reminders` | ✅ | ❌ **غير مُسجّل** |
-| `payment-result` | ✅ | ❌ **غير مُسجّل** |
-| `send-signature-sms` | ✅ | ✅ مُسجّل |
-| `send-renewal-reminders` | ✅ | ✅ مُسجّل |
-| `send-marketing-sms` | ✅ | ✅ مُسجّل |
-
----
-
-## الحل المقترح
-
-إضافة تسجيل SMS في جميع الـ Edge Functions التي ترسل رسائل ولكن لا تسجّلها.
+استبدال `Calendar` + `Popover` بـ `ArabicDatePicker` في `ClientDrawer.tsx`
 
 ---
 
 ## التغييرات المطلوبة
 
-### 1. تعديل `send-invoice-sms/index.ts`
+### الملف: `src/components/clients/ClientDrawer.tsx`
 
-بعد إرسال SMS بنجاح (سطر ~375)، إضافة:
+#### 1. إزالة imports غير مستخدمة
 
 ```typescript
-// Log to sms_logs
-await supabase.from('sms_logs').insert({
-  branch_id: policy.branch_id,
-  client_id: policy.client_id,
-  policy_id: policy_id,
-  phone_number: cleanPhone,
-  message: smsMessage,
-  sms_type: 'invoice',
-  status: 'sent',
-  sent_at: new Date().toISOString(),
-});
+// إزالة:
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { CalendarIcon } from 'lucide-react';
+import { format } from 'date-fns';
+
+// إضافة:
+import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 ```
 
-### 2. تعديل `send-package-invoice-sms/index.ts`
-
-بعد إرسال SMS بنجاح (سطر ~352)، إضافة نفس التسجيل مع أول policy_id من الباقة.
-
-### 3. تعديل `cron-renewal-reminders/index.ts`
-
-إضافة تسجيل SMS بعد الإرسال الناجح:
+#### 2. تعديل schema لقبول string بدلاً من Date
 
 ```typescript
-await supabase.from('sms_logs').insert({
-  branch_id: policy.branch_id,
-  client_id: policy.client_id,
-  policy_id: policy.id,
-  phone_number: cleanPhone,
-  message: smsMessage,
-  sms_type: 'reminder_1week', // أو حسب نوع التذكير
-  status: smsSuccess ? 'sent' : 'failed',
-  error_message: smsSuccess ? null : apiMessage,
-  sent_at: new Date().toISOString(),
-});
+// قبل:
+birth_date: z.date().optional().nullable(),
+
+// بعد:
+birth_date: z.string().optional(),
 ```
 
-### 4. تعديل `payment-result/index.ts`
-
-إضافة تسجيل بعد إرسال SMS تأكيد الدفع.
-
-### 5. تعديل `send-sms/index.ts`
-
-تسجيل الرسالة مباشرة داخل الـ Edge Function بدلاً من الاعتماد على الـ caller:
+#### 3. تحديث defaultValues
 
 ```typescript
-// Log to sms_logs (after successful send)
-await supabase.from('sms_logs').insert({
-  phone_number: cleanPhone,
-  message: message,
-  sms_type: 'manual',
-  status: 'sent',
-  sent_at: new Date().toISOString(),
-});
+// قبل:
+birth_date: client?.birth_date ? new Date(client.birth_date) : null,
+
+// بعد:
+birth_date: client?.birth_date || '',
+```
+
+#### 4. تحديث حفظ البيانات
+
+```typescript
+// قبل:
+birth_date: data.birth_date ? format(data.birth_date, 'yyyy-MM-dd') : null,
+
+// بعد:
+birth_date: data.birth_date || null,
+```
+
+#### 5. استبدال حقل تاريخ الميلاد (السطور 522-563)
+
+```tsx
+{/* Birth Date */}
+<FormField
+  control={form.control}
+  name="birth_date"
+  render={({ field }) => (
+    <FormItem>
+      <FormLabel>تاريخ الميلاد</FormLabel>
+      <FormControl>
+        <ArabicDatePicker
+          value={field.value || ''}
+          onChange={field.onChange}
+          placeholder="اختر تاريخ الميلاد"
+          isBirthDate
+        />
+      </FormControl>
+      <FormMessage />
+    </FormItem>
+  )}
+/>
 ```
 
 ---
 
-## تحديث نوع SMS الجديد
+## ملخص التغييرات
 
-قد نحتاج إضافة أنواع جديدة لـ `sms_type` enum:
-- `payment_confirmation` - تأكيد الدفع
-- `payment_receipt` - إيصال الدفع
-
-```sql
-ALTER TYPE sms_type ADD VALUE 'payment_confirmation';
-ALTER TYPE sms_type ADD VALUE 'payment_receipt';
-```
-
----
-
-## الملفات المتأثرة
-
-| الملف | نوع التغيير |
-|-------|-------------|
-| `supabase/functions/send-invoice-sms/index.ts` | إضافة تسجيل SMS |
-| `supabase/functions/send-package-invoice-sms/index.ts` | إضافة تسجيل SMS |
-| `supabase/functions/cron-renewal-reminders/index.ts` | إضافة تسجيل SMS |
-| `supabase/functions/payment-result/index.ts` | إضافة تسجيل SMS |
-| `supabase/functions/send-sms/index.ts` | نقل التسجيل للداخل |
-| قاعدة البيانات | إضافة قيم enum جديدة |
-| `src/pages/SmsHistory.tsx` | إضافة أنواع SMS الجديدة للعرض |
+| الموقع | التغيير |
+|--------|---------|
+| Imports | استبدال Calendar/Popover بـ ArabicDatePicker |
+| Schema | تغيير birth_date من Date إلى string |
+| Form Field | استبدال Calendar+Popover بـ ArabicDatePicker |
+| Save Logic | إزالة format() لأن القيمة بالفعل YYYY-MM-DD |
 
 ---
 
 ## النتيجة المتوقعة
 
-بعد التعديل:
-- ✅ جميع رسائل الفواتير (invoices) ستظهر في السجل
-- ✅ رسائل الباقات ستظهر
-- ✅ تأكيدات الدفع ستظهر
-- ✅ كل رسالة ستحتوي على النص الكامل للعرض
-- ✅ ربط الرسالة بالعميل والوثيقة للتتبع
-
----
-
-## ملخص
-
-المشكلة ليست في صفحة العرض، بل في أن Edge Functions المسؤولة عن إرسال الفواتير والتذكيرات **لا تُسجّل الرسائل في قاعدة البيانات**. الحل هو إضافة `supabase.from('sms_logs').insert(...)` بعد كل عملية إرسال SMS ناجحة.
+- ✅ حقل تاريخ الميلاد يسمح بالكتابة اليدوية (DD/MM/YYYY)
+- ✅ أيقونة التقويم تفتح popup للاختيار
+- ✅ نفس تجربة المستخدم مثل wizard إنشاء الوثيقة
+- ✅ دعم تاريخ الميلاد (1920-الحالي)
