@@ -93,7 +93,7 @@ export function InvoiceSendPrintDialog({
       if (data?.error) throw new Error(data.error);
 
       // Open the invoice URL in a new tab for printing
-      const invoiceUrl = data?.ab_invoice_url || data?.invoice_url;
+      const invoiceUrl = data?.ab_invoice_url || data?.package_invoice_url || data?.invoice_url;
       if (invoiceUrl) {
         window.open(invoiceUrl, "_blank");
         toast.success("تم فتح الفاتورة في نافذة جديدة");
