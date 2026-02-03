@@ -223,8 +223,8 @@ interface ClientWithPolicies {
 }
 
 function buildDetailedReportHtml(clients: ClientWithPolicies[], totalPolicies: number, monthName: string, generatedBy: string): string {
-  const now = new Date().toLocaleDateString('ar-EG', { 
-    year: 'numeric', month: 'long', day: 'numeric', 
+  const now = new Date().toLocaleDateString('en-GB', { 
+    year: 'numeric', month: '2-digit', day: '2-digit', 
     hour: '2-digit', minute: '2-digit' 
   });
 
@@ -239,46 +239,86 @@ function buildDetailedReportHtml(clients: ClientWithPolicies[], totalPolicies: n
   const smsSent = clients.filter(c => c.policies.some(p => p.renewal_status === 'sms_sent')).length;
   const called = clients.filter(c => c.policies.some(p => p.renewal_status === 'called')).length;
   const urgentCount = clients.filter(c => c.min_days_remaining <= 7).length;
+  const totalPrice = clients.reduce((sum, c) => sum + (c.total_price || 0), 0);
 
-  // Build client rows with nested policy rows
-  const clientRows = clients.map((client, clientIndex) => {
+  // Build client cards with nested policy tables
+  const clientCards = clients.map((client, clientIndex) => {
     const isUrgent = client.min_days_remaining <= 7;
     const isWarning = client.min_days_remaining > 7 && client.min_days_remaining <= 14;
     const urgentClass = isUrgent ? 'urgent' : isWarning ? 'warning' : '';
+    const daysLabel = client.min_days_remaining === 0 ? 'اليوم!' : 
+                      client.min_days_remaining === 1 ? 'غداً!' : 
+                      `${client.min_days_remaining} يوم`;
     
-    // Client header row
-    const clientHeaderRow = `
-    <tr class="client-header ${urgentClass}">
-      <td class="row-num">${clientIndex + 1}</td>
-      <td class="client-info" colspan="2">
-        <div class="client-name">${client.client_name}</div>
-        ${client.client_file_number ? `<span class="file-number">#${client.client_file_number}</span>` : ''}
-        ${client.client_phone ? `<span class="phone-inline" dir="ltr">${client.client_phone}</span>` : ''}
-      </td>
-      <td class="policies-count">${client.policies.length} وثيقة</td>
-      <td class="end-date">${formatDate(client.earliest_end_date)}</td>
-      <td class="days ${isUrgent ? 'urgent-text' : isWarning ? 'warning-text' : ''}">${client.min_days_remaining} يوم</td>
-      <td class="price">₪${(client.total_price || 0).toLocaleString()}</td>
-    </tr>`;
-
-    // Policy detail rows
-    const policyRows = client.policies.map(policy => {
+    // Policy rows inside client card
+    const policyRows = client.policies.map((policy, pIdx) => {
       const policyUrgent = policy.days_remaining <= 7;
       const policyWarning = policy.days_remaining > 7 && policy.days_remaining <= 14;
+      const policyDaysLabel = policy.days_remaining === 0 ? 'اليوم!' : 
+                              policy.days_remaining === 1 ? 'غداً!' : 
+                              `${policy.days_remaining} يوم`;
       
       return `
-    <tr class="policy-row">
-      <td class="policy-indent"></td>
-      <td class="car-number" dir="ltr">${policy.car_number || '-'}</td>
-      <td class="policy-type">${POLICY_TYPE_LABELS[policy.policy_type_parent] || policy.policy_type_parent}</td>
-      <td class="company">${policy.company_name_ar || '-'}</td>
-      <td class="end-date">${formatDate(policy.end_date)}</td>
-      <td class="days ${policyUrgent ? 'urgent-text' : policyWarning ? 'warning-text' : ''}">${policy.days_remaining} يوم</td>
-      <td class="price">₪${(policy.insurance_price || 0).toLocaleString()}</td>
-    </tr>`;
+        <tr class="policy-row ${pIdx % 2 === 0 ? 'even' : 'odd'}">
+          <td class="car-cell">
+            <span class="car-number">${policy.car_number || '-'}</span>
+          </td>
+          <td class="type-cell">
+            <span class="type-badge">${POLICY_TYPE_LABELS[policy.policy_type_parent] || policy.policy_type_parent}</span>
+          </td>
+          <td class="company-cell">${policy.company_name_ar || '-'}</td>
+          <td class="date-cell">${formatDate(policy.end_date)}</td>
+          <td class="days-cell ${policyUrgent ? 'urgent-days' : policyWarning ? 'warning-days' : 'normal-days'}">
+            <span class="days-badge">${policyDaysLabel}</span>
+          </td>
+          <td class="price-cell">₪${(policy.insurance_price || 0).toLocaleString('en-US')}</td>
+        </tr>`;
     }).join('');
 
-    return clientHeaderRow + policyRows;
+    return `
+    <div class="client-card ${urgentClass}">
+      <div class="client-header">
+        <div class="client-main">
+          <div class="client-number">${clientIndex + 1}</div>
+          <div class="client-details">
+            <div class="client-name">${client.client_name}</div>
+            <div class="client-meta">
+              ${client.client_file_number ? `<span class="file-badge">#${client.client_file_number}</span>` : ''}
+              ${client.client_phone ? `<span class="phone-badge" dir="ltr">${client.client_phone}</span>` : ''}
+            </div>
+          </div>
+        </div>
+        <div class="client-summary">
+          <div class="summary-item policies">
+            <span class="summary-value">${client.policies.length}</span>
+            <span class="summary-label">وثيقة</span>
+          </div>
+          <div class="summary-item days ${urgentClass}">
+            <span class="summary-value">${daysLabel}</span>
+            <span class="summary-label">أقرب انتهاء</span>
+          </div>
+          <div class="summary-item price">
+            <span class="summary-value">₪${(client.total_price || 0).toLocaleString('en-US')}</span>
+            <span class="summary-label">إجمالي</span>
+          </div>
+        </div>
+      </div>
+      <table class="policies-table">
+        <thead>
+          <tr>
+            <th>رقم السيارة</th>
+            <th>النوع</th>
+            <th>الشركة</th>
+            <th>تاريخ الانتهاء</th>
+            <th>الأيام المتبقية</th>
+            <th>السعر</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${policyRows}
+        </tbody>
+      </table>
+    </div>`;
   }).join('');
 
   return `<!DOCTYPE html>
@@ -288,272 +328,485 @@ function buildDetailedReportHtml(clients: ClientWithPolicies[], totalPolicies: n
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>تقرير التجديدات - ${monthName}</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    
     body {
-      font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
-      background: #f8fafc;
+      font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
+      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #f0fdf4 100%);
       color: #1e293b;
       line-height: 1.6;
-      padding: 20px;
+      padding: 24px;
+      min-height: 100vh;
     }
+    
     .container {
-      max-width: 1200px;
+      max-width: 1100px;
       margin: 0 auto;
-      background: white;
-      border-radius: 16px;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+    
+    /* Header */
+    .report-header {
+      background: linear-gradient(135deg, #0f766e 0%, #0d9488 50%, #14b8a6 100%);
+      color: white;
+      padding: 40px 32px;
+      border-radius: 20px;
+      margin-bottom: 24px;
+      box-shadow: 0 10px 40px rgba(15, 118, 110, 0.3);
+      position: relative;
       overflow: hidden;
     }
-    .header {
-      background: linear-gradient(135deg, #1e3a5f 0%, #0f766e 100%);
-      color: white;
-      padding: 40px 30px;
-      text-align: center;
+    .report-header::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -20%;
+      width: 300px;
+      height: 300px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 50%;
     }
-    .header h1 { font-size: 32px; margin-bottom: 8px; font-weight: 700; }
-    .header p { opacity: 0.9; font-size: 18px; }
-    
-    /* Summary Cards */
-    .summary {
+    .report-header::after {
+      content: '';
+      position: absolute;
+      bottom: -30%;
+      left: -10%;
+      width: 200px;
+      height: 200px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 50%;
+    }
+    .header-content {
+      position: relative;
+      z-index: 1;
       display: flex;
-      justify-content: center;
-      gap: 20px;
-      padding: 30px;
-      background: linear-gradient(to bottom, #f1f5f9, #f8fafc);
+      justify-content: space-between;
+      align-items: center;
       flex-wrap: wrap;
+      gap: 20px;
+    }
+    .header-title h1 {
+      font-size: 32px;
+      font-weight: 800;
+      margin-bottom: 4px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .header-title p {
+      opacity: 0.9;
+      font-size: 18px;
+    }
+    .header-stats {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .header-stat {
+      background: rgba(255,255,255,0.15);
+      backdrop-filter: blur(10px);
+      padding: 16px 24px;
+      border-radius: 12px;
+      text-align: center;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .header-stat .stat-value {
+      font-size: 28px;
+      font-weight: 800;
+      display: block;
+    }
+    .header-stat .stat-label {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+    
+    /* Summary Cards Row */
+    .summary-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
     }
     .summary-card {
       background: white;
-      padding: 24px 32px;
+      padding: 20px 24px;
       border-radius: 16px;
       text-align: center;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.06);
-      min-width: 140px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
       border: 1px solid #e2e8f0;
+      transition: transform 0.2s, box-shadow 0.2s;
     }
-    .summary-card .value { 
-      font-size: 36px; 
-      font-weight: 800; 
-      color: #1e3a5f; 
-      line-height: 1;
+    .summary-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.1);
     }
-    .summary-card .label { 
-      font-size: 12px; 
-      color: #64748b; 
-      margin-top: 8px;
-      font-weight: 500;
+    .summary-card .card-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      margin: 0 auto 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
     }
-    .summary-card.primary { border-color: #0f766e; }
-    .summary-card.primary .value { color: #0f766e; }
-    .summary-card.urgent { border-color: #dc2626; }
-    .summary-card.urgent .value { color: #dc2626; }
-    .summary-card.warning { border-color: #f59e0b; }
-    .summary-card.warning .value { color: #f59e0b; }
-    .summary-card.info { border-color: #3b82f6; }
-    .summary-card.info .value { color: #3b82f6; }
+    .summary-card .card-value {
+      font-size: 28px;
+      font-weight: 800;
+      color: #1e293b;
+    }
+    .summary-card .card-label {
+      font-size: 13px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    .summary-card.primary .card-icon { background: #d1fae5; }
+    .summary-card.primary .card-value { color: #0f766e; }
+    .summary-card.urgent .card-icon { background: #fee2e2; }
+    .summary-card.urgent .card-value { color: #dc2626; }
+    .summary-card.warning .card-icon { background: #fef3c7; }
+    .summary-card.warning .card-value { color: #d97706; }
+    .summary-card.info .card-icon { background: #dbeafe; }
+    .summary-card.info .card-value { color: #2563eb; }
+    .summary-card.total .card-icon { background: #f0fdf4; }
+    .summary-card.total .card-value { color: #16a34a; }
     
-    /* Table */
-    .table-container { padding: 20px; overflow-x: auto; }
-    table { 
-      width: 100%; 
-      border-collapse: collapse; 
+    /* Client Cards */
+    .clients-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    
+    .client-card {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+      transition: box-shadow 0.2s;
+    }
+    .client-card:hover {
+      box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+    }
+    .client-card.urgent {
+      border-right: 5px solid #dc2626;
+      background: linear-gradient(to left, #fef2f2 0%, white 100%);
+    }
+    .client-card.warning {
+      border-right: 5px solid #f59e0b;
+      background: linear-gradient(to left, #fffbeb 0%, white 100%);
+    }
+    
+    .client-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 24px;
+      border-bottom: 1px solid #f1f5f9;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    
+    .client-main {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    
+    .client-number {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #0f766e, #14b8a6);
+      color: white;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    .client-card.urgent .client-number {
+      background: linear-gradient(135deg, #dc2626, #ef4444);
+    }
+    .client-card.warning .client-number {
+      background: linear-gradient(135deg, #d97706, #f59e0b);
+    }
+    
+    .client-details {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    
+    .client-name {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1e293b;
+    }
+    
+    .client-meta {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    
+    .file-badge {
+      background: #f1f5f9;
+      color: #64748b;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    
+    .phone-badge {
+      background: #ecfdf5;
+      color: #0f766e;
+      padding: 2px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: 'Consolas', 'Monaco', monospace;
+    }
+    
+    .client-summary {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    
+    .summary-item {
+      text-align: center;
+      min-width: 80px;
+    }
+    .summary-item .summary-value {
+      font-size: 18px;
+      font-weight: 800;
+      display: block;
+      color: #1e293b;
+    }
+    .summary-item .summary-label {
+      font-size: 11px;
+      color: #94a3b8;
+    }
+    .summary-item.policies .summary-value { color: #2563eb; }
+    .summary-item.days.urgent .summary-value { color: #dc2626; }
+    .summary-item.days.warning .summary-value { color: #d97706; }
+    .summary-item.price .summary-value { color: #0f766e; }
+    
+    /* Policies Table */
+    .policies-table {
+      width: 100%;
+      border-collapse: collapse;
       font-size: 13px;
     }
-    th, td { 
-      padding: 12px 10px; 
-      text-align: right; 
-      border-bottom: 1px solid #e2e8f0;
-    }
-    th { 
-      background: #f8fafc; 
-      font-weight: 600; 
-      color: #475569;
+    .policies-table th {
+      background: #f8fafc;
+      padding: 12px 16px;
+      text-align: right;
+      font-weight: 600;
+      color: #64748b;
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      border-bottom: 1px solid #e2e8f0;
     }
+    .policies-table td {
+      padding: 14px 16px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .policy-row.even { background: #fafafa; }
+    .policy-row.odd { background: white; }
+    .policy-row:last-child td { border-bottom: none; }
     
-    /* Client Header Row */
-    .client-header {
-      background: #f8fafc;
+    .car-cell .car-number {
+      background: linear-gradient(135deg, #0f766e, #14b8a6);
+      color: white;
+      padding: 4px 12px;
+      border-radius: 8px;
+      font-family: 'Consolas', 'Monaco', monospace;
       font-weight: 600;
-      border-top: 2px solid #e2e8f0;
-    }
-    .client-header.urgent {
-      background: linear-gradient(to left, #fef2f2, #fafafa);
-      border-right: 4px solid #dc2626;
-    }
-    .client-header.warning {
-      background: linear-gradient(to left, #fffbeb, #fafafa);
-      border-right: 4px solid #f59e0b;
-    }
-    .client-header td { padding: 14px 10px; }
-    
-    /* Policy Row (nested under client) */
-    .policy-row {
-      background: white;
-      font-size: 12px;
-      color: #475569;
-    }
-    .policy-row:hover { background: #fafafa; }
-    .policy-row td { padding: 10px; }
-    .policy-indent { width: 30px; }
-    
-    /* Cell Styles */
-    .row-num { 
-      color: #94a3b8; 
-      font-weight: 600;
-      width: 40px;
-      font-size: 14px;
-    }
-    .client-info { 
-      min-width: 200px; 
-    }
-    .client-name { 
-      font-weight: 700; 
-      color: #1e293b; 
-      font-size: 14px;
-      display: inline;
-    }
-    .file-number { 
-      font-size: 11px; 
-      color: #94a3b8; 
-      margin-right: 8px;
-      background: #f1f5f9;
-      padding: 2px 6px;
-      border-radius: 4px;
-    }
-    .phone-inline {
-      font-family: 'Consolas', monospace;
-      font-size: 11px;
-      color: #64748b;
-      margin-right: 8px;
-      direction: ltr;
+      font-size: 13px;
       display: inline-block;
+      direction: ltr;
     }
-    .car-number { 
-      font-family: 'Consolas', monospace; 
+    
+    .type-badge {
+      background: #eff6ff;
+      color: #2563eb;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    
+    .company-cell {
+      color: #475569;
+      font-size: 13px;
+    }
+    
+    .date-cell {
+      font-family: 'Consolas', 'Monaco', monospace;
+      color: #475569;
+      font-size: 13px;
       direction: ltr;
       text-align: left;
-      color: #0f766e;
-      font-weight: 600;
+    }
+    
+    .days-cell .days-badge {
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-weight: 700;
       font-size: 12px;
+      display: inline-block;
     }
-    .policies-count {
-      font-weight: 600;
-      color: #1e3a5f;
+    .urgent-days .days-badge {
+      background: #fee2e2;
+      color: #dc2626;
     }
-    .policy-type {
-      color: #475569;
-      font-size: 11px;
+    .warning-days .days-badge {
+      background: #fef3c7;
+      color: #d97706;
     }
-    .company {
-      color: #64748b;
-      font-size: 11px;
-      max-width: 100px;
-    }
-    .end-date {
-      font-family: 'Consolas', monospace;
-      color: #475569;
-      font-size: 12px;
-    }
-    .days {
-      font-weight: 600;
-      color: #475569;
-    }
-    .urgent-text { color: #dc2626 !important; }
-    .warning-text { color: #f59e0b !important; }
-    .price { 
-      font-weight: 700; 
+    .normal-days .days-badge {
+      background: #d1fae5;
       color: #0f766e;
-      font-family: 'Consolas', monospace;
+    }
+    
+    .price-cell {
+      font-weight: 700;
+      color: #0f766e;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 14px;
+      direction: ltr;
+      text-align: left;
     }
     
     /* Footer */
-    .footer {
+    .report-footer {
+      margin-top: 32px;
       padding: 24px;
+      background: white;
+      border-radius: 16px;
       text-align: center;
-      background: #f8fafc;
-      border-top: 1px solid #e2e8f0;
-      font-size: 12px;
-      color: #64748b;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+      border: 1px solid #e2e8f0;
     }
-    .footer p { margin: 4px 0; }
+    .report-footer p {
+      color: #64748b;
+      font-size: 13px;
+      margin: 4px 0;
+    }
+    .report-footer .generated-at {
+      font-weight: 600;
+      color: #475569;
+    }
     
     /* Print Styles */
     @media print {
-      body { padding: 0; background: white; }
-      .container { box-shadow: none; }
-      .header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .summary { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .client-header.urgent, .client-header.warning { 
-        -webkit-print-color-adjust: exact; 
-        print-color-adjust: exact; 
+      body {
+        padding: 0;
+        background: white;
+      }
+      .container {
+        max-width: 100%;
+      }
+      .report-header {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .summary-card {
+        break-inside: avoid;
+      }
+      .client-card {
+        break-inside: avoid;
+        page-break-inside: avoid;
+        box-shadow: none;
+        border: 1px solid #ddd;
+      }
+      .client-card.urgent,
+      .client-card.warning {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
       }
     }
     
     /* Responsive */
     @media (max-width: 768px) {
-      .header h1 { font-size: 24px; }
-      .summary { gap: 12px; padding: 20px; }
-      .summary-card { padding: 16px 20px; min-width: 100px; }
-      .summary-card .value { font-size: 28px; }
-      table { font-size: 11px; }
-      th, td { padding: 8px 6px; }
+      body { padding: 12px; }
+      .report-header { padding: 24px 20px; }
+      .header-title h1 { font-size: 24px; }
+      .header-stats { gap: 10px; }
+      .header-stat { padding: 12px 16px; }
+      .header-stat .stat-value { font-size: 22px; }
+      .summary-row { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .summary-card { padding: 16px; }
+      .summary-card .card-value { font-size: 22px; }
+      .client-header { padding: 16px; }
+      .client-name { font-size: 16px; }
+      .policies-table th, .policies-table td { padding: 10px 8px; font-size: 11px; }
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <h1>تقرير الوثائق المنتهية</h1>
-      <p>${monthName}</p>
+    <!-- Header -->
+    <div class="report-header">
+      <div class="header-content">
+        <div class="header-title">
+          <h1>📋 تقرير الوثائق المنتهية</h1>
+          <p>${monthName}</p>
+        </div>
+        <div class="header-stats">
+          <div class="header-stat">
+            <span class="stat-value">${totalCustomers}</span>
+            <span class="stat-label">عميل</span>
+          </div>
+          <div class="header-stat">
+            <span class="stat-value">${totalPolicies}</span>
+            <span class="stat-label">وثيقة</span>
+          </div>
+          <div class="header-stat">
+            <span class="stat-value">₪${totalPrice.toLocaleString('en-US')}</span>
+            <span class="stat-label">إجمالي القيمة</span>
+          </div>
+        </div>
+      </div>
     </div>
     
-    <div class="summary">
-      <div class="summary-card primary">
-        <div class="value">${totalCustomers}</div>
-        <div class="label">عميل بحاجة للتجديد</div>
-      </div>
-      <div class="summary-card">
-        <div class="value">${totalPolicies}</div>
-        <div class="label">إجمالي الوثائق</div>
-      </div>
+    <!-- Summary Cards -->
+    <div class="summary-row">
       <div class="summary-card urgent">
-        <div class="value">${urgentCount}</div>
-        <div class="label">عاجل (7 أيام)</div>
+        <div class="card-icon">🔴</div>
+        <div class="card-value">${urgentCount}</div>
+        <div class="card-label">عاجل (7 أيام أو أقل)</div>
       </div>
       <div class="summary-card warning">
-        <div class="value">${notContacted}</div>
-        <div class="label">لم يتم التواصل</div>
+        <div class="card-icon">🟡</div>
+        <div class="card-value">${clients.filter(c => c.min_days_remaining > 7 && c.min_days_remaining <= 14).length}</div>
+        <div class="card-label">تحذير (8-14 يوم)</div>
       </div>
       <div class="summary-card info">
-        <div class="value">${smsSent}</div>
-        <div class="label">تم إرسال SMS</div>
+        <div class="card-icon">📞</div>
+        <div class="card-value">${notContacted}</div>
+        <div class="card-label">لم يتم التواصل</div>
+      </div>
+      <div class="summary-card primary">
+        <div class="card-icon">📱</div>
+        <div class="card-value">${smsSent}</div>
+        <div class="card-label">تم إرسال SMS</div>
       </div>
     </div>
     
-    <div class="table-container">
-      <table>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>السيارة</th>
-            <th>النوع</th>
-            <th>الشركة</th>
-            <th>تاريخ الانتهاء</th>
-            <th>الأيام المتبقية</th>
-            <th>السعر</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${clientRows || '<tr><td colspan="7" style="text-align:center;padding:40px;color:#64748b;">لا يوجد وثائق منتهية</td></tr>'}
-        </tbody>
-      </table>
+    <!-- Clients List -->
+    <div class="clients-list">
+      ${clientCards || '<div style="text-align:center;padding:60px;color:#64748b;background:white;border-radius:16px;">لا يوجد وثائق منتهية في هذه الفترة</div>'}
     </div>
     
-    <div class="footer">
-      <p>تم إنشاء التقرير: ${now}</p>
+    <!-- Footer -->
+    <div class="report-footer">
+      <p class="generated-at">تم إنشاء التقرير: ${now}</p>
       <p>بواسطة: ${generatedBy}</p>
     </div>
   </div>
