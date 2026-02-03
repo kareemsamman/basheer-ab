@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { format } from 'date-fns';
-import { CalendarIcon } from 'lucide-react';
 import { digitsOnly, isValidIsraeliId } from '@/lib/validation';
 import {
   Sheet,
@@ -35,8 +33,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/hooks/useBranches';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import { cn } from '@/lib/utils';
 import { ClientChildrenManager } from './ClientChildrenManager';
 import type { ClientChild, NewChildForm } from '@/types/clientChildren';
@@ -66,7 +63,7 @@ const clientSchema = z.object({
     .optional()
     .transform((v) => digitsOnly((v ?? '').trim()))
     .refine((v) => v.length === 0 || v.length === 10, 'رقم الهاتف يجب أن يكون 10 أرقام'),
-  birth_date: z.date().optional().nullable(),
+  birth_date: z.string().optional(),
   notes: z.string().optional(),
   under24_type: z.enum(['none', 'client', 'additional_driver']).default('none'),
   under24_driver_name: z.string().optional(),
@@ -234,7 +231,7 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
         file_number: client?.file_number || '',
         phone_number: client?.phone_number || '',
         phone_number_2: client?.phone_number_2 || '',
-        birth_date: client?.birth_date ? new Date(client.birth_date) : null,
+        birth_date: client?.birth_date || '',
         notes: client?.notes || '',
         under24_type: client?.under24_type || (client?.less_than_24 ? 'client' : 'none'),
         under24_driver_name: client?.under24_driver_name || '',
@@ -267,7 +264,7 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
         file_number: data.file_number || null,
         phone_number: data.phone_number || null,
         phone_number_2: data.phone_number_2 || null,
-        birth_date: data.birth_date ? format(data.birth_date, 'yyyy-MM-dd') : null,
+        birth_date: data.birth_date || null,
         notes: data.notes || null,
         under24_type: data.under24_type,
         under24_driver_name: data.under24_type === 'additional_driver' ? (data.under24_driver_name || null) : null,
@@ -524,40 +521,16 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
               control={form.control}
               name="birth_date"
               render={({ field }) => (
-                <FormItem className="flex flex-col">
+                <FormItem>
                   <FormLabel>تاريخ الميلاد</FormLabel>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full pl-3 text-right font-normal",
-                            !field.value && "text-muted-foreground"
-                          )}
-                        >
-                          {field.value ? (
-                            format(field.value, "yyyy-MM-dd")
-                          ) : (
-                            <span>اختر تاريخ الميلاد</span>
-                          )}
-                          <CalendarIcon className="mr-auto h-4 w-4 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={field.value || undefined}
-                        onSelect={field.onChange}
-                        disabled={(date) =>
-                          date > new Date() || date < new Date("1900-01-01")
-                        }
-                        initialFocus
-                        className="pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  <FormControl>
+                    <ArabicDatePicker
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                      placeholder="اختر تاريخ الميلاد"
+                      isBirthDate
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
