@@ -787,7 +787,13 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => setEditOpen(true)}
+                        onClick={() => {
+                          if (hasPackage && policy.group_id) {
+                            setPackageEditGroupId(policy.group_id);
+                          } else {
+                            setEditOpen(true);
+                          }
+                        }}
                         className="gap-1.5 bg-white/20 hover:bg-white/30 text-white border-0"
                       >
                         <Pencil className="h-3.5 w-3.5" />
