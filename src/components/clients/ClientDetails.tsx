@@ -1251,7 +1251,12 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                 </p>
                 <CarFilterChips
                   cars={cars}
-                  policies={policies}
+                  policies={policies.map(p => ({
+                    car: p.car,
+                    end_date: p.end_date,
+                    cancelled: p.cancelled,
+                    transferred: p.transferred,
+                  }))}
                   selectedCarId={policyCarFilter}
                   onSelect={setPolicyCarFilter}
                 />

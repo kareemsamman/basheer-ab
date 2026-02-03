@@ -242,7 +242,13 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     const accidentFeeAddonValid = !packageMode || !accidentFeeAddon?.enabled || 
       (accidentFeeAddon.accident_fee_service_id && accidentFeeAddon.company_id && parseFloat(accidentFeeAddon.insurance_price) > 0);
     
-    const step3Valid = !!(policy.company_id && policy.start_date && policy.end_date && policy.insurance_price && elzamiAddonValid && thirdFullAddonValid && roadServiceAddonValid && accidentFeeAddonValid);
+    // FULL insurance requires car value to be entered
+    const fullInsuranceCarValueValid = 
+      policy.policy_type_parent !== 'THIRD_FULL' || 
+      policy.policy_type_child !== 'FULL' ||
+      !!(policy.full_car_value && parseFloat(policy.full_car_value) > 0);
+    
+    const step3Valid = !!(policy.company_id && policy.start_date && policy.end_date && policy.insurance_price && fullInsuranceCarValueValid && elzamiAddonValid && thirdFullAddonValid && roadServiceAddonValid && accidentFeeAddonValid);
     const step4Valid = !paymentsExceedPrice;
 
     if (isLightMode) {

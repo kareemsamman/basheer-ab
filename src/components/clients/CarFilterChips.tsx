@@ -8,28 +8,72 @@ interface CarRecord {
   manufacturer_name: string | null;
   model: string | null;
   year: number | null;
+  car_type: string | null;
+}
+
+interface PolicyData {
+  car: { id: string } | null;
+  end_date: string;
+  cancelled: boolean | null;
+  transferred: boolean | null;
 }
 
 interface CarWithPolicyCount extends CarRecord {
   policyCount: number;
+  activePolicyCount: number;
 }
 
 interface CarFilterChipsProps {
   cars: CarRecord[];
-  policies: { car: { id: string } | null }[];
+  policies: PolicyData[];
   selectedCarId: string;
   onSelect: (carId: string) => void;
 }
 
+const carTypeLabels: Record<string, string> = {
+  car: 'خصوصي',
+  cargo: 'شحن',
+  small: 'صغير',
+  taxi: 'تاكسي',
+  tjeradown4: 'تجاري ˂4ط',
+  tjeraup4: 'تجاري ˃4ط',
+};
+
 export function CarFilterChips({ cars, policies, selectedCarId, onSelect }: CarFilterChipsProps) {
   const carsWithPolicyCounts = useMemo((): CarWithPolicyCount[] => {
-    return cars.map(car => ({
-      ...car,
-      policyCount: policies.filter(p => p.car?.id === car.id).length,
-    }));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    return cars.map(car => {
+      const carPolicies = policies.filter(p => p.car?.id === car.id);
+      const activePolicies = carPolicies.filter(p => 
+        !p.cancelled && 
+        !p.transferred && 
+        new Date(p.end_date) >= today
+      );
+      return {
+        ...car,
+        policyCount: carPolicies.length,
+        activePolicyCount: activePolicies.length,
+      };
+    });
   }, [cars, policies]);
 
-  const totalPolicies = policies.length;
+  const { totalPolicies, totalActivePolicies } = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const active = policies.filter(p => 
+      !p.cancelled && 
+      !p.transferred && 
+      new Date(p.end_date) >= today
+    ).length;
+    
+    return {
+      totalPolicies: policies.length,
+      totalActivePolicies: active,
+    };
+  }, [policies]);
 
   if (cars.length === 0) {
     return null;
@@ -53,7 +97,7 @@ export function CarFilterChips({ cars, policies, selectedCarId, onSelect }: CarF
         <button
           onClick={() => onSelect('all')}
           className={cn(
-            "group relative flex flex-col items-center justify-center gap-2 px-5 py-3 rounded-xl border-2 transition-all duration-300 min-w-[90px]",
+            "group relative flex flex-col items-center justify-center gap-2 px-5 py-3 rounded-xl border-2 transition-all duration-300 min-w-[100px]",
             selectedCarId === 'all'
               ? "border-primary bg-gradient-to-b from-primary/10 to-primary/5 shadow-lg shadow-primary/15"
               : "border-border/50 bg-card/50 backdrop-blur-sm hover:border-primary/40 hover:bg-primary/5 hover:shadow-md"
@@ -81,13 +125,16 @@ export function CarFilterChips({ cars, policies, selectedCarId, onSelect }: CarF
             الكل
           </span>
           
-          <div className={cn(
-            "px-3 py-0.5 rounded-full text-xs font-bold transition-all",
-            selectedCarId === 'all' 
-              ? "bg-primary text-primary-foreground" 
-              : "bg-muted/80 text-muted-foreground"
-          )}>
-            <span className="ltr-nums">{totalPolicies}</span>
+          {/* Active / Total count display */}
+          <div className="flex items-center gap-1 text-xs">
+            <span className="font-bold text-success ltr-nums">{totalActivePolicies}</span>
+            <span className="text-muted-foreground">سارية</span>
+            {totalPolicies > totalActivePolicies && (
+              <>
+                <span className="text-muted-foreground/60">/</span>
+                <span className="text-muted-foreground ltr-nums">{totalPolicies}</span>
+              </>
+            )}
           </div>
         </button>
 
@@ -101,22 +148,26 @@ export function CarFilterChips({ cars, policies, selectedCarId, onSelect }: CarF
             onClick={() => onSelect(car.id)}
             className="group relative transition-all duration-300"
           >
-            {/* Policy Count Badge - Top Left Circle */}
-            {car.policyCount > 0 && (
-              <div className={cn(
-                "absolute -top-2 -left-2 z-20 h-6 w-6 rounded-full flex items-center justify-center shadow-lg text-[11px] font-bold border-2 border-background",
-                selectedCarId === car.id
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-destructive text-destructive-foreground"
-              )}>
-                <span className="ltr-nums">{car.policyCount}</span>
-              </div>
-            )}
+            {/* Policy Count Badges - Top Left */}
+            <div className="absolute -top-2 -left-2 z-20 flex items-center gap-0.5">
+              {/* Active policies (green) */}
+              {car.activePolicyCount > 0 && (
+                <div className="h-5 w-5 rounded-full bg-success text-white text-[10px] font-bold flex items-center justify-center shadow-md border border-background">
+                  <span className="ltr-nums">{car.activePolicyCount}</span>
+                </div>
+              )}
+              {/* Total policies if different (grey, smaller) */}
+              {car.policyCount > car.activePolicyCount && (
+                <div className="h-4 w-4 rounded-full bg-muted text-muted-foreground text-[9px] font-bold flex items-center justify-center shadow border border-background -ml-1">
+                  <span className="ltr-nums">{car.policyCount}</span>
+                </div>
+              )}
+            </div>
             
             {/* Selection Check - Top Right */}
             {selectedCarId === car.id && (
-              <div className="absolute -top-2 -right-2 z-20 h-5 w-5 rounded-full bg-success flex items-center justify-center shadow-lg animate-in zoom-in-50 duration-200">
-                <Check className="h-3 w-3 text-white" strokeWidth={3} />
+              <div className="absolute -top-2 -right-2 z-20 h-5 w-5 rounded-full bg-primary flex items-center justify-center shadow-lg animate-in zoom-in-50 duration-200">
+                <Check className="h-3 w-3 text-primary-foreground" strokeWidth={3} />
               </div>
             )}
             
@@ -128,7 +179,7 @@ export function CarFilterChips({ cars, policies, selectedCarId, onSelect }: CarF
                 : "shadow-md hover:shadow-lg hover:scale-102 ring-1 ring-black/10"
             )}>
               {/* Plate Body - Compact height */}
-              <div className="relative flex items-stretch h-[50px]">
+              <div className="relative flex items-stretch h-[54px]">
                 {/* Yellow Section (Number) - Main part */}
                 <div className="bg-gradient-to-b from-[#FFD700] via-[#F5C400] to-[#E6B800] px-4 flex flex-col items-center justify-center min-w-[130px] border-2 border-black/15 border-l-0 rounded-l-md">
                   {/* Car Number - Centered */}
@@ -140,12 +191,17 @@ export function CarFilterChips({ cars, policies, selectedCarId, onSelect }: CarF
                     {formatPlateNumber(car.car_number)}
                   </span>
                   
-                  {/* Model & Year - smaller */}
-                  {(car.model || car.year) && (
-                    <span className="text-black/50 text-[9px] font-medium truncate max-w-[110px]">
-                      {[car.model, car.year].filter(Boolean).join(' • ')}
-                    </span>
-                  )}
+                  {/* Car Type + Year - smaller */}
+                  <div className="flex items-center gap-1 text-[9px] text-black/60 font-medium">
+                    {car.car_type && (
+                      <span className="bg-black/10 px-1.5 py-0.5 rounded">
+                        {carTypeLabels[car.car_type] || car.car_type}
+                      </span>
+                    )}
+                    {car.year && (
+                      <span className="ltr-nums">{car.year}</span>
+                    )}
+                  </div>
                 </div>
                 
                 {/* Blue Section (IL) - Right side, compact */}
