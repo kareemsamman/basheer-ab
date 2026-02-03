@@ -19,6 +19,7 @@ import type {
   PolicyForm,
   WizardStep,
   PricingBreakdown,
+  RenewalData,
 } from "./types";
 import { User, Car, FileText, CreditCard, Building2 } from "lucide-react";
 import type { ClientChild, NewChildForm } from "@/types/clientChildren";
@@ -30,9 +31,10 @@ interface UsePolicyWizardStateProps {
   defaultBrokerId?: string;
   defaultBrokerDirection?: 'from_broker' | 'to_broker';
   preselectedClientId?: string;
+  renewalData?: RenewalData;
 }
 
-export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirection, preselectedClientId }: UsePolicyWizardStateProps) {
+export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirection, preselectedClientId, renewalData }: UsePolicyWizardStateProps) {
   const { user, isAdmin, branchId: userBranchId } = useAuth();
   const { branches } = useBranches();
   const initialBrokerDirection = defaultBrokerDirection || "";
@@ -97,7 +99,155 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     fetchPreselectedClient();
   }, [preselectedClientId, open]);
 
-  // Car
+  // Track if renewal data has been processed (to avoid re-processing)
+  const [renewalProcessed, setRenewalProcessed] = useState(false);
+
+  // Process renewal data to pre-populate the form
+  useEffect(() => {
+    if (!renewalData || !open || renewalProcessed) return;
+    
+    const processRenewalData = async () => {
+      try {
+        // 1. Fetch and select client
+        const { data: clientData } = await supabase
+          .from('clients')
+          .select('id, full_name, id_number, file_number, phone_number, less_than_24, under24_type, under24_driver_name, under24_driver_id, broker_id')
+          .eq('id', renewalData.clientId)
+          .single();
+        
+        if (clientData) {
+          setSelectedClient(clientData as Client);
+          setCreateNewClient(false);
+        }
+
+        // 2. Fetch category by slug
+        const { data: categoryData } = await supabase
+          .from('insurance_categories')
+          .select('*')
+          .eq('slug', renewalData.categorySlug)
+          .eq('is_active', true)
+          .single();
+        
+        if (categoryData) {
+          setSelectedCategory({
+            ...categoryData,
+            mode: categoryData.mode as 'FULL' | 'LIGHT',
+          });
+        }
+
+        // 3. Fetch and select car (if exists)
+        if (renewalData.carId) {
+          const { data: carData } = await supabase
+            .from('cars')
+            .select('*')
+            .eq('id', renewalData.carId)
+            .single();
+          
+          if (carData) {
+            setSelectedCar(carData as CarRecord);
+            setCreateNewCar(false);
+          }
+        }
+
+        // 4. Calculate new dates: start = original end_date + 1 day, end = start + 1 year - 1 day
+        let newStartDate = new Date().toISOString().split('T')[0];
+        let newEndDate = getInitialEndDate();
+        
+        if (renewalData.originalEndDate) {
+          const origEnd = new Date(renewalData.originalEndDate);
+          const start = new Date(origEnd);
+          start.setDate(start.getDate() + 1);
+          
+          const end = new Date(start);
+          end.setFullYear(end.getFullYear() + 1);
+          end.setDate(end.getDate() - 1);
+          
+          newStartDate = start.toISOString().split('T')[0];
+          newEndDate = end.toISOString().split('T')[0];
+        }
+
+        // 5. Set policy form
+        setPolicy(prev => ({
+          ...prev,
+          policy_type_parent: renewalData.policyTypeParent,
+          policy_type_child: renewalData.policyTypeChild || '',
+          company_id: renewalData.companyId,
+          insurance_price: String(renewalData.insurancePrice),
+          broker_buy_price: renewalData.brokerBuyPrice ? String(renewalData.brokerBuyPrice) : '',
+          start_date: newStartDate,
+          end_date: newEndDate,
+          notes: renewalData.notes || '',
+        }));
+
+        // 6. Set package mode and addons if exists
+        if (renewalData.packageAddons && renewalData.packageAddons.length > 0) {
+          setPackageMode(true);
+          
+          // Build package addons from renewal data
+          const newAddons: PackageAddon[] = [
+            { type: "elzami", enabled: false, company_id: "", insurance_price: "", elzami_commission: 0, start_date: "", end_date: "" },
+            { type: "third_full", enabled: false, company_id: "", insurance_price: "", policy_type_child: "THIRD", broker_buy_price: "", start_date: "", end_date: "" },
+            { type: "road_service", enabled: false, road_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
+            { type: "accident_fee_exemption", enabled: false, accident_fee_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
+          ];
+          
+          renewalData.packageAddons.forEach(addon => {
+            const idx = newAddons.findIndex(a => a.type === addon.type);
+            if (idx !== -1) {
+              newAddons[idx] = {
+                ...newAddons[idx],
+                enabled: true,
+                company_id: addon.companyId,
+                insurance_price: String(addon.insurancePrice),
+                road_service_id: addon.roadServiceId,
+                accident_fee_service_id: addon.accidentFeeServiceId,
+                policy_type_child: addon.policyTypeChild as '' | 'THIRD' | 'FULL' || '',
+                broker_buy_price: addon.brokerBuyPrice ? String(addon.brokerBuyPrice) : '',
+                start_date: newStartDate,
+                end_date: newEndDate,
+              };
+            }
+          });
+          
+          setPackageAddons(newAddons);
+        }
+
+        // 7. Set selected children IDs
+        if (renewalData.childrenIds && renewalData.childrenIds.length > 0) {
+          setSelectedChildIds(renewalData.childrenIds);
+          
+          // Fetch children data
+          const { data: childrenData } = await supabase
+            .from('client_children')
+            .select('*')
+            .in('id', renewalData.childrenIds);
+          
+          if (childrenData) {
+            setClientChildren(childrenData as ClientChild[]);
+          }
+        }
+
+        // Mark as processed
+        setRenewalProcessed(true);
+        
+        // Move to step 3 (policy details) since client/car are pre-selected
+        // Actually, let's stay on step 1 to allow review
+        // but make sure steps are unlocked
+      } catch (error) {
+        console.error('Error processing renewal data:', error);
+      }
+    };
+
+    processRenewalData();
+  }, [renewalData, open, renewalProcessed]);
+
+  // Reset renewalProcessed when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setRenewalProcessed(false);
+    }
+  }, [open]);
+
   const [clientCars, setClientCars] = useState<CarRecord[]>([]);
   const [selectedCar, setSelectedCar] = useState<CarRecord | null>(null);
   const [createNewCar, setCreateNewCar] = useState(false);

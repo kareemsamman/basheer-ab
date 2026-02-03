@@ -91,6 +91,7 @@ import { useClientAccidentInfo } from '@/hooks/useClientAccidentInfo';
 import { cn } from '@/lib/utils';
 import { useBranches } from '@/hooks/useBranches';
 import { useAuth } from '@/hooks/useAuth';
+import type { RenewalData } from '@/components/policies/wizard/types';
 
 interface Client {
   id: string;
@@ -307,6 +308,9 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
   
   // Accident report wizard state
   const [accidentWizardOpen, setAccidentWizardOpen] = useState(false);
+
+  // Renewal state
+  const [renewalData, setRenewalData] = useState<RenewalData | null>(null);
 
   const fetchBroker = async () => {
     if (!client.broker_id) {
@@ -771,6 +775,110 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
       toast.error(error.message || 'فشل في حذف الوثيقة');
     } finally {
       setDeletingPolicy(false);
+    }
+  };
+
+  // Handle policy renewal - single policy
+  const handleRenewPolicy = async (policyId: string) => {
+    try {
+      // Fetch policy details with children
+      const { data: policy, error } = await supabase
+        .from('policies')
+        .select(`
+          *,
+          policy_children(child_id)
+        `)
+        .eq('id', policyId)
+        .single();
+      
+      if (error || !policy) {
+        toast.error('فشل في جلب بيانات الوثيقة');
+        return;
+      }
+      
+      // Determine category slug
+      let categorySlug = policy.policy_type_parent;
+      if (policy.policy_type_parent === 'ELZAMI' || policy.policy_type_parent === 'THIRD_FULL') {
+        categorySlug = 'THIRD_FULL';
+      }
+      
+      setRenewalData({
+        clientId: policy.client_id,
+        carId: policy.car_id,
+        categorySlug,
+        policyTypeParent: policy.policy_type_parent,
+        policyTypeChild: policy.policy_type_child,
+        companyId: policy.company_id,
+        insurancePrice: policy.insurance_price,
+        brokerBuyPrice: policy.broker_buy_price,
+        notes: policy.notes,
+        childrenIds: policy.policy_children?.map((pc: any) => pc.child_id) || [],
+        originalEndDate: policy.end_date,
+      });
+      
+      setPolicyWizardOpen(true);
+    } catch (error) {
+      console.error('Error fetching policy for renewal:', error);
+      toast.error('فشل في جلب بيانات الوثيقة');
+    }
+  };
+
+  // Handle package renewal - multiple policies
+  const handleRenewPackage = async (policyIds: string[]) => {
+    try {
+      // Fetch all policies in the package
+      const { data: policiesData, error } = await supabase
+        .from('policies')
+        .select('*, policy_children(child_id)')
+        .in('id', policyIds);
+      
+      if (error || !policiesData?.length) {
+        toast.error('فشل في جلب بيانات الباقة');
+        return;
+      }
+      
+      // Find main policy (THIRD_FULL first, then ELZAMI, then others)
+      const mainPolicy = policiesData.find(p => p.policy_type_parent === 'THIRD_FULL') 
+        || policiesData.find(p => p.policy_type_parent === 'ELZAMI')
+        || policiesData[0];
+      
+      // Build addons from other policies
+      const addons = policiesData
+        .filter(p => p.id !== mainPolicy.id)
+        .map(p => ({
+          type: p.policy_type_parent.toLowerCase() as 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption',
+          companyId: p.company_id,
+          insurancePrice: p.insurance_price,
+          roadServiceId: p.road_service_id,
+          accidentFeeServiceId: p.accident_fee_service_id,
+          policyTypeChild: p.policy_type_child,
+          brokerBuyPrice: p.broker_buy_price,
+        }));
+      
+      // Collect all children IDs (deduplicated)
+      const allChildrenIds = [...new Set(
+        policiesData.flatMap(p => p.policy_children?.map((pc: any) => pc.child_id) || [])
+      )];
+      
+      setRenewalData({
+        clientId: mainPolicy.client_id,
+        carId: mainPolicy.car_id,
+        categorySlug: 'THIRD_FULL',
+        policyTypeParent: mainPolicy.policy_type_parent,
+        policyTypeChild: mainPolicy.policy_type_child,
+        companyId: mainPolicy.company_id,
+        insurancePrice: mainPolicy.insurance_price,
+        brokerBuyPrice: mainPolicy.broker_buy_price,
+        notes: mainPolicy.notes,
+        packageAddons: addons,
+        childrenIds: allChildrenIds,
+        originalEndDate: mainPolicy.end_date,
+      });
+      
+      setPolicyWizardOpen(true);
+    } catch (error) {
+      console.error('Error fetching package for renewal:', error);
+      toast.error('فشل في جلب بيانات الباقة');
     }
   };
 
@@ -1435,6 +1543,8 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                   setDeletePolicyDialogOpen(true);
                 } : undefined}
                 onPoliciesUpdate={fetchPolicies}
+                onRenewPolicy={handleRenewPolicy}
+                onRenewPackage={handleRenewPackage}
               />
             )}
           </TabsContent>
@@ -1874,10 +1984,18 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
       {/* Policy Wizard for creating new policy */}
       <PolicyWizard
         open={policyWizardOpen}
-        onOpenChange={setPolicyWizardOpen}
+        onOpenChange={(open) => {
+          setPolicyWizardOpen(open);
+          // Clear renewal data when wizard closes
+          if (!open) {
+            setRenewalData(null);
+          }
+        }}
         preselectedClientId={client.id}
+        renewalData={renewalData}
         onSaved={async () => {
           setPolicyWizardOpen(false);
+          setRenewalData(null);
           // Delay to ensure DB commits are complete before fetching
           await new Promise(resolve => setTimeout(resolve, 200));
           // Fetch all data in parallel

@@ -171,6 +171,33 @@ export interface PricingBreakdown {
   payablePrice: number;
 }
 
+// Renewal data for pre-populating the wizard
+export interface RenewalData {
+  clientId: string;
+  carId?: string | null;
+  categorySlug: string;
+  policyTypeParent: string;
+  policyTypeChild?: string | null;
+  companyId: string;
+  insurancePrice: number;
+  brokerBuyPrice?: number | null;
+  notes?: string | null;
+  // Package addons
+  packageAddons?: {
+    type: 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption';
+    companyId: string;
+    insurancePrice: number;
+    roadServiceId?: string;
+    accidentFeeServiceId?: string;
+    policyTypeChild?: string;
+    brokerBuyPrice?: number | null;
+  }[];
+  // Additional drivers
+  childrenIds?: string[];
+  // Original end date for calculating new dates
+  originalEndDate?: string;
+}
+
 // Constants
 export const CAR_POLICY_TYPES = [
   { value: "ELZAMI", label: "إلزامي", requiresBroker: false },
