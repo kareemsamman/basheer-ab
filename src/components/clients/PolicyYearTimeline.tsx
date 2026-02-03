@@ -36,6 +36,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PackagePaymentModal } from './PackagePaymentModal';
+import { InvoiceSendPrintDialog } from '@/components/policies/InvoiceSendPrintDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -213,6 +214,10 @@ export function PolicyYearTimeline({
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [sendingPolicy, setSendingPolicy] = useState<string | null>(null);
   
+  // Invoice Send/Print Dialog state
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [invoiceDialogPolicyIds, setInvoiceDialogPolicyIds] = useState<string[]>([]);
+  const [invoiceDialogClientPhone, setInvoiceDialogClientPhone] = useState<string | null>(null);
   // Notes editing state
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
   const [editedNotesValue, setEditedNotesValue] = useState('');
@@ -525,42 +530,25 @@ export function PolicyYearTimeline({
     setPackagePaymentOpen(true);
   };
 
-  const handleSendInvoice = async (e: React.MouseEvent, policyIds: string[]) => {
+  const handleOpenInvoiceDialog = async (e: React.MouseEvent, policyIds: string[]) => {
     e.stopPropagation();
-    setSendingPolicy(policyIds[0]);
+    
+    // Try to get client phone number from policy
     try {
-      const functionName = policyIds.length > 1 ? 'send-package-invoice-sms' : 'send-invoice-sms';
-      const body = policyIds.length > 1 
-        ? { policy_ids: policyIds }
-        : { policy_id: policyIds[0], force_resend: true };
-
-      const { data, error } = await supabase.functions.invoke(functionName, { body });
+      const { data: policyData } = await supabase
+        .from('policies')
+        .select('clients(phone_number)')
+        .eq('id', policyIds[0])
+        .single();
       
-      if (error) {
-        // Try to parse the context for the actual error message
-        let errorMsg = 'فشل في الإرسال';
-        try {
-          // The error context might contain the JSON response
-          if (error.context && typeof error.context === 'object') {
-            const ctx = error.context as any;
-            if (ctx.body) {
-              const parsed = JSON.parse(ctx.body);
-              if (parsed.error) errorMsg = parsed.error;
-            }
-          }
-        } catch {
-          // If parsing fails, use default
-        }
-        throw new Error(errorMsg);
-      }
-      if (data?.error) throw new Error(data.error);
-      
-      toast.success(policyIds.length > 1 ? 'تم إرسال الفواتير' : 'تم إرسال الفاتورة');
-    } catch (err: any) {
-      toast.error(err.message || 'فشل في الإرسال');
-    } finally {
-      setSendingPolicy(null);
+      const clientPhone = (policyData?.clients as any)?.phone_number || null;
+      setInvoiceDialogClientPhone(clientPhone);
+    } catch {
+      setInvoiceDialogClientPhone(null);
     }
+    
+    setInvoiceDialogPolicyIds(policyIds);
+    setInvoiceDialogOpen(true);
   };
 
   const refreshPaymentInfo = async () => {
@@ -684,8 +672,8 @@ export function PolicyYearTimeline({
                         childrenCount={childrenCount}
                         onPolicyClick={onPolicyClick}
                         onPaymentClick={(e) => handlePackagePayment(e, pkg.allPolicyIds, pkg.mainPolicy?.branch_id || pkg.addons[0]?.branch_id || null)}
-                        onSendInvoice={(e) => handleSendInvoice(e, pkg.allPolicyIds)}
-                        isSending={sendingPolicy === pkg.allPolicyIds[0]}
+                        onOpenInvoiceDialog={(e) => handleOpenInvoiceDialog(e, pkg.allPolicyIds)}
+                        isPackage={pkg.allPolicyIds.length > 1}
                         onTransfer={onTransferPolicy}
                         onCancel={onCancelPolicy}
                         onTransferPackage={onTransferPackage}
@@ -721,6 +709,14 @@ export function PolicyYearTimeline({
           refreshPaymentInfo();
         }}
       />
+
+      <InvoiceSendPrintDialog
+        open={invoiceDialogOpen}
+        onOpenChange={setInvoiceDialogOpen}
+        policyIds={invoiceDialogPolicyIds}
+        isPackage={invoiceDialogPolicyIds.length > 1}
+        clientPhone={invoiceDialogClientPhone}
+      />
     </div>
   );
 }
@@ -733,8 +729,8 @@ function PolicyPackageCard({
   childrenCount = 0,
   onPolicyClick,
   onPaymentClick,
-  onSendInvoice,
-  isSending,
+  onOpenInvoiceDialog,
+  isPackage: isPackageProp,
   onTransfer,
   onCancel,
   onTransferPackage,
@@ -755,8 +751,8 @@ function PolicyPackageCard({
   childrenCount?: number;
   onPolicyClick: (id: string) => void;
   onPaymentClick: (e: React.MouseEvent) => void;
-  onSendInvoice: (e: React.MouseEvent) => void;
-  isSending: boolean;
+  onOpenInvoiceDialog: (e: React.MouseEvent) => void;
+  isPackage: boolean;
   onTransfer?: (id: string) => void;
   onCancel?: (id: string) => void;
   onTransferPackage?: (ids: string[]) => void;
@@ -777,7 +773,7 @@ function PolicyPackageCard({
   const isActive = pkg.status === 'active';
   const isTransferred = pkg.status === 'transferred';
   const isCancelled = pkg.status === 'cancelled';
-  const isPackage = pkg.addons.length > 0 && pkg.mainPolicy !== null;
+  const isPkg = isPackageProp || (pkg.addons.length > 0 && pkg.mainPolicy !== null);
   const hasUnpaid = !paymentStatus.isPaid;
 
   // Check if this policy was created from a transfer (has transferred_car_number = FROM which car)
@@ -787,7 +783,7 @@ function PolicyPackageCard({
 
   // Build combined type label for packages
   const getTypeLabel = () => {
-    if (isPackage && pkg.mainPolicy) {
+    if (isPkg && pkg.mainPolicy) {
       const mainLabel = policyTypeLabels[pkg.mainPolicy.policy_type_parent] || pkg.mainPolicy.policy_type_parent;
       const addonLabels = pkg.addons.map(a => policyTypeLabels[a.policy_type_parent] || a.policy_type_parent);
       return `${mainLabel} + ${addonLabels.join(' + ')}`;
@@ -846,7 +842,7 @@ function PolicyPackageCard({
           )}
 
           {/* Policy Type - show as separate badges for packages */}
-          {isPackage && pkg.mainPolicy ? (
+          {isPkg && pkg.mainPolicy ? (
             <div className="flex flex-wrap items-center gap-1">
               <Badge className={cn("border text-xs font-semibold", policyTypeColors[pkg.mainPolicy.policy_type_parent])}>
                 {getDisplayLabel(pkg.mainPolicy)}
@@ -928,14 +924,9 @@ function PolicyPackageCard({
               variant="ghost"
               size="sm"
               className="gap-1 h-8"
-              onClick={onSendInvoice}
-              disabled={isSending}
+              onClick={onOpenInvoiceDialog}
             >
-              {isSending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Send className="h-3.5 w-3.5" />
-              )}
+              <Send className="h-3.5 w-3.5" />
             </Button>
 
             <DropdownMenu>
@@ -953,20 +944,20 @@ function PolicyPackageCard({
                 {isActive && (
                   <>
                     <DropdownMenuSeparator />
-                    {isPackage && onTransferPackage && (
+                    {isPkg && onTransferPackage && (
                       <DropdownMenuItem onClick={() => onTransferPackage(pkg.allPolicyIds)}>
                         <ArrowRightLeft className="h-4 w-4 ml-2" />
                         تحويل الباقة
                       </DropdownMenuItem>
                     )}
-                    {!isPackage && onTransfer && (
+                    {!isPkg && onTransfer && (
                       <DropdownMenuItem onClick={() => onTransfer(policy.id)}>
                         <ArrowRightLeft className="h-4 w-4 ml-2" />
                         تحويل الوثيقة
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuSeparator />
-                    {isPackage && onCancelPackage && (
+                    {isPkg && onCancelPackage && (
                       <DropdownMenuItem 
                         className="text-destructive focus:text-destructive"
                         onClick={() => onCancelPackage(pkg.allPolicyIds)}
@@ -975,7 +966,7 @@ function PolicyPackageCard({
                         إلغاء الباقة
                       </DropdownMenuItem>
                     )}
-                    {!isPackage && onCancel && (
+                    {!isPkg && onCancel && (
                       <DropdownMenuItem 
                         className="text-destructive focus:text-destructive"
                         onClick={() => onCancel(policy.id)}
@@ -994,7 +985,7 @@ function PolicyPackageCard({
                     <DropdownMenuItem 
                       className="text-destructive focus:text-destructive focus:bg-destructive/10"
                       onClick={() => {
-                        if (isPackage) {
+                        if (isPkg) {
                           onDeletePolicy(pkg.allPolicyIds);
                         } else {
                           onDeletePolicy([policy.id]);
@@ -1002,7 +993,7 @@ function PolicyPackageCard({
                       }}
                     >
                       <Trash2 className="h-4 w-4 ml-2" />
-                      {isPackage ? 'حذف الباقة نهائياً' : 'حذف الوثيقة نهائياً'}
+                      {isPkg ? 'حذف الباقة نهائياً' : 'حذف الوثيقة نهائياً'}
                     </DropdownMenuItem>
                   </>
                 )}
@@ -1066,7 +1057,7 @@ function PolicyPackageCard({
         </div>
 
         {/* Package Components Section - Shows details for each policy in the package */}
-        {isPackage && pkg.mainPolicy && (
+        {isPkg && pkg.mainPolicy && (
           <div className="mt-3 pt-3 border-t border-border/50">
             <div className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
               <FileText className="h-3.5 w-3.5" />

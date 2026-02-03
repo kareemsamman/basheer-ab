@@ -1,15 +1,35 @@
 import { useState, useEffect } from "react";
-import { Plus, Check, User } from "lucide-react";
+import { Plus, Check, User, Phone, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { cn } from "@/lib/utils";
 import { digitsOnly, isValidIsraeliId } from "@/lib/validation";
 import { ClientChild, NewChildForm, RELATION_OPTIONS, createEmptyChildForm } from "@/types/clientChildren";
 import { supabase } from "@/integrations/supabase/client";
 
+// Helper to check if age is under 24
+const isUnder24 = (birthDate: string | null): boolean | null => {
+  if (!birthDate) return null;
+  const today = new Date();
+  const birth = new Date(birthDate);
+  const age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    return age - 1 < 24;
+  }
+  return age < 24;
+};
+
+// Format date for display
+const formatBirthDate = (dateStr: string | null): string => {
+  if (!dateStr) return "";
+  return new Date(dateStr).toLocaleDateString("en-GB");
+};
 interface PolicyChildrenSelectorProps {
   clientId: string | null;
   selectedChildIds: string[];
@@ -156,7 +176,7 @@ export function PolicyChildrenSelector({
       ) : existingChildren.length > 0 ? (
         <div className="space-y-2">
           <Label className="text-xs text-muted-foreground">اختر من التابعين الموجودين:</Label>
-          <div className="grid gap-2">
+        <div className="grid gap-2">
             {existingChildren.map((child) => (
               <label
                 key={child.id}
@@ -172,10 +192,29 @@ export function PolicyChildrenSelector({
                   onCheckedChange={() => toggleChild(child.id)}
                 />
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm">{child.full_name}</div>
-                  <div className="text-xs text-muted-foreground flex gap-2">
-                    <span className="font-mono">{child.id_number}</span>
+                  <div className="font-medium text-sm flex items-center gap-2">
+                    {child.full_name}
+                    {isUnder24(child.birth_date) === true && (
+                      <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 border-amber-500/30">
+                        أقل من 24
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
+                    <span className="font-mono ltr-nums">{child.id_number}</span>
                     {child.relation && <span>• {child.relation}</span>}
+                    {child.birth_date && (
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        <span className="ltr-nums">{formatBirthDate(child.birth_date)}</span>
+                      </span>
+                    )}
+                    {child.phone && (
+                      <span className="flex items-center gap-1">
+                        <Phone className="h-3 w-3" />
+                        <span className="font-mono ltr-nums">{child.phone}</span>
+                      </span>
+                    )}
                   </div>
                 </div>
                 {selectedChildIds.includes(child.id) && (
@@ -214,7 +253,7 @@ export function PolicyChildrenSelector({
                   </Button>
                 </div>
                 
-                <div className="grid gap-3 grid-cols-2 sm:grid-cols-3">
+                <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
                   {/* Full Name */}
                   <div className="space-y-1">
                     <Label className="text-xs">
@@ -266,6 +305,30 @@ export function PolicyChildrenSelector({
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  {/* Birth Date */}
+                  <div className="space-y-1">
+                    <Label className="text-xs">تاريخ الميلاد</Label>
+                    <ArabicDatePicker
+                      value={child.birth_date}
+                      onChange={(v) => handleUpdateChild(index, 'birth_date', v)}
+                      isBirthDate
+                      compact
+                    />
+                  </div>
+
+                  {/* Phone */}
+                  <div className="space-y-1">
+                    <Label className="text-xs">الهاتف</Label>
+                    <Input
+                      value={child.phone}
+                      onChange={(e) => handleUpdateChild(index, 'phone', digitsOnly(e.target.value).slice(0, 10))}
+                      placeholder="05xxxxxxxx"
+                      maxLength={10}
+                      inputMode="numeric"
+                      className="h-9 ltr-input"
+                    />
                   </div>
                 </div>
               </div>

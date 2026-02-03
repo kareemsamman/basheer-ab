@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Save, X, Shield, Car, Truck, FileCheck, Package, Calculator, User, Plus, Check } from "lucide-react";
+import { Loader2, Save, X, Shield, Car, Truck, FileCheck, Package, Calculator, User, Plus, Check, Phone, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { calculatePolicyProfit } from "@/lib/pricingCalculator";
 import { formatCurrency } from "@/lib/utils";
@@ -32,6 +32,25 @@ const calculateEndDate = (startDate: string): string => {
   end.setFullYear(end.getFullYear() + 1);
   end.setDate(end.getDate() - 1);
   return end.toISOString().split("T")[0];
+};
+
+// Helper to check if age is under 24
+const isUnder24 = (birthDate: string | null): boolean | null => {
+  if (!birthDate) return null;
+  const today = new Date();
+  const birth = new Date(birthDate);
+  const age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    return age - 1 < 24;
+  }
+  return age < 24;
+};
+
+// Format date for display
+const formatBirthDate = (dateStr: string | null): string => {
+  if (!dateStr) return "";
+  return new Date(dateStr).toLocaleDateString("en-GB");
 };
 
 interface PolicyData {
@@ -661,10 +680,29 @@ export function PackagePolicyEditModal({
                                 onCheckedChange={() => toggleChild(child.id)}
                               />
                               <div className="flex-1 min-w-0">
-                                <div className="font-medium text-sm">{child.full_name}</div>
-                                <div className="text-xs text-muted-foreground flex gap-2">
+                                <div className="font-medium text-sm flex items-center gap-2">
+                                  {child.full_name}
+                                  {isUnder24(child.birth_date) === true && (
+                                    <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 border-amber-500/30">
+                                      أقل من 24
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
                                   <span className="font-mono ltr-nums">{child.id_number}</span>
                                   {child.relation && <span>• {child.relation}</span>}
+                                  {child.birth_date && (
+                                    <span className="flex items-center gap-1">
+                                      <Calendar className="h-3 w-3" />
+                                      <span className="ltr-nums">{formatBirthDate(child.birth_date)}</span>
+                                    </span>
+                                  )}
+                                  {child.phone && (
+                                    <span className="flex items-center gap-1">
+                                      <Phone className="h-3 w-3" />
+                                      <span className="font-mono ltr-nums">{child.phone}</span>
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                               {selectedChildIds.includes(child.id) && (
@@ -704,7 +742,7 @@ export function PackagePolicyEditModal({
                                 </Button>
                               </div>
                               
-                              <div className="grid gap-2 grid-cols-1 sm:grid-cols-3">
+                              <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
                                 {/* Full Name */}
                                 <div className="space-y-0.5">
                                   <Label className="text-xs">
@@ -757,6 +795,30 @@ export function PackagePolicyEditModal({
                                       ))}
                                     </SelectContent>
                                   </Select>
+                                </div>
+
+                                {/* Birth Date */}
+                                <div className="space-y-0.5">
+                                  <Label className="text-xs">تاريخ الميلاد</Label>
+                                  <ArabicDatePicker
+                                    value={child.birth_date}
+                                    onChange={(v) => handleUpdateNewChild(index, 'birth_date', v)}
+                                    isBirthDate
+                                    compact
+                                  />
+                                </div>
+
+                                {/* Phone */}
+                                <div className="space-y-0.5">
+                                  <Label className="text-xs">الهاتف</Label>
+                                  <Input
+                                    value={child.phone}
+                                    onChange={(e) => handleUpdateNewChild(index, 'phone', digitsOnly(e.target.value).slice(0, 10))}
+                                    placeholder="05xxxxxxxx"
+                                    maxLength={10}
+                                    inputMode="numeric"
+                                    className="h-8 text-sm ltr-input"
+                                  />
                                 </div>
                               </div>
                             </div>
