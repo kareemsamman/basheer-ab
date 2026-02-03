@@ -320,24 +320,56 @@ export function PolicyWizard({
     const nextStep = Math.min(currentStep + 1, steps.length);
     
     // Auto-fill LOCKED payment for ELZAMI when entering Step 4
-    // ELZAMI payments are system-generated and immutable
-    if (nextStep === 4 && policy.policy_type_parent === 'ELZAMI') {
-      // Only auto-fill if payments are empty or have no locked ELZAMI payment
+    // This applies when:
+    // 1. Main policy is ELZAMI, OR
+    // 2. ELZAMI addon is enabled in package mode
+    if (nextStep === 4) {
+      const isMainElzami = policy.policy_type_parent === 'ELZAMI';
+      const elzamiAddon = packageAddons.find(a => a.type === 'elzami' && a.enabled);
+      const isAddonElzami = packageMode && elzamiAddon?.enabled;
       const hasLockedElzamiPayment = payments.some(p => p.locked && p.source === 'system');
-      if (!hasLockedElzamiPayment) {
-        const totalPrice = parseFloat(policy.insurance_price) || pricing.totalPrice;
-        if (totalPrice > 0) {
-          setPayments([{
-            id: crypto.randomUUID(),
-            payment_type: 'cash',
-            amount: totalPrice,
-            payment_date: new Date().toISOString().split('T')[0],
-            refused: false,
-            locked: true,
-            source: 'system',
-            locked_label: 'دفعة إلزامي – تلقائية',
-          }]);
+      
+      if (isMainElzami || isAddonElzami) {
+        // Calculate ELZAMI price:
+        // - Main ELZAMI: use policy.insurance_price
+        // - Addon ELZAMI: use elzamiAddon.insurance_price
+        const elzamiPrice = isMainElzami 
+          ? parseFloat(policy.insurance_price) || pricing.totalPrice
+          : parseFloat(elzamiAddon?.insurance_price || '0');
+        
+        if (elzamiPrice > 0) {
+          // Use ELZAMI start_date if available, else policy start_date or today
+          const elzamiDate = isAddonElzami && elzamiAddon?.start_date
+            ? elzamiAddon.start_date
+            : policy.start_date || new Date().toISOString().split('T')[0];
+          
+          if (!hasLockedElzamiPayment) {
+            // Add new locked payment
+            setPayments([{
+              id: crypto.randomUUID(),
+              payment_type: 'cash',
+              amount: elzamiPrice,
+              payment_date: elzamiDate,
+              refused: false,
+              locked: true,
+              source: 'system',
+              locked_label: 'دفعة إلزامي – تلقائية',
+            }]);
+          } else {
+            // Update existing locked payment if price changed
+            const lockedPayment = payments.find(p => p.locked && p.source === 'system');
+            if (lockedPayment && lockedPayment.amount !== elzamiPrice) {
+              setPayments(payments.map(p => 
+                p.locked && p.source === 'system' 
+                  ? { ...p, amount: elzamiPrice, payment_date: elzamiDate }
+                  : p
+              ));
+            }
+          }
         }
+      } else if (hasLockedElzamiPayment) {
+        // ELZAMI was disabled - remove the locked payment
+        setPayments(payments.filter(p => !(p.locked && p.source === 'system')));
       }
     }
     
