@@ -468,17 +468,39 @@ export function PolicyWizard({
                         newClient.under24_type === 'client' ||
                         newClient.under24_type === 'additional_driver';
 
-      // Temp policy = main policy from Step 3 (not addons)
-      // The category defines what type we're creating
+      // Temp policy for Visa = First enabled addon in package mode, OR main policy
+      // This is because the Visa payment processes the first component
       let policyTypeParentValue = (selectedCategory?.slug || policy.policy_type_parent) as PolicyTypeParent;
       let policyTypeChildValue = (policy.policy_type_child || null) as PolicyTypeChild | null;
       let tempCompanyId = policy.company_id;
-      
-      // For packages: use basePrice (main policy only), not totalPrice (all addons)
-      // The addons will be created separately in handleSave with their own group_id
-      let tempInsurancePrice = packageMode 
-        ? (pricing.basePrice || parseFloat(policy.insurance_price) || 0)
-        : (pricing.totalPrice || parseFloat(policy.insurance_price) || 0);
+      let tempInsurancePrice = pricing.totalPrice || parseFloat(policy.insurance_price) || 0;
+
+      // For packages with Visa: use the FIRST enabled addon for temp policy
+      // This ensures correct policy_type_parent (e.g., ELZAMI instead of THIRD_FULL)
+      if (packageMode && packageAddons.some(a => a.enabled)) {
+        // Priority: elzami > third_full > road_service > accident_fee
+        const elzamiAddon = packageAddons.find(a => a.type === 'elzami' && a.enabled);
+        const thirdAddon = packageAddons.find(a => a.type === 'third_full' && a.enabled);
+        const roadAddon = packageAddons.find(a => a.type === 'road_service' && a.enabled);
+        const accidentAddon = packageAddons.find(a => a.type === 'accident_fee_exemption' && a.enabled);
+        
+        const firstAddon = elzamiAddon || thirdAddon || roadAddon || accidentAddon;
+        
+        if (firstAddon) {
+          const addonTypeMap: Record<string, PolicyTypeParent> = {
+            'elzami': 'ELZAMI',
+            'third_full': 'THIRD_FULL',
+            'road_service': 'ROAD_SERVICE',
+            'accident_fee_exemption': 'ACCIDENT_FEE_EXEMPTION',
+          };
+          policyTypeParentValue = addonTypeMap[firstAddon.type] as PolicyTypeParent;
+          policyTypeChildValue = firstAddon.type === 'third_full' && firstAddon.policy_type_child 
+            ? firstAddon.policy_type_child as PolicyTypeChild 
+            : null;
+          tempCompanyId = firstAddon.company_id || policy.company_id;
+          tempInsurancePrice = parseFloat(firstAddon.insurance_price) || 0;
+        }
+      }
       
       const carTypeValue = (selectedCar?.car_type || newCar.car_type || 'car') as CarType;
       const ageBandValue = isUnder24 ? 'UNDER_24' as const : 'UP_24' as const;
@@ -902,9 +924,20 @@ export function PolicyWizard({
 
           if (updateError) throw updateError;
 
-          // 6. Create addon policies
+          // 6. Find which addon was used for temp policy (first enabled, priority: elzami > third_full > road > accident)
+          const elzamiAddon = packageAddons.find(a => a.type === 'elzami' && a.enabled);
+          const thirdAddon = packageAddons.find(a => a.type === 'third_full' && a.enabled);
+          const roadAddon = packageAddons.find(a => a.type === 'road_service' && a.enabled);
+          const accidentAddon = packageAddons.find(a => a.type === 'accident_fee_exemption' && a.enabled);
+          const firstAddon = elzamiAddon || thirdAddon || roadAddon || accidentAddon;
+          const firstAddonType = firstAddon?.type || null;
+
+          // 7. Create addon policies (skip the first one since it's already the temp policy)
           for (const addon of packageAddons) {
             if (!addon.enabled) continue;
+            
+            // Skip the addon that was used for temp policy
+            if (addon.type === firstAddonType) continue;
 
             const addonTypeMap: Record<string, PolicyTypeParent> = {
               'elzami': 'ELZAMI',
@@ -963,6 +996,45 @@ export function PolicyWizard({
             if (addonError) {
               console.error('Error creating addon policy:', addonError);
               throw addonError;
+            }
+          }
+
+          // 8. Now add the main policy from Step 3 as an addon (if different from temp policy)
+          // The main policy is THIRD_FULL from Step 3
+          const mainPolicyTypeParent = policy.policy_type_parent as PolicyTypeParent;
+          if (firstAddonType !== 'third_full' || mainPolicyTypeParent !== 'THIRD_FULL') {
+            // Main policy wasn't used as temp, so we need to create it
+            const mainAddonStartDate = policy.start_date;
+            const mainAddonEndDate = policy.end_date;
+
+            const { error: mainAddonError } = await supabase.from('policies').insert({
+              client_id: tempClientId,
+              car_id: tempCarId || null,
+              category_id: selectedCategory?.id || null,
+              policy_type_parent: mainPolicyTypeParent,
+              policy_type_child: (policy.policy_type_child || null) as PolicyTypeChild | null,
+              company_id: policy.company_id || null,
+              start_date: mainAddonStartDate,
+              end_date: mainAddonEndDate,
+              insurance_price: mainInsurancePrice,
+              profit: mainProfitData.profit,
+              payed_for_company: mainProfitData.companyPayment,
+              company_cost_snapshot: mainProfitData.companyPayment,
+              broker_buy_price: brokerBuyPriceValue || 0,
+              road_service_id: policy.road_service_id || null,
+              accident_fee_service_id: policy.accident_fee_service_id || null,
+              group_id: groupId,
+              notes: 'إضافة ضمن باقة',
+              branch_id: effectiveBranchId || null,
+              created_by_admin_id: user?.id || null,
+              is_under_24: tempIsUnder24,
+              broker_id: policyBrokerId || null,
+              broker_direction: brokerDirection || null,
+            });
+
+            if (mainAddonError) {
+              console.error('Error creating main addon policy:', mainAddonError);
+              throw mainAddonError;
             }
           }
         }
