@@ -113,3 +113,6 @@ verify_jwt = true
 
 [functions.whatsapp-lead-webhook]
 verify_jwt = false
+
+[functions.generate-bulk-payment-receipt]
+verify_jwt = true

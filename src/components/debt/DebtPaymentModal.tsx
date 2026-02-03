@@ -521,16 +521,17 @@ export function DebtPaymentModal({
     setActiveTranzilaPolicyId(null);
   };
 
-  const sendPaymentConfirmationSms = async (paidAmount: number, paymentId?: string) => {
-    if (!clientPhone) return;
+  const sendPaymentConfirmationSms = async (paidAmount: number, paymentIds: string[]) => {
+    if (!clientPhone || paymentIds.length === 0) return;
     
     try {
-      const { data: receiptData, error: receiptError } = await supabase.functions.invoke('generate-payment-receipt', {
-        body: { payment_id: paymentId }
+      // Use bulk receipt function to aggregate all payments into one receipt
+      const { data: receiptData, error: receiptError } = await supabase.functions.invoke('generate-bulk-payment-receipt', {
+        body: { payment_ids: paymentIds, total_amount: paidAmount }
       });
       
       if (receiptError) {
-        console.error('Error generating payment receipt:', receiptError);
+        console.error('Error generating bulk payment receipt:', receiptError);
         return;
       }
       
@@ -562,6 +563,10 @@ export function DebtPaymentModal({
     }
 
     setSaving(true);
+    
+    // Collect all created payment IDs for bulk receipt
+    const allCreatedPaymentIds: string[] = [];
+    
     try {
       for (const paymentLine of paymentLines) {
         // Skip visa payments that are already paid via Tranzila
@@ -589,6 +594,13 @@ export function DebtPaymentModal({
               .select('id');
             
             if (error) throw error;
+
+            // Collect all inserted payment IDs
+            if (insertedPayments) {
+              for (const p of insertedPayments) {
+                allCreatedPaymentIds.push(p.id);
+              }
+            }
 
             // Upload images
             if ((paymentLine.paymentType === 'cash' || paymentLine.paymentType === 'cheque' || paymentLine.paymentType === 'transfer') && 
@@ -626,22 +638,11 @@ export function DebtPaymentModal({
         }
       }
 
-      // Get the most recent payment for receipt
-      const allPolicyIds = allPayablePolicies.map(p => p.policyId);
-      const { data: recentPayment } = await supabase
-        .from('policy_payments')
-        .select('id')
-        .in('policy_id', allPolicyIds)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-      
-      const firstPaymentId = recentPayment?.id;
-
       toast.success('تم تسديد الدفعات بنجاح');
       
-      if (firstPaymentId) {
-        await sendPaymentConfirmationSms(totalPaymentAmount, firstPaymentId);
+      // Send bulk receipt SMS with all payment IDs
+      if (allCreatedPaymentIds.length > 0) {
+        await sendPaymentConfirmationSms(totalPaymentAmount, allCreatedPaymentIds);
       }
       
       onOpenChange(false);
