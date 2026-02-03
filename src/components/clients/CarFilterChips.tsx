@@ -30,14 +30,7 @@ interface CarFilterChipsProps {
   onSelect: (carId: string) => void;
 }
 
-const carTypeLabels: Record<string, string> = {
-  car: 'خصوصي',
-  cargo: 'شحن',
-  small: 'صغير',
-  taxi: 'تاكسي',
-  tjeradown4: 'تجاري ˂4ط',
-  tjeraup4: 'تجاري ˃4ط',
-};
+// Removed - no longer using car type labels
 
 export function CarFilterChips({ cars, policies, selectedCarId, onSelect }: CarFilterChipsProps) {
   const carsWithPolicyCounts = useMemo((): CarWithPolicyCount[] => {
@@ -97,44 +90,39 @@ export function CarFilterChips({ cars, policies, selectedCarId, onSelect }: CarF
         <button
           onClick={() => onSelect('all')}
           className={cn(
-            "group relative flex flex-col items-center justify-center gap-2 px-5 py-3 rounded-xl border-2 transition-all duration-300 min-w-[100px]",
+            "group relative flex items-center gap-3 px-4 py-2.5 rounded-lg border-2 transition-all duration-300",
             selectedCarId === 'all'
-              ? "border-primary bg-gradient-to-b from-primary/10 to-primary/5 shadow-lg shadow-primary/15"
-              : "border-border/50 bg-card/50 backdrop-blur-sm hover:border-primary/40 hover:bg-primary/5 hover:shadow-md"
+              ? "border-primary bg-primary/10 shadow-md"
+              : "border-border/50 bg-card/50 hover:border-primary/40 hover:bg-primary/5"
           )}
         >
           {selectedCarId === 'all' && (
-            <div className="absolute -top-1.5 -left-1.5 h-5 w-5 rounded-full bg-primary flex items-center justify-center shadow-lg animate-in zoom-in-50 duration-200">
+            <div className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-primary flex items-center justify-center shadow-lg animate-in zoom-in-50 duration-200">
               <Check className="h-3 w-3 text-primary-foreground" strokeWidth={3} />
             </div>
           )}
           
           <div className={cn(
-            "h-10 w-10 rounded-xl flex items-center justify-center transition-all duration-300",
+            "h-9 w-9 rounded-lg flex items-center justify-center transition-all",
             selectedCarId === 'all' 
-              ? "bg-primary text-primary-foreground shadow-md shadow-primary/30" 
-              : "bg-muted/80 text-muted-foreground group-hover:bg-primary/20 group-hover:text-primary"
+              ? "bg-primary text-primary-foreground" 
+              : "bg-muted text-muted-foreground"
           )}>
-            <Car className="h-5 w-5" />
+            <Car className="h-4 w-4" />
           </div>
           
-          <span className={cn(
-            "text-sm font-bold transition-colors",
-            selectedCarId === 'all' ? "text-primary" : "text-foreground"
-          )}>
-            الكل
-          </span>
-          
-          {/* Active / Total count display */}
-          <div className="flex items-center gap-1 text-xs">
-            <span className="font-bold text-success ltr-nums">{totalActivePolicies}</span>
-            <span className="text-muted-foreground">سارية</span>
-            {totalPolicies > totalActivePolicies && (
-              <>
-                <span className="text-muted-foreground/60">/</span>
-                <span className="text-muted-foreground ltr-nums">{totalPolicies}</span>
-              </>
-            )}
+          <div className="flex flex-col items-start">
+            <span className={cn(
+              "text-sm font-bold",
+              selectedCarId === 'all' ? "text-primary" : "text-foreground"
+            )}>
+              كل السيارات
+            </span>
+            <span className="text-xs text-muted-foreground">
+              <span className="text-success font-bold ltr-nums">{totalActivePolicies}</span>
+              <span className="mx-1">سارية من</span>
+              <span className="ltr-nums">{totalPolicies}</span>
+            </span>
           </div>
         </button>
 
@@ -191,11 +179,11 @@ export function CarFilterChips({ cars, policies, selectedCarId, onSelect }: CarF
                     {formatPlateNumber(car.car_number)}
                   </span>
                   
-                  {/* Car Type + Year - smaller */}
+                  {/* Manufacturer + Year - smaller */}
                   <div className="flex items-center gap-1 text-[9px] text-black/60 font-medium">
-                    {car.car_type && (
-                      <span className="bg-black/10 px-1.5 py-0.5 rounded">
-                        {carTypeLabels[car.car_type] || car.car_type}
+                    {car.manufacturer_name && (
+                      <span className="bg-black/10 px-1.5 py-0.5 rounded truncate max-w-[80px]">
+                        {car.manufacturer_name}
                       </span>
                     )}
                     {car.year && (
