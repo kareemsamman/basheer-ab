@@ -4745,6 +4745,27 @@ export type Database = {
               total_price: number
             }[]
           }
+      report_renewals_service_detailed: {
+        Args: {
+          p_days_remaining?: number
+          p_end_month: string
+          p_policy_type?: string
+        }
+        Returns: {
+          car_number: string
+          client_file_number: string
+          client_id: string
+          client_name: string
+          client_phone: string
+          company_name_ar: string
+          days_remaining: number
+          end_date: string
+          insurance_price: number
+          policy_id: string
+          policy_type_parent: string
+          renewal_status: string
+        }[]
+      }
       report_renewals_summary: {
         Args: {
           p_created_by?: string

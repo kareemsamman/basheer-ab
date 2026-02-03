@@ -69,21 +69,81 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[generate-renewals-report] Generating report for month: ${month}`);
+    console.log(`[generate-renewals-report] Generating detailed report for month: ${month}`);
 
-    // Fetch renewals data using service function - now grouped by client
-    const { data: renewals, error: renewalsError } = await supabase.rpc('report_renewals_service', {
+    // Fetch detailed renewals data - individual policies per client
+    const { data: policies, error: policiesError } = await supabase.rpc('report_renewals_service_detailed', {
       p_end_month: `${month}-01`,
       p_days_remaining: days_filter,
-      p_policy_type: policy_type,
-      p_limit: 1000,
-      p_offset: 0
+      p_policy_type: policy_type
     });
 
-    if (renewalsError) {
-      console.error('[generate-renewals-report] Error fetching renewals:', renewalsError);
-      throw renewalsError;
+    if (policiesError) {
+      console.error('[generate-renewals-report] Error fetching policies:', policiesError);
+      throw policiesError;
     }
+
+    console.log(`[generate-renewals-report] Found ${policies?.length || 0} policies`);
+
+    // Group policies by client
+    const clientsMap = new Map<string, {
+      client_id: string;
+      client_name: string;
+      client_file_number: string | null;
+      client_phone: string | null;
+      policies: Array<{
+        policy_id: string;
+        car_number: string | null;
+        policy_type_parent: string;
+        company_name_ar: string | null;
+        end_date: string;
+        days_remaining: number;
+        insurance_price: number;
+        renewal_status: string;
+      }>;
+      earliest_end_date: string;
+      min_days_remaining: number;
+      total_price: number;
+    }>();
+
+    for (const policy of (policies || [])) {
+      const clientId = policy.client_id;
+      
+      if (!clientsMap.has(clientId)) {
+        clientsMap.set(clientId, {
+          client_id: clientId,
+          client_name: policy.client_name,
+          client_file_number: policy.client_file_number,
+          client_phone: policy.client_phone,
+          policies: [],
+          earliest_end_date: policy.end_date,
+          min_days_remaining: policy.days_remaining,
+          total_price: 0
+        });
+      }
+      
+      const client = clientsMap.get(clientId)!;
+      client.policies.push({
+        policy_id: policy.policy_id,
+        car_number: policy.car_number,
+        policy_type_parent: policy.policy_type_parent,
+        company_name_ar: policy.company_name_ar,
+        end_date: policy.end_date,
+        days_remaining: policy.days_remaining,
+        insurance_price: policy.insurance_price,
+        renewal_status: policy.renewal_status
+      });
+      
+      client.total_price += policy.insurance_price || 0;
+      
+      if (policy.days_remaining < client.min_days_remaining) {
+        client.min_days_remaining = policy.days_remaining;
+        client.earliest_end_date = policy.end_date;
+      }
+    }
+
+    const clients = Array.from(clientsMap.values());
+    console.log(`[generate-renewals-report] Grouped into ${clients.length} unique clients`);
 
     // Get user info for footer
     const { data: userProfile } = await supabase
@@ -92,9 +152,9 @@ serve(async (req) => {
       .eq('id', user.id)
       .single();
 
-    // Generate HTML report - now with grouped data
+    // Generate HTML report with detailed policies
     const monthName = new Date(`${month}-01`).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long' });
-    const html = buildReportHtml(renewals || [], monthName, userProfile?.full_name || userProfile?.email || 'Unknown');
+    const html = buildDetailedReportHtml(clients, policies?.length || 0, monthName, userProfile?.full_name || userProfile?.email || 'Unknown');
 
     if (!bunnyApiKey || !bunnyStorageZone) {
       return new Response(
@@ -142,23 +202,27 @@ serve(async (req) => {
   }
 });
 
-interface ClientData {
+interface ClientWithPolicies {
   client_id: string;
   client_name: string;
   client_file_number: string | null;
   client_phone: string | null;
-  policies_count: number;
+  policies: Array<{
+    policy_id: string;
+    car_number: string | null;
+    policy_type_parent: string;
+    company_name_ar: string | null;
+    end_date: string;
+    days_remaining: number;
+    insurance_price: number;
+    renewal_status: string;
+  }>;
   earliest_end_date: string;
-  days_remaining: number;
+  min_days_remaining: number;
   total_price: number;
-  car_numbers: string[] | null;
-  policy_types: string[] | null;
-  renewal_status: string;
-  renewal_notes: string | null;
 }
 
-function buildReportHtml(clients: ClientData[], monthName: string, generatedBy: string): string {
-  // Use Gregorian calendar (ar-EG) instead of Hijri (ar-SA)
+function buildDetailedReportHtml(clients: ClientWithPolicies[], totalPolicies: number, monthName: string, generatedBy: string): string {
   const now = new Date().toLocaleDateString('ar-EG', { 
     year: 'numeric', month: 'long', day: 'numeric', 
     hour: '2-digit', minute: '2-digit' 
@@ -171,35 +235,50 @@ function buildReportHtml(clients: ClientData[], monthName: string, generatedBy: 
 
   // Calculate totals
   const totalCustomers = clients.length;
-  const totalPolicies = clients.reduce((sum, c) => sum + (c.policies_count || 0), 0);
-  const notContacted = clients.filter(c => c.renewal_status === 'not_contacted').length;
-  const smsSent = clients.filter(c => c.renewal_status === 'sms_sent').length;
-  const called = clients.filter(c => c.renewal_status === 'called').length;
-  const urgentCount = clients.filter(c => c.days_remaining <= 7).length;
+  const notContacted = clients.filter(c => c.policies.some(p => p.renewal_status === 'not_contacted')).length;
+  const smsSent = clients.filter(c => c.policies.some(p => p.renewal_status === 'sms_sent')).length;
+  const called = clients.filter(c => c.policies.some(p => p.renewal_status === 'called')).length;
+  const urgentCount = clients.filter(c => c.min_days_remaining <= 7).length;
 
-  const rows = clients.map((c, index) => {
-    const isUrgent = c.days_remaining <= 7;
-    const isWarning = c.days_remaining > 7 && c.days_remaining <= 14;
-    const rowClass = isUrgent ? 'urgent' : isWarning ? 'warning' : '';
-    const carNumbersStr = c.car_numbers?.join(', ') || '-';
-    const policyTypesStr = c.policy_types?.map(t => POLICY_TYPE_LABELS[t] || t).join(', ') || '-';
+  // Build client rows with nested policy rows
+  const clientRows = clients.map((client, clientIndex) => {
+    const isUrgent = client.min_days_remaining <= 7;
+    const isWarning = client.min_days_remaining > 7 && client.min_days_remaining <= 14;
+    const urgentClass = isUrgent ? 'urgent' : isWarning ? 'warning' : '';
     
-    return `
-    <tr class="client-row ${rowClass}">
-      <td class="row-num">${index + 1}</td>
-      <td class="client-info">
-        <div class="client-name">${c.client_name}</div>
-        ${c.client_file_number ? `<div class="file-number">#${c.client_file_number}</div>` : ''}
+    // Client header row
+    const clientHeaderRow = `
+    <tr class="client-header ${urgentClass}">
+      <td class="row-num">${clientIndex + 1}</td>
+      <td class="client-info" colspan="2">
+        <div class="client-name">${client.client_name}</div>
+        ${client.client_file_number ? `<span class="file-number">#${client.client_file_number}</span>` : ''}
+        ${client.client_phone ? `<span class="phone-inline" dir="ltr">${client.client_phone}</span>` : ''}
       </td>
-      <td dir="ltr" class="phone">${c.client_phone || '-'}</td>
-      <td class="cars">${carNumbersStr}</td>
-      <td class="policies-count">${c.policies_count} وثيقة</td>
-      <td class="policy-types">${policyTypesStr}</td>
-      <td class="end-date">${formatDate(c.earliest_end_date)}</td>
-      <td class="days ${isUrgent ? 'urgent-text' : isWarning ? 'warning-text' : ''}">${c.days_remaining} يوم</td>
-      <td class="price">₪${(c.total_price || 0).toLocaleString()}</td>
-      <td class="status">${RENEWAL_STATUS_LABELS[c.renewal_status] || c.renewal_status}</td>
+      <td class="policies-count">${client.policies.length} وثيقة</td>
+      <td class="end-date">${formatDate(client.earliest_end_date)}</td>
+      <td class="days ${isUrgent ? 'urgent-text' : isWarning ? 'warning-text' : ''}">${client.min_days_remaining} يوم</td>
+      <td class="price">₪${(client.total_price || 0).toLocaleString()}</td>
     </tr>`;
+
+    // Policy detail rows
+    const policyRows = client.policies.map(policy => {
+      const policyUrgent = policy.days_remaining <= 7;
+      const policyWarning = policy.days_remaining > 7 && policy.days_remaining <= 14;
+      
+      return `
+    <tr class="policy-row">
+      <td class="policy-indent"></td>
+      <td class="car-number" dir="ltr">${policy.car_number || '-'}</td>
+      <td class="policy-type">${POLICY_TYPE_LABELS[policy.policy_type_parent] || policy.policy_type_parent}</td>
+      <td class="company">${policy.company_name_ar || '-'}</td>
+      <td class="end-date">${formatDate(policy.end_date)}</td>
+      <td class="days ${policyUrgent ? 'urgent-text' : policyWarning ? 'warning-text' : ''}">${policy.days_remaining} يوم</td>
+      <td class="price">₪${(policy.insurance_price || 0).toLocaleString()}</td>
+    </tr>`;
+    }).join('');
+
+    return clientHeaderRow + policyRows;
   }).join('');
 
   return `<!DOCTYPE html>
@@ -218,7 +297,7 @@ function buildReportHtml(clients: ClientData[], monthName: string, generatedBy: 
       padding: 20px;
     }
     .container {
-      max-width: 1400px;
+      max-width: 1200px;
       margin: 0 auto;
       background: white;
       border-radius: 16px;
@@ -249,7 +328,7 @@ function buildReportHtml(clients: ClientData[], monthName: string, generatedBy: 
       border-radius: 16px;
       text-align: center;
       box-shadow: 0 4px 16px rgba(0,0,0,0.06);
-      min-width: 160px;
+      min-width: 140px;
       border: 1px solid #e2e8f0;
     }
     .summary-card .value { 
@@ -259,7 +338,7 @@ function buildReportHtml(clients: ClientData[], monthName: string, generatedBy: 
       line-height: 1;
     }
     .summary-card .label { 
-      font-size: 13px; 
+      font-size: 12px; 
       color: #64748b; 
       margin-top: 8px;
       font-weight: 500;
@@ -281,7 +360,7 @@ function buildReportHtml(clients: ClientData[], monthName: string, generatedBy: 
       font-size: 13px;
     }
     th, td { 
-      padding: 14px 12px; 
+      padding: 12px 10px; 
       text-align: right; 
       border-bottom: 1px solid #e2e8f0;
     }
@@ -289,60 +368,94 @@ function buildReportHtml(clients: ClientData[], monthName: string, generatedBy: 
       background: #f8fafc; 
       font-weight: 600; 
       color: #475569;
-      font-size: 12px;
+      font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
     
-    /* Client Row Styles */
-    .client-row {
-      transition: background 0.2s;
+    /* Client Header Row */
+    .client-header {
+      background: #f8fafc;
+      font-weight: 600;
+      border-top: 2px solid #e2e8f0;
     }
-    .client-row:hover { background: #f8fafc; }
-    .client-row.urgent {
-      background: linear-gradient(to left, #fef2f2, white);
+    .client-header.urgent {
+      background: linear-gradient(to left, #fef2f2, #fafafa);
       border-right: 4px solid #dc2626;
     }
-    .client-row.warning {
-      background: linear-gradient(to left, #fffbeb, white);
+    .client-header.warning {
+      background: linear-gradient(to left, #fffbeb, #fafafa);
       border-right: 4px solid #f59e0b;
     }
+    .client-header td { padding: 14px 10px; }
+    
+    /* Policy Row (nested under client) */
+    .policy-row {
+      background: white;
+      font-size: 12px;
+      color: #475569;
+    }
+    .policy-row:hover { background: #fafafa; }
+    .policy-row td { padding: 10px; }
+    .policy-indent { width: 30px; }
     
     /* Cell Styles */
     .row-num { 
       color: #94a3b8; 
-      font-weight: 500;
+      font-weight: 600;
       width: 40px;
+      font-size: 14px;
     }
-    .client-info { min-width: 150px; }
-    .client-name { font-weight: 600; color: #1e293b; }
-    .file-number { font-size: 11px; color: #94a3b8; margin-top: 2px; }
-    .phone { 
+    .client-info { 
+      min-width: 200px; 
+    }
+    .client-name { 
+      font-weight: 700; 
+      color: #1e293b; 
+      font-size: 14px;
+      display: inline;
+    }
+    .file-number { 
+      font-size: 11px; 
+      color: #94a3b8; 
+      margin-right: 8px;
+      background: #f1f5f9;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .phone-inline {
+      font-family: 'Consolas', monospace;
+      font-size: 11px;
+      color: #64748b;
+      margin-right: 8px;
+      direction: ltr;
+      display: inline-block;
+    }
+    .car-number { 
       font-family: 'Consolas', monospace; 
       direction: ltr;
       text-align: left;
-      color: #475569;
-    }
-    .cars { 
-      font-family: 'Consolas', monospace; 
-      direction: ltr;
-      text-align: left;
-      font-size: 12px;
-      max-width: 150px;
       color: #0f766e;
+      font-weight: 600;
+      font-size: 12px;
     }
     .policies-count {
       font-weight: 600;
       color: #1e3a5f;
     }
-    .policy-types {
+    .policy-type {
+      color: #475569;
       font-size: 11px;
+    }
+    .company {
       color: #64748b;
-      max-width: 120px;
+      font-size: 11px;
+      max-width: 100px;
     }
     .end-date {
       font-family: 'Consolas', monospace;
       color: #475569;
+      font-size: 12px;
     }
     .days {
       font-weight: 600;
@@ -354,10 +467,6 @@ function buildReportHtml(clients: ClientData[], monthName: string, generatedBy: 
       font-weight: 700; 
       color: #0f766e;
       font-family: 'Consolas', monospace;
-    }
-    .status {
-      font-size: 11px;
-      color: #64748b;
     }
     
     /* Footer */
@@ -377,7 +486,7 @@ function buildReportHtml(clients: ClientData[], monthName: string, generatedBy: 
       .container { box-shadow: none; }
       .header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .summary { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .client-row.urgent, .client-row.warning { 
+      .client-header.urgent, .client-header.warning { 
         -webkit-print-color-adjust: exact; 
         print-color-adjust: exact; 
       }
@@ -387,10 +496,10 @@ function buildReportHtml(clients: ClientData[], monthName: string, generatedBy: 
     @media (max-width: 768px) {
       .header h1 { font-size: 24px; }
       .summary { gap: 12px; padding: 20px; }
-      .summary-card { padding: 16px 20px; min-width: 120px; }
+      .summary-card { padding: 16px 20px; min-width: 100px; }
       .summary-card .value { font-size: 28px; }
       table { font-size: 11px; }
-      th, td { padding: 10px 8px; }
+      th, td { padding: 8px 6px; }
     }
   </style>
 </head>
@@ -404,7 +513,7 @@ function buildReportHtml(clients: ClientData[], monthName: string, generatedBy: 
     <div class="summary">
       <div class="summary-card primary">
         <div class="value">${totalCustomers}</div>
-        <div class="label">إجمالي بحاجة للتجديد</div>
+        <div class="label">عميل بحاجة للتجديد</div>
       </div>
       <div class="summary-card">
         <div class="value">${totalPolicies}</div>
@@ -429,19 +538,16 @@ function buildReportHtml(clients: ClientData[], monthName: string, generatedBy: 
         <thead>
           <tr>
             <th>#</th>
-            <th>العميل</th>
-            <th>الهاتف</th>
-            <th>السيارات</th>
-            <th>الوثائق</th>
-            <th>الأنواع</th>
-            <th>أقرب انتهاء</th>
-            <th>الأيام</th>
+            <th>السيارة</th>
+            <th>النوع</th>
+            <th>الشركة</th>
+            <th>تاريخ الانتهاء</th>
+            <th>الأيام المتبقية</th>
             <th>السعر</th>
-            <th>الحالة</th>
           </tr>
         </thead>
         <tbody>
-          ${rows || '<tr><td colspan="10" style="text-align:center;padding:40px;color:#64748b;">لا يوجد عملاء</td></tr>'}
+          ${clientRows || '<tr><td colspan="7" style="text-align:center;padding:40px;color:#64748b;">لا يوجد وثائق منتهية</td></tr>'}
         </tbody>
       </table>
     </div>
