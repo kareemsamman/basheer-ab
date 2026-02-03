@@ -1,66 +1,49 @@
 
+# خطة: إصلاح فتح رابط الفاتورة عند الطباعة
 
-# خطة: إضافة تاريخ الميلاد لتحرير السائقين الإضافيين
+## المشكلة
 
-## المشكلة الحالية
+عند الضغط على "طباعة الفاتورة"، لا يتم فتح الرابط في نافذة جديدة لأن:
+1. الـ Edge Function للباقات (`send-package-invoice-sms`) يُرجع: `package_invoice_url`
+2. الـ Edge Function للوثيقة المفردة (`send-invoice-sms`) يُرجع: `ab_invoice_url`
+3. الكود في `InvoiceSendPrintDialog.tsx` يبحث فقط عن: `ab_invoice_url` أو `invoice_url`
 
-في `ClientChildrenManager.tsx`:
-- عند **إضافة** سائق جديد: حقل تاريخ الميلاد موجود ✅
-- عند **تعديل** سائق موجود: حقل تاريخ الميلاد **غير موجود** ❌
-- الجدول لا يعرض تاريخ الميلاد في وضع العرض
+**النتيجة**: الرابط `package_invoice_url` لا يُقرأ → يظهر toast فارغ
 
-## التغييرات المطلوبة
+## الحل
 
-### الملف: `src/components/clients/ClientChildrenManager.tsx`
+تعديل السطر 96 في `InvoiceSendPrintDialog.tsx` ليشمل جميع أسماء الروابط الممكنة:
 
-#### 1. إضافة عمود تاريخ الميلاد في Table Header
-```tsx
-<TableHeader>
-  <TableRow>
-    <TableHead className="w-[180px]">الاسم</TableHead>
-    <TableHead className="w-[120px]">رقم الهوية</TableHead>
-    <TableHead className="w-[100px]">الصلة</TableHead>
-    {!compact && <TableHead className="w-[120px]">تاريخ الميلاد</TableHead>}  // ✨ جديد
-    {!compact && <TableHead className="w-[100px]">الهاتف</TableHead>}
-    <TableHead className="w-[80px]"></TableHead>
-  </TableRow>
-</TableHeader>
+```typescript
+// قبل:
+const invoiceUrl = data?.ab_invoice_url || data?.invoice_url;
+
+// بعد:
+const invoiceUrl = data?.ab_invoice_url || data?.package_invoice_url || data?.invoice_url;
 ```
 
-#### 2. إضافة حقل تاريخ الميلاد في وضع التعديل (Edit Mode)
-بعد حقل الصلة وقبل حقل الهاتف:
-```tsx
-{!compact && (
-  <TableCell>
-    <ArabicDatePicker
-      value={editingData.birth_date}
-      onChange={(date) => setEditingData({ ...editingData, birth_date: date })}
-      isBirthDate
-      compact
-    />
-  </TableCell>
-)}
+## الملف المتأثر
+
+| الملف | التغيير |
+|-------|---------|
+| `src/components/policies/InvoiceSendPrintDialog.tsx` | إضافة `package_invoice_url` للبحث |
+
+## التغيير التفصيلي
+
+**السطر 96:**
+```typescript
+const invoiceUrl = data?.ab_invoice_url || data?.package_invoice_url || data?.invoice_url;
 ```
 
-#### 3. إضافة عرض تاريخ الميلاد في وضع العرض (View Mode)
-```tsx
-{!compact && (
-  <TableCell className="font-mono text-sm ltr-nums">
-    {child.birth_date ? new Date(child.birth_date).toLocaleDateString("en-GB") : "-"}
-  </TableCell>
-)}
-```
-
-## ملخص التغييرات
-
-| الموقع | التغيير |
-|--------|---------|
-| Table Header | إضافة عمود "تاريخ الميلاد" |
-| Edit Mode | إضافة `ArabicDatePicker` مع `compact` و `isBirthDate` |
-| View Mode | عرض التاريخ بصيغة DD/MM/YYYY |
+هذا يضمن أن:
+- للوثيقة المفردة → يستخدم `ab_invoice_url`
+- للباقة → يستخدم `package_invoice_url`
+- كخيار احتياطي → `invoice_url`
 
 ## النتيجة المتوقعة
 
-- عند الضغط على زر التعديل ✏️ للسائق الموجود → يظهر حقل تاريخ الميلاد مع date picker
-- في الجدول → يُعرض تاريخ الميلاد للسائقين الموجودين
-
+عند الضغط على "طباعة الفاتورة":
+1. يستدعي الـ Edge Function مع `skip_sms: true`
+2. يحصل على رابط الفاتورة (سواء `ab_invoice_url` أو `package_invoice_url`)
+3. يفتح الرابط في نافذة جديدة `window.open(invoiceUrl, "_blank")`
+4. يُظهر toast نجاح "تم فتح الفاتورة في نافذة جديدة"
