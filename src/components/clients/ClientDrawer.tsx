@@ -27,17 +27,14 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Loader2, Save, Building2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/hooks/useBranches';
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
-import { cn } from '@/lib/utils';
 import { ClientChildrenManager } from './ClientChildrenManager';
 import type { ClientChild, NewChildForm } from '@/types/clientChildren';
-import { createEmptyChildForm } from '@/types/clientChildren';
 
 const UNDER24_OPTIONS = [
   { value: 'none', label: 'لا' },
@@ -66,38 +63,7 @@ const clientSchema = z.object({
   birth_date: z.string().optional(),
   notes: z.string().optional(),
   under24_type: z.enum(['none', 'client', 'additional_driver']).default('none'),
-  under24_driver_name: z.string().optional(),
-  under24_driver_id: z
-    .string()
-    .optional()
-    .transform((v) => digitsOnly((v ?? '').trim())),
-  broker_id: z.string().optional(),
   branch_id: z.string().optional(),
-}).superRefine((data, ctx) => {
-  // If additional_driver is selected, require driver name and ID
-  if (data.under24_type === 'additional_driver') {
-    if (!data.under24_driver_name || data.under24_driver_name.trim().length < 2) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'اسم السائق مطلوب',
-        path: ['under24_driver_name'],
-      });
-    }
-    const driverId = data.under24_driver_id || '';
-    if (driverId.length !== 9) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'رقم هوية السائق يجب أن يكون 9 أرقام',
-        path: ['under24_driver_id'],
-      });
-    } else if (!isValidIsraeliId(driverId)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'رقم هوية السائق غير صحيح',
-        path: ['under24_driver_id'],
-      });
-    }
-  }
 });
 
 type ClientFormData = z.infer<typeof clientSchema>;
@@ -122,11 +88,6 @@ interface Client {
   branch_id?: string | null;
 }
 
-interface Broker {
-  id: string;
-  name: string;
-}
-
 interface ClientDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -135,9 +96,8 @@ interface ClientDrawerProps {
   defaultBrokerId?: string;
 }
 
-export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBrokerId }: ClientDrawerProps) {
+export function ClientDrawer({ open, onOpenChange, client, onSaved }: ClientDrawerProps) {
   const [saving, setSaving] = useState(false);
-  const [brokers, setBrokers] = useState<Broker[]>([]);
   const { isAdmin, branchId: userBranchId } = useAuth();
   const { branches } = useBranches();
   const isEditing = !!client;
@@ -156,30 +116,12 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
       file_number: '',
       phone_number: '',
       phone_number_2: '',
-      birth_date: null,
+      birth_date: '',
       notes: '',
       under24_type: 'none',
-      under24_driver_name: '',
-      under24_driver_id: '',
-      broker_id: '',
       branch_id: '',
     },
   });
-
-  // Watch under24_type to conditionally show driver fields
-  const under24Type = useWatch({ control: form.control, name: 'under24_type' });
-
-  // Fetch brokers
-  useEffect(() => {
-    const fetchBrokers = async () => {
-      const { data } = await supabase
-        .from('brokers')
-        .select('id, name')
-        .order('name');
-      setBrokers(data || []);
-    };
-    fetchBrokers();
-  }, []);
 
   // Fetch children when editing a client
   useEffect(() => {
@@ -234,13 +176,10 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
         birth_date: client?.birth_date || '',
         notes: client?.notes || '',
         under24_type: client?.under24_type || (client?.less_than_24 ? 'client' : 'none'),
-        under24_driver_name: client?.under24_driver_name || '',
-        under24_driver_id: client?.under24_driver_id || '',
-        broker_id: client?.broker_id || defaultBrokerId || '',
         branch_id: defaultBranch,
       });
     }
-  }, [open, client, defaultBrokerId, form, isEditing, userBranchId, branches]);
+  }, [open, client, form, isEditing, userBranchId, branches]);
 
   const onSubmit = async (data: ClientFormData) => {
     setSaving(true);
@@ -267,10 +206,10 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
         birth_date: data.birth_date || null,
         notes: data.notes || null,
         under24_type: data.under24_type,
-        under24_driver_name: data.under24_type === 'additional_driver' ? (data.under24_driver_name || null) : null,
-        under24_driver_id: data.under24_type === 'additional_driver' ? (data.under24_driver_id || null) : null,
-        less_than_24: data.under24_type !== 'none', // Keep legacy field in sync
-        broker_id: data.broker_id || null,
+        under24_driver_name: null,
+        under24_driver_id: null,
+        less_than_24: data.under24_type !== 'none',
+        broker_id: null,
         branch_id: newBranchId,
         ...(!isEditing ? { created_by_admin_id: createdByAdminId } : {}),
       };
@@ -377,105 +316,124 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 mt-6">
-            <FormField
-              control={form.control}
-              name="full_name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>الاسم الكامل *</FormLabel>
-                  <FormControl>
-                    <Input placeholder="أدخل اسم العميل" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="id_number"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>رقم الهوية *</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="أدخل رقم الهوية"
-                      inputMode="numeric"
-                      maxLength={9}
-                      className="ltr-input"
-                      value={field.value}
-                      onChange={(e) => field.onChange(digitsOnly(e.target.value).slice(0, 9))}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="file_number"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>رقم الملف</FormLabel>
-                  <FormControl>
-                    <Input placeholder="أدخل رقم الملف" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="phone_number"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>رقم الهاتف</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="أدخل رقم الهاتف"
-                      inputMode="numeric"
-                      maxLength={10}
-                      className="ltr-input"
-                      value={field.value}
-                      onChange={(e) => field.onChange(digitsOnly(e.target.value).slice(0, 10))}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="broker_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>الوسيط</FormLabel>
-                  <Select
-                    value={(field.value && field.value.length > 0) ? field.value : "__none__"}
-                    onValueChange={(v) => field.onChange(v === "__none__" ? "" : v)}
-                    disabled={!!defaultBrokerId}
-                  >
+            {/* Row 1: Name + ID Number */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="full_name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>الاسم الكامل *</FormLabel>
                     <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="اختر الوسيط (اختياري)" />
-                      </SelectTrigger>
+                      <Input placeholder="أدخل اسم العميل" {...field} />
                     </FormControl>
-                    <SelectContent>
-                      <SelectItem value="__none__">بدون وسيط</SelectItem>
-                      {brokers.map((broker) => (
-                        <SelectItem key={broker.id} value={broker.id}>
-                          {broker.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="id_number"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>رقم الهوية *</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="أدخل رقم الهوية"
+                        inputMode="numeric"
+                        maxLength={9}
+                        className="ltr-input"
+                        value={field.value}
+                        onChange={(e) => field.onChange(digitsOnly(e.target.value).slice(0, 9))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Row 2: Birth Date + Phone */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="birth_date"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>تاريخ الميلاد</FormLabel>
+                    <FormControl>
+                      <ArabicDatePicker
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        placeholder="اختر تاريخ الميلاد"
+                        isBirthDate
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="phone_number"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>رقم الهاتف</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="أدخل رقم الهاتف"
+                        inputMode="numeric"
+                        maxLength={10}
+                        className="ltr-input"
+                        value={field.value}
+                        onChange={(e) => field.onChange(digitsOnly(e.target.value).slice(0, 10))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Row 3: Additional Phone + File Number */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="phone_number_2"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>هاتف إضافي (اختياري)</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="أدخل رقم الهاتف الإضافي"
+                        inputMode="numeric"
+                        maxLength={10}
+                        className="ltr-input"
+                        value={field.value}
+                        onChange={(e) => field.onChange(digitsOnly(e.target.value).slice(0, 10))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="file_number"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>رقم الملف</FormLabel>
+                    <FormControl>
+                      <Input placeholder="أدخل رقم الملف" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             {/* Branch field - Admin only */}
             {isAdmin && branches.length > 0 && (
@@ -516,96 +474,55 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved, defaultBroke
               />
             )}
 
-            {/* Birth Date */}
-            <FormField
-              control={form.control}
-              name="birth_date"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>تاريخ الميلاد</FormLabel>
-                  <FormControl>
-                    <ArabicDatePicker
-                      value={field.value || ''}
-                      onChange={field.onChange}
-                      placeholder="اختر تاريخ الميلاد"
-                      isBirthDate
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Additional Phone */}
-            <FormField
-              control={form.control}
-              name="phone_number_2"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>هاتف إضافي (اختياري)</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="أدخل رقم الهاتف الإضافي"
-                      inputMode="numeric"
-                      maxLength={10}
-                      className="ltr-input"
-                      value={field.value}
-                      onChange={(e) => field.onChange(digitsOnly(e.target.value).slice(0, 10))}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Under 24 Type */}
+            {/* Under 24 Type - Using Select instead of RadioGroup */}
             <FormField
               control={form.control}
               name="under24_type"
               render={({ field }) => (
-                <FormItem className="space-y-3">
+                <FormItem>
                   <FormLabel>أقل من 24 سنة</FormLabel>
-                  <FormControl>
-                    <RadioGroup
-                      onValueChange={field.onChange}
-                      value={field.value}
-                      className="flex flex-col space-y-2"
-                    >
+                  <Select
+                    value={field.value}
+                    onValueChange={field.onChange}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="اختر" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
                       {UNDER24_OPTIONS.map((option) => (
-                        <div key={option.value} className="flex items-center gap-2">
-                          <RadioGroupItem value={option.value} id={option.value} />
-                          <label
-                            htmlFor={option.value}
-                            className="text-sm font-normal cursor-pointer"
-                          >
-                            {option.label}
-                          </label>
-                        </div>
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
                       ))}
-                    </RadioGroup>
-                  </FormControl>
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            {/* Children / Additional Drivers Manager - Always shown when editing */}
-            {isEditing && (
-              <div className="border-t pt-4">
-                <ClientChildrenManager
-                  existingChildren={existingChildren}
-                  newChildren={newChildren}
-                  onNewChildrenChange={setNewChildren}
-                  onRemoveExisting={(childId) => {
-                    if (!linkedChildIds.includes(childId)) {
-                      setChildrenToDelete([...childrenToDelete, childId]);
-                      setExistingChildren(existingChildren.filter(c => c.id !== childId));
-                    }
-                  }}
-                  linkedChildIds={linkedChildIds}
-                />
-              </div>
-            )}
+            {/* Children / Additional Drivers Manager - Always shown */}
+            <div className="border-t pt-4">
+              <ClientChildrenManager
+                existingChildren={existingChildren}
+                newChildren={newChildren}
+                onNewChildrenChange={setNewChildren}
+                onRemoveExisting={(childId) => {
+                  if (!linkedChildIds.includes(childId)) {
+                    setChildrenToDelete([...childrenToDelete, childId]);
+                    setExistingChildren(existingChildren.filter(c => c.id !== childId));
+                  }
+                }}
+                onExistingChildUpdated={(updatedChild) => {
+                  setExistingChildren(existingChildren.map(c => 
+                    c.id === updatedChild.id ? updatedChild : c
+                  ));
+                }}
+                linkedChildIds={linkedChildIds}
+              />
+            </div>
 
             <FormField
               control={form.control}
