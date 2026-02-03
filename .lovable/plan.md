@@ -1,102 +1,173 @@
 
-
-# خطة: تحسين تصميم فلتر السيارات
-
-## المشكلة الحالية
-
-1. لوحات السيارة تبدو مزدحمة وغير واضحة
-2. الشارات (badges) متداخلة وصعبة القراءة
-3. التصميم غير متناسق مع باقي الواجهة
+# خطة: تسريع استجابة فلتر السيارات
 
 ---
 
-## التصميم الجديد المقترح
+## المشكلة
 
-### الشكل المحسّن:
+عند النقر على فلتر السيارات، هناك تأخير ملحوظ (~2-3 ثوانٍ) قبل تحديث الواجهة.
 
-```text
-┌────────────────────────────────────────────────────────────────────────────┐
-│                                                                            │
-│  ┌─────────────────┐    ┌──────────────────────────────┐                  │
-│  │  🚗 كل السيارات  │    │  55-722-52                   │                  │
-│  │  5 سارية من 8   │    │  Audi • 2018                 │                  │
-│  │                 │    │  ● 3 سارية  ○ 5 إجمالي      │                  │
-│  └─────────────────┘    └──────────────────────────────┘                  │
-│                                                                            │
-└────────────────────────────────────────────────────────────────────────────┘
+**السبب الجذري:**
+- `PolicyYearTimeline` يستلم قائمة الوثائق المفلترة
+- عند كل تغيير في الفلتر، يتم إطلاق **3 طلبات API منفصلة**:
+  1. `fetchPaymentInfo` - جلب معلومات الدفعات
+  2. `fetchAccidentInfo` - جلب معلومات الحوادث
+  3. `fetchChildrenInfo` - جلب معلومات السائقين الإضافيين
+
+كل طلب يستغرق ~500-800ms، مما يجعل الإجمالي ~2-3 ثوانٍ.
+
+---
+
+## الحل
+
+**نقل جلب البيانات للمستوى الأعلى (ClientDetails)** بحيث:
+- يتم جلب جميع البيانات **مرة واحدة** عند تحميل الصفحة
+- عند تغيير الفلتر، يتم **فلترة البيانات محلياً** بدون طلبات API جديدة
+
+---
+
+## التغييرات الفنية
+
+### الملف 1: `src/components/clients/ClientDetails.tsx`
+
+**إضافة جلب بيانات الدفعات/الحوادث/السائقين:**
+
+```typescript
+// State جديد
+const [policyPaymentInfo, setPolicyPaymentInfo] = useState<Record<string, {paid: number; remaining: number}>>({});
+const [policyAccidentCounts, setPolicyAccidentCounts] = useState<Record<string, number>>({});
+const [policyChildrenCounts, setPolicyChildrenCounts] = useState<Record<string, number>>({});
+
+// دالة جلب البيانات الموحدة
+const fetchPolicyMetadata = async (policyIds: string[], policiesData: PolicyRecord[]) => {
+  // Payments
+  const { data: paymentsData } = await supabase
+    .from('policy_payments')
+    .select('policy_id, amount, refused')
+    .in('policy_id', policyIds);
+    
+  const paymentInfo: Record<string, {paid: number; remaining: number}> = {};
+  policiesData.forEach(p => {
+    const paid = (paymentsData || [])
+      .filter(pay => pay.policy_id === p.id && !pay.refused)
+      .reduce((sum, pay) => sum + pay.amount, 0);
+    paymentInfo[p.id] = { paid, remaining: p.insurance_price - paid };
+  });
+  setPolicyPaymentInfo(paymentInfo);
+  
+  // Accidents
+  const { data: accData } = await supabase
+    .from('accident_reports')
+    .select('policy_id')
+    .in('policy_id', policyIds);
+  const accCounts: Record<string, number> = {};
+  (accData || []).forEach(row => {
+    accCounts[row.policy_id] = (accCounts[row.policy_id] || 0) + 1;
+  });
+  setPolicyAccidentCounts(accCounts);
+  
+  // Children
+  const { data: childData } = await supabase
+    .from('policy_children')
+    .select('policy_id')
+    .in('policy_id', policyIds);
+  const childCounts: Record<string, number> = {};
+  (childData || []).forEach(row => {
+    childCounts[row.policy_id] = (childCounts[row.policy_id] || 0) + 1;
+  });
+  setPolicyChildrenCounts(childCounts);
+};
 ```
 
----
+**استدعاء داخل `fetchPolicies`:**
 
-## التغييرات التصميمية
+```typescript
+const fetchPolicies = async () => {
+  // ... existing code ...
+  if (data && data.length > 0) {
+    setPolicies(data);
+    // جلب البيانات الإضافية مرة واحدة
+    await fetchPolicyMetadata(data.map(p => p.id), data);
+  }
+};
+```
 
-### 1. إزالة شكل لوحة السيارة المعقد
-- استبداله ببطاقات أنيقة موحدة مع باقي النظام
-- خلفية بيضاء مع حدود ناعمة
-
-### 2. عرض المعلومات بشكل منظم
-- **السطر الأول**: رقم السيارة بخط واضح
-- **السطر الثاني**: الشركة المصنعة + السنة
-- **السطر الثالث**: عدد الوثائق (سارية / إجمالي)
-
-### 3. مؤشرات بصرية واضحة
-- نقطة خضراء للوثائق السارية
-- نقطة رمادية للإجمالي
-- حدود ملونة عند التحديد
-
----
-
-## الكود المحدث
-
-### الهيكل الجديد لكل بطاقة سيارة:
+**تمرير البيانات لـ PolicyYearTimeline:**
 
 ```tsx
-<button className="group relative flex flex-col gap-1.5 p-3 rounded-xl 
-  border-2 bg-card/80 backdrop-blur-sm transition-all duration-200
-  hover:shadow-md hover:border-primary/30
-  [selected]: border-primary bg-primary/5 shadow-lg">
-  
-  {/* رقم السيارة */}
-  <div className="flex items-center gap-2">
-    <span className="text-base font-bold ltr-nums">55-722-52</span>
-    {selectedCarId === car.id && <Check className="h-4 w-4 text-primary" />}
-  </div>
-  
-  {/* الشركة المصنعة + السنة */}
-  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-    <span>Audi</span>
-    <span className="ltr-nums">2018</span>
-  </div>
-  
-  {/* عداد الوثائق */}
-  <div className="flex items-center gap-3 text-xs">
-    <div className="flex items-center gap-1">
-      <div className="h-2 w-2 rounded-full bg-success" />
-      <span className="font-medium ltr-nums">{activePolicyCount}</span>
-      <span className="text-muted-foreground">سارية</span>
-    </div>
-    {policyCount > activePolicyCount && (
-      <div className="flex items-center gap-1 text-muted-foreground">
-        <div className="h-2 w-2 rounded-full bg-muted" />
-        <span className="ltr-nums">{policyCount}</span>
-        <span>إجمالي</span>
-      </div>
-    )}
-  </div>
-</button>
+<PolicyYearTimeline
+  policies={filteredPolicies}
+  paymentInfo={policyPaymentInfo}       // ← جديد
+  accidentInfo={policyAccidentCounts}   // ← جديد
+  childrenInfo={policyChildrenCounts}   // ← جديد
+  onPolicyClick={handlePolicyClick}
+  // ... باقي الخصائص
+/>
 ```
 
 ---
 
-## مميزات التصميم الجديد
+### الملف 2: `src/components/clients/PolicyYearTimeline.tsx`
 
-| الميزة | التصميم القديم | التصميم الجديد |
-|--------|---------------|----------------|
-| الوضوح | شارات متداخلة | معلومات مرتبة |
-| التناسق | شكل لوحة مختلف | بطاقات موحدة |
-| سهولة القراءة | صعب | سهل جداً |
-| المساحة | مضغوطة | مريحة |
-| المؤشرات | أرقام فقط | نقاط ملونة + أرقام |
+**تحديث Props:**
+
+```typescript
+interface PolicyYearTimelineProps {
+  policies: PolicyRecord[];
+  paymentInfo?: Record<string, { paid: number; remaining: number }>;  // ← جديد
+  accidentInfo?: Record<string, number>;                               // ← جديد
+  childrenInfo?: Record<string, number>;                               // ← جديد
+  onPolicyClick: (policyId: string) => void;
+  // ... باقي الخصائص
+}
+```
+
+**إزالة useEffect للجلب:**
+
+```typescript
+// قبل: 3 useEffect منفصلة تجلب البيانات
+// بعد: استخدام البيانات الممررة مباشرة
+
+// حذف useEffect الموجودة (السطور 249-346)
+// استخدام props مباشرة:
+
+const { paymentInfo = {}, accidentInfo = {}, childrenInfo = {} } = props;
+
+// حذف:
+// const [paymentInfo, setPaymentInfo] = useState<PaymentInfo>({});
+// const [accidentInfo, setAccidentInfo] = useState<Record<string, number>>({});
+// const [childrenInfo, setChildrenInfo] = useState<Record<string, number>>({});
+// const [loadingPayments, setLoadingPayments] = useState(true);
+```
+
+---
+
+## مخطط التحسين
+
+```text
+قبل:                                      بعد:
+┌──────────────────┐                     ┌──────────────────┐
+│   نقر الفلتر     │                     │   نقر الفلتر     │
+└────────┬─────────┘                     └────────┬─────────┘
+         ↓                                        ↓
+┌──────────────────┐                     ┌──────────────────┐
+│  تحديث الحالة   │                     │  تحديث الحالة   │
+└────────┬─────────┘                     └────────┬─────────┘
+         ↓                                        ↓
+┌──────────────────┐                     ┌──────────────────┐
+│ فلترة الوثائق   │                     │ فلترة الوثائق   │
+└────────┬─────────┘                     └────────┬─────────┘
+         ↓                                        ↓
+┌──────────────────┐                     ┌──────────────────┐
+│ PolicyYearTimeline                     │ PolicyYearTimeline
+│  ↓                │                     │ (بيانات جاهزة)  │
+│  API: payments    │ ~700ms             │                  │
+│  API: accidents   │ ~500ms             │  ← فوري          │
+│  API: children    │ ~500ms             │                  │
+└────────┬─────────┘                     └────────┬─────────┘
+         ↓                                        ↓
+   ~1.7 ثانية                               ~50ms
+```
 
 ---
 
@@ -104,14 +175,14 @@
 
 | الملف | التغيير |
 |-------|---------|
-| `src/components/clients/CarFilterChips.tsx` | إعادة تصميم البطاقات بالكامل |
+| `src/components/clients/ClientDetails.tsx` | جلب البيانات الإضافية مركزياً + تمريرها |
+| `src/components/clients/PolicyYearTimeline.tsx` | استقبال البيانات كـ props بدلاً من جلبها |
 
 ---
 
 ## النتيجة المتوقعة
 
-1. ✅ تصميم نظيف ومتناسق مع باقي النظام
-2. ✅ معلومات واضحة وسهلة القراءة
-3. ✅ مؤشرات بصرية للوثائق السارية والإجمالية
-4. ✅ تجربة مستخدم محسّنة
-
+1. ✅ النقر على فلتر السيارات يستجيب **فوراً** (~50ms)
+2. ✅ لا توجد طلبات API عند تغيير الفلتر
+3. ✅ البيانات تُجلب مرة واحدة عند تحميل الصفحة
+4. ✅ تجربة مستخدم سلسة بدون تأخير
