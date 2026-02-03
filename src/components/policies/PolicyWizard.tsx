@@ -26,6 +26,8 @@ type PolicyTypeChild = Database["public"]["Enums"]["policy_type_child"];
 type CarType = Database["public"]["Enums"]["car_type"];
 type PaymentType = Database["public"]["Enums"]["payment_type"];
 
+import type { RenewalData } from "./wizard/types";
+
 interface PolicyWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -36,6 +38,7 @@ interface PolicyWizardProps {
   preselectedClientId?: string;
   isCollapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
+  renewalData?: RenewalData | null;
 }
 
 export function PolicyWizard({ 
@@ -48,6 +51,7 @@ export function PolicyWizard({
   preselectedClientId,
   isCollapsed: controlledCollapsed,
   onCollapsedChange,
+  renewalData,
 }: PolicyWizardProps) {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -58,6 +62,7 @@ export function PolicyWizard({
     defaultBrokerDirection,
     preselectedClientId,
     open,
+    renewalData: renewalData || undefined,
   });
 
   const {

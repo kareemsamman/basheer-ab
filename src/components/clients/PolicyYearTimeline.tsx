@@ -19,6 +19,7 @@ import {
   ArrowRightLeft,
   MoreVertical,
   Send,
+  RefreshCw,
   Loader2,
   Zap,
   AlertTriangle,
@@ -78,6 +79,9 @@ interface PolicyYearTimelineProps {
   onCancelPackage?: (policyIds: string[]) => void;
   onDeletePolicy?: (policyIds: string[]) => void;
   onPoliciesUpdate?: () => void;
+  // Renewal handlers
+  onRenewPolicy?: (policyId: string) => void;
+  onRenewPackage?: (policyIds: string[]) => void;
 }
 
 const policyTypeLabels: Record<string, string> = {
@@ -208,7 +212,9 @@ export function PolicyYearTimeline({
   onTransferPackage,
   onCancelPackage,
   onDeletePolicy,
-  onPoliciesUpdate
+  onPoliciesUpdate,
+  onRenewPolicy,
+  onRenewPackage,
 }: PolicyYearTimelineProps) {
   const { isSuperAdmin } = useAuth();
   
@@ -708,6 +714,8 @@ export function PolicyYearTimeline({
                         onTransferPackage={onTransferPackage}
                         onCancelPackage={onCancelPackage}
                         onDeletePolicy={onDeletePolicy}
+                        onRenewPolicy={onRenewPolicy}
+                        onRenewPackage={onRenewPackage}
                         isSuperAdmin={isSuperAdmin}
                         isEditingNotes={editingNotesId === mainPolicy?.id}
                         editedNotesValue={editedNotesValue}
@@ -765,6 +773,8 @@ function PolicyPackageCard({
   onTransferPackage,
   onCancelPackage,
   onDeletePolicy,
+  onRenewPolicy,
+  onRenewPackage,
   isSuperAdmin,
   isEditingNotes,
   editedNotesValue,
@@ -787,6 +797,8 @@ function PolicyPackageCard({
   onTransferPackage?: (ids: string[]) => void;
   onCancelPackage?: (ids: string[]) => void;
   onDeletePolicy?: (ids: string[]) => void;
+  onRenewPolicy?: (id: string) => void;
+  onRenewPackage?: (ids: string[]) => void;
   isSuperAdmin?: boolean;
   isEditingNotes?: boolean;
   editedNotesValue?: string;
@@ -1002,6 +1014,25 @@ function PolicyPackageCard({
                       >
                         <XCircle className="h-4 w-4 ml-2" />
                         إلغاء الوثيقة
+                      </DropdownMenuItem>
+                    )}
+                  </>
+                )}
+
+                {/* Renewal Actions - for active and ended policies (not cancelled/transferred) */}
+                {(isActive || pkg.status === 'ended') && !isTransferred && !isCancelled && (onRenewPolicy || onRenewPackage) && (
+                  <>
+                    <DropdownMenuSeparator />
+                    {isPkg && onRenewPackage && (
+                      <DropdownMenuItem onClick={() => onRenewPackage(pkg.allPolicyIds)}>
+                        <RefreshCw className="h-4 w-4 ml-2" />
+                        تجديد الباقة
+                      </DropdownMenuItem>
+                    )}
+                    {!isPkg && onRenewPolicy && (
+                      <DropdownMenuItem onClick={() => onRenewPolicy(policy.id)}>
+                        <RefreshCw className="h-4 w-4 ml-2" />
+                        تجديد الوثيقة
                       </DropdownMenuItem>
                     )}
                   </>
