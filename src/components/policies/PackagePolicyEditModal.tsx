@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -318,8 +318,22 @@ export function PackagePolicyEditModal({
 
   // Add new child form
   const handleAddNewChild = () => {
-    setNewChildren([...newChildren, createEmptyChildForm()]);
+    setNewChildren((prev) => [...prev, createEmptyChildForm()]);
   };
+  
+  // Ref for auto-scroll to new child
+  const newChildBottomRef = useRef<HTMLDivElement>(null);
+  const prevNewChildrenLengthRef = useRef(newChildren.length);
+  
+  // Auto-scroll when new child is added
+  useEffect(() => {
+    if (newChildren.length > prevNewChildrenLengthRef.current) {
+      setTimeout(() => {
+        newChildBottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      }, 100);
+    }
+    prevNewChildrenLengthRef.current = newChildren.length;
+  }, [newChildren.length]);
 
   // Update new child field
   const handleUpdateNewChild = (index: number, field: keyof NewChildForm, value: string) => {
@@ -511,11 +525,11 @@ export function PackagePolicyEditModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col" dir="rtl">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden !flex !flex-col p-6" dir="rtl">
         <DialogHeader className="text-right shrink-0">
           <DialogTitle className="flex items-center gap-2 text-lg">
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary/10">
-              <Package className="h-5 w-5 text-primary" />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-primary/10">
+              <Package className="h-4 w-4 text-primary" />
             </div>
             <div>
               <span>تعديل الباقة</span>
@@ -542,9 +556,9 @@ export function PackagePolicyEditModal({
             لا توجد وثائق في هذه الباقة
           </div>
         ) : (
-          <>
-            <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
-              <div className="space-y-3 py-2">
+          <div className="flex-1 min-h-0 flex flex-col">
+            <ScrollArea dir="rtl" className="flex-1 min-h-0 -mx-6 px-6">
+              <div className="space-y-2 py-1">
                 {policies.map((policy) => {
                   const config = policyTypeConfig[policy.policy_type_parent] || policyTypeConfig.ELZAMI;
                   const Icon = config.icon;
@@ -554,29 +568,29 @@ export function PackagePolicyEditModal({
                     <div
                       key={policy.id}
                       className={cn(
-                        "rounded-lg border p-3 space-y-2",
+                        "rounded-lg border p-2 space-y-1.5",
                         config.border,
                         config.bg
                       )}
                     >
                       {/* Header */}
-                      <div className="flex items-center gap-3">
-                        <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", config.bg)}>
-                          <Icon className={cn("h-4 w-4", config.text)} />
+                      <div className="flex items-center gap-2">
+                        <div className={cn("w-7 h-7 rounded-md flex items-center justify-center", config.bg)}>
+                          <Icon className={cn("h-3.5 w-3.5", config.text)} />
                         </div>
                         <div className="flex-1">
                           <Badge className={cn("text-xs", config.bg, config.text, "border", config.border)}>
                             {getTypeName(policy)}
                           </Badge>
                         </div>
-                        <div className="text-sm text-muted-foreground">
+                        <div className="text-xs text-muted-foreground">
                           الشركة: <span className="font-medium text-foreground">{getCompanyName(policy)}</span>
                         </div>
                       </div>
 
                       {/* Editable Fields */}
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="space-y-1.5">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div className="space-y-1">
                           <Label className="text-xs text-muted-foreground">تاريخ البدء</Label>
                           <ArabicDatePicker
                             value={state?.startDate || ""}
@@ -584,7 +598,7 @@ export function PackagePolicyEditModal({
                             compact
                           />
                         </div>
-                        <div className="space-y-1.5">
+                        <div className="space-y-1">
                           <Label className="text-xs text-muted-foreground">تاريخ الانتهاء</Label>
                           <ArabicDatePicker
                             value={state?.endDate || ""}
@@ -592,13 +606,13 @@ export function PackagePolicyEditModal({
                             compact
                           />
                         </div>
-                        <div className="space-y-1.5">
+                        <div className="space-y-1">
                           <Label className="text-xs text-muted-foreground">السعر (₪)</Label>
                           <Input
                             type="number"
                             value={state?.insurancePrice || "0"}
                             onChange={(e) => updateEditState(policy.id, "insurancePrice", e.target.value)}
-                            className="h-9 text-left ltr-nums"
+                            className="h-8 text-left ltr-nums text-sm"
                             min="0"
                           />
                         </div>
@@ -609,10 +623,10 @@ export function PackagePolicyEditModal({
 
                 {/* Extra Drivers Section */}
                 {clientId && (
-                  <div className="space-y-3 p-3 bg-muted/30 rounded-lg border">
+                  <div className="space-y-2 p-2 bg-muted/30 rounded-lg border">
                     <div className="flex items-center justify-between">
                       <h4 className="font-semibold text-sm flex items-center gap-2">
-                        <User className="h-4 w-4" />
+                        <User className="h-3.5 w-3.5" />
                         السائقين الإضافيين / التابعين
                       </h4>
                       <Button
@@ -620,23 +634,23 @@ export function PackagePolicyEditModal({
                         variant="outline"
                         size="sm"
                         onClick={handleAddNewChild}
-                        className="gap-1"
+                        className="gap-1 h-7 text-xs"
                       >
-                        <Plus className="h-4 w-4" />
+                        <Plus className="h-3.5 w-3.5" />
                         إضافة جديد
                       </Button>
                     </div>
 
                     {/* Existing Children - Checkboxes */}
                     {existingChildren.length > 0 && (
-                      <div className="space-y-2">
+                      <div className="space-y-1.5">
                         <Label className="text-xs text-muted-foreground">اختر من التابعين الموجودين:</Label>
-                        <div className="grid gap-1.5">
+                        <div className="grid gap-1">
                           {existingChildren.map((child) => (
                             <label
                               key={child.id}
                               className={cn(
-                                "flex items-center gap-2 p-2 rounded-md border cursor-pointer transition-colors",
+                                "flex items-center gap-2 p-1.5 rounded-md border cursor-pointer transition-colors",
                                 selectedChildIds.includes(child.id)
                                   ? "bg-primary/10 border-primary"
                                   : "bg-background hover:bg-muted/50"
@@ -654,7 +668,7 @@ export function PackagePolicyEditModal({
                                 </div>
                               </div>
                               {selectedChildIds.includes(child.id) && (
-                                <Check className="h-4 w-4 text-primary" />
+                                <Check className="h-3.5 w-3.5 text-primary" />
                               )}
                             </label>
                           ))}
@@ -664,15 +678,16 @@ export function PackagePolicyEditModal({
 
                     {/* New Children Forms */}
                     {newChildren.length > 0 && (
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         <Label className="text-xs text-muted-foreground">تابعين جدد (سيتم إضافتهم للعميل):</Label>
                         {newChildren.map((child, index) => {
                           const errors = childErrors[child.id] || {};
+                          const isLast = index === newChildren.length - 1;
                           
                           return (
                             <div
                               key={child.id}
-                              className="p-3 rounded-lg border bg-background space-y-3"
+                              className="p-2 rounded-lg border bg-background space-y-2"
                             >
                               <div className="flex items-center justify-between">
                                 <span className="text-xs font-medium text-muted-foreground">
@@ -682,16 +697,16 @@ export function PackagePolicyEditModal({
                                   type="button"
                                   variant="ghost"
                                   size="sm"
-                                  className="h-6 text-destructive hover:text-destructive"
+                                  className="h-5 text-xs text-destructive hover:text-destructive px-2"
                                   onClick={() => handleRemoveNewChild(index)}
                                 >
                                   حذف
                                 </Button>
                               </div>
                               
-                              <div className="grid gap-3 grid-cols-2 sm:grid-cols-3">
+                              <div className="grid gap-2 grid-cols-1 sm:grid-cols-3">
                                 {/* Full Name */}
-                                <div className="space-y-1">
+                                <div className="space-y-0.5">
                                   <Label className="text-xs">
                                     الاسم <span className="text-destructive">*</span>
                                   </Label>
@@ -699,7 +714,8 @@ export function PackagePolicyEditModal({
                                     value={child.full_name}
                                     onChange={(e) => handleUpdateNewChild(index, 'full_name', e.target.value)}
                                     placeholder="الاسم الكامل"
-                                    className={cn("h-9", errors.full_name && "border-destructive")}
+                                    className={cn("h-8 text-sm", errors.full_name && "border-destructive")}
+                                    autoFocus={isLast}
                                   />
                                   {errors.full_name && (
                                     <p className="text-xs text-destructive">{errors.full_name}</p>
@@ -707,7 +723,7 @@ export function PackagePolicyEditModal({
                                 </div>
                                 
                                 {/* ID Number */}
-                                <div className="space-y-1">
+                                <div className="space-y-0.5">
                                   <Label className="text-xs">
                                     رقم الهوية <span className="text-destructive">*</span>
                                   </Label>
@@ -716,7 +732,7 @@ export function PackagePolicyEditModal({
                                     onChange={(e) => handleUpdateNewChild(index, 'id_number', digitsOnly(e.target.value).slice(0, 9))}
                                     placeholder="9 أرقام"
                                     maxLength={9}
-                                    className={cn("h-9 ltr-input", errors.id_number && "border-destructive")}
+                                    className={cn("h-8 text-sm ltr-input", errors.id_number && "border-destructive")}
                                   />
                                   {errors.id_number && (
                                     <p className="text-xs text-destructive">{errors.id_number}</p>
@@ -724,13 +740,13 @@ export function PackagePolicyEditModal({
                                 </div>
                                 
                                 {/* Relation */}
-                                <div className="space-y-1">
+                                <div className="space-y-0.5">
                                   <Label className="text-xs">الصلة</Label>
                                   <Select
                                     value={child.relation}
                                     onValueChange={(v) => handleUpdateNewChild(index, 'relation', v)}
                                   >
-                                    <SelectTrigger className="h-9">
+                                    <SelectTrigger className="h-8 text-sm">
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -746,11 +762,12 @@ export function PackagePolicyEditModal({
                             </div>
                           );
                         })}
+                        <div ref={newChildBottomRef} />
                       </div>
                     )}
 
                     {existingChildren.length === 0 && newChildren.length === 0 && (
-                      <p className="text-sm text-muted-foreground text-center py-2">
+                      <p className="text-xs text-muted-foreground text-center py-1">
                         لا يوجد تابعين لهذا العميل. اضغط "إضافة جديد" لإضافة سائق إضافي.
                       </p>
                     )}
@@ -760,18 +777,18 @@ export function PackagePolicyEditModal({
             </ScrollArea>
 
             {/* Total Summary */}
-            <div className="shrink-0 border-t pt-4 mt-2">
-              <div className="flex items-center justify-between bg-muted/50 rounded-lg px-4 py-3">
+            <div className="shrink-0 border-t pt-3 mt-1">
+              <div className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2">
                 <div className="flex items-center gap-2 text-muted-foreground">
-                  <Calculator className="h-5 w-5" />
-                  <span className="font-medium">إجمالي الباقة</span>
+                  <Calculator className="h-4 w-4" />
+                  <span className="font-medium text-sm">إجمالي الباقة</span>
                 </div>
-                <div className="text-2xl font-bold text-primary ltr-nums">
+                <div className="text-xl font-bold text-primary ltr-nums">
                   {formatCurrency(calculateTotal())}
                 </div>
               </div>
             </div>
-          </>
+          </div>
         )}
 
         <DialogFooter className="gap-2 shrink-0 pt-4 border-t">
