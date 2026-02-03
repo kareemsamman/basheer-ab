@@ -468,32 +468,17 @@ export function PolicyWizard({
                         newClient.under24_type === 'client' ||
                         newClient.under24_type === 'additional_driver';
 
-      // For packages: use the first enabled addon's type instead of category
-      // The category slug is THIRD_FULL but for packages we want ELZAMI as main
+      // Temp policy = main policy from Step 3 (not addons)
+      // The category defines what type we're creating
       let policyTypeParentValue = (selectedCategory?.slug || policy.policy_type_parent) as PolicyTypeParent;
       let policyTypeChildValue = (policy.policy_type_child || null) as PolicyTypeChild | null;
       let tempCompanyId = policy.company_id;
-      let tempInsurancePrice = pricing.totalPrice;
       
-      // For packages: prioritize ELZAMI addon's type and company
-      if (packageMode && packageAddons.some(a => a.enabled)) {
-        const elzamiAddon = packageAddons.find(a => a.type === 'elzami' && a.enabled);
-        if (elzamiAddon) {
-          policyTypeParentValue = 'ELZAMI' as PolicyTypeParent;
-          policyTypeChildValue = null;
-          tempCompanyId = elzamiAddon.company_id || policy.company_id;
-          tempInsurancePrice = parseFloat(elzamiAddon.insurance_price) || pricing.totalPrice;
-        } else {
-          // Fallback to third_full addon
-          const thirdAddon = packageAddons.find(a => a.type === 'third_full' && a.enabled);
-          if (thirdAddon) {
-            policyTypeParentValue = 'THIRD_FULL' as PolicyTypeParent;
-            policyTypeChildValue = (thirdAddon.policy_type_child as PolicyTypeChild) || null;
-            tempCompanyId = thirdAddon.company_id || policy.company_id;
-            tempInsurancePrice = parseFloat(thirdAddon.insurance_price) || pricing.totalPrice;
-          }
-        }
-      }
+      // For packages: use basePrice (main policy only), not totalPrice (all addons)
+      // The addons will be created separately in handleSave with their own group_id
+      let tempInsurancePrice = packageMode 
+        ? (pricing.basePrice || parseFloat(policy.insurance_price) || 0)
+        : (pricing.totalPrice || parseFloat(policy.insurance_price) || 0);
       
       const carTypeValue = (selectedCar?.car_type || newCar.car_type || 'car') as CarType;
       const ageBandValue = isUnder24 ? 'UNDER_24' as const : 'UP_24' as const;
