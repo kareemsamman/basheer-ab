@@ -1327,6 +1327,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                     end_date: p.end_date,
                     cancelled: p.cancelled,
                     transferred: p.transferred,
+                    group_id: p.group_id,
                   }))}
                   selectedCarId={policyCarFilter}
                   onSelect={setPolicyCarFilter}

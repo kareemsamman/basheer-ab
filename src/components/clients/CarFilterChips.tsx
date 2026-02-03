@@ -16,6 +16,7 @@ interface PolicyData {
   end_date: string;
   cancelled: boolean | null;
   transferred: boolean | null;
+  group_id: string | null;
 }
 
 interface CarWithPolicyCount extends CarRecord {
@@ -41,6 +42,26 @@ const formatPlateNumber = (num: string) => {
   return num;
 };
 
+// Count cards (packages count as 1, standalone policies count as 1)
+const countCards = (policyList: PolicyData[], activeOnly: boolean, today: Date) => {
+  const filteredPolicies = activeOnly 
+    ? policyList.filter(p => !p.cancelled && !p.transferred && new Date(p.end_date) >= today)
+    : policyList;
+  
+  const groupIds = new Set<string>();
+  let standaloneCount = 0;
+  
+  filteredPolicies.forEach(p => {
+    if (p.group_id) {
+      groupIds.add(p.group_id);
+    } else {
+      standaloneCount++;
+    }
+  });
+  
+  return groupIds.size + standaloneCount;
+};
+
 export function CarFilterChips({ cars, policies, selectedCarId, onSelect }: CarFilterChipsProps) {
   const carsWithPolicyCounts = useMemo((): CarWithPolicyCount[] => {
     const today = new Date();
@@ -48,15 +69,11 @@ export function CarFilterChips({ cars, policies, selectedCarId, onSelect }: CarF
     
     return cars.map(car => {
       const carPolicies = policies.filter(p => p.car?.id === car.id);
-      const activePolicies = carPolicies.filter(p => 
-        !p.cancelled && 
-        !p.transferred && 
-        new Date(p.end_date) >= today
-      );
+      
       return {
         ...car,
-        policyCount: carPolicies.length,
-        activePolicyCount: activePolicies.length,
+        policyCount: countCards(carPolicies, false, today),
+        activePolicyCount: countCards(carPolicies, true, today),
       };
     });
   }, [cars, policies]);
@@ -65,15 +82,9 @@ export function CarFilterChips({ cars, policies, selectedCarId, onSelect }: CarF
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    const active = policies.filter(p => 
-      !p.cancelled && 
-      !p.transferred && 
-      new Date(p.end_date) >= today
-    ).length;
-    
     return {
-      totalPolicies: policies.length,
-      totalActivePolicies: active,
+      totalPolicies: countCards(policies, false, today),
+      totalActivePolicies: countCards(policies, true, today),
     };
   }, [policies]);
 
