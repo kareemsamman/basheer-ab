@@ -7,9 +7,9 @@ import {
   TableRow,
   TableFooter 
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Shield, Car, Truck, FileCheck } from "lucide-react";
+import { Shield, Car, Truck, FileCheck, Pencil } from "lucide-react";
 
 interface PackagePolicy {
   id: string;
@@ -19,6 +19,7 @@ interface PackagePolicy {
   end_date: string;
   insurance_price: number;
   profit: number | null;
+  is_under_24?: boolean | null;
   insurance_companies?: {
     id: string;
     name: string;
@@ -34,11 +35,17 @@ interface PackagePolicy {
     name: string;
     name_ar: string | null;
   } | null;
+  cars?: {
+    car_type: string | null;
+    car_value: number | null;
+    year: number | null;
+  } | null;
 }
 
 interface PackageComponentsTableProps {
   policies: PackagePolicy[];
   isAdmin: boolean;
+  onEditPolicy?: (policy: PackagePolicy) => void;
 }
 
 const policyTypeLabels: Record<string, string> = {
@@ -60,7 +67,7 @@ const policyTypeConfig: Record<string, { icon: React.ElementType; bg: string; te
   ACCIDENT_FEE_EXEMPTION: { icon: FileCheck, bg: "bg-emerald-50", text: "text-emerald-700" },
 };
 
-export function PackageComponentsTable({ policies, isAdmin }: PackageComponentsTableProps) {
+export function PackageComponentsTable({ policies, isAdmin, onEditPolicy }: PackageComponentsTableProps) {
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString("en-GB");
   };
@@ -121,6 +128,7 @@ const getTypeName = (p: PackagePolicy) => {
             <TableHead className="font-bold">الفترة</TableHead>
             <TableHead className="font-bold text-left">السعر</TableHead>
             {isAdmin && <TableHead className="font-bold text-left">الربح</TableHead>}
+            {onEditPolicy && <TableHead className="font-bold w-16">تعديل</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -172,6 +180,18 @@ const getTypeName = (p: PackagePolicy) => {
                     )}
                   </TableCell>
                 )}
+                {onEditPolicy && (
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => onEditPolicy(policy)}
+                    >
+                      <Pencil className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </TableCell>
+                )}
               </TableRow>
             );
           })}
@@ -194,6 +214,7 @@ const getTypeName = (p: PackagePolicy) => {
                 </span>
               </TableCell>
             )}
+            {onEditPolicy && <TableCell />}
           </TableRow>
         </TableFooter>
       </Table>

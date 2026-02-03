@@ -48,6 +48,7 @@ import { PolicyEditDrawer } from "./PolicyEditDrawer";
 import { PolicyPaymentsSection } from "./PolicyPaymentsSection";
 import { PolicyFilesSection } from "./PolicyFilesSection";
 import { PackageComponentsTable } from "./PackageComponentsTable";
+import { PackagePolicyEditModal } from "./PackagePolicyEditModal";
 
 import { CancelPolicyModal } from "./CancelPolicyModal";
 import { TransferPolicyModal } from "./TransferPolicyModal";
@@ -264,6 +265,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
   const [packageTotalPaid, setPackageTotalPaid] = useState<number>(0);
   const [policyChildren, setPolicyChildren] = useState<{ id: string; child: { id: string; full_name: string; id_number: string; relation: string | null; phone: string | null } | null }[]>([]);
   const [packagePayments, setPackagePayments] = useState<Payment[]>([]);
+  const [packageEditPolicy, setPackageEditPolicy] = useState<any>(null);
 
   const handleSendSignatureSms = async () => {
     if (!policy || !policy.clients.phone_number) {
@@ -1183,8 +1185,14 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                             end_date: policy.end_date,
                             insurance_price: policy.insurance_price,
                             profit: policy.profit,
+                            is_under_24: policy.is_under_24,
                             insurance_companies: policy.insurance_companies,
                             road_services: policy.road_services,
+                            cars: policy.cars ? {
+                              car_type: policy.cars.car_type,
+                              car_value: policy.cars.car_value,
+                              year: policy.cars.year,
+                            } : undefined,
                           },
                           ...relatedPolicies.map(rp => ({
                             id: rp.id,
@@ -1194,12 +1202,19 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                             end_date: policy.end_date,
                             insurance_price: rp.insurance_price,
                             profit: rp.profit,
+                            is_under_24: policy.is_under_24,
                             insurance_companies: rp.insurance_companies,
                             road_services: rp.road_services,
                             accident_fee_services: rp.accident_fee_services,
+                            cars: policy.cars ? {
+                              car_type: policy.cars.car_type,
+                              car_value: policy.cars.car_value,
+                              year: policy.cars.year,
+                            } : undefined,
                           }))
                         ]}
                         isAdmin={isAdmin}
+                        onEditPolicy={(p) => setPackageEditPolicy(p)}
                       />
                     )}
 
@@ -1447,6 +1462,12 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
             branchId={policy.branch_id}
             currentCar={policy.cars}
             onTransferred={handleEditComplete}
+          />
+          <PackagePolicyEditModal
+            open={!!packageEditPolicy}
+            onOpenChange={(isOpen) => !isOpen && setPackageEditPolicy(null)}
+            policy={packageEditPolicy}
+            onSaved={handleEditComplete}
           />
         </>
       )}

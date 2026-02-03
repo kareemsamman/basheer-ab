@@ -486,12 +486,12 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
               </div>
             )}
 
-            {/* Under-24 Type Selection */}
+            {/* Under-24 Type Selection - Only 2 options: none or client */}
             <div className="space-y-2 p-3 bg-muted/30 rounded-lg">
               <Label className="text-right block text-sm font-medium">أقل من 24 سنة</Label>
               <RadioGroup
-                value={formData.under24_type}
-                onValueChange={(v: 'none' | 'client' | 'additional_driver') => 
+                value={formData.under24_type === 'additional_driver' ? 'client' : formData.under24_type}
+                onValueChange={(v: 'none' | 'client') => 
                   setFormData(f => ({ ...f, under24_type: v, is_under_24: v !== 'none' }))
                 }
                 className="flex flex-col gap-2"
@@ -502,36 +502,9 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
                 </div>
                 <div className="flex items-center gap-2">
                   <RadioGroupItem value="client" id="under24_client" />
-                  <Label htmlFor="under24_client" className="cursor-pointer text-sm">نعم – العميل نفسه أقل من 24</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="additional_driver" id="under24_driver" />
-                  <Label htmlFor="under24_driver" className="cursor-pointer text-sm">نعم – سائق إضافي (ابن/ابنة) أقل من 24</Label>
+                  <Label htmlFor="under24_client" className="cursor-pointer text-sm">نعم – العميل أقل من 24</Label>
                 </div>
               </RadioGroup>
-
-              {formData.under24_type === 'additional_driver' && (
-                <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t">
-                  <div className="space-y-1">
-                    <Label className="text-right block text-xs">اسم السائق *</Label>
-                    <Input
-                      value={formData.under24_driver_name}
-                      onChange={(e) => setFormData(f => ({ ...f, under24_driver_name: e.target.value }))}
-                      placeholder="الاسم الكامل"
-                      className="h-8 text-right"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-right block text-xs">رقم هوية السائق *</Label>
-                    <Input
-                      value={formData.under24_driver_id}
-                      onChange={(e) => setFormData(f => ({ ...f, under24_driver_id: e.target.value }))}
-                      placeholder="رقم الهوية"
-                      className="h-8 text-left ltr-input"
-                    />
-                  </div>
-                </div>
-              )}
             </div>
 
 
