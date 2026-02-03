@@ -30,7 +30,16 @@ interface CarFilterChipsProps {
   onSelect: (carId: string) => void;
 }
 
-// Removed - no longer using car type labels
+// Format car number with dashes for display (XX-XXX-XX or XXX-XX-XXX format)
+const formatPlateNumber = (num: string) => {
+  const clean = num.replace(/[^0-9]/g, '');
+  if (clean.length === 7) {
+    return `${clean.slice(0, 2)}-${clean.slice(2, 5)}-${clean.slice(5, 7)}`;
+  } else if (clean.length === 8) {
+    return `${clean.slice(0, 3)}-${clean.slice(3, 5)}-${clean.slice(5, 8)}`;
+  }
+  return num;
+};
 
 export function CarFilterChips({ cars, policies, selectedCarId, onSelect }: CarFilterChipsProps) {
   const carsWithPolicyCounts = useMemo((): CarWithPolicyCount[] => {
@@ -72,132 +81,126 @@ export function CarFilterChips({ cars, policies, selectedCarId, onSelect }: CarF
     return null;
   }
 
-  // Format car number with dashes for display (XX-XXX-XX or XXX-XX-XXX format)
-  const formatPlateNumber = (num: string) => {
-    const clean = num.replace(/[^0-9]/g, '');
-    if (clean.length === 7) {
-      return `${clean.slice(0, 2)}-${clean.slice(2, 5)}-${clean.slice(5, 7)}`;
-    } else if (clean.length === 8) {
-      return `${clean.slice(0, 3)}-${clean.slice(3, 5)}-${clean.slice(5, 8)}`;
-    }
-    return num;
-  };
-
   return (
     <div className="w-full overflow-x-auto pb-2" dir="rtl">
-      <div className="flex items-center gap-3 min-w-max">
-        {/* All Cars Card - First in RTL */}
+      <div className="flex items-stretch gap-3 min-w-max">
+        {/* All Cars Card */}
         <button
           onClick={() => onSelect('all')}
           className={cn(
-            "group relative flex items-center gap-3 px-4 py-2.5 rounded-lg border-2 transition-all duration-300",
+            "group relative flex flex-col gap-1.5 p-3 rounded-xl border-2 min-w-[140px]",
+            "bg-card/80 backdrop-blur-sm transition-all duration-200",
+            "hover:shadow-md hover:border-primary/30",
             selectedCarId === 'all'
-              ? "border-primary bg-primary/10 shadow-md"
-              : "border-border/50 bg-card/50 hover:border-primary/40 hover:bg-primary/5"
+              ? "border-primary bg-primary/5 shadow-lg"
+              : "border-border/50"
           )}
         >
-          {selectedCarId === 'all' && (
-            <div className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-primary flex items-center justify-center shadow-lg animate-in zoom-in-50 duration-200">
-              <Check className="h-3 w-3 text-primary-foreground" strokeWidth={3} />
+          {/* Header with icon */}
+          <div className="flex items-center gap-2">
+            <div className={cn(
+              "h-7 w-7 rounded-lg flex items-center justify-center transition-colors",
+              selectedCarId === 'all' 
+                ? "bg-primary text-primary-foreground" 
+                : "bg-muted text-muted-foreground"
+            )}>
+              <Car className="h-4 w-4" />
             </div>
-          )}
-          
-          <div className={cn(
-            "h-9 w-9 rounded-lg flex items-center justify-center transition-all",
-            selectedCarId === 'all' 
-              ? "bg-primary text-primary-foreground" 
-              : "bg-muted text-muted-foreground"
-          )}>
-            <Car className="h-4 w-4" />
-          </div>
-          
-          <div className="flex flex-col items-start">
             <span className={cn(
               "text-sm font-bold",
               selectedCarId === 'all' ? "text-primary" : "text-foreground"
             )}>
               كل السيارات
             </span>
-            <span className="text-xs text-muted-foreground">
-              <span className="text-success font-bold ltr-nums">{totalActivePolicies}</span>
-              <span className="mx-1">سارية من</span>
-              <span className="ltr-nums">{totalPolicies}</span>
-            </span>
+            {selectedCarId === 'all' && (
+              <Check className="h-4 w-4 text-primary mr-auto" />
+            )}
+          </div>
+          
+          {/* Policy count */}
+          <div className="flex items-center gap-3 text-xs mt-1">
+            <div className="flex items-center gap-1">
+              <div className="h-2 w-2 rounded-full bg-success" />
+              <span className="font-medium ltr-nums">{totalActivePolicies}</span>
+              <span className="text-muted-foreground">سارية</span>
+            </div>
+            {totalPolicies > totalActivePolicies && (
+              <div className="flex items-center gap-1 text-muted-foreground">
+                <div className="h-2 w-2 rounded-full bg-muted-foreground/30" />
+                <span className="ltr-nums">{totalPolicies}</span>
+                <span>إجمالي</span>
+              </div>
+            )}
           </div>
         </button>
 
         {/* Divider */}
-        <div className="h-16 w-px bg-gradient-to-b from-transparent via-border to-transparent mx-1" />
+        <div className="h-auto w-px bg-gradient-to-b from-transparent via-border to-transparent mx-1 self-stretch" />
 
-        {/* Car License Plates */}
+        {/* Car Cards */}
         {carsWithPolicyCounts.map((car) => (
           <button
             key={car.id}
             onClick={() => onSelect(car.id)}
-            className="group relative transition-all duration-300"
+            className={cn(
+              "group relative flex flex-col gap-1.5 p-3 rounded-xl border-2 min-w-[150px]",
+              "bg-card/80 backdrop-blur-sm transition-all duration-200",
+              "hover:shadow-md hover:border-primary/30",
+              selectedCarId === car.id
+                ? "border-primary bg-primary/5 shadow-lg"
+                : "border-border/50"
+            )}
           >
-            {/* Policy Count Badges - Top Left */}
-            <div className="absolute -top-2 -left-2 z-20 flex items-center gap-0.5">
-              {/* Active policies (green) */}
-              {car.activePolicyCount > 0 && (
-                <div className="h-5 w-5 rounded-full bg-success text-white text-[10px] font-bold flex items-center justify-center shadow-md border border-background">
-                  <span className="ltr-nums">{car.activePolicyCount}</span>
-                </div>
-              )}
-              {/* Total policies if different (grey, smaller) */}
-              {car.policyCount > car.activePolicyCount && (
-                <div className="h-4 w-4 rounded-full bg-muted text-muted-foreground text-[9px] font-bold flex items-center justify-center shadow border border-background -ml-1">
-                  <span className="ltr-nums">{car.policyCount}</span>
-                </div>
+            {/* Car number */}
+            <div className="flex items-center gap-2">
+              <span 
+                className="text-base font-bold ltr-nums"
+                dir="ltr"
+              >
+                {formatPlateNumber(car.car_number)}
+              </span>
+              {selectedCarId === car.id && (
+                <Check className="h-4 w-4 text-primary mr-auto" />
               )}
             </div>
             
-            {/* Selection Check - Top Right */}
-            {selectedCarId === car.id && (
-              <div className="absolute -top-2 -right-2 z-20 h-5 w-5 rounded-full bg-primary flex items-center justify-center shadow-lg animate-in zoom-in-50 duration-200">
-                <Check className="h-3 w-3 text-primary-foreground" strokeWidth={3} />
-              </div>
-            )}
+            {/* Manufacturer + Year */}
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              {car.manufacturer_name && (
+                <span className="truncate max-w-[100px]">{car.manufacturer_name}</span>
+              )}
+              {car.manufacturer_name && car.year && (
+                <span>•</span>
+              )}
+              {car.year && (
+                <span className="ltr-nums">{car.year}</span>
+              )}
+              {!car.manufacturer_name && !car.year && (
+                <span className="text-muted-foreground/50">—</span>
+              )}
+            </div>
             
-            {/* License Plate Container */}
-            <div className={cn(
-              "relative rounded-lg overflow-hidden transition-all duration-300",
-              selectedCarId === car.id 
-                ? "ring-2 ring-primary ring-offset-1 ring-offset-background shadow-xl shadow-primary/20 scale-105" 
-                : "shadow-md hover:shadow-lg hover:scale-102 ring-1 ring-black/10"
-            )}>
-              {/* Plate Body - Compact height */}
-              <div className="relative flex items-stretch h-[54px]">
-                {/* Yellow Section (Number) - Main part */}
-                <div className="bg-gradient-to-b from-[#FFD700] via-[#F5C400] to-[#E6B800] px-4 flex flex-col items-center justify-center min-w-[130px] border-2 border-black/15 border-l-0 rounded-l-md">
-                  {/* Car Number - Centered */}
-                  <span 
-                    className="text-black text-base font-black tracking-wide whitespace-nowrap"
-                    dir="ltr"
-                    style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}
-                  >
-                    {formatPlateNumber(car.car_number)}
-                  </span>
-                  
-                  {/* Manufacturer + Year - smaller */}
-                  <div className="flex items-center gap-1 text-[9px] text-black/60 font-medium">
-                    {car.manufacturer_name && (
-                      <span className="bg-black/10 px-1.5 py-0.5 rounded truncate max-w-[80px]">
-                        {car.manufacturer_name}
-                      </span>
-                    )}
-                    {car.year && (
-                      <span className="ltr-nums">{car.year}</span>
-                    )}
-                  </div>
+            {/* Policy count */}
+            <div className="flex items-center gap-3 text-xs mt-0.5">
+              {car.activePolicyCount > 0 ? (
+                <div className="flex items-center gap-1">
+                  <div className="h-2 w-2 rounded-full bg-success" />
+                  <span className="font-medium ltr-nums">{car.activePolicyCount}</span>
+                  <span className="text-muted-foreground">سارية</span>
                 </div>
-                
-                {/* Blue Section (IL) - Right side, compact */}
-                <div className="bg-gradient-to-b from-[#0052CC] to-[#003D99] w-7 flex flex-col items-center justify-center gap-0 rounded-r-md border-2 border-black/15 border-r-0">
-                  <span className="text-white text-[8px] leading-none">🇮🇱</span>
-                  <span className="text-white text-[10px] font-bold leading-none">IL</span>
+              ) : (
+                <div className="flex items-center gap-1 text-muted-foreground">
+                  <div className="h-2 w-2 rounded-full bg-muted-foreground/30" />
+                  <span>لا توجد سارية</span>
                 </div>
-              </div>
+              )}
+              {car.policyCount > car.activePolicyCount && (
+                <div className="flex items-center gap-1 text-muted-foreground">
+                  <div className="h-2 w-2 rounded-full bg-muted-foreground/30" />
+                  <span className="ltr-nums">{car.policyCount}</span>
+                  <span>إجمالي</span>
+                </div>
+              )}
             </div>
           </button>
         ))}
