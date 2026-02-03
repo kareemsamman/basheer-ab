@@ -235,90 +235,58 @@ function buildDetailedReportHtml(clients: ClientWithPolicies[], totalPolicies: n
 
   // Calculate totals
   const totalCustomers = clients.length;
-  const notContacted = clients.filter(c => c.policies.some(p => p.renewal_status === 'not_contacted')).length;
-  const smsSent = clients.filter(c => c.policies.some(p => p.renewal_status === 'sms_sent')).length;
-  const called = clients.filter(c => c.policies.some(p => p.renewal_status === 'called')).length;
   const urgentCount = clients.filter(c => c.min_days_remaining <= 7).length;
+  const warningCount = clients.filter(c => c.min_days_remaining > 7 && c.min_days_remaining <= 14).length;
   const totalPrice = clients.reduce((sum, c) => sum + (c.total_price || 0), 0);
 
-  // Build client cards with nested policy tables
-  const clientCards = clients.map((client, clientIndex) => {
+  // Build unified table rows - client header rows + policy rows
+  let policyCounter = 0;
+  const tableRows = clients.map((client, clientIndex) => {
     const isUrgent = client.min_days_remaining <= 7;
     const isWarning = client.min_days_remaining > 7 && client.min_days_remaining <= 14;
-    const urgentClass = isUrgent ? 'urgent' : isWarning ? 'warning' : '';
+    const urgentClass = isUrgent ? 'urgent' : isWarning ? 'warning' : 'normal';
     const daysLabel = client.min_days_remaining === 0 ? 'اليوم!' : 
                       client.min_days_remaining === 1 ? 'غداً!' : 
                       `${client.min_days_remaining} يوم`;
     
-    // Policy rows inside client card
-    const policyRows = client.policies.map((policy, pIdx) => {
+    // Client header row
+    const clientRow = `
+      <tr class="client-row ${urgentClass}">
+        <td class="client-num">${clientIndex + 1}</td>
+        <td colspan="4" class="client-info">
+          <span class="client-name">${client.client_name}</span>
+          ${client.client_phone ? `<span class="client-phone" dir="ltr">${client.client_phone}</span>` : ''}
+          ${client.client_file_number ? `<span class="client-file">#${client.client_file_number}</span>` : ''}
+        </td>
+        <td class="client-days ${urgentClass}">${daysLabel}</td>
+        <td class="client-count">${client.policies.length} وثيقة</td>
+        <td class="client-total">₪${(client.total_price || 0).toLocaleString('en-US')}</td>
+      </tr>`;
+    
+    // Policy rows under this client
+    const policyRows = client.policies.map((policy) => {
+      policyCounter++;
       const policyUrgent = policy.days_remaining <= 7;
       const policyWarning = policy.days_remaining > 7 && policy.days_remaining <= 14;
+      const policyDaysClass = policyUrgent ? 'urgent' : policyWarning ? 'warning' : 'normal';
       const policyDaysLabel = policy.days_remaining === 0 ? 'اليوم!' : 
                               policy.days_remaining === 1 ? 'غداً!' : 
                               `${policy.days_remaining} يوم`;
       
       return `
-        <tr class="policy-row ${pIdx % 2 === 0 ? 'even' : 'odd'}">
-          <td class="car-cell">
-            <span class="car-number">${policy.car_number || '-'}</span>
-          </td>
-          <td class="type-cell">
-            <span class="type-badge">${POLICY_TYPE_LABELS[policy.policy_type_parent] || policy.policy_type_parent}</span>
-          </td>
-          <td class="company-cell">${policy.company_name_ar || '-'}</td>
-          <td class="date-cell">${formatDate(policy.end_date)}</td>
-          <td class="days-cell ${policyUrgent ? 'urgent-days' : policyWarning ? 'warning-days' : 'normal-days'}">
-            <span class="days-badge">${policyDaysLabel}</span>
-          </td>
-          <td class="price-cell">₪${(policy.insurance_price || 0).toLocaleString('en-US')}</td>
+        <tr class="policy-row">
+          <td class="policy-num">${policyCounter}</td>
+          <td class="policy-car"><span class="car-badge" dir="ltr">${policy.car_number || '-'}</span></td>
+          <td class="policy-type"><span class="type-badge">${POLICY_TYPE_LABELS[policy.policy_type_parent] || policy.policy_type_parent}</span></td>
+          <td class="policy-company">${policy.company_name_ar || '-'}</td>
+          <td class="policy-date" dir="ltr">${formatDate(policy.end_date)}</td>
+          <td class="policy-days ${policyDaysClass}"><span class="days-badge">${policyDaysLabel}</span></td>
+          <td></td>
+          <td class="policy-price">₪${(policy.insurance_price || 0).toLocaleString('en-US')}</td>
         </tr>`;
     }).join('');
-
-    return `
-    <div class="client-card ${urgentClass}">
-      <div class="client-header">
-        <div class="client-main">
-          <div class="client-number">${clientIndex + 1}</div>
-          <div class="client-details">
-            <div class="client-name">${client.client_name}</div>
-            <div class="client-meta">
-              ${client.client_file_number ? `<span class="file-badge">#${client.client_file_number}</span>` : ''}
-              ${client.client_phone ? `<span class="phone-badge" dir="ltr">${client.client_phone}</span>` : ''}
-            </div>
-          </div>
-        </div>
-        <div class="client-summary">
-          <div class="summary-item policies">
-            <span class="summary-value">${client.policies.length}</span>
-            <span class="summary-label">وثيقة</span>
-          </div>
-          <div class="summary-item days ${urgentClass}">
-            <span class="summary-value">${daysLabel}</span>
-            <span class="summary-label">أقرب انتهاء</span>
-          </div>
-          <div class="summary-item price">
-            <span class="summary-value">₪${(client.total_price || 0).toLocaleString('en-US')}</span>
-            <span class="summary-label">إجمالي</span>
-          </div>
-        </div>
-      </div>
-      <table class="policies-table">
-        <thead>
-          <tr>
-            <th>رقم السيارة</th>
-            <th>النوع</th>
-            <th>الشركة</th>
-            <th>تاريخ الانتهاء</th>
-            <th>الأيام المتبقية</th>
-            <th>السعر</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${policyRows}
-        </tbody>
-      </table>
-    </div>`;
+    
+    return clientRow + policyRows;
   }).join('');
 
   return `<!DOCTYPE html>
@@ -334,80 +302,44 @@ function buildDetailedReportHtml(clients: ClientWithPolicies[], totalPolicies: n
     
     body {
       font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
-      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #f0fdf4 100%);
+      background: #f8fafc;
       color: #1e293b;
-      line-height: 1.6;
-      padding: 24px;
-      min-height: 100vh;
+      line-height: 1.5;
+      padding: 20px;
     }
     
     .container {
-      max-width: 1100px;
+      max-width: 1200px;
       margin: 0 auto;
     }
     
     /* Header */
     .report-header {
-      background: linear-gradient(135deg, #0f766e 0%, #0d9488 50%, #14b8a6 100%);
+      background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%);
       color: white;
-      padding: 40px 32px;
-      border-radius: 20px;
-      margin-bottom: 24px;
-      box-shadow: 0 10px 40px rgba(15, 118, 110, 0.3);
-      position: relative;
-      overflow: hidden;
-    }
-    .report-header::before {
-      content: '';
-      position: absolute;
-      top: -50%;
-      right: -20%;
-      width: 300px;
-      height: 300px;
-      background: rgba(255,255,255,0.1);
-      border-radius: 50%;
-    }
-    .report-header::after {
-      content: '';
-      position: absolute;
-      bottom: -30%;
-      left: -10%;
-      width: 200px;
-      height: 200px;
-      background: rgba(255,255,255,0.08);
-      border-radius: 50%;
-    }
-    .header-content {
-      position: relative;
-      z-index: 1;
+      padding: 24px 32px;
+      border-radius: 12px 12px 0 0;
       display: flex;
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
-      gap: 20px;
+      gap: 16px;
     }
     .header-title h1 {
-      font-size: 32px;
+      font-size: 24px;
       font-weight: 800;
-      margin-bottom: 4px;
-      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      margin-bottom: 2px;
     }
     .header-title p {
       opacity: 0.9;
-      font-size: 18px;
+      font-size: 14px;
     }
     .header-stats {
       display: flex;
-      gap: 16px;
-      flex-wrap: wrap;
+      gap: 24px;
     }
     .header-stat {
-      background: rgba(255,255,255,0.15);
-      backdrop-filter: blur(10px);
-      padding: 16px 24px;
-      border-radius: 12px;
       text-align: center;
-      border: 1px solid rgba(255,255,255,0.2);
     }
     .header-stat .stat-value {
       font-size: 28px;
@@ -415,337 +347,249 @@ function buildDetailedReportHtml(clients: ClientWithPolicies[], totalPolicies: n
       display: block;
     }
     .header-stat .stat-label {
-      font-size: 12px;
-      opacity: 0.9;
+      font-size: 11px;
+      opacity: 0.85;
     }
     
-    /* Summary Cards Row */
-    .summary-row {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 16px;
-      margin-bottom: 24px;
-    }
-    .summary-card {
+    /* Summary Bar */
+    .summary-bar {
       background: white;
-      padding: 20px 24px;
-      border-radius: 16px;
-      text-align: center;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
-      border: 1px solid #e2e8f0;
-      transition: transform 0.2s, box-shadow 0.2s;
+      padding: 16px 24px;
+      display: flex;
+      gap: 32px;
+      border-bottom: 2px solid #e2e8f0;
+      flex-wrap: wrap;
     }
-    .summary-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 30px rgba(0,0,0,0.1);
-    }
-    .summary-card .card-icon {
-      width: 48px;
-      height: 48px;
-      border-radius: 12px;
-      margin: 0 auto 12px;
+    .summary-item {
       display: flex;
       align-items: center;
-      justify-content: center;
-      font-size: 24px;
+      gap: 8px;
     }
-    .summary-card .card-value {
-      font-size: 28px;
-      font-weight: 800;
-      color: #1e293b;
+    .summary-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
     }
-    .summary-card .card-label {
+    .summary-dot.urgent { background: #dc2626; }
+    .summary-dot.warning { background: #f59e0b; }
+    .summary-dot.normal { background: #10b981; }
+    .summary-item span {
       font-size: 13px;
-      color: #64748b;
-      margin-top: 4px;
+      color: #475569;
     }
-    .summary-card.primary .card-icon { background: #d1fae5; }
-    .summary-card.primary .card-value { color: #0f766e; }
-    .summary-card.urgent .card-icon { background: #fee2e2; }
-    .summary-card.urgent .card-value { color: #dc2626; }
-    .summary-card.warning .card-icon { background: #fef3c7; }
-    .summary-card.warning .card-value { color: #d97706; }
-    .summary-card.info .card-icon { background: #dbeafe; }
-    .summary-card.info .card-value { color: #2563eb; }
-    .summary-card.total .card-icon { background: #f0fdf4; }
-    .summary-card.total .card-value { color: #16a34a; }
-    
-    /* Client Cards */
-    .clients-list {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    
-    .client-card {
-      background: white;
-      border-radius: 16px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
-      overflow: hidden;
-      border: 1px solid #e2e8f0;
-      transition: box-shadow 0.2s;
-    }
-    .client-card:hover {
-      box-shadow: 0 8px 30px rgba(0,0,0,0.1);
-    }
-    .client-card.urgent {
-      border-right: 5px solid #dc2626;
-      background: linear-gradient(to left, #fef2f2 0%, white 100%);
-    }
-    .client-card.warning {
-      border-right: 5px solid #f59e0b;
-      background: linear-gradient(to left, #fffbeb 0%, white 100%);
-    }
-    
-    .client-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 20px 24px;
-      border-bottom: 1px solid #f1f5f9;
-      flex-wrap: wrap;
-      gap: 16px;
-    }
-    
-    .client-main {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-    
-    .client-number {
-      width: 40px;
-      height: 40px;
-      background: linear-gradient(135deg, #0f766e, #14b8a6);
-      color: white;
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 800;
-      font-size: 16px;
-      flex-shrink: 0;
-    }
-    .client-card.urgent .client-number {
-      background: linear-gradient(135deg, #dc2626, #ef4444);
-    }
-    .client-card.warning .client-number {
-      background: linear-gradient(135deg, #d97706, #f59e0b);
-    }
-    
-    .client-details {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    
-    .client-name {
-      font-size: 18px;
-      font-weight: 700;
+    .summary-item strong {
+      font-size: 15px;
       color: #1e293b;
     }
     
-    .client-meta {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
+    /* Main Table */
+    .main-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      font-size: 13px;
     }
     
-    .file-badge {
+    .main-table thead th {
+      background: #f1f5f9;
+      padding: 14px 12px;
+      text-align: right;
+      font-weight: 700;
+      color: #475569;
+      font-size: 12px;
+      border-bottom: 2px solid #e2e8f0;
+      position: sticky;
+      top: 0;
+    }
+    .main-table thead th:first-child { width: 50px; text-align: center; }
+    .main-table thead th:nth-child(2) { width: 120px; }
+    .main-table thead th:nth-child(3) { width: 100px; }
+    .main-table thead th:nth-child(5) { width: 100px; }
+    .main-table thead th:nth-child(6) { width: 90px; }
+    .main-table thead th:nth-child(7) { width: 80px; }
+    .main-table thead th:last-child { width: 90px; text-align: left; }
+    
+    /* Client Row (Header) */
+    .client-row {
+      background: #f8fafc;
+      border-top: 2px solid #e2e8f0;
+    }
+    .client-row.urgent {
+      background: linear-gradient(to left, #fef2f2, #fff5f5);
+      border-right: 4px solid #dc2626;
+    }
+    .client-row.warning {
+      background: linear-gradient(to left, #fffbeb, #fefce8);
+      border-right: 4px solid #f59e0b;
+    }
+    .client-row.normal {
+      background: linear-gradient(to left, #f0fdf4, #f7fee7);
+      border-right: 4px solid #10b981;
+    }
+    .client-row td {
+      padding: 12px;
+      font-weight: 700;
+    }
+    .client-row .client-num {
+      text-align: center;
+      font-size: 14px;
+      color: #64748b;
+    }
+    .client-row .client-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .client-row .client-name {
+      font-size: 15px;
+      color: #1e293b;
+    }
+    .client-row .client-phone {
+      background: #ecfdf5;
+      color: #0f766e;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: 'Consolas', monospace;
+    }
+    .client-row .client-file {
       background: #f1f5f9;
       color: #64748b;
       padding: 2px 8px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
-    }
-    
-    .phone-badge {
-      background: #ecfdf5;
-      color: #0f766e;
-      padding: 2px 10px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      font-family: 'Consolas', 'Monaco', monospace;
-    }
-    
-    .client-summary {
-      display: flex;
-      gap: 24px;
-      flex-wrap: wrap;
-    }
-    
-    .summary-item {
-      text-align: center;
-      min-width: 80px;
-    }
-    .summary-item .summary-value {
-      font-size: 18px;
-      font-weight: 800;
-      display: block;
-      color: #1e293b;
-    }
-    .summary-item .summary-label {
+      border-radius: 4px;
       font-size: 11px;
-      color: #94a3b8;
     }
-    .summary-item.policies .summary-value { color: #2563eb; }
-    .summary-item.days.urgent .summary-value { color: #dc2626; }
-    .summary-item.days.warning .summary-value { color: #d97706; }
-    .summary-item.price .summary-value { color: #0f766e; }
-    
-    /* Policies Table */
-    .policies-table {
-      width: 100%;
-      border-collapse: collapse;
+    .client-row .client-days {
+      text-align: center;
       font-size: 13px;
     }
-    .policies-table th {
-      background: #f8fafc;
-      padding: 12px 16px;
-      text-align: right;
-      font-weight: 600;
-      color: #64748b;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      border-bottom: 1px solid #e2e8f0;
+    .client-row .client-days.urgent { color: #dc2626; }
+    .client-row .client-days.warning { color: #d97706; }
+    .client-row .client-days.normal { color: #059669; }
+    .client-row .client-count {
+      text-align: center;
+      color: #2563eb;
+      font-size: 12px;
     }
-    .policies-table td {
-      padding: 14px 16px;
-      border-bottom: 1px solid #f1f5f9;
+    .client-row .client-total {
+      text-align: left;
+      color: #0f766e;
+      font-size: 14px;
+      font-family: 'Consolas', monospace;
     }
-    .policy-row.even { background: #fafafa; }
-    .policy-row.odd { background: white; }
-    .policy-row:last-child td { border-bottom: none; }
     
-    .car-cell .car-number {
+    /* Policy Row */
+    .policy-row {
+      background: white;
+    }
+    .policy-row:hover {
+      background: #fafafa;
+    }
+    .policy-row td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: middle;
+    }
+    .policy-row .policy-num {
+      text-align: center;
+      color: #94a3b8;
+      font-size: 12px;
+    }
+    .policy-row .car-badge {
       background: linear-gradient(135deg, #0f766e, #14b8a6);
       color: white;
-      padding: 4px 12px;
-      border-radius: 8px;
-      font-family: 'Consolas', 'Monaco', monospace;
+      padding: 3px 10px;
+      border-radius: 6px;
+      font-family: 'Consolas', monospace;
+      font-size: 12px;
       font-weight: 600;
-      font-size: 13px;
       display: inline-block;
-      direction: ltr;
     }
-    
-    .type-badge {
+    .policy-row .type-badge {
       background: #eff6ff;
       color: #2563eb;
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-size: 12px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
       font-weight: 600;
     }
-    
-    .company-cell {
+    .policy-row .policy-company {
       color: #475569;
-      font-size: 13px;
     }
-    
-    .date-cell {
-      font-family: 'Consolas', 'Monaco', monospace;
-      color: #475569;
-      font-size: 13px;
-      direction: ltr;
-      text-align: left;
-    }
-    
-    .days-cell .days-badge {
-      padding: 4px 12px;
-      border-radius: 20px;
-      font-weight: 700;
+    .policy-row .policy-date {
+      font-family: 'Consolas', monospace;
+      color: #64748b;
       font-size: 12px;
-      display: inline-block;
     }
-    .urgent-days .days-badge {
+    .policy-row .policy-days {
+      text-align: center;
+    }
+    .policy-row .days-badge {
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .policy-row .policy-days.urgent .days-badge {
       background: #fee2e2;
       color: #dc2626;
     }
-    .warning-days .days-badge {
+    .policy-row .policy-days.warning .days-badge {
       background: #fef3c7;
       color: #d97706;
     }
-    .normal-days .days-badge {
+    .policy-row .policy-days.normal .days-badge {
       background: #d1fae5;
-      color: #0f766e;
+      color: #059669;
     }
-    
-    .price-cell {
-      font-weight: 700;
-      color: #0f766e;
-      font-family: 'Consolas', 'Monaco', monospace;
-      font-size: 14px;
-      direction: ltr;
+    .policy-row .policy-price {
       text-align: left;
+      font-weight: 600;
+      color: #0f766e;
+      font-family: 'Consolas', monospace;
     }
     
     /* Footer */
     .report-footer {
-      margin-top: 32px;
-      padding: 24px;
-      background: white;
-      border-radius: 16px;
-      text-align: center;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.04);
-      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+      padding: 16px 24px;
+      border-top: 2px solid #e2e8f0;
+      border-radius: 0 0 12px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
     }
     .report-footer p {
       color: #64748b;
-      font-size: 13px;
-      margin: 4px 0;
+      font-size: 12px;
     }
-    .report-footer .generated-at {
-      font-weight: 600;
+    .report-footer strong {
       color: #475569;
     }
     
-    /* Print Styles */
+    /* Print */
     @media print {
-      body {
-        padding: 0;
-        background: white;
-      }
-      .container {
-        max-width: 100%;
-      }
-      .report-header {
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-      }
-      .summary-card {
-        break-inside: avoid;
-      }
-      .client-card {
-        break-inside: avoid;
-        page-break-inside: avoid;
-        box-shadow: none;
-        border: 1px solid #ddd;
-      }
-      .client-card.urgent,
-      .client-card.warning {
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-      }
+      body { padding: 0; background: white; }
+      .report-header { border-radius: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .report-footer { border-radius: 0; }
+      .client-row { page-break-inside: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .policy-row { page-break-inside: avoid; }
+      .main-table thead { display: table-header-group; }
     }
     
-    /* Responsive */
     @media (max-width: 768px) {
-      body { padding: 12px; }
-      .report-header { padding: 24px 20px; }
-      .header-title h1 { font-size: 24px; }
-      .header-stats { gap: 10px; }
-      .header-stat { padding: 12px 16px; }
-      .header-stat .stat-value { font-size: 22px; }
-      .summary-row { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-      .summary-card { padding: 16px; }
-      .summary-card .card-value { font-size: 22px; }
-      .client-header { padding: 16px; }
-      .client-name { font-size: 16px; }
-      .policies-table th, .policies-table td { padding: 10px 8px; font-size: 11px; }
+      body { padding: 8px; }
+      .report-header { padding: 16px; flex-direction: column; text-align: center; }
+      .header-title h1 { font-size: 20px; }
+      .header-stats { gap: 16px; }
+      .summary-bar { padding: 12px; gap: 16px; }
+      .main-table { font-size: 11px; }
+      .main-table thead th, .main-table td { padding: 8px 6px; }
+      .client-row .client-info { gap: 6px; }
+      .client-row .client-name { font-size: 13px; }
     }
   </style>
 </head>
@@ -753,61 +597,68 @@ function buildDetailedReportHtml(clients: ClientWithPolicies[], totalPolicies: n
   <div class="container">
     <!-- Header -->
     <div class="report-header">
-      <div class="header-content">
-        <div class="header-title">
-          <h1>📋 تقرير الوثائق المنتهية</h1>
-          <p>${monthName}</p>
+      <div class="header-title">
+        <h1>📋 تقرير الوثائق المنتهية</h1>
+        <p>${monthName}</p>
+      </div>
+      <div class="header-stats">
+        <div class="header-stat">
+          <span class="stat-value">${totalCustomers}</span>
+          <span class="stat-label">عميل</span>
         </div>
-        <div class="header-stats">
-          <div class="header-stat">
-            <span class="stat-value">${totalCustomers}</span>
-            <span class="stat-label">عميل</span>
-          </div>
-          <div class="header-stat">
-            <span class="stat-value">${totalPolicies}</span>
-            <span class="stat-label">وثيقة</span>
-          </div>
-          <div class="header-stat">
-            <span class="stat-value">₪${totalPrice.toLocaleString('en-US')}</span>
-            <span class="stat-label">إجمالي القيمة</span>
-          </div>
+        <div class="header-stat">
+          <span class="stat-value">${totalPolicies}</span>
+          <span class="stat-label">وثيقة</span>
+        </div>
+        <div class="header-stat">
+          <span class="stat-value">₪${totalPrice.toLocaleString('en-US')}</span>
+          <span class="stat-label">إجمالي</span>
         </div>
       </div>
     </div>
     
-    <!-- Summary Cards -->
-    <div class="summary-row">
-      <div class="summary-card urgent">
-        <div class="card-icon">🔴</div>
-        <div class="card-value">${urgentCount}</div>
-        <div class="card-label">عاجل (7 أيام أو أقل)</div>
+    <!-- Summary Bar -->
+    <div class="summary-bar">
+      <div class="summary-item">
+        <span class="summary-dot urgent"></span>
+        <span>عاجل (≤7 أيام):</span>
+        <strong>${urgentCount}</strong>
       </div>
-      <div class="summary-card warning">
-        <div class="card-icon">🟡</div>
-        <div class="card-value">${clients.filter(c => c.min_days_remaining > 7 && c.min_days_remaining <= 14).length}</div>
-        <div class="card-label">تحذير (8-14 يوم)</div>
+      <div class="summary-item">
+        <span class="summary-dot warning"></span>
+        <span>تحذير (8-14):</span>
+        <strong>${warningCount}</strong>
       </div>
-      <div class="summary-card info">
-        <div class="card-icon">📞</div>
-        <div class="card-value">${notContacted}</div>
-        <div class="card-label">لم يتم التواصل</div>
-      </div>
-      <div class="summary-card primary">
-        <div class="card-icon">📱</div>
-        <div class="card-value">${smsSent}</div>
-        <div class="card-label">تم إرسال SMS</div>
+      <div class="summary-item">
+        <span class="summary-dot normal"></span>
+        <span>عادي (15+):</span>
+        <strong>${totalCustomers - urgentCount - warningCount}</strong>
       </div>
     </div>
     
-    <!-- Clients List -->
-    <div class="clients-list">
-      ${clientCards || '<div style="text-align:center;padding:60px;color:#64748b;background:white;border-radius:16px;">لا يوجد وثائق منتهية في هذه الفترة</div>'}
-    </div>
+    <!-- Unified Table -->
+    <table class="main-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>رقم السيارة</th>
+          <th>النوع</th>
+          <th>الشركة</th>
+          <th>تاريخ الانتهاء</th>
+          <th>المتبقي</th>
+          <th></th>
+          <th>السعر</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${tableRows || '<tr><td colspan="8" style="text-align:center;padding:40px;color:#64748b;">لا يوجد وثائق منتهية في هذه الفترة</td></tr>'}
+      </tbody>
+    </table>
     
     <!-- Footer -->
     <div class="report-footer">
-      <p class="generated-at">تم إنشاء التقرير: ${now}</p>
-      <p>بواسطة: ${generatedBy}</p>
+      <p>تم إنشاء التقرير: <strong>${now}</strong></p>
+      <p>بواسطة: <strong>${generatedBy}</strong></p>
     </div>
   </div>
 </body>
