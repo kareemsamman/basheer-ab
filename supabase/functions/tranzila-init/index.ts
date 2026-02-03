@@ -163,6 +163,7 @@ Deno.serve(async (req) => {
       lang: 'il', // Hebrew language
       tranmode: 'A', // A = standard transaction
       newprocess: '1', // 3DS V2 (can also be enabled in terminal settings)
+      myid: tranzilaIndex, // Our reference for tracking this payment
     }
 
     // Build edge function URLs for success/fail - these are simple HTML pages
