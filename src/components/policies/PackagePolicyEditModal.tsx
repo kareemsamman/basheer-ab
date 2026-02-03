@@ -543,8 +543,8 @@ export function PackagePolicyEditModal({
           </div>
         ) : (
           <>
-            <ScrollArea className="flex-1 -mx-6 px-6">
-              <div className="space-y-4 py-4">
+            <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
+              <div className="space-y-3 py-2">
                 {policies.map((policy) => {
                   const config = policyTypeConfig[policy.policy_type_parent] || policyTypeConfig.ELZAMI;
                   const Icon = config.icon;
@@ -554,7 +554,7 @@ export function PackagePolicyEditModal({
                     <div
                       key={policy.id}
                       className={cn(
-                        "rounded-lg border p-4 space-y-4",
+                        "rounded-lg border p-3 space-y-2",
                         config.border,
                         config.bg
                       )}
@@ -575,7 +575,7 @@ export function PackagePolicyEditModal({
                       </div>
 
                       {/* Editable Fields */}
-                      <div className="grid grid-cols-3 gap-4">
+                      <div className="grid grid-cols-3 gap-3">
                         <div className="space-y-1.5">
                           <Label className="text-xs text-muted-foreground">تاريخ البدء</Label>
                           <ArabicDatePicker
@@ -609,7 +609,7 @@ export function PackagePolicyEditModal({
 
                 {/* Extra Drivers Section */}
                 {clientId && (
-                  <div className="space-y-4 p-4 bg-muted/30 rounded-xl border">
+                  <div className="space-y-3 p-3 bg-muted/30 rounded-lg border">
                     <div className="flex items-center justify-between">
                       <h4 className="font-semibold text-sm flex items-center gap-2">
                         <User className="h-4 w-4" />
@@ -631,12 +631,12 @@ export function PackagePolicyEditModal({
                     {existingChildren.length > 0 && (
                       <div className="space-y-2">
                         <Label className="text-xs text-muted-foreground">اختر من التابعين الموجودين:</Label>
-                        <div className="grid gap-2">
+                        <div className="grid gap-1.5">
                           {existingChildren.map((child) => (
                             <label
                               key={child.id}
                               className={cn(
-                                "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
+                                "flex items-center gap-2 p-2 rounded-md border cursor-pointer transition-colors",
                                 selectedChildIds.includes(child.id)
                                   ? "bg-primary/10 border-primary"
                                   : "bg-background hover:bg-muted/50"
