@@ -75,8 +75,9 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Generate unique index for this transaction
-    const tranzilaIndex = `${policy_id}-${Date.now()}`
+    // Generate unique index for this transaction (max 12 chars for myid field)
+    // Note: We generate this AFTER creating the payment so we can use the payment ID
+    // The actual tranzilaIndex will be set after insert
 
     // First, fetch the policy to get its branch_id (for RLS visibility)
     const { data: policyData, error: policyError } = await supabase
@@ -103,7 +104,7 @@ Deno.serve(async (req) => {
         payment_date,
         notes: notes || null,
         provider: 'tranzila',
-        tranzila_index: tranzilaIndex,
+        tranzila_index: 'pending', // Temporary, will update after getting ID
         created_by_admin_id: user.id,
         refused: null, // null = pending, false = paid, true = refused
         branch_id: policyData?.branch_id || null, // Inherit branch from policy for RLS
@@ -118,6 +119,18 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
+
+    // Generate short unique index using payment ID (max 12 chars for Tranzila myid field)
+    // Format: last 8 chars of UUID (no dashes) + last 4 digits of timestamp
+    const paymentIdShort = payment.id.replace(/-/g, '').slice(-8)
+    const timestampShort = Date.now().toString().slice(-4)
+    const tranzilaIndex = `${paymentIdShort}${timestampShort}`
+
+    // Update payment with actual tranzila_index
+    await supabase
+      .from('policy_payments')
+      .update({ tranzila_index: tranzilaIndex })
+      .eq('id', payment.id)
 
     // If test mode, return simulated success
     if (settings.test_mode) {

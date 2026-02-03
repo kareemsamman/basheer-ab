@@ -284,10 +284,23 @@ Deno.serve(async (req) => {
       <span>אמצעי תשלום: כרטיס אשראי המסתיים ב-${cardLastFour}</span>
     </div>
     ` : ''}
-    <p class="closing">החלון ייסגר אוטומטית...</p>
+    <p class="closing" id="countdown">سيتم الإغلاق خلال 5 ثوان...</p>
   </div>
   
   <script>
+    // Countdown timer
+    var seconds = 5;
+    var countdownEl = document.getElementById('countdown');
+    var countdownInterval = setInterval(function() {
+      seconds--;
+      if (seconds > 0) {
+        countdownEl.textContent = 'سيتم الإغلاق خلال ' + seconds + ' ثوان...';
+      } else {
+        countdownEl.textContent = 'جاري الإغلاق...';
+        clearInterval(countdownInterval);
+      }
+    }, 1000);
+
     // Notify parent window of result
     function sendMessage() {
       try {
@@ -320,7 +333,11 @@ Deno.serve(async (req) => {
     setTimeout(sendMessage, 300);
     setTimeout(sendMessage, 500);
     setTimeout(sendMessage, 1000);
-    setTimeout(sendMessage, 2000);
+    
+    // Send final message and trigger close after 5 seconds
+    setTimeout(function() {
+      sendMessage();
+    }, 5000);
   </script>
 </body>
 </html>`

@@ -103,10 +103,11 @@ export function TranzilaPaymentModal({
             title: "تم الدفع بنجاح",
             description: "تم استلام الدفع بنجاح",
           });
+          // Fast close - user already saw success in iframe with countdown
           setTimeout(() => {
             onSuccess();
             onOpenChange(false);
-          }, 1500);
+          }, 500);
         } else if (paymentStatus === 'failed') {
           setStatus('failed');
           // Use detailed error message from Tranzila if available
