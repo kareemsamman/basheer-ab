@@ -12,13 +12,27 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Save, X, Shield, Car, Truck, FileCheck, Package, Calculator } from "lucide-react";
+import { Loader2, Save, X, Shield, Car, Truck, FileCheck, Package, Calculator, User, Plus, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { calculatePolicyProfit } from "@/lib/pricingCalculator";
 import { formatCurrency } from "@/lib/utils";
+import { digitsOnly, isValidIsraeliId } from "@/lib/validation";
+import { ClientChild, NewChildForm, RELATION_OPTIONS, createEmptyChildForm } from "@/types/clientChildren";
 import type { Enums } from "@/integrations/supabase/types";
+
+// Helper to calculate end date (1 year - 1 day from start)
+const calculateEndDate = (startDate: string): string => {
+  if (!startDate) return "";
+  const start = new Date(startDate);
+  const end = new Date(start);
+  end.setFullYear(end.getFullYear() + 1);
+  end.setDate(end.getDate() - 1);
+  return end.toISOString().split("T")[0];
+};
 
 interface PolicyData {
   id: string;
@@ -110,6 +124,14 @@ export function PackagePolicyEditModal({
   const [editStates, setEditStates] = useState<Record<string, EditState>>({});
   const [clientName, setClientName] = useState<string>("");
   const [carNumber, setCarNumber] = useState<string>("");
+  
+  // Extra drivers state
+  const [clientId, setClientId] = useState<string | null>(null);
+  const [existingChildren, setExistingChildren] = useState<ClientChild[]>([]);
+  const [linkedChildIds, setLinkedChildIds] = useState<string[]>([]);
+  const [selectedChildIds, setSelectedChildIds] = useState<string[]>([]);
+  const [newChildren, setNewChildren] = useState<NewChildForm[]>([]);
+  const [childErrors, setChildErrors] = useState<Record<string, Record<string, string>>>({});
 
   // Fetch all policies in the package
   const fetchPolicies = useCallback(async () => {
@@ -128,6 +150,7 @@ export function PackagePolicyEditModal({
           insurance_price,
           is_under_24,
           group_id,
+          client_id,
           insurance_companies (id, name, name_ar),
           road_services (id, name, name_ar),
           accident_fee_services (id, name, name_ar),
@@ -159,10 +182,34 @@ export function PackagePolicyEditModal({
       });
       setEditStates(states);
 
-      // Get client name and car number from first policy
+      // Get client name, car number, and client_id from first policy
       if (sortedData.length > 0) {
         setClientName(sortedData[0].clients?.full_name || "");
         setCarNumber(sortedData[0].cars?.car_number || "");
+        const cId = (sortedData[0] as any).client_id;
+        setClientId(cId || null);
+        
+        // Fetch existing children for this client
+        if (cId) {
+          const { data: childrenData } = await supabase
+            .from("client_children")
+            .select("*")
+            .eq("client_id", cId)
+            .order("created_at", { ascending: true });
+          setExistingChildren(childrenData || []);
+          
+          // Find the main policy (THIRD_FULL) to get linked children
+          const mainPolicy = sortedData.find(p => p.policy_type_parent === "THIRD_FULL");
+          if (mainPolicy) {
+            const { data: linkedData } = await supabase
+              .from("policy_children")
+              .select("child_id")
+              .eq("policy_id", mainPolicy.id);
+            const ids = (linkedData || []).map(l => l.child_id);
+            setLinkedChildIds(ids);
+            setSelectedChildIds(ids);
+          }
+        }
       }
     } catch (error) {
       console.error("Error fetching package policies:", error);
@@ -187,6 +234,12 @@ export function PackagePolicyEditModal({
       setEditStates({});
       setClientName("");
       setCarNumber("");
+      setClientId(null);
+      setExistingChildren([]);
+      setLinkedChildIds([]);
+      setSelectedChildIds([]);
+      setNewChildren([]);
+      setChildErrors({});
     }
   }, [open]);
 
@@ -211,13 +264,87 @@ export function PackagePolicyEditModal({
   };
 
   const updateEditState = (policyId: string, field: keyof EditState, value: string) => {
-    setEditStates((prev) => ({
-      ...prev,
-      [policyId]: {
-        ...prev[policyId],
-        [field]: value,
-      },
-    }));
+    setEditStates((prev) => {
+      const newState = { ...prev[policyId], [field]: value };
+      
+      // Auto-calculate end date when start date changes
+      if (field === "startDate" && value) {
+        newState.endDate = calculateEndDate(value);
+      }
+      
+      return { ...prev, [policyId]: newState };
+    });
+  };
+
+  // Toggle child selection
+  const toggleChild = (childId: string) => {
+    if (selectedChildIds.includes(childId)) {
+      setSelectedChildIds(selectedChildIds.filter(id => id !== childId));
+    } else {
+      setSelectedChildIds([...selectedChildIds, childId]);
+    }
+  };
+
+  // Validate new child form
+  const validateNewChild = (child: NewChildForm, allNewChildren: NewChildForm[]): Record<string, string> => {
+    const errors: Record<string, string> = {};
+    
+    if (!child.full_name.trim()) {
+      errors.full_name = "الاسم مطلوب";
+    }
+    
+    if (!child.id_number.trim()) {
+      errors.id_number = "رقم الهوية مطلوب";
+    } else if (!isValidIsraeliId(child.id_number)) {
+      errors.id_number = "رقم هوية غير صالح";
+    } else {
+      const normalized = digitsOnly(child.id_number).trim();
+      const duplicateInNew = allNewChildren.some(
+        c => c.id !== child.id && digitsOnly(c.id_number).trim() === normalized
+      );
+      const duplicateInExisting = existingChildren.some(
+        c => digitsOnly(c.id_number).trim() === normalized
+      );
+      
+      if (duplicateInNew) {
+        errors.id_number = "رقم الهوية مكرر في القائمة";
+      } else if (duplicateInExisting) {
+        errors.id_number = "رقم الهوية موجود مسبقاً للعميل";
+      }
+    }
+    
+    return errors;
+  };
+
+  // Add new child form
+  const handleAddNewChild = () => {
+    setNewChildren([...newChildren, createEmptyChildForm()]);
+  };
+
+  // Update new child field
+  const handleUpdateNewChild = (index: number, field: keyof NewChildForm, value: string) => {
+    const updated = [...newChildren];
+    updated[index] = { ...updated[index], [field]: value };
+    setNewChildren(updated);
+
+    // Recompute errors
+    const nextErrors: Record<string, Record<string, string>> = {};
+    for (const c of updated) {
+      nextErrors[c.id] = validateNewChild(c, updated);
+    }
+    setChildErrors(nextErrors);
+  };
+
+  // Remove new child form
+  const handleRemoveNewChild = (index: number) => {
+    const updated = newChildren.filter((_, i) => i !== index);
+    setNewChildren(updated);
+
+    const nextErrors: Record<string, Record<string, string>> = {};
+    for (const c of updated) {
+      nextErrors[c.id] = validateNewChild(c, updated);
+    }
+    setChildErrors(nextErrors);
   };
 
   const calculateTotal = () => {
@@ -229,9 +356,74 @@ export function PackagePolicyEditModal({
   const handleSaveAll = async () => {
     if (policies.length === 0) return;
 
+    // Validate new children before saving
+    const hasErrors = newChildren.some(child => {
+      const errors = validateNewChild(child, newChildren);
+      return Object.keys(errors).length > 0;
+    });
+
+    if (hasErrors) {
+      toast({
+        title: "خطأ في البيانات",
+        description: "يرجى تصحيح أخطاء السائقين الإضافيين",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSaving(true);
     try {
-      // Process each policy
+      // 1. Create new children if any
+      const newChildIds: string[] = [];
+      if (clientId && newChildren.length > 0) {
+        for (const child of newChildren) {
+          const { data: inserted, error: insertError } = await supabase
+            .from("client_children")
+            .insert({
+              client_id: clientId,
+              full_name: child.full_name,
+              id_number: digitsOnly(child.id_number),
+              birth_date: child.birth_date || null,
+              phone: child.phone || null,
+              relation: child.relation || null,
+              notes: child.notes || null,
+            })
+            .select("id")
+            .single();
+          
+          if (insertError) throw insertError;
+          if (inserted) newChildIds.push(inserted.id);
+        }
+      }
+
+      // 2. Update policy_children for main policy (THIRD_FULL)
+      const mainPolicy = policies.find(p => p.policy_type_parent === "THIRD_FULL");
+      if (mainPolicy) {
+        const allSelectedIds = [...selectedChildIds, ...newChildIds];
+        
+        // Remove old links that are no longer selected
+        const toRemove = linkedChildIds.filter(id => !allSelectedIds.includes(id));
+        if (toRemove.length > 0) {
+          await supabase
+            .from("policy_children")
+            .delete()
+            .eq("policy_id", mainPolicy.id)
+            .in("child_id", toRemove);
+        }
+        
+        // Add new links
+        const toAdd = allSelectedIds.filter(id => !linkedChildIds.includes(id));
+        if (toAdd.length > 0) {
+          await supabase
+            .from("policy_children")
+            .insert(toAdd.map(childId => ({
+              policy_id: mainPolicy.id,
+              child_id: childId,
+            })));
+        }
+      }
+
+      // 3. Process each policy
       for (const policy of policies) {
         const state = editStates[policy.id];
         if (!state) continue;
@@ -414,6 +606,156 @@ export function PackagePolicyEditModal({
                     </div>
                   );
                 })}
+
+                {/* Extra Drivers Section */}
+                {clientId && (
+                  <div className="space-y-4 p-4 bg-muted/30 rounded-xl border">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold text-sm flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        السائقين الإضافيين / التابعين
+                      </h4>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleAddNewChild}
+                        className="gap-1"
+                      >
+                        <Plus className="h-4 w-4" />
+                        إضافة جديد
+                      </Button>
+                    </div>
+
+                    {/* Existing Children - Checkboxes */}
+                    {existingChildren.length > 0 && (
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">اختر من التابعين الموجودين:</Label>
+                        <div className="grid gap-2">
+                          {existingChildren.map((child) => (
+                            <label
+                              key={child.id}
+                              className={cn(
+                                "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
+                                selectedChildIds.includes(child.id)
+                                  ? "bg-primary/10 border-primary"
+                                  : "bg-background hover:bg-muted/50"
+                              )}
+                            >
+                              <Checkbox
+                                checked={selectedChildIds.includes(child.id)}
+                                onCheckedChange={() => toggleChild(child.id)}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-sm">{child.full_name}</div>
+                                <div className="text-xs text-muted-foreground flex gap-2">
+                                  <span className="font-mono ltr-nums">{child.id_number}</span>
+                                  {child.relation && <span>• {child.relation}</span>}
+                                </div>
+                              </div>
+                              {selectedChildIds.includes(child.id) && (
+                                <Check className="h-4 w-4 text-primary" />
+                              )}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* New Children Forms */}
+                    {newChildren.length > 0 && (
+                      <div className="space-y-3">
+                        <Label className="text-xs text-muted-foreground">تابعين جدد (سيتم إضافتهم للعميل):</Label>
+                        {newChildren.map((child, index) => {
+                          const errors = childErrors[child.id] || {};
+                          
+                          return (
+                            <div
+                              key={child.id}
+                              className="p-3 rounded-lg border bg-background space-y-3"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-medium text-muted-foreground">
+                                  سائق جديد #{index + 1}
+                                </span>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 text-destructive hover:text-destructive"
+                                  onClick={() => handleRemoveNewChild(index)}
+                                >
+                                  حذف
+                                </Button>
+                              </div>
+                              
+                              <div className="grid gap-3 grid-cols-2 sm:grid-cols-3">
+                                {/* Full Name */}
+                                <div className="space-y-1">
+                                  <Label className="text-xs">
+                                    الاسم <span className="text-destructive">*</span>
+                                  </Label>
+                                  <Input
+                                    value={child.full_name}
+                                    onChange={(e) => handleUpdateNewChild(index, 'full_name', e.target.value)}
+                                    placeholder="الاسم الكامل"
+                                    className={cn("h-9", errors.full_name && "border-destructive")}
+                                  />
+                                  {errors.full_name && (
+                                    <p className="text-xs text-destructive">{errors.full_name}</p>
+                                  )}
+                                </div>
+                                
+                                {/* ID Number */}
+                                <div className="space-y-1">
+                                  <Label className="text-xs">
+                                    رقم الهوية <span className="text-destructive">*</span>
+                                  </Label>
+                                  <Input
+                                    value={child.id_number}
+                                    onChange={(e) => handleUpdateNewChild(index, 'id_number', digitsOnly(e.target.value).slice(0, 9))}
+                                    placeholder="9 أرقام"
+                                    maxLength={9}
+                                    className={cn("h-9 ltr-input", errors.id_number && "border-destructive")}
+                                  />
+                                  {errors.id_number && (
+                                    <p className="text-xs text-destructive">{errors.id_number}</p>
+                                  )}
+                                </div>
+                                
+                                {/* Relation */}
+                                <div className="space-y-1">
+                                  <Label className="text-xs">الصلة</Label>
+                                  <Select
+                                    value={child.relation}
+                                    onValueChange={(v) => handleUpdateNewChild(index, 'relation', v)}
+                                  >
+                                    <SelectTrigger className="h-9">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {RELATION_OPTIONS.map((opt) => (
+                                        <SelectItem key={opt.value} value={opt.value}>
+                                          {opt.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {existingChildren.length === 0 && newChildren.length === 0 && (
+                      <p className="text-sm text-muted-foreground text-center py-2">
+                        لا يوجد تابعين لهذا العميل. اضغط "إضافة جديد" لإضافة سائق إضافي.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </ScrollArea>
 
