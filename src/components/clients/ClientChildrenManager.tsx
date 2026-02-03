@@ -200,6 +200,7 @@ export function ClientChildrenManager({
                 <TableHead className="w-[180px]">الاسم</TableHead>
                 <TableHead className="w-[120px]">رقم الهوية</TableHead>
                 <TableHead className="w-[100px]">الصلة</TableHead>
+                {!compact && <TableHead className="w-[120px]">تاريخ الميلاد</TableHead>}
                 {!compact && <TableHead className="w-[100px]">الهاتف</TableHead>}
                 <TableHead className="w-[80px]"></TableHead>
               </TableRow>
@@ -246,6 +247,16 @@ export function ClientChildrenManager({
                       </TableCell>
                       {!compact && (
                         <TableCell>
+                          <ArabicDatePicker
+                            value={editingData.birth_date}
+                            onChange={(date) => setEditingData({ ...editingData, birth_date: date })}
+                            isBirthDate
+                            compact
+                          />
+                        </TableCell>
+                      )}
+                      {!compact && (
+                        <TableCell>
                           <Input
                             value={editingData.phone}
                             onChange={(e) => setEditingData({ ...editingData, phone: digitsOnly(e.target.value).slice(0, 10) })}
@@ -286,6 +297,11 @@ export function ClientChildrenManager({
                       <TableCell className="font-medium">{child.full_name}</TableCell>
                       <TableCell className="font-mono text-sm">{child.id_number}</TableCell>
                       <TableCell>{child.relation || "-"}</TableCell>
+                      {!compact && (
+                        <TableCell className="font-mono text-sm ltr-nums">
+                          {child.birth_date ? new Date(child.birth_date).toLocaleDateString("en-GB") : "-"}
+                        </TableCell>
+                      )}
                       {!compact && <TableCell>{child.phone || "-"}</TableCell>}
                       <TableCell>
                         <div className="flex items-center gap-1">
