@@ -1,47 +1,65 @@
 
-# خطة: إصلاح خطأ "column prt.status does not exist"
+
+# خطة: إصلاح خطأ نوع البيانات في دالة التقرير
 
 ## المشكلة
 
-خطأ في دالة `report_renewals_service_detailed`:
+خطأ جديد:
 ```
-column prt.status does not exist
+operator does not exist: policy_type_parent = text
 ```
 
 ## السبب
 
-في الـ migration استخدمنا:
+العمود `policy_type_parent` في جدول `policies` هو من نوع `ENUM` (`policy_type_parent` enum) وليس `TEXT`.
+
+في الدالة نحاول مقارنته مع معامل `text`:
 ```sql
-COALESCE(prt.status, 'not_contacted') AS renewal_status
+AND (p_policy_type IS NULL OR p.policy_type_parent = p_policy_type)
 ```
 
-لكن العمود الفعلي في جدول `policy_renewal_tracking` هو `renewal_status` وليس `status`.
+هذا لا يعمل لأن PostgreSQL لا يسمح بمقارنة `enum` مع `text` مباشرة.
 
 ## الحل
 
-تحديث الدالة لاستخدام اسم العمود الصحيح:
+إضافة `CAST` لتحويل النص إلى enum:
 
 ```sql
-CREATE OR REPLACE FUNCTION report_renewals_service_detailed(...)
-AS $$
-BEGIN
-  RETURN QUERY
-  SELECT 
-    ...
-    COALESCE(prt.renewal_status, 'not_contacted') AS renewal_status  -- ✅ تصحيح
-  FROM policies p
-  ...
-END;
-$$;
+AND (p_policy_type IS NULL OR p.policy_type_parent = p_policy_type::policy_type_parent)
 ```
 
 ## التغييرات
 
 | الملف | التغيير |
 |-------|---------|
-| **Database Migration** | إصلاح اسم العمود من `prt.status` إلى `prt.renewal_status` |
+| **Database Migration** | تحديث الدالة لإضافة `::policy_type_parent` cast |
+
+## الكود المصحح
+
+```sql
+CREATE OR REPLACE FUNCTION public.report_renewals_service_detailed(
+  p_end_month date,
+  p_days_remaining integer DEFAULT NULL,
+  p_policy_type text DEFAULT NULL
+)
+...
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    ...
+  FROM policies p
+  ...
+  WHERE 
+    ...
+    AND (p_policy_type IS NULL OR p.policy_type_parent = p_policy_type::policy_type_parent)  -- ✅ إضافة cast
+    ...
+END;
+$$;
+```
 
 ## النتيجة المتوقعة
 
-- زر "تصدير PDF" يعمل بدون خطأ
-- التقرير يُنشأ بنجاح مع تفاصيل الوثائق لكل زبون
+- زر "تصدير PDF" يعمل بنجاح
+- التقرير يُنشأ مع تفاصيل الوثائق
+
