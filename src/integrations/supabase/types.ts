@@ -4798,41 +4798,25 @@ export type Database = {
           renewal_status: string
         }[]
       }
-      report_renewals_summary:
-        | {
-            Args: {
-              p_created_by?: string
-              p_end_month: string
-              p_policy_type?: string
-              p_search?: string
-            }
-            Returns: {
-              normal_count: number
-              total_expiring: number
-              total_price: number
-              urgent_count: number
-              warning_count: number
-            }[]
-          }
-        | {
-            Args: {
-              p_created_by?: string
-              p_end_month?: string
-              p_policy_type?: string
-              p_search?: string
-            }
-            Returns: {
-              called: number
-              not_contacted: number
-              not_interested: number
-              renewed: number
-              sms_sent: number
-              total_expiring: number
-              total_packages: number
-              total_single: number
-              total_value: number
-            }[]
-          }
+      report_renewals_summary: {
+        Args: {
+          p_created_by?: string
+          p_end_month?: string
+          p_policy_type?: string
+          p_search?: string
+        }
+        Returns: {
+          called: number
+          not_contacted: number
+          not_interested: number
+          renewed: number
+          sms_sent: number
+          total_expiring: number
+          total_packages: number
+          total_single: number
+          total_value: number
+        }[]
+      }
       report_renewed_clients: {
         Args: {
           p_created_by?: string
