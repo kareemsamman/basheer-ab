@@ -355,7 +355,24 @@ export default function CorrespondenceLetters() {
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>معاينة الرسالة</DialogTitle>
+            <DialogTitle className="flex items-center justify-between">
+              <span>معاينة الرسالة</span>
+              {selectedLetter && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleGenerateAndPrint(selectedLetter)}
+                  disabled={generatingId === selectedLetter.id}
+                >
+                  {generatingId === selectedLetter.id ? (
+                    <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                  ) : (
+                    <Printer className="h-4 w-4 ml-2" />
+                  )}
+                  طباعة
+                </Button>
+              )}
+            </DialogTitle>
           </DialogHeader>
           {selectedLetter && (
             <LetterPreview

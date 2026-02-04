@@ -218,7 +218,7 @@ Deno.serve(async (req) => {
     // Upload to BunnyCDN
     const bunnyStorageKey = Deno.env.get('BUNNY_API_KEY');
     const bunnyAccountKey = Deno.env.get('BUNNY_ACCOUNT_API_KEY'); // For CDN purge
-    const bunnyStorageZone = Deno.env.get('BUNNY_STORAGE_ZONE') || 'ab-storage';
+    const bunnyStorageZone = Deno.env.get('BUNNY_STORAGE_ZONE') || 'basheer-ab';
     const bunnyCdnUrl = Deno.env.get('BUNNY_CDN_URL') || 'https://cdn.basheer-ab.com';
 
     if (!bunnyStorageKey) {
@@ -232,7 +232,9 @@ Deno.serve(async (req) => {
     // Fixed filename for stable URL
     const storagePath = `correspondence/${letter.id}/letter.html`;
     const uploadUrl = `https://storage.bunnycdn.com/${bunnyStorageZone}/${storagePath}`;
-    const cdnUrl = `${bunnyCdnUrl}/${storagePath}`;
+    // Ensure CDN URL has the https:// prefix
+    const cdnBaseUrl = bunnyCdnUrl.startsWith('http') ? bunnyCdnUrl : `https://${bunnyCdnUrl}`;
+    const cdnUrl = `${cdnBaseUrl}/${storagePath}`;
 
     console.log('Uploading to:', uploadUrl);
 
