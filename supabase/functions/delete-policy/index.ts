@@ -236,7 +236,19 @@ serve(async (req) => {
       console.log('Deleted broker settlement items');
     }
 
-    // 9. Finally, delete the policies themselves
+    // 9. Delete policy_transfers that reference these policies (as either policy_id or new_policy_id)
+    const { error: transfersError } = await supabase
+      .from('policy_transfers')
+      .delete()
+      .or(`policy_id.in.(${allPolicyIds.join(',')}),new_policy_id.in.(${allPolicyIds.join(',')})`);
+    
+    if (transfersError) {
+      console.error('Error deleting policy transfers:', transfersError);
+    } else {
+      console.log('Deleted policy transfers');
+    }
+
+    // 10. Finally, delete the policies themselves
     const { error: policiesError } = await supabase
       .from('policies')
       .delete()
