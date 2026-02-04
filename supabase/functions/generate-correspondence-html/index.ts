@@ -1,5 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+// Version for cache busting - update on each deployment
+const VERSION = 'v2.0.0';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -58,7 +61,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.log('Generating HTML for letter:', letter_id);
+    console.log(`[${VERSION}] Generating HTML for letter:`, letter_id);
 
     // Fetch letter data
     const { data: letter, error: letterError } = await supabase
@@ -358,19 +361,22 @@ Deno.serve(async (req) => {
       console.warn('BUNNY_ACCOUNT_API_KEY not set - cache purge skipped');
     }
 
-    // Update letter with generated URL
+    // Update letter with generated URL (add cache buster)
+    const timestamp = Date.now();
+    const urlWithCacheBuster = `${cdnUrl}?v=${timestamp}`;
+    
     await supabase
       .from('correspondence_letters')
       .update({ 
-        generated_url: cdnUrl,
+        generated_url: urlWithCacheBuster,
         updated_at: new Date().toISOString(),
       })
       .eq('id', letter.id);
 
-    console.log('Letter URL updated:', cdnUrl);
+    console.log(`[${VERSION}] Letter URL updated:`, urlWithCacheBuster);
 
     return new Response(
-      JSON.stringify({ success: true, url: cdnUrl }),
+      JSON.stringify({ success: true, url: urlWithCacheBuster, _version: VERSION }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
