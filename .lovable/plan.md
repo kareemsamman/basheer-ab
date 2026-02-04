@@ -1,185 +1,84 @@
 
-# خطة: تحسين شريط ملخص الدفعات + إصلاح حذف السيارات والعملاء
+# خطة: إصلاح حذف الوثائق المحولة + حذف السيارة 3643670
 
-## المشاكل المحددة
+## المشاكل المكتشفة
 
-### 1. شريط ملخص الدفعات شفاف
-- الشريط العلوي (إجمالي الوثيقة | مجموع الدفعات | المتبقي) يستخدم `bg-muted/30` مما يجعله شفافاً
-- المطلوب: خلفية صلبة غير شفافة لتحسين القراءة
+### 1. السيارة 3643670 - محذوفة ناعماً
+```
+id: bf939a7d-a1d2-4f5f-a5bf-ce30bd39e935
+car_number: 3643670
+deleted_at: 2026-02-04 08:17:14.835+00
+```
+**الحل**: حذف نهائي مباشرة من قاعدة البيانات.
 
-### 2. السيارات لا تُحذف فعلياً من قاعدة البيانات
-- النظام يستخدم **حذف ناعم** (soft delete) عبر `deleted_at`
-- عند محاولة إضافة سيارة برقم موجود (محذوف ناعماً) يظهر خطأ:
-  ```
-  duplicate key value violates unique constraint "cars_car_number_key"
-  ```
-- **السبب**: يوجد قيدان UNIQUE على `car_number`:
-  - `cars_car_number_key` - UNIQUE على `car_number` (بدون شرط)
-  - `cars_car_number_unique` - UNIQUE على `car_number` (بدون شرط)
-  - `idx_cars_car_number_unique` - UNIQUE WHERE deleted_at IS NULL
-  
-**المشكلة**: القيدان الأولان لا يستثنيان السجلات المحذوفة!
+### 2. فشل حذف الوثائق المحولة
+**الخطأ**:
+```
+update or delete on table "policies" violates foreign key constraint 
+"policy_transfers_new_policy_id_fkey" on table "policy_transfers"
+```
 
-### 3. العملاء - نفس المشكلة
-- قيدان UNIQUE على `id_number`:
-  - `clients_id_number_key` - UNIQUE (بدون شرط)
-  - `clients_id_number_unique` - UNIQUE (بدون شرط)
-  - `idx_clients_id_number_unique` - UNIQUE WHERE deleted_at IS NULL
+**السبب**: جدول `policy_transfers` يحتوي على:
+- `policy_id` → الوثيقة الأصلية (CASCADE DELETE)
+- `new_policy_id` → الوثيقة الجديدة (**NO ACTION** - هذه المشكلة!)
+
+عند محاولة حذف وثيقة محولة، يفشل لأن `new_policy_id` يشير إليها.
 
 ---
 
 ## الحل المطلوب
 
-### الجزء 1: تحسين PaymentSummaryBar
+### الخطوة 1: حذف سجل السيارة المحذوفة ناعماً
 
-**الملف**: `src/components/policies/wizard/PaymentSummaryBar.tsx`
-
-تغيير الخلفية من شفافة إلى صلبة:
-
-```tsx
-// قبل
-"bg-muted/30"
-
-// بعد  
-"bg-card"
+```sql
+DELETE FROM public.cars WHERE id = 'bf939a7d-a1d2-4f5f-a5bf-ce30bd39e935';
 ```
 
-### الجزء 2: تغيير حذف السيارة لحذف نهائي
+### الخطوة 2: تحديث Edge Function لحذف سجلات التحويل أولاً
 
-**الملف**: `src/components/clients/ClientDetails.tsx`
+**الملف**: `supabase/functions/delete-policy/index.ts`
 
-تغيير عملية الحذف من soft delete إلى hard delete:
+إضافة خطوة جديدة قبل حذف الوثائق:
 
-```tsx
-// قبل
-const { error } = await supabase
-  .from('cars')
-  .update({ deleted_at: new Date().toISOString() })
-  .eq('id', deleteCarId);
-
-// بعد
-const { error } = await supabase
-  .from('cars')
+```typescript
+// 8.5 Delete policy_transfers that reference these policies (as either policy_id or new_policy_id)
+const { error: transfersError } = await supabase
+  .from('policy_transfers')
   .delete()
-  .eq('id', deleteCarId);
-```
+  .or(`policy_id.in.(${allPolicyIds.join(',')}),new_policy_id.in.(${allPolicyIds.join(',')})`);
 
-**ملاحظة**: الكود الحالي يتحقق من عدم وجود وثائق قبل السماح بالحذف (السطر 642):
-```tsx
-if (carPolicyCounts[deleteCarId] > 0) {
-  toast.error('لا يمكن حذف السيارة لوجود وثائق مرتبطة بها');
-  return;
+if (transfersError) {
+  console.error('Error deleting policy transfers:', transfersError);
+} else {
+  console.log('Deleted policy transfers');
 }
 ```
 
-### الجزء 3: منع حذف العميل إذا لديه وثائق
+---
 
-**الملف**: `src/pages/Clients.tsx`
+## ترتيب الحذف المُحدّث في Edge Function
 
-إضافة تحقق قبل الحذف:
-
-```tsx
-const handleDelete = async () => {
-  if (!deletingClient) return;
-  setDeleteLoading(true);
-  try {
-    // التحقق من وجود وثائق
-    const { count } = await supabase
-      .from('policies')
-      .select('*', { count: 'exact', head: true })
-      .eq('client_id', deletingClient.id)
-      .is('deleted_at', null);
-    
-    if (count && count > 0) {
-      toast({ 
-        title: "لا يمكن الحذف", 
-        description: `العميل لديه ${count} وثيقة مرتبطة`, 
-        variant: "destructive" 
-      });
-      setDeleteLoading(false);
-      setDeleteDialogOpen(false);
-      return;
-    }
-    
-    // إذا لا يوجد وثائق - أرشفة العميل
-    const { error } = await supabase
-      .from('clients')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', deletingClient.id);
-
-    if (error) throw error;
-    toast({ title: "تم الحذف", description: "تم حذف العميل بنجاح" });
-    fetchClients();
-  } catch (error) {
-    toast({ title: "خطأ", description: "فشل في حذف العميل", variant: "destructive" });
-  } finally {
-    setDeleteLoading(false);
-    setDeleteDialogOpen(false);
-    setDeletingClient(null);
-  }
-};
-```
-
-### الجزء 4: إصلاح قيود UNIQUE في قاعدة البيانات
-
-**Migration SQL جديد**:
-
-```sql
--- حذف القيود القديمة التي لا تستثني المحذوفين
-ALTER TABLE public.cars DROP CONSTRAINT IF EXISTS cars_car_number_key;
-ALTER TABLE public.cars DROP CONSTRAINT IF EXISTS cars_car_number_unique;
-
-ALTER TABLE public.clients DROP CONSTRAINT IF EXISTS clients_id_number_key;
-ALTER TABLE public.clients DROP CONSTRAINT IF EXISTS clients_id_number_unique;
-
--- القيود الصحيحة موجودة بالفعل:
--- idx_cars_car_number_unique (WHERE deleted_at IS NULL)
--- idx_clients_id_number_unique (WHERE deleted_at IS NULL)
+```text
+1. Unlock ELZAMI payments (locked=false)
+2. Delete policy_payments
+3. Delete ab_ledger entries
+4. Delete customer_wallet_transactions
+5. Delete customer_signatures
+6. Soft-delete media_files
+7. Delete accident_third_parties → accident_reports
+8. Delete broker_settlement_items
+9. ✨ NEW: Delete policy_transfers ✨  ← إضافة جديدة
+10. Delete policies
 ```
 
 ---
 
 ## الملفات المتأثرة
 
-| الملف | التغيير |
-|-------|---------|
-| `src/components/policies/wizard/PaymentSummaryBar.tsx` | خلفية صلبة بدل شفافة |
-| `src/components/clients/ClientDetails.tsx` | hard delete للسيارات |
-| `src/pages/Clients.tsx` | منع حذف العميل إذا لديه وثائق |
-| Migration SQL | إزالة قيود UNIQUE المتعارضة |
-
----
-
-## ملخص التغييرات
-
-```text
-┌─────────────────────────────────────────────────────────┐
-│ PaymentSummaryBar                                       │
-│ bg-muted/30 → bg-card (صلبة غير شفافة)                  │
-└─────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────┐
-│ حذف السيارة                                             │
-│ ┌───────────────┐   ┌───────────────┐                   │
-│ │ لديها وثائق؟  │→نعم→│ رفض + رسالة  │                   │
-│ └───────────────┘   └───────────────┘                   │
-│        ↓ لا                                             │
-│ ┌───────────────────────────────────┐                   │
-│ │ DELETE FROM cars (حذف نهائي)      │                   │
-│ └───────────────────────────────────┘                   │
-└─────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────┐
-│ حذف العميل                                              │
-│ ┌───────────────┐   ┌───────────────┐                   │
-│ │ لديه وثائق؟   │→نعم→│ رفض + رسالة  │                   │
-│ └───────────────┘   └───────────────┘                   │
-│        ↓ لا                                             │
-│ ┌───────────────────────────────────┐                   │
-│ │ Soft Delete (أرشفة)               │                   │
-│ └───────────────────────────────────┘                   │
-└─────────────────────────────────────────────────────────┘
-```
+| الملف/الإجراء | التغيير |
+|---------------|---------|
+| SQL Migration | حذف سيارة 3643670 نهائياً |
+| `supabase/functions/delete-policy/index.ts` | إضافة حذف `policy_transfers` قبل حذف الوثائق |
 
 ---
 
@@ -187,9 +86,8 @@ ALTER TABLE public.clients DROP CONSTRAINT IF EXISTS clients_id_number_unique;
 
 | السيناريو | قبل | بعد |
 |-----------|-----|-----|
-| شريط الدفعات | شفاف | صلب |
-| حذف سيارة بدون وثائق | soft delete (يبقى الرقم محجوز) | hard delete (الرقم متاح) |
-| حذف سيارة بوثائق | رسالة خطأ ✅ | رسالة خطأ ✅ |
-| حذف عميل بوثائق | يُحذف! ❌ | رفض + رسالة ✅ |
-| حذف عميل بدون وثائق | soft delete | soft delete |
-| إضافة سيارة برقم محذوف | خطأ duplicate key | يعمل ✅ |
+| إضافة سيارة برقم 3643670 | خطأ duplicate | يعمل ✅ |
+| حذف وثيقة عادية (Admin) | يعمل ✅ | يعمل ✅ |
+| حذف وثيقة محولة (Admin) | خطأ FK constraint ❌ | يعمل ✅ |
+| حذف وثيقة ملغاة (Admin) | خطأ FK constraint ❌ | يعمل ✅ |
+| حذف باقة محولة (Admin) | خطأ FK constraint ❌ | يعمل ✅ |
