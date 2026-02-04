@@ -376,8 +376,10 @@ export default function CorrespondenceLetters() {
           </DialogHeader>
           {selectedLetter && (
             <LetterPreview
+              title={selectedLetter.title}
               recipientName={selectedLetter.recipient_name}
               bodyHtml={selectedLetter.body_html || ''}
+              createdAt={selectedLetter.created_at}
             />
           )}
         </DialogContent>

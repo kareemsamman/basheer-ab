@@ -169,6 +169,7 @@ export function LetterDrawer({ open, onOpenChange, letter, onSaved }: LetterDraw
 
             <TabsContent value="preview" className="mt-4">
               <LetterPreview
+                title={title}
                 recipientName={recipientName}
                 bodyHtml={bodyHtml}
               />

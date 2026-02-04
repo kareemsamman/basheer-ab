@@ -75,14 +75,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch company info from sms_settings with invoice_templates join
+    // Fetch company info from sms_settings
     const { data: smsSettings } = await supabase
       .from('sms_settings')
-      .select(`
-        company_phone_links,
-        company_location,
-        invoice_templates:default_signature_template_id (logo_url)
-      `)
+      .select('company_phone_links, company_location')
       .limit(1)
       .single();
 
@@ -98,16 +94,27 @@ Deno.serve(async (req) => {
       }
     }
 
-    const companyName = 'مكتب بشير للتأمين';
-    const logoUrl = (smsSettings?.invoice_templates as any)?.logo_url || '';
+    const companyName = 'AB تأمين';
+    const companyLocation = smsSettings?.company_location || '';
+    const logoUrl = 'https://cdn.basheer-ab.com/assets/ab-insurance-logo.png';
+    
+    // Format date
+    const letterDate = new Date(letter.created_at).toLocaleDateString('en-GB');
 
-    // Build phone links HTML
-    const phonesHtml = phoneLinks.map(p => {
+    // Build phone links for header
+    const phonesHeaderHtml = phoneLinks.map(p => {
       const label = p.label ? `${p.label}: ` : '';
-      return `<span>${label}${p.phone}</span>`;
-    }).join(' | ');
+      return `<div>${label}${p.phone}</div>`;
+    }).join('');
 
-    // Build complete HTML
+    // Build phone links for footer
+    const phonesFooterHtml = phoneLinks.map((p, i) => {
+      const label = p.label ? `${p.label}: ` : '';
+      const separator = i > 0 ? ' | ' : '';
+      return `${separator}${label}${p.phone}`;
+    }).join('');
+
+    // Build complete HTML with professional design
     const html = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
@@ -119,97 +126,256 @@ Deno.serve(async (req) => {
     body {
       font-family: Arial, Tahoma, sans-serif;
       line-height: 1.8;
-      background: #f5f5f5;
+      background: #f1f5f9;
       padding: 20px;
+      min-height: 100vh;
     }
     .container {
       max-width: 800px;
       margin: 0 auto;
       background: white;
-      padding: 40px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      border-radius: 8px;
+      overflow: hidden;
     }
     .header {
-      text-align: center;
-      margin-bottom: 40px;
-      padding-bottom: 20px;
-      border-bottom: 2px solid #e5e7eb;
-    }
-    .header img {
-      max-height: 80px;
-      margin-bottom: 10px;
-    }
-    .logo-placeholder {
-      width: 80px;
-      height: 80px;
-      background: #3b82f6;
-      border-radius: 12px;
-      display: inline-flex;
+      background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
+      padding: 24px 40px;
+      display: flex;
       align-items: center;
-      justify-content: center;
+      justify-content: space-between;
       color: white;
-      font-weight: bold;
-      font-size: 24px;
-      margin-bottom: 10px;
     }
-    .recipient {
-      margin-top: 16px;
-      font-size: 18px;
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .header-logo {
+      height: 70px;
+      width: auto;
+      border-radius: 12px;
+    }
+    .header-brand h1 {
+      font-size: 24px;
+      font-weight: bold;
+      margin: 0;
+    }
+    .header-brand p {
+      font-size: 14px;
+      margin: 4px 0 0;
+      opacity: 0.9;
+    }
+    .header-contact {
+      text-align: left;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .letter-title {
+      text-align: center;
+      padding: 24px 40px 16px;
+      border-bottom: 2px solid #0d9488;
+      margin: 0 40px;
+    }
+    .letter-title h2 {
+      font-size: 22px;
+      font-weight: bold;
+      color: #0d9488;
+      margin: 0;
+    }
+    .letter-meta {
+      padding: 24px 40px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      background: #f8fafc;
+    }
+    .meta-item {
+      display: flex;
+      gap: 8px;
+    }
+    .meta-item.full {
+      grid-column: span 2;
+    }
+    .meta-label {
+      color: #64748b;
       font-weight: 600;
     }
+    .meta-value {
+      color: #1e293b;
+    }
+    .meta-value.bold {
+      font-weight: 600;
+    }
+    .decorative-line {
+      height: 4px;
+      background: linear-gradient(90deg, #0d9488 0%, #14b8a6 50%, #0d9488 100%);
+    }
     .content {
-      min-height: 300px;
-      line-height: 2;
+      padding: 32px 40px;
+      min-height: 250px;
+      font-size: 14px;
+      line-height: 2.2;
+      color: #1e293b;
     }
     .content img {
       max-width: 100%;
       height: auto;
       margin: 10px 0;
     }
-    .footer {
-      margin-top: 40px;
-      padding-top: 20px;
-      border-top: 2px solid #e5e7eb;
-      text-align: center;
-      color: #6b7280;
-      font-size: 14px;
-    }
-    .footer .company-name {
+    .greeting {
+      margin-bottom: 16px;
       font-weight: 600;
-      color: #374151;
-      margin-bottom: 8px;
+    }
+    .closing {
+      margin-top: 32px;
+    }
+    .signature-area {
+      padding: 24px 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+    .signature-line {
+      width: 150px;
+      border-top: 2px solid #cbd5e1;
+      padding-top: 8px;
+      color: #64748b;
+      font-size: 13px;
+      text-align: center;
+    }
+    .signature-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      opacity: 0.7;
+    }
+    .signature-brand img {
+      height: 40px;
+      width: auto;
+      border-radius: 8px;
+    }
+    .signature-brand span {
+      font-size: 14px;
+      color: #64748b;
+      font-weight: 600;
+    }
+    .footer {
+      background: #1e293b;
+      padding: 16px 40px;
+      text-align: center;
+      color: white;
+      font-size: 12px;
+    }
+    .footer-name {
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+    .footer-contact {
+      opacity: 0.7;
     }
     @media print {
-      body { background: white; padding: 0; }
-      .container { box-shadow: none; padding: 20px; }
+      body { 
+        background: white; 
+        padding: 0; 
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      .container { 
+        box-shadow: none; 
+        max-width: 100%;
+      }
+      .header {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      .decorative-line {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      .footer {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
     }
   </style>
   <script>
     if (window.location.search.includes('print=1')) {
-      window.onload = function() { window.print(); };
+      window.onload = function() { setTimeout(function() { window.print(); }, 500); };
     }
   </script>
 </head>
 <body>
   <div class="container">
+    <!-- Professional Header -->
     <div class="header">
-      ${logoUrl 
-        ? `<img src="${logoUrl}" alt="${companyName}" />`
-        : `<div class="logo-placeholder">AB</div>`
-      }
-      ${letter.recipient_name 
-        ? `<div class="recipient">إلى: ${letter.recipient_name}</div>`
-        : ''
-      }
+      <div class="header-left">
+        <img src="${logoUrl}" alt="${companyName}" class="header-logo" onerror="this.style.display='none'" />
+        <div class="header-brand">
+          <h1>${companyName}</h1>
+          <p>وكالة تأمين معتمدة</p>
+        </div>
+      </div>
+      <div class="header-contact">
+        ${phonesHeaderHtml}
+        ${companyLocation ? `<div style="opacity: 0.9">${companyLocation}</div>` : ''}
+      </div>
     </div>
-    
+
+    <!-- Letter Title -->
+    <div class="letter-title">
+      <h2>${letter.title || 'رسالة رسمية'}</h2>
+    </div>
+
+    <!-- Letter Meta Info -->
+    <div class="letter-meta">
+      <div class="meta-item">
+        <span class="meta-label">التاريخ:</span>
+        <span class="meta-value">${letterDate}</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">من:</span>
+        <span class="meta-value">${companyName}</span>
+      </div>
+      <div class="meta-item full">
+        <span class="meta-label">إلى:</span>
+        <span class="meta-value bold">${letter.recipient_name || '---'}</span>
+      </div>
+    </div>
+
+    <!-- Decorative Line -->
+    <div class="decorative-line"></div>
+
+    <!-- Body Content -->
     <div class="content">
+      <p class="greeting">
+        ${letter.recipient_name ? `حضرة السيد/ة ${letter.recipient_name} المحترم/ة،` : 'تحية طيبة وبعد،'}
+      </p>
+      
       ${letter.body_html || ''}
+      
+      <div class="closing">
+        <p>وتفضلوا بقبول فائق الاحترام والتقدير،</p>
+      </div>
     </div>
-    
+
+    <!-- Signature Area -->
+    <div class="signature-area">
+      <div class="signature-line">
+        التوقيع والختم
+      </div>
+      <div class="signature-brand">
+        <img src="${logoUrl}" alt="${companyName}" onerror="this.style.display='none'" />
+        <span>${companyName}</span>
+      </div>
+    </div>
+
+    <!-- Professional Footer -->
     <div class="footer">
-      <p class="company-name">${companyName}</p>
-      ${phonesHtml ? `<p>${phonesHtml}</p>` : ''}
+      <div class="footer-name">${companyName} - وكالة تأمين معتمدة</div>
+      <div class="footer-contact">
+        ${phonesFooterHtml}${companyLocation ? ` | ${companyLocation}` : ''}
+      </div>
     </div>
   </div>
 </body>

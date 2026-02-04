@@ -2,40 +2,38 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { Skeleton } from '@/components/ui/skeleton';
+import { format } from 'date-fns';
+import abLogo from '@/assets/ab-insurance-logo.png';
 
 interface CompanyInfo {
   company_name?: string;
-  company_logo_url?: string;
   company_phone_links?: Array<{ phone: string; label?: string; link_type?: string }>;
+  company_location?: string;
 }
 
 interface LetterPreviewProps {
+  title: string;
   recipientName: string;
   bodyHtml: string;
+  createdAt?: string;
   className?: string;
 }
 
-export function LetterPreview({ recipientName, bodyHtml, className }: LetterPreviewProps) {
+export function LetterPreview({ title, recipientName, bodyHtml, createdAt, className }: LetterPreviewProps) {
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchCompanyInfo() {
       try {
-        // Fetch from sms_settings with join on invoice_templates for logo
         const { data, error } = await supabase
           .from('sms_settings')
-          .select(`
-            company_phone_links,
-            company_location,
-            invoice_templates:default_signature_template_id (logo_url)
-          `)
+          .select('company_phone_links, company_location')
           .limit(1)
           .single();
         
         if (error) throw error;
         
-        // Parse phone_links if it's a string
         let phoneLinks = data?.company_phone_links;
         if (phoneLinks && typeof phoneLinks === 'string') {
           try {
@@ -45,19 +43,15 @@ export function LetterPreview({ recipientName, bodyHtml, className }: LetterPrev
           }
         }
         
-        // Get logo from invoice_templates join
-        const logoUrl = (data?.invoice_templates as any)?.logo_url || undefined;
-        
         setCompanyInfo({
-          company_name: 'مكتب بشير للتأمين',
-          company_logo_url: logoUrl,
+          company_name: 'AB تأمين',
           company_phone_links: phoneLinks as CompanyInfo['company_phone_links'],
+          company_location: data?.company_location || undefined,
         });
       } catch (error) {
         console.error('Error fetching company info:', error);
-        // Set defaults on error
         setCompanyInfo({
-          company_name: 'مكتب بشير للتأمين',
+          company_name: 'AB تأمين',
         });
       } finally {
         setLoading(false);
@@ -69,7 +63,7 @@ export function LetterPreview({ recipientName, bodyHtml, className }: LetterPrev
   if (loading) {
     return (
       <div className={className}>
-        <Skeleton className="h-20 w-full mb-4" />
+        <Skeleton className="h-32 w-full mb-4" />
         <Skeleton className="h-40 w-full mb-4" />
         <Skeleton className="h-16 w-full" />
       </div>
@@ -80,84 +74,188 @@ export function LetterPreview({ recipientName, bodyHtml, className }: LetterPrev
     ? companyInfo.company_phone_links 
     : [];
 
+  const formattedDate = createdAt 
+    ? format(new Date(createdAt), 'dd/MM/yyyy')
+    : format(new Date(), 'dd/MM/yyyy');
+
   return (
     <div 
       className={className}
       style={{ 
         direction: 'rtl',
-        fontFamily: 'Arial, sans-serif',
+        fontFamily: 'Arial, Tahoma, sans-serif',
         maxWidth: '800px',
         margin: '0 auto',
-        padding: '40px',
         backgroundColor: 'white',
         border: '1px solid #e5e7eb',
         borderRadius: '8px',
+        overflow: 'hidden',
       }}
     >
-      {/* Header with Logo */}
-      <div style={{ textAlign: 'center', marginBottom: '40px', paddingBottom: '20px', borderBottom: '2px solid #e5e7eb' }}>
-        {companyInfo?.company_logo_url ? (
+      {/* Professional Header */}
+      <div style={{ 
+        background: 'linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)',
+        padding: '24px 40px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <img 
-            src={companyInfo.company_logo_url} 
-            alt={companyInfo?.company_name || 'Logo'}
-            style={{ maxHeight: '80px', marginBottom: '10px' }}
+            src={abLogo} 
+            alt="AB تأمين"
+            style={{ height: '70px', width: 'auto', borderRadius: '12px' }}
           />
-        ) : (
-          <div style={{ 
-            width: '80px', 
-            height: '80px', 
-            backgroundColor: 'hsl(var(--primary))', 
-            borderRadius: '12px',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'white',
-            fontWeight: 'bold',
-            fontSize: '24px',
-            marginBottom: '10px',
-          }}>
-            AB
+          <div style={{ color: 'white' }}>
+            <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0 }}>AB تأمين</h1>
+            <p style={{ fontSize: '14px', margin: '4px 0 0', opacity: 0.9 }}>وكالة تأمين معتمدة</p>
           </div>
-        )}
-        {recipientName && (
-          <div style={{ marginTop: '16px', fontSize: '18px', fontWeight: '600' }}>
-            إلى: {recipientName}
-          </div>
-        )}
+        </div>
+        <div style={{ 
+          textAlign: 'left', 
+          color: 'white',
+          fontSize: '13px',
+          lineHeight: '1.6',
+        }}>
+          {phoneLinks.map((p, i) => (
+            <div key={i}>
+              {p.label ? `${p.label}: ` : ''}{p.phone}
+            </div>
+          ))}
+          {companyInfo?.company_location && (
+            <div style={{ opacity: 0.9 }}>{companyInfo.company_location}</div>
+          )}
+        </div>
       </div>
 
-      {/* Body Content */}
-      <div 
-        style={{ 
-          lineHeight: '2', 
-          minHeight: '300px',
-          whiteSpace: 'pre-wrap',
-        }}
-        dangerouslySetInnerHTML={{ __html: sanitizeHtml(bodyHtml) }}
-      />
-
-      {/* Footer */}
+      {/* Letter Title */}
       <div style={{ 
-        marginTop: '40px', 
-        paddingTop: '20px', 
-        borderTop: '2px solid #e5e7eb',
-        textAlign: 'center',
-        color: '#6b7280',
-        fontSize: '14px',
+        textAlign: 'center', 
+        padding: '24px 40px 16px',
+        borderBottom: '2px solid #0d9488',
+        margin: '0 40px',
       }}>
-        <p style={{ fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
-          {companyInfo?.company_name || 'مكتب بشير للتأمين'}
-        </p>
-        {phoneLinks.length > 0 && (
-          <p>
-            {phoneLinks.map((p, i) => (
-              <span key={i}>
-                {i > 0 && ' | '}
-                {p.label ? `${p.label}: ` : ''}{p.phone}
-              </span>
-            ))}
+        <h2 style={{ 
+          fontSize: '22px', 
+          fontWeight: 'bold', 
+          color: '#0d9488',
+          margin: 0,
+        }}>
+          {title || 'رسالة رسمية'}
+        </h2>
+      </div>
+
+      {/* Letter Meta Info */}
+      <div style={{ 
+        padding: '24px 40px',
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: '16px',
+        backgroundColor: '#f8fafc',
+        margin: '0',
+      }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <span style={{ color: '#64748b', fontWeight: '600' }}>التاريخ:</span>
+          <span style={{ color: '#1e293b' }}>{formattedDate}</span>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <span style={{ color: '#64748b', fontWeight: '600' }}>من:</span>
+          <span style={{ color: '#1e293b' }}>AB تأمين</span>
+        </div>
+        <div style={{ display: 'flex', gap: '8px', gridColumn: 'span 2' }}>
+          <span style={{ color: '#64748b', fontWeight: '600' }}>إلى:</span>
+          <span style={{ color: '#1e293b', fontWeight: '600' }}>{recipientName || '---'}</span>
+        </div>
+      </div>
+
+      {/* Decorative Line */}
+      <div style={{ 
+        height: '4px', 
+        background: 'linear-gradient(90deg, #0d9488 0%, #14b8a6 50%, #0d9488 100%)',
+      }} />
+
+      {/* Body Content */}
+      <div style={{ padding: '32px 40px', minHeight: '250px' }}>
+        <div style={{ 
+          fontSize: '14px',
+          lineHeight: '2.2',
+          color: '#1e293b',
+        }}>
+          {/* Greeting */}
+          <p style={{ marginBottom: '16px', fontWeight: '600' }}>
+            {recipientName ? `حضرة السيد/ة ${recipientName} المحترم/ة،` : 'تحية طيبة وبعد،'}
           </p>
-        )}
+          
+          {/* Main Content */}
+          <div 
+            style={{ whiteSpace: 'pre-wrap' }}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(bodyHtml) }}
+          />
+          
+          {/* Closing */}
+          <div style={{ marginTop: '32px' }}>
+            <p style={{ marginBottom: '8px' }}>وتفضلوا بقبول فائق الاحترام والتقدير،</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Signature Area */}
+      <div style={{ 
+        padding: '24px 40px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-end',
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ 
+            width: '150px', 
+            borderTop: '2px solid #cbd5e1', 
+            paddingTop: '8px',
+            color: '#64748b',
+            fontSize: '13px',
+          }}>
+            التوقيع والختم
+          </div>
+        </div>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '12px',
+          opacity: 0.7,
+        }}>
+          <img 
+            src={abLogo} 
+            alt="AB تأمين"
+            style={{ height: '40px', width: 'auto', borderRadius: '8px' }}
+          />
+          <span style={{ fontSize: '14px', color: '#64748b', fontWeight: '600' }}>
+            AB تأمين
+          </span>
+        </div>
+      </div>
+
+      {/* Professional Footer */}
+      <div style={{ 
+        background: '#1e293b',
+        padding: '16px 40px',
+        textAlign: 'center',
+        color: 'white',
+        fontSize: '12px',
+      }}>
+        <div style={{ marginBottom: '4px', fontWeight: '600' }}>
+          AB تأمين - وكالة تأمين معتمدة
+        </div>
+        <div style={{ opacity: 0.7 }}>
+          {phoneLinks.map((p, i) => (
+            <span key={i}>
+              {i > 0 && ' | '}
+              {p.label ? `${p.label}: ` : ''}{p.phone}
+            </span>
+          ))}
+          {companyInfo?.company_location && (
+            <span> | {companyInfo.company_location}</span>
+          )}
+        </div>
       </div>
     </div>
   );
