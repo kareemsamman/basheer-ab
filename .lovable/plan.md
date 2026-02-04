@@ -1,133 +1,140 @@
 
+# خطة: تحسين شريط ملخص الدفعات + إصلاح حذف السيارات والعملاء
 
-# خطة: إصلاح ظهور دفعة الإلزامي عند النقر المباشر على الخطوة 4
+## المشاكل المحددة
 
-## المشكلة
+### 1. شريط ملخص الدفعات شفاف
+- الشريط العلوي (إجمالي الوثيقة | مجموع الدفعات | المتبقي) يستخدم `bg-muted/30` مما يجعله شفافاً
+- المطلوب: خلفية صلبة غير شفافة لتحسين القراءة
 
-عند إنشاء وثيقة جديدة مع إلزامي:
-- النقر على زر "التالي" في الخطوة 3 → دفعة الإلزامي تظهر ✅
-- النقر مباشرة على الخطوة 4 في الـ Stepper → دفعة الإلزامي لا تظهر ❌
+### 2. السيارات لا تُحذف فعلياً من قاعدة البيانات
+- النظام يستخدم **حذف ناعم** (soft delete) عبر `deleted_at`
+- عند محاولة إضافة سيارة برقم موجود (محذوف ناعماً) يظهر خطأ:
+  ```
+  duplicate key value violates unique constraint "cars_car_number_key"
+  ```
+- **السبب**: يوجد قيدان UNIQUE على `car_number`:
+  - `cars_car_number_key` - UNIQUE على `car_number` (بدون شرط)
+  - `cars_car_number_unique` - UNIQUE على `car_number` (بدون شرط)
+  - `idx_cars_car_number_unique` - UNIQUE WHERE deleted_at IS NULL
+  
+**المشكلة**: القيدان الأولان لا يستثنيان السجلات المحذوفة!
 
-## السبب
-
-منطق إضافة دفعة الإلزامي المقفلة موجود فقط في دالة `handleNext` (السطور 318-377)، لكن النقر المباشر على الخطوة 4 يستخدم دالة `handleStepClick` التي تستدعي `goToStep` مباشرة دون تنفيذ هذا المنطق.
-
-## الحل
-
-إضافة نفس منطق ELZAMI إلى دالة `handleStepClick` عند الانتقال للخطوة 4.
+### 3. العملاء - نفس المشكلة
+- قيدان UNIQUE على `id_number`:
+  - `clients_id_number_key` - UNIQUE (بدون شرط)
+  - `clients_id_number_unique` - UNIQUE (بدون شرط)
+  - `idx_clients_id_number_unique` - UNIQUE WHERE deleted_at IS NULL
 
 ---
 
-## التغييرات المطلوبة
+## الحل المطلوب
 
-### الملف: `src/components/policies/PolicyWizard.tsx`
+### الجزء 1: تحسين PaymentSummaryBar
 
-### تحديث دالة `handleStepClick` (السطور 257-270):
+**الملف**: `src/components/policies/wizard/PaymentSummaryBar.tsx`
 
-**الكود الحالي:**
-```typescript
-const handleStepClick = (stepId: number) => {
-  if (stepId === currentStep) return;
-  
-  const step = steps.find(s => s.id === stepId);
-  if (!step?.isUnlocked) return;
+تغيير الخلفية من شفافة إلى صلبة:
 
-  if (stepId < currentStep) {
-    goToStep(stepId);
-  } else {
-    if (validateStep(currentStep)) {
-      goToStep(stepId);
-    }
-  }
-};
+```tsx
+// قبل
+"bg-muted/30"
+
+// بعد  
+"bg-card"
 ```
 
-**الكود الجديد:**
-```typescript
-const handleStepClick = (stepId: number) => {
-  if (stepId === currentStep) return;
-  
-  const step = steps.find(s => s.id === stepId);
-  if (!step?.isUnlocked) return;
+### الجزء 2: تغيير حذف السيارة لحذف نهائي
 
-  if (stepId < currentStep) {
-    goToStep(stepId);
-  } else {
-    if (validateStep(currentStep)) {
-      // Apply ELZAMI payment logic when navigating to Step 4
-      if (stepId === 4) {
-        applyElzamiPaymentLogic();
-      }
-      goToStep(stepId);
-    }
-  }
-};
+**الملف**: `src/components/clients/ClientDetails.tsx`
+
+تغيير عملية الحذف من soft delete إلى hard delete:
+
+```tsx
+// قبل
+const { error } = await supabase
+  .from('cars')
+  .update({ deleted_at: new Date().toISOString() })
+  .eq('id', deleteCarId);
+
+// بعد
+const { error } = await supabase
+  .from('cars')
+  .delete()
+  .eq('id', deleteCarId);
 ```
 
-### إضافة دالة مشتركة `applyElzamiPaymentLogic`:
+**ملاحظة**: الكود الحالي يتحقق من عدم وجود وثائق قبل السماح بالحذف (السطر 642):
+```tsx
+if (carPolicyCounts[deleteCarId] > 0) {
+  toast.error('لا يمكن حذف السيارة لوجود وثائق مرتبطة بها');
+  return;
+}
+```
 
-استخراج منطق ELZAMI إلى دالة منفصلة يمكن استدعاؤها من كلا المكانين:
+### الجزء 3: منع حذف العميل إذا لديه وثائق
 
-```typescript
-// Shared function to handle ELZAMI payment logic
-const applyElzamiPaymentLogic = () => {
-  const isMainElzami = policy.policy_type_parent === 'ELZAMI';
-  const elzamiAddon = packageAddons.find(a => a.type === 'elzami' && a.enabled);
-  const isAddonElzami = packageMode && elzamiAddon?.enabled;
-  const hasLockedElzamiPayment = payments.some(p => p.locked && p.source === 'system');
-  
-  if (isMainElzami || isAddonElzami) {
-    const elzamiPrice = isMainElzami 
-      ? parseFloat(policy.insurance_price) || pricing.totalPrice
-      : parseFloat(elzamiAddon?.insurance_price || '0');
+**الملف**: `src/pages/Clients.tsx`
+
+إضافة تحقق قبل الحذف:
+
+```tsx
+const handleDelete = async () => {
+  if (!deletingClient) return;
+  setDeleteLoading(true);
+  try {
+    // التحقق من وجود وثائق
+    const { count } = await supabase
+      .from('policies')
+      .select('*', { count: 'exact', head: true })
+      .eq('client_id', deletingClient.id)
+      .is('deleted_at', null);
     
-    if (elzamiPrice > 0) {
-      const elzamiDate = isAddonElzami && elzamiAddon?.start_date
-        ? elzamiAddon.start_date
-        : policy.start_date || new Date().toISOString().split('T')[0];
-      
-      if (!hasLockedElzamiPayment) {
-        setPayments([{
-          id: crypto.randomUUID(),
-          payment_type: 'cash',
-          amount: elzamiPrice,
-          payment_date: elzamiDate,
-          refused: false,
-          locked: true,
-          source: 'system',
-          locked_label: 'دفعة إلزامي – تلقائية',
-        }]);
-      } else {
-        const lockedPayment = payments.find(p => p.locked && p.source === 'system');
-        if (lockedPayment && lockedPayment.amount !== elzamiPrice) {
-          setPayments(payments.map(p => 
-            p.locked && p.source === 'system' 
-              ? { ...p, amount: elzamiPrice, payment_date: elzamiDate }
-              : p
-          ));
-        }
-      }
+    if (count && count > 0) {
+      toast({ 
+        title: "لا يمكن الحذف", 
+        description: `العميل لديه ${count} وثيقة مرتبطة`, 
+        variant: "destructive" 
+      });
+      setDeleteLoading(false);
+      setDeleteDialogOpen(false);
+      return;
     }
-  } else if (hasLockedElzamiPayment) {
-    setPayments(payments.filter(p => !(p.locked && p.source === 'system')));
+    
+    // إذا لا يوجد وثائق - أرشفة العميل
+    const { error } = await supabase
+      .from('clients')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', deletingClient.id);
+
+    if (error) throw error;
+    toast({ title: "تم الحذف", description: "تم حذف العميل بنجاح" });
+    fetchClients();
+  } catch (error) {
+    toast({ title: "خطأ", description: "فشل في حذف العميل", variant: "destructive" });
+  } finally {
+    setDeleteLoading(false);
+    setDeleteDialogOpen(false);
+    setDeletingClient(null);
   }
 };
 ```
 
-### تحديث `handleNext` لاستخدام الدالة المشتركة:
+### الجزء 4: إصلاح قيود UNIQUE في قاعدة البيانات
 
-```typescript
-const handleNext = () => {
-  if (!validateStep(currentStep)) return;
-  const nextStep = Math.min(currentStep + 1, steps.length);
-  
-  // Apply ELZAMI payment logic when entering Step 4
-  if (nextStep === 4) {
-    applyElzamiPaymentLogic();
-  }
-  
-  goToStep(nextStep);
-};
+**Migration SQL جديد**:
+
+```sql
+-- حذف القيود القديمة التي لا تستثني المحذوفين
+ALTER TABLE public.cars DROP CONSTRAINT IF EXISTS cars_car_number_key;
+ALTER TABLE public.cars DROP CONSTRAINT IF EXISTS cars_car_number_unique;
+
+ALTER TABLE public.clients DROP CONSTRAINT IF EXISTS clients_id_number_key;
+ALTER TABLE public.clients DROP CONSTRAINT IF EXISTS clients_id_number_unique;
+
+-- القيود الصحيحة موجودة بالفعل:
+-- idx_cars_car_number_unique (WHERE deleted_at IS NULL)
+-- idx_clients_id_number_unique (WHERE deleted_at IS NULL)
 ```
 
 ---
@@ -136,7 +143,43 @@ const handleNext = () => {
 
 | الملف | التغيير |
 |-------|---------|
-| `src/components/policies/PolicyWizard.tsx` | استخراج منطق ELZAMI لدالة مشتركة + تحديث `handleStepClick` |
+| `src/components/policies/wizard/PaymentSummaryBar.tsx` | خلفية صلبة بدل شفافة |
+| `src/components/clients/ClientDetails.tsx` | hard delete للسيارات |
+| `src/pages/Clients.tsx` | منع حذف العميل إذا لديه وثائق |
+| Migration SQL | إزالة قيود UNIQUE المتعارضة |
+
+---
+
+## ملخص التغييرات
+
+```text
+┌─────────────────────────────────────────────────────────┐
+│ PaymentSummaryBar                                       │
+│ bg-muted/30 → bg-card (صلبة غير شفافة)                  │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│ حذف السيارة                                             │
+│ ┌───────────────┐   ┌───────────────┐                   │
+│ │ لديها وثائق؟  │→نعم→│ رفض + رسالة  │                   │
+│ └───────────────┘   └───────────────┘                   │
+│        ↓ لا                                             │
+│ ┌───────────────────────────────────┐                   │
+│ │ DELETE FROM cars (حذف نهائي)      │                   │
+│ └───────────────────────────────────┘                   │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│ حذف العميل                                              │
+│ ┌───────────────┐   ┌───────────────┐                   │
+│ │ لديه وثائق؟   │→نعم→│ رفض + رسالة  │                   │
+│ └───────────────┘   └───────────────┘                   │
+│        ↓ لا                                             │
+│ ┌───────────────────────────────────┐                   │
+│ │ Soft Delete (أرشفة)               │                   │
+│ └───────────────────────────────────┘                   │
+└─────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -144,7 +187,9 @@ const handleNext = () => {
 
 | السيناريو | قبل | بعد |
 |-----------|-----|-----|
-| النقر على "التالي" في الخطوة 3 | دفعة الإلزامي تظهر ✅ | دفعة الإلزامي تظهر ✅ |
-| النقر مباشرة على الخطوة 4 | دفعة الإلزامي لا تظهر ❌ | دفعة الإلزامي تظهر ✅ |
-| تغيير سعر الإلزامي والعودة للخطوة 4 | يتم تحديث السعر ✅ | يتم تحديث السعر ✅ |
-
+| شريط الدفعات | شفاف | صلب |
+| حذف سيارة بدون وثائق | soft delete (يبقى الرقم محجوز) | hard delete (الرقم متاح) |
+| حذف سيارة بوثائق | رسالة خطأ ✅ | رسالة خطأ ✅ |
+| حذف عميل بوثائق | يُحذف! ❌ | رفض + رسالة ✅ |
+| حذف عميل بدون وثائق | soft delete | soft delete |
+| إضافة سيارة برقم محذوف | خطأ duplicate key | يعمل ✅ |
