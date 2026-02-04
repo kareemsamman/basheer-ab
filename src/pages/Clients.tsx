@@ -164,6 +164,26 @@ export default function Clients() {
     if (!deletingClient) return;
     setDeleteLoading(true);
     try {
+      // Check if client has active policies
+      const { count } = await supabase
+        .from('policies')
+        .select('*', { count: 'exact', head: true })
+        .eq('client_id', deletingClient.id)
+        .is('deleted_at', null);
+
+      if (count && count > 0) {
+        toast({ 
+          title: "لا يمكن الحذف", 
+          description: `العميل لديه ${count} وثيقة مرتبطة`, 
+          variant: "destructive" 
+        });
+        setDeleteLoading(false);
+        setDeleteDialogOpen(false);
+        setDeletingClient(null);
+        return;
+      }
+
+      // No policies - archive the client
       const { error } = await supabase
         .from('clients')
         .update({ deleted_at: new Date().toISOString() })

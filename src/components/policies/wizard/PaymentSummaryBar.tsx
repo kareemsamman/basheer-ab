@@ -27,7 +27,7 @@ export function PaymentSummaryBar({
         ? "border-destructive bg-destructive/5" 
         : isPaid 
           ? "border-success bg-success/5"
-          : "bg-muted/30"
+          : "bg-card"
     )}>
       <div className="grid grid-cols-3 gap-4 text-center">
         <div>
