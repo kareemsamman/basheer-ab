@@ -147,37 +147,34 @@ Deno.serve(async (req) => {
       overflow: hidden;
     }
     .header {
-      background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
-      padding: 24px 40px;
+      background: linear-gradient(135deg, #0d9488 0%, #14b8a6 50%, #0d9488 100%);
+      padding: 32px 40px;
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: center;
+      gap: 20px;
       color: white;
     }
-    .header-left {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
     .header-logo {
-      height: 70px;
+      height: 80px;
       width: auto;
-      border-radius: 12px;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    }
+    .header-brand {
+      text-align: center;
     }
     .header-brand h1 {
-      font-size: 24px;
+      font-size: 32px;
       font-weight: bold;
       margin: 0;
+      letter-spacing: 1px;
     }
     .header-brand p {
       font-size: 14px;
-      margin: 4px 0 0;
+      margin: 6px 0 0;
       opacity: 0.9;
-    }
-    .header-contact {
-      text-align: left;
-      font-size: 13px;
-      line-height: 1.6;
+      letter-spacing: 0.5px;
     }
     .letter-title {
       text-align: center;
@@ -315,18 +312,12 @@ Deno.serve(async (req) => {
 </head>
 <body>
   <div class="container">
-    <!-- Professional Header -->
+    <!-- Elegant Header -->
     <div class="header">
-      <div class="header-left">
-        <img src="${logoDataUrl}" alt="${companyName}" class="header-logo" />
-        <div class="header-brand">
-          <h1>${companyName}</h1>
-          <p>وكالة تأمين معتمدة</p>
-        </div>
-      </div>
-      <div class="header-contact">
-        ${phonesHeaderHtml}
-        ${companyLocation ? `<div style="opacity: 0.9">${companyLocation}</div>` : ''}
+      <img src="${logoDataUrl}" alt="${companyName}" class="header-logo" />
+      <div class="header-brand">
+        <h1>${companyName}</h1>
+        <p>وكالة تأمين معتمدة</p>
       </div>
     </div>
 

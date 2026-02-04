@@ -95,39 +95,23 @@ export function LetterPreview({ title, recipientName, bodyHtml, createdAt, class
         overflow: 'hidden',
       }}
     >
-      {/* Professional Header */}
+      {/* Elegant Header */}
       <div style={{ 
-        background: 'linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)',
-        padding: '24px 40px',
+        background: 'linear-gradient(135deg, #0d9488 0%, #14b8a6 50%, #0d9488 100%)',
+        padding: '32px 40px',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        justifyContent: 'center',
+        gap: '20px',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <img 
-            src={abLogoLocal} 
-            alt="AB تأمين"
-            style={{ height: '70px', width: 'auto', borderRadius: '12px' }}
-          />
-          <div style={{ color: 'white' }}>
-            <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0 }}>AB تأمين</h1>
-            <p style={{ fontSize: '14px', margin: '4px 0 0', opacity: 0.9 }}>وكالة تأمين معتمدة</p>
-          </div>
-        </div>
-        <div style={{ 
-          textAlign: 'left', 
-          color: 'white',
-          fontSize: '13px',
-          lineHeight: '1.6',
-        }}>
-          {phoneLinks.map((p, i) => (
-            <div key={i}>
-              {p.label ? `${p.label}: ` : ''}{p.phone}
-            </div>
-          ))}
-          {companyInfo?.company_location && (
-            <div style={{ opacity: 0.9 }}>{companyInfo.company_location}</div>
-          )}
+        <img 
+          src={abLogoLocal} 
+          alt="AB تأمين"
+          style={{ height: '80px', width: 'auto', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}
+        />
+        <div style={{ color: 'white', textAlign: 'center' }}>
+          <h1 style={{ fontSize: '32px', fontWeight: 'bold', margin: 0, letterSpacing: '1px' }}>AB تأمين</h1>
+          <p style={{ fontSize: '14px', margin: '6px 0 0', opacity: 0.9, letterSpacing: '0.5px' }}>وكالة تأمين معتمدة</p>
         </div>
       </div>
 
