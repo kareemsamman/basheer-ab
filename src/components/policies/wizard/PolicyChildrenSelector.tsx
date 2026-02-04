@@ -36,6 +36,7 @@ interface PolicyChildrenSelectorProps {
   onSelectedChange: (ids: string[]) => void;
   newChildren: NewChildForm[];
   onNewChildrenChange: (children: NewChildForm[]) => void;
+  showForNewClient?: boolean;
 }
 
 export function PolicyChildrenSelector({
@@ -44,6 +45,7 @@ export function PolicyChildrenSelector({
   onSelectedChange,
   newChildren,
   onNewChildrenChange,
+  showForNewClient = false,
 }: PolicyChildrenSelectorProps) {
   const [existingChildren, setExistingChildren] = useState<ClientChild[]>([]);
   const [loading, setLoading] = useState(false);
@@ -147,7 +149,7 @@ export function PolicyChildrenSelector({
     setErrors(nextErrors);
   };
 
-  if (!clientId) {
+  if (!clientId && !showForNewClient) {
     return null;
   }
 
@@ -157,6 +159,9 @@ export function PolicyChildrenSelector({
         <h4 className="font-semibold text-sm flex items-center gap-2">
           <User className="h-4 w-4" />
           السائقين الإضافيين / التابعين
+          {!clientId && showForNewClient && (
+            <span className="text-xs text-muted-foreground">(للعميل الجديد)</span>
+          )}
         </h4>
         <Button
           type="button"
