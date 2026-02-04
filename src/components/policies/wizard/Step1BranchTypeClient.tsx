@@ -358,6 +358,7 @@ export function Step1BranchTypeClient({
               onSelectedChange={setSelectedChildIds}
               newChildren={newChildren}
               onNewChildrenChange={setNewChildren}
+              showForNewClient={createNewClient}
             />
           )}
         </div>
