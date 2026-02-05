@@ -58,6 +58,8 @@ import {
 import { cn } from "@/lib/utils";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { AccidentThirdPartyForm } from "@/components/accident-reports/AccidentThirdPartyForm";
+ import { AccidentSignatureSection } from "@/components/accident-reports/AccidentSignatureSection";
+ import { InjuredPersonsSection } from "@/components/accident-reports/InjuredPersonsSection";
 
 interface Policy {
   id: string;
@@ -128,6 +130,17 @@ interface AccidentReport {
   passengers_info: string | null;
   responsible_party: string | null;
   additional_details: string | null;
+   // New fields from migration
+   owner_name: string | null;
+   owner_phone: string | null;
+   driver_license_grade: string | null;
+   driver_license_issue_date: string | null;
+   vehicle_chassis_number: string | null;
+   vehicle_speed_at_accident: string | null;
+   employee_notes: string | null;
+   employee_signature_date: string | null;
+   customer_signature_url: string | null;
+   customer_signed_at: string | null;
 }
 
 interface ThirdParty {
@@ -245,6 +258,16 @@ export default function AccidentReportForm() {
   const [passengersInfo, setPassengersInfo] = useState("");
   const [additionalDetails, setAdditionalDetails] = useState("");
 
+   // New fields state
+   const [ownerName, setOwnerName] = useState("");
+   const [ownerPhone, setOwnerPhone] = useState("");
+   const [driverLicenseGrade, setDriverLicenseGrade] = useState("");
+   const [driverLicenseIssueDate, setDriverLicenseIssueDate] = useState("");
+   const [vehicleChassisNumber, setVehicleChassisNumber] = useState("");
+   const [vehicleSpeedAtAccident, setVehicleSpeedAtAccident] = useState("");
+   const [employeeNotes, setEmployeeNotes] = useState("");
+   const [employeeSignatureDate, setEmployeeSignatureDate] = useState("");
+ 
   const [activeTab, setActiveTab] = useState("accident");
 
   const fetchPolicyById = useCallback(async (pid: string) => {
@@ -320,6 +343,15 @@ export default function AccidentReportForm() {
     setWitnessesInfo(data.witnesses_info || "");
     setPassengersInfo(data.passengers_info || "");
     setAdditionalDetails(data.additional_details || "");
+     // New fields
+     setOwnerName(data.owner_name || "");
+     setOwnerPhone(data.owner_phone || "");
+     setDriverLicenseGrade(data.driver_license_grade || "");
+     setDriverLicenseIssueDate(data.driver_license_issue_date || "");
+     setVehicleChassisNumber(data.vehicle_chassis_number || "");
+     setVehicleSpeedAtAccident(data.vehicle_speed_at_accident || "");
+     setEmployeeNotes(data.employee_notes || "");
+     setEmployeeSignatureDate(data.employee_signature_date || "");
   };
 
   const fetchThirdParties = async (rid: string) => {
@@ -567,6 +599,15 @@ export default function AccidentReportForm() {
         witnesses_info: witnessesInfo || null,
         passengers_info: passengersInfo || null,
         additional_details: additionalDetails || null,
+         // New fields
+         owner_name: ownerName || null,
+         owner_phone: ownerPhone || null,
+         driver_license_grade: driverLicenseGrade || null,
+         driver_license_issue_date: driverLicenseIssueDate || null,
+         vehicle_chassis_number: vehicleChassisNumber || null,
+         vehicle_speed_at_accident: vehicleSpeedAtAccident || null,
+         employee_notes: employeeNotes || null,
+         employee_signature_date: employeeSignatureDate || null,
       };
 
       let savedReportId = report?.id;
@@ -940,6 +981,17 @@ export default function AccidentReportForm() {
               <FileText className="h-4 w-4" />
               المرفقات
             </TabsTrigger>
+             <TabsTrigger value="injured" className="gap-2">
+               <Users className="h-4 w-4" />
+               المصابين
+             </TabsTrigger>
+             <TabsTrigger value="signature" className="gap-2">
+               ✍️
+               توقيع العميل
+               {report?.customer_signature_url && (
+                 <Badge variant="default" className="mr-1 bg-green-600 text-xs px-1">✓</Badge>
+               )}
+             </TabsTrigger>
           </TabsList>
 
           <ScrollArea className="h-[calc(100vh-400px)] mt-4">
@@ -1081,6 +1133,27 @@ export default function AccidentReportForm() {
                         placeholder="العنوان بالتفصيل"
                       />
                     </div>
+                     <div className="space-y-2">
+                       <Label>اسم صاحب السيارة (إذا مختلف عن العميل)</Label>
+                       <Input
+                         value={ownerName}
+                         onChange={(e) => setOwnerName(e.target.value)}
+                         placeholder="اسم صاحب السيارة"
+                       />
+                     </div>
+                     <div className="space-y-2">
+                       <Label>رقم جوال صاحب السيارة</Label>
+                       <div className="relative">
+                         <Phone className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
+                         <Input
+                           value={ownerPhone}
+                           onChange={(e) => setOwnerPhone(e.target.value)}
+                           className="pr-10"
+                           placeholder="رقم الجوال"
+                           dir="ltr"
+                         />
+                       </div>
+                     </div>
                   </div>
                 </CardContent>
               </Card>
@@ -1160,6 +1233,14 @@ export default function AccidentReportForm() {
                           placeholder="رقم الرخصة"
                         />
                       </div>
+                       <div className="space-y-2">
+                         <Label>درجة رخصة السائق</Label>
+                         <Input
+                           value={driverLicenseGrade}
+                           onChange={(e) => setDriverLicenseGrade(e.target.value)}
+                           placeholder="مثال: B, C"
+                         />
+                       </div>
                       <div className="space-y-2">
                         <Label>مكان الصدور</Label>
                         <Input
@@ -1168,6 +1249,14 @@ export default function AccidentReportForm() {
                           placeholder="مكان إصدار الرخصة"
                         />
                       </div>
+                       <div className="space-y-2">
+                         <Label>تاريخ إصدار الرخصة</Label>
+                         <ArabicDatePicker
+                           value={driverLicenseIssueDate}
+                           onChange={(date) => setDriverLicenseIssueDate(date)}
+                           isBirthDate
+                         />
+                       </div>
                       <div className="space-y-2">
                         <Label>تاريخ الانتهاء</Label>
                         <ArabicDatePicker
@@ -1312,7 +1401,57 @@ export default function AccidentReportForm() {
             <TabsContent value="attachments" className="space-y-4 m-0">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">المرفقات والملفات</CardTitle>
+                   <CardTitle className="text-lg">بيانات السيارة الإضافية</CardTitle>
+                 </CardHeader>
+                 <CardContent className="space-y-4">
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <div className="space-y-2">
+                       <Label>رقم الشاصي</Label>
+                       <Input
+                         value={vehicleChassisNumber}
+                         onChange={(e) => setVehicleChassisNumber(e.target.value)}
+                         placeholder="رقم الشاصي (الهيكل)"
+                       />
+                     </div>
+                     <div className="space-y-2">
+                       <Label>سرعة السيارة وقت الحادث</Label>
+                       <Input
+                         value={vehicleSpeedAtAccident}
+                         onChange={(e) => setVehicleSpeedAtAccident(e.target.value)}
+                         placeholder="مثال: 60 كم/ساعة"
+                       />
+                     </div>
+                   </div>
+                 </CardContent>
+               </Card>
+ 
+               <Card>
+                 <CardHeader>
+                   <CardTitle className="text-lg">ملاحظات الموظف</CardTitle>
+                 </CardHeader>
+                 <CardContent className="space-y-4">
+                   <div className="space-y-2">
+                     <Label>ملاحظات الموظف</Label>
+                     <Textarea
+                       value={employeeNotes}
+                       onChange={(e) => setEmployeeNotes(e.target.value)}
+                       placeholder="ملاحظات الموظف على البلاغ..."
+                       rows={4}
+                     />
+                   </div>
+                   <div className="space-y-2">
+                     <Label>تاريخ توقيع الموظف</Label>
+                     <ArabicDatePicker
+                       value={employeeSignatureDate}
+                       onChange={(date) => setEmployeeSignatureDate(date)}
+                     />
+                   </div>
+                 </CardContent>
+               </Card>
+ 
+               <Card>
+                 <CardHeader>
+                   <CardTitle className="text-lg">ملف PDF</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {report?.generated_pdf_url ? (
@@ -1357,6 +1496,35 @@ export default function AccidentReportForm() {
                 </CardContent>
               </Card>
             </TabsContent>
+ 
+             {/* Injured Persons Tab */}
+             <TabsContent value="injured" className="space-y-4 m-0">
+               <InjuredPersonsSection reportId={report?.id || null} />
+             </TabsContent>
+ 
+             {/* Customer Signature Tab */}
+             <TabsContent value="signature" className="space-y-4 m-0">
+               {report ? (
+                 <AccidentSignatureSection
+                   reportId={report.id}
+                   clientPhone={policy.clients.phone_number}
+                   customerSignatureUrl={report.customer_signature_url || null}
+                   customerSignedAt={report.customer_signed_at || null}
+                   onSignatureUpdate={async () => {
+                     if (report?.id) {
+                       const updated = await fetchReportById(report.id);
+                       if (updated) setReport(updated);
+                     }
+                   }}
+                 />
+               ) : (
+                 <Card>
+                   <CardContent className="p-8 text-center text-muted-foreground">
+                     <p>يجب حفظ البلاغ أولاً لإرسال رابط التوقيع</p>
+                   </CardContent>
+                 </Card>
+               )}
+             </TabsContent>
           </ScrollArea>
         </Tabs>
 

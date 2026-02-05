@@ -136,6 +136,56 @@ export type Database = {
         }
         Relationships: []
       }
+      accident_injured_persons: {
+        Row: {
+          accident_report_id: string
+          created_at: string | null
+          id: string
+          injured_address: string | null
+          injured_age: number | null
+          injured_name: string
+          injured_occupation: string | null
+          injured_salary: string | null
+          injury_type: string | null
+          sort_order: number
+          updated_at: string | null
+        }
+        Insert: {
+          accident_report_id: string
+          created_at?: string | null
+          id?: string
+          injured_address?: string | null
+          injured_age?: number | null
+          injured_name: string
+          injured_occupation?: string | null
+          injured_salary?: string | null
+          injury_type?: string | null
+          sort_order?: number
+          updated_at?: string | null
+        }
+        Update: {
+          accident_report_id?: string
+          created_at?: string | null
+          id?: string
+          injured_address?: string | null
+          injured_age?: number | null
+          injured_name?: string
+          injured_occupation?: string | null
+          injured_salary?: string | null
+          injury_type?: string | null
+          sort_order?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accident_injured_persons_accident_report_id_fkey"
+            columns: ["accident_report_id"]
+            isOneToOne: false
+            referencedRelation: "accident_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       accident_report_files: {
         Row: {
           accident_report_id: string
@@ -270,15 +320,22 @@ export type Database = {
           created_at: string
           created_by_admin_id: string | null
           croquis_url: string | null
+          customer_signature_ip: string | null
+          customer_signature_url: string | null
+          customer_signed_at: string | null
           deductible_amount: number | null
           driver_address: string | null
           driver_age: number | null
           driver_id_number: string | null
+          driver_license_grade: string | null
+          driver_license_issue_date: string | null
           driver_license_number: string | null
           driver_name: string | null
           driver_occupation: string | null
           driver_phone: string | null
           edited_fields_json: Json | null
+          employee_notes: string | null
+          employee_signature_date: string | null
           first_license_date: string | null
           generated_pdf_url: string | null
           id: string
@@ -287,6 +344,8 @@ export type Database = {
           license_issue_place: string | null
           own_car_damages: string | null
           owner_address: string | null
+          owner_name: string | null
+          owner_phone: string | null
           passengers_count: number | null
           passengers_info: string | null
           police_report_number: string | null
@@ -296,9 +355,14 @@ export type Database = {
           report_number: number
           responsible_party: string | null
           selected_policy_group_id: string | null
+          signature_phone_override: string | null
+          signature_token: string | null
+          signature_token_expires_at: string | null
           status: string
           updated_at: string
+          vehicle_chassis_number: string | null
           vehicle_license_expiry: string | null
+          vehicle_speed_at_accident: string | null
           vehicle_usage_purpose: string | null
           was_anyone_injured: boolean | null
           witnesses_info: string | null
@@ -317,15 +381,22 @@ export type Database = {
           created_at?: string
           created_by_admin_id?: string | null
           croquis_url?: string | null
+          customer_signature_ip?: string | null
+          customer_signature_url?: string | null
+          customer_signed_at?: string | null
           deductible_amount?: number | null
           driver_address?: string | null
           driver_age?: number | null
           driver_id_number?: string | null
+          driver_license_grade?: string | null
+          driver_license_issue_date?: string | null
           driver_license_number?: string | null
           driver_name?: string | null
           driver_occupation?: string | null
           driver_phone?: string | null
           edited_fields_json?: Json | null
+          employee_notes?: string | null
+          employee_signature_date?: string | null
           first_license_date?: string | null
           generated_pdf_url?: string | null
           id?: string
@@ -334,6 +405,8 @@ export type Database = {
           license_issue_place?: string | null
           own_car_damages?: string | null
           owner_address?: string | null
+          owner_name?: string | null
+          owner_phone?: string | null
           passengers_count?: number | null
           passengers_info?: string | null
           police_report_number?: string | null
@@ -343,9 +416,14 @@ export type Database = {
           report_number?: number
           responsible_party?: string | null
           selected_policy_group_id?: string | null
+          signature_phone_override?: string | null
+          signature_token?: string | null
+          signature_token_expires_at?: string | null
           status?: string
           updated_at?: string
+          vehicle_chassis_number?: string | null
           vehicle_license_expiry?: string | null
+          vehicle_speed_at_accident?: string | null
           vehicle_usage_purpose?: string | null
           was_anyone_injured?: boolean | null
           witnesses_info?: string | null
@@ -364,15 +442,22 @@ export type Database = {
           created_at?: string
           created_by_admin_id?: string | null
           croquis_url?: string | null
+          customer_signature_ip?: string | null
+          customer_signature_url?: string | null
+          customer_signed_at?: string | null
           deductible_amount?: number | null
           driver_address?: string | null
           driver_age?: number | null
           driver_id_number?: string | null
+          driver_license_grade?: string | null
+          driver_license_issue_date?: string | null
           driver_license_number?: string | null
           driver_name?: string | null
           driver_occupation?: string | null
           driver_phone?: string | null
           edited_fields_json?: Json | null
+          employee_notes?: string | null
+          employee_signature_date?: string | null
           first_license_date?: string | null
           generated_pdf_url?: string | null
           id?: string
@@ -381,6 +466,8 @@ export type Database = {
           license_issue_place?: string | null
           own_car_damages?: string | null
           owner_address?: string | null
+          owner_name?: string | null
+          owner_phone?: string | null
           passengers_count?: number | null
           passengers_info?: string | null
           police_report_number?: string | null
@@ -390,9 +477,14 @@ export type Database = {
           report_number?: number
           responsible_party?: string | null
           selected_policy_group_id?: string | null
+          signature_phone_override?: string | null
+          signature_token?: string | null
+          signature_token_expires_at?: string | null
           status?: string
           updated_at?: string
+          vehicle_chassis_number?: string | null
           vehicle_license_expiry?: string | null
+          vehicle_speed_at_accident?: string | null
           vehicle_usage_purpose?: string | null
           was_anyone_injured?: boolean | null
           witnesses_info?: string | null
