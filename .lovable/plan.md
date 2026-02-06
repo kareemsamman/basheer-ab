@@ -1,226 +1,109 @@
 
-# خطة نظام مسح الشيكات الذكي مع الكشف التلقائي
+# خطة إصلاح زر إرسال SMS الجماعي في صفحة متابعة الديون
 
-## ملخص الفكرة
-إنشاء نظام ذكي يقوم بـ:
-1. **مسح صفحة كاملة** تحتوي على عدة شيكات (مثل PDF المرفق الذي يحتوي 3 شيكات)
-2. **كشف تلقائي** لكل شيك في الصورة باستخدام AI Vision
-3. **استخراج البيانات** من كل شيك (رقم الشيك، التاريخ، المبلغ، البنك)
-4. **قص كل شيك** تلقائياً وحفظه كصورة منفصلة
-5. **إنشاء سطور الدفع** تلقائياً في النظام
+## المشكلة
+زر "إرسال للكل" في صفحة متابعة الديون لا يرسل الرسائل - يعرض "تم إرسال 0 رسالة بنجاح (فشل 1)"
 
----
+## السبب
+من خلال فحص logs الـ Edge Function، وجدت أن:
+- الـ API يُرجع صفحة HTML كاملة بدلاً من استجابة نجاح
+- السبب: استخدام **تنسيق API خاطئ** للـ 019sms
 
-## التقنية المستخدمة
-
-### AI Vision (Google Gemini)
-- الـ Project لديه `LOVABLE_API_KEY` متاح
-- سنستخدم `google/gemini-2.5-flash` للكشف والاستخراج
-- Gemini قادر على:
-  - تحديد مواقع الشيكات في الصورة (bounding boxes)
-  - قراءة النص العبري والعربي والإنجليزي
-  - استخراج البيانات المهيكلة (JSON)
-
-### بيانات الشيك الإسرائيلي
-من الـ PDF المرفق، الشيكات تحتوي على:
-- **رقم الشيك (CHEQUE No.)**: مثل 80001254
-- **تاريخ الاستحقاق (DATE/תאריך)**: مثل 25/10/26
-- **المبلغ (N.I.S.)**: مثل ₪1,800
-- **رقم الحساب (ACCOUNT No.)**: 0000338161
-- **رقم الفرع (BRANCH No.)**: 109-5
-
----
-
-## مكونات النظام
-
-### 1. Edge Function: `process-cheque-scan`
-```text
-المدخلات:
-- صورة أو صور ممسوحة (base64)
-- عدد الشيكات المتوقع (اختياري)
-
-المخرجات:
-- قائمة الشيكات المكتشفة:
-  - رقم الشيك
-  - تاريخ الاستحقاق
-  - المبلغ
-  - صورة الشيك مقصوصة (CDN URL)
-  - إحداثيات القص (x, y, width, height)
-  - مستوى الثقة
+### التنسيق الخاطئ (المستخدم حالياً):
+```javascript
+// GET request مع query parameters - هذا خاطئ!
+const smsUrl = `https://019sms.co.il/api?send=1&user=...&password=...&sender=...&recipient=...&message=...`;
+const response = await fetch(smsUrl);
 ```
 
-### 2. مكون React: `ChequeScannerDialog`
-مبني على `ScannerDialog` الموجود مع إضافات:
-- مسح الصور عبر السكانر (كما هو موجود)
-- إرسال الصور للـ AI للتحليل
-- عرض نتائج الكشف مع إمكانية التعديل
-- تأكيد وإنشاء سطور الدفع تلقائياً
+### التنسيق الصحيح (المستخدم في باقي الـ functions):
+```javascript
+// POST request مع XML body و Bearer token
+const smsXml = `<?xml version="1.0" encoding="UTF-8"?>
+<sms>
+  <user><username>${sms_user}</username></user>
+  <source>${sms_source}</source>
+  <destinations><phone id="${dlr}">${cleanPhone}</phone></destinations>
+  <message>${message}</message>
+</sms>`;
 
-### 3. تحديث Step4Payments
-إضافة زر "مسح شيكات" بجانب "إضافة دفعة"
-
----
-
-## سير العمل (Flow)
-
-```text
-1. المستخدم يضغط "مسح شيكات" في صفحة الدفعات
-   ↓
-2. يفتح ScannerDialog ويمسح صفحة/صفحات
-   ↓
-3. الصور تُرسل لـ Edge Function
-   ↓
-4. AI يحلل الصورة ويكتشف الشيكات
-   ↓
-5. لكل شيك:
-   - يحدد الإحداثيات (bounding box)
-   - يستخرج البيانات (رقم، تاريخ، مبلغ)
-   - يقص الشيك من الصورة
-   - يرفع الصورة المقصوصة لـ CDN
-   ↓
-6. تُعرض النتائج للمستخدم للمراجعة
-   ↓
-7. المستخدم يؤكد أو يعدل البيانات
-   ↓
-8. تُنشأ سطور الدفع تلقائياً مع:
-   - نوع الدفع: شيك
-   - المبلغ: من الشيك
-   - التاريخ: تاريخ الاستحقاق
-   - رقم الشيك: المستخرج
-   - صورة الشيك: الصورة المقصوصة
+fetch('https://019sms.co.il/api', {
+  method: 'POST',
+  headers: {
+    Authorization: `Bearer ${sms_token}`,
+    'Content-Type': 'application/xml; charset=utf-8',
+  },
+  body: smsXml,
+});
 ```
 
 ---
 
-## AI Prompt للكشف عن الشيكات
+## الحل
+تحديث `supabase/functions/send-bulk-debt-sms/index.ts` لاستخدام نفس تنسيق API المستخدم في:
+- `send-sms/index.ts`
+- `send-manual-reminder/index.ts`
 
-```json
-{
-  "task": "Detect and extract Israeli bank cheques from this scanned image",
-  "output_format": {
-    "cheques": [
-      {
-        "cheque_number": "string - CHEQUE No.",
-        "payment_date": "YYYY-MM-DD format",
-        "amount": "number in NIS",
-        "bank_name": "string",
-        "account_number": "string",
-        "branch_number": "string",
-        "bounding_box": {
-          "x": "percentage from left",
-          "y": "percentage from top",
-          "width": "percentage of image width",
-          "height": "percentage of image height"
-        },
-        "confidence": "0-100"
-      }
-    ]
-  }
+---
+
+## التغييرات المطلوبة
+
+### تحديث `send-bulk-debt-sms/index.ts`:
+
+1. **إضافة دالة `escapeXml`** للتعامل مع الأحرف الخاصة في XML
+
+2. **تغيير تنظيف رقم الهاتف** ليطابق باقي الـ functions:
+```javascript
+let cleanPhone = phoneNumber.replace(/[^0-9]/g, "");
+if (cleanPhone.startsWith("972")) {
+  cleanPhone = "0" + cleanPhone.substring(3);
 }
 ```
 
----
+3. **تغيير طريقة إرسال SMS** من GET إلى POST مع XML:
+```javascript
+const dlr = crypto.randomUUID();
+const smsXml =
+  `<?xml version="1.0" encoding="UTF-8"?>` +
+  `<sms>` +
+  `<user><username>${escapeXml(smsUser)}</username></user>` +
+  `<source>${escapeXml(smsSource)}</source>` +
+  `<destinations><phone id="${dlr}">${escapeXml(cleanPhone)}</phone></destinations>` +
+  `<message>${escapeXml(message)}</message>` +
+  `</sms>`;
 
-## واجهة المستخدم
-
-### Dialog نتائج المسح:
-```text
-┌──────────────────────────────────────────────────────────────────────┐
-│ 📷 نتائج مسح الشيكات                                                 │
-├──────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│  ✅ تم اكتشاف 3 شيكات                                               │
-│                                                                      │
-│  ┌────────────────────────────────────────────────────────────────┐ │
-│  │ [صورة شيك 1]  رقم: 80001254  تاريخ: 25/10/26  مبلغ: ₪1,800    │ │
-│  │               بنك: דיסקונט   [✓ موافق] [✏️ تعديل]             │ │
-│  └────────────────────────────────────────────────────────────────┘ │
-│                                                                      │
-│  ┌────────────────────────────────────────────────────────────────┐ │
-│  │ [صورة شيك 2]  رقم: 80001260  تاريخ: 25/09/26  مبلغ: ₪1,800    │ │
-│  │               بنك: דיסקונט   [✓ موافق] [✏️ تعديل]             │ │
-│  └────────────────────────────────────────────────────────────────┘ │
-│                                                                      │
-│  ┌────────────────────────────────────────────────────────────────┐ │
-│  │ [صورة شيك 3]  رقم: 80001259  تاريخ: 25/02/26  مبلغ: ₪1,800    │ │
-│  │               بنك: דיסקונט   [✓ موافق] [✏️ تعديل]             │ │
-│  └────────────────────────────────────────────────────────────────┘ │
-│                                                                      │
-│  المجموع: ₪5,400                                                    │
-│                                                                      │
-│                              [إلغاء] [إضافة كدفعات ✓]               │
-└──────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## الملفات المطلوب إنشاؤها/تعديلها
-
-| الملف | نوع التغيير | الوصف |
-|-------|-------------|-------|
-| `supabase/functions/process-cheque-scan/index.ts` | **جديد** | Edge Function للتحليل بالـ AI |
-| `src/components/payments/ChequeScannerDialog.tsx` | **جديد** | Dialog متخصص لمسح الشيكات |
-| `src/components/policies/wizard/Step4Payments.tsx` | تعديل | إضافة زر "مسح شيكات" |
-| `supabase/config.toml` | تعديل | إضافة الـ function الجديدة |
-
----
-
-## تفاصيل Edge Function
-
-### المعالجة:
-```typescript
-// 1. استلام الصورة base64
-const { image_base64 } = await req.json();
-
-// 2. استدعاء Gemini Vision
-const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+const smsResponse = await fetch("https://019sms.co.il/api", {
   method: "POST",
   headers: {
-    "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-    "Content-Type": "application/json"
+    Authorization: `Bearer ${smsToken}`,
+    "Content-Type": "application/xml; charset=utf-8",
   },
-  body: JSON.stringify({
-    model: "google/gemini-2.5-flash",
-    messages: [{
-      role: "user",
-      content: [
-        { type: "text", text: CHEQUE_DETECTION_PROMPT },
-        { type: "image_url", image_url: { url: `data:image/jpeg;base64,${image_base64}` } }
-      ]
-    }]
-  })
+  body: smsXml,
 });
+```
 
-// 3. استخراج JSON من الرد
-const cheques = parseAIResponse(response);
+4. **تحديث فحص النجاح** من `includes("OK")` إلى فحص XML status:
+```javascript
+const extractTag = (xml: string, tag: string) => {
+  const match = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "i"));
+  return match?.[1]?.trim() ?? null;
+};
 
-// 4. لكل شيك - قص الصورة ورفعها
-for (const cheque of cheques) {
-  const croppedImage = await cropImage(image_base64, cheque.bounding_box);
-  const cdnUrl = await uploadToBunny(croppedImage, `cheque_${cheque.cheque_number}.jpg`);
-  cheque.image_url = cdnUrl;
-}
-
-// 5. إرجاع النتائج
-return { cheques };
+const status = extractTag(smsResult, "status");
+const isSuccess = status === "0";
 ```
 
 ---
 
-## التحديات والحلول
+## الملفات المتأثرة
 
-| التحدي | الحل |
-|--------|------|
-| قص الصور في Edge Function | استخدام Canvas API أو sharp library |
-| دقة الكشف | توفير خيار للتعديل اليدوي |
-| تواريخ بتنسيقات مختلفة | تحويل كل التواريخ لـ YYYY-MM-DD |
-| شيكات مقلوبة/مائلة | Gemini يتعامل معها تلقائياً |
+| الملف | نوع التغيير |
+|-------|-------------|
+| `supabase/functions/send-bulk-debt-sms/index.ts` | تعديل - إصلاح تنسيق API |
 
 ---
 
 ## النتيجة المتوقعة
-
-1. **توفير الوقت**: بدلاً من إدخال 3 شيكات يدوياً (9 حقول)، مسح واحد + تأكيد
-2. **دقة أعلى**: تقليل أخطاء الإدخال البشري
-3. **أرشفة تلقائية**: كل شيك يُحفظ كصورة منفصلة على CDN
-4. **سهولة الاستخدام**: واجهة بسيطة للمراجعة والتأكيد
+- رسائل SMS ستُرسل بنجاح لجميع العملاء المختارين
+- Toast سيعرض عدد الرسائل المُرسلة الفعلي
+- سجلات SMS ستُحفظ بشكل صحيح في `sms_logs`
