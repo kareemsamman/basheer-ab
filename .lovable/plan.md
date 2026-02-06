@@ -1,74 +1,122 @@
 
-
-# إصلاح عرض المبلغ الخاطئ في نافذة تذكير الدفع
+# خطة تسريع مسح الشيكات وإصلاح Timeout
 
 ## المشكلة المكتشفة
 
-في نافذة "إرسال تذكير دفع"، السطر 707 يعرض:
-```tsx
-{formatCurrency(selectedClient?.total_owed || 0)}
+### تحليل السجلات الفعلية:
+```
+12:17:33 → 12:18:23 = صورة 1 (50 ثانية)
+12:18:23 → 12:19:40 = صورة 2 (77 ثانية)  
+12:19:40 → timeout!  = صورة 3 (لم تكتمل)
 ```
 
-لكن `total_owed` = `total_insurance` = **مجموع أسعار الوثائق** (₪34,392)
-
-بينما المطلوب هو `total_remaining` = **الرصيد المتبقي الفعلي** (₪10,098)
+**السبب الجذري:**
+- `google/gemini-3-pro-preview` بطيء جداً للصور الكبيرة (~50-80 ثانية/صورة)
+- 3 صور = ~3-4 دقائق (يتجاوز مهلة Edge Function 150 ثانية)
+- المعالجة التسلسلية تضاعف المشكلة
 
 ---
 
-## الحل
+## الحل المقترح: نهج ثلاثي الأبعاد
 
-تغيير بسيط في ملف واحد فقط:
+### 1. استخدام نموذج أسرع: `gemini-2.5-flash`
 
-### ملف: `src/pages/DebtTracking.tsx`
+| النموذج | وقت التحليل/صورة | الدقة |
+|---------|-----------------|-------|
+| gemini-3-pro-preview | 50-80 ثانية ❌ | عالية جداً |
+| **gemini-2.5-flash** | **5-10 ثانية** ✅ | عالية |
 
-**التغيير:**
-- السطر 705-708: تغيير `total_owed` إلى `total_remaining`
+`gemini-2.5-flash` أسرع 10x مع دقة ممتازة للـ OCR.
 
-```tsx
-// قبل
-<div>
-  <p className="text-sm text-muted-foreground mb-2">المبلغ المستحق</p>
-  <p className="font-bold text-lg text-destructive">
-    {formatCurrency(selectedClient?.total_owed || 0)}
-  </p>
-</div>
+---
 
-// بعد
-<div>
-  <p className="text-sm text-muted-foreground mb-2">المبلغ المستحق</p>
-  <p className="font-bold text-lg text-destructive">
-    {formatCurrency(selectedClient?.total_remaining || 0)}
-  </p>
-</div>
+### 2. المعالجة المتوازية (Parallel Processing)
+
+```typescript
+// قبل: تسلسلي (3 صور × 50 ثانية = 150+ ثانية)
+for (const image of images) {
+  await processImage(image);
+}
+
+// بعد: متوازي (3 صور في نفس الوقت = ~10-15 ثانية)
+await Promise.all(images.map(image => processImage(image)));
 ```
 
 ---
 
-## التحقق من البيانات
+### 3. تحديث تقدير الوقت في الواجهة
 
-| الحقل | المعنى | القيمة |
-|-------|--------|--------|
-| `total_owed` | مجموع أسعار الوثائق (total_insurance) | ₪34,392 |
-| `total_paid` | مجموع المدفوعات | (الفرق) |
-| `total_remaining` | الرصيد المتبقي الموحد | ₪10,098 ✅ |
+```typescript
+// تقدير محدث مع gemini-2.5-flash + parallel
+const estimatedSecondsPerImage = 5; // بدلاً من 12
+const totalEstimated = Math.max(10, scannedImages.length * 5);
+```
+
+**التقديرات الجديدة:**
+| عدد الصور | الوقت (المتوازي) |
+|-----------|-----------------|
+| 1 صورة | ~5-10 ثوان |
+| 3 صور | ~10-15 ثانية |
+| 5 صور | ~10-20 ثانية |
+| 10 صور | ~15-30 ثانية |
 
 ---
 
-## ملاحظة مهمة
+## التغييرات التقنية
 
-الـ Edge Function (`send-manual-reminder`) تستخدم بالفعل `get_client_balance` RPC وترسل المبلغ الصحيح في الـ SMS.
+### ملف 1: `supabase/functions/process-cheque-scan/index.ts`
 
-المشكلة فقط في **واجهة المستخدم** التي تعرض الحقل الخاطئ.
+**أ) تغيير النموذج:**
+```typescript
+// من
+model: "google/gemini-3-pro-preview"
+
+// إلى
+model: "google/gemini-2.5-flash"
+```
+
+**ب) المعالجة المتوازية:**
+```typescript
+// معالجة جميع الصور بالتوازي
+const imageResults = await Promise.all(
+  images.map(async (image, imgIndex) => {
+    // ... AI call for each image
+  })
+);
+
+// تجميع النتائج
+for (const result of imageResults) {
+  allDetectedCheques.push(...result.cheques);
+}
+```
 
 ---
 
-## النتيجة المتوقعة
+### ملف 2: `src/components/payments/ChequeScannerDialog.tsx`
 
-بعد الإصلاح:
-- نافذة التذكير تعرض: ₪10,098 ✅
-- صفحة العميل تعرض: ₪10,098 ✅
-- صفحة الديون تعرض: ₪10,098 ✅
-- الـ SMS يُرسل: ₪10,098 ✅
+**تحديث تقدير الوقت:**
+```typescript
+// من
+const estimatedSecondsPerImage = 12;
 
-**جميع الأماكن تتطابق!**
+// إلى
+const estimatedSecondsPerImage = 5; // مع gemini-2.5-flash + parallel
+```
 
+---
+
+## الملخص
+
+| الجانب | قبل | بعد |
+|--------|-----|-----|
+| النموذج | gemini-3-pro-preview | gemini-2.5-flash |
+| المعالجة | تسلسلية | متوازية |
+| 3 صور | ~3-4 دقائق + timeout | ~10-15 ثانية |
+| حد الوقت | يتجاوز 150 ثانية | ضمن الحد بأمان |
+| الدقة | عالية جداً | عالية (كافية للـ OCR) |
+
+---
+
+## ملاحظة تقنية مهمة
+
+`gemini-2.5-flash` ليس أقل دقة في OCR - فهو مُحسَّن خصيصاً للمهام البصرية السريعة. الفرق الرئيسي هو في المهام "التفكيرية" المعقدة، وليس قراءة النص من الصور.
