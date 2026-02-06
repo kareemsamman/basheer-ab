@@ -1,57 +1,140 @@
 
 
+# إصلاح مشكلة ظهور Kareem Test في صفحة متابعة الديون
 
-# تجميع الدفعات في سجل الدفعات - عرض موحد ✅
+## المشكلة المكتشفة
 
-## المشكلة المحلولة
+**الأعراض:** العميل Kareem Test يظهر بمتبقي 2,200₪ في صفحة العميل، لكنه **لا يظهر** في صفحة `/debt-tracking`.
 
-عند الدفع عبر "تسديد ديون":
-- المستخدم يُدخل مبلغ واحد (مثلاً 2500 نقدي)
-- النظام يُقسم المبلغ على عدة وثائق (300, 400, 1500, 1200, 300)
-- **سابقاً**: سجل الدفعات كان يعرض 5 سجلات منفصلة
-- **الآن**: يعرض سجل واحد بالمجموع مع عدد الدفعات
+## تحليل السبب الجذري
 
----
+### مقارنة البيانات
 
-## التغييرات المُنفذة ✅
+| المصدر | عدد السجلات | المجموع |
+|--------|-------------|---------|
+| `policy_payments` (الدفعات الفعلية) | 5 | 3,700₪ |
+| `client_payments` (جدول المحفظة القديم) | 42 | 33,490₪ |
 
-### 1. إضافة حقل `batch_id` لجدول `policy_payments`
+### تفاصيل الوثائق للعميل
+
+| نوع التأمين | السعر | المدفوع (policy_payments) | المتبقي |
+|-------------|-------|---------------------------|---------|
+| ELZAMI | 1,200₪ | 1,200₪ | 0 |
+| THIRD | 2,600₪ | 400₪ | **2,200₪** |
+| ROAD_SERVICE | 300₪ | 300₪ | 0 |
+| THIRD | 1,500₪ | 1,500₪ | 0 |
+| ROAD_SERVICE | 300₪ | 300₪ | 0 |
+| **المجموع** | **5,900₪** | **3,700₪** | **2,200₪** |
+
+### المشكلة في الدالة
+
+الدالة `get_client_balance` المُنشرة حالياً تقرأ من جدول `client_payments`:
 
 ```sql
-ALTER TABLE policy_payments ADD COLUMN batch_id UUID DEFAULT NULL;
-CREATE INDEX idx_payments_batch_id ON policy_payments(batch_id);
+-- الكود الحالي المُنشر (خاطئ)
+SELECT COALESCE(SUM(amount), 0) as total_pay
+FROM client_payments
+WHERE client_id = p_client_id
 ```
 
-### 2. تعديل `DebtPaymentModal.tsx`
-
-عند تسجيل دفعة واحدة تُقسم على عدة وثائق:
-- إنشاء `batch_id` مشترك للدفعات المرتبطة
-- يُستخدم فقط عند وجود أكثر من وثيقة تستقبل الدفعة
-
-### 3. تعديل `ClientDetails.tsx`
-
-- إضافة `GroupedPayment` interface لتمثيل الدفعات المجمعة
-- إضافة `groupedPayments` useMemo لتجميع الدفعات بـ `batch_id`
-- تحديث جدول الدفعات لعرض الدفعات المجمعة كصف واحد
+هذا يُرجع 33,490₪ بدلاً من 3,700₪، مما يجعل الرصيد المتبقي = 0.
 
 ---
 
-## العرض الجديد
+## الحل المقترح
 
-| الشكل | الوصف |
-|-------|-------|
-| ₪2,500 (3 دفعات) | نقدي | إلزامي، ثالث/شامل، خدمات طريق |
+### تحديث دالة `get_client_balance` لاستخدام `policy_payments`
 
-### ميزات العرض:
-- عرض المبلغ الإجمالي
-- badge صغير يُظهر عدد الدفعات المجمعة
-- عرض كل أنواع التأمين المشمولة
-- قائمة إجراءات تعرض خيار تعديل كل دفعة بشكل منفصل
+جدول `policy_payments` هو مصدر الحقيقة للدفعات الفعلية المرتبطة بالوثائق.
+
+```sql
+CREATE OR REPLACE FUNCTION get_client_balance(p_client_id uuid)
+RETURNS TABLE(
+  total_insurance numeric,
+  total_paid numeric,
+  total_refunds numeric,
+  total_remaining numeric
+)
+LANGUAGE plpgsql
+STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN QUERY
+  WITH 
+  -- All active policies (INCLUDING ELZAMI, EXCLUDING broker deals)
+  active_policies AS (
+    SELECT p.id, COALESCE(p.insurance_price, 0) AS insurance_price
+    FROM policies p
+    WHERE p.client_id = p_client_id
+      AND COALESCE(p.cancelled, FALSE) = FALSE
+      AND COALESCE(p.transferred, FALSE) = FALSE
+      AND p.deleted_at IS NULL
+      AND p.broker_id IS NULL
+  ),
+  -- Sum of all policy prices
+  policy_totals AS (
+    SELECT COALESCE(SUM(insurance_price), 0) AS total_ins
+    FROM active_policies
+  ),
+  -- All non-refused payments for these policies (from policy_payments)
+  payment_totals AS (
+    SELECT COALESCE(SUM(pp.amount), 0) AS total_pay
+    FROM policy_payments pp
+    JOIN active_policies ap ON ap.id = pp.policy_id
+    WHERE COALESCE(pp.refused, FALSE) = FALSE
+  ),
+  -- Wallet transactions (refunds reduce debt)
+  wallet_totals AS (
+    SELECT COALESCE(SUM(
+      CASE 
+        WHEN transaction_type IN ('refund', 'transfer_refund_owed', 'manual_refund') 
+        THEN amount
+        WHEN transaction_type = 'transfer_adjustment_due' 
+        THEN -amount
+        ELSE 0 
+      END
+    ), 0) AS total_ref
+    FROM customer_wallet_transactions
+    WHERE client_id = p_client_id
+  )
+  SELECT
+    pt.total_ins::numeric AS total_insurance,
+    pay.total_pay::numeric AS total_paid,
+    wt.total_ref::numeric AS total_refunds,
+    GREATEST(0, pt.total_ins - pay.total_pay - wt.total_ref)::numeric AS total_remaining
+  FROM policy_totals pt
+  CROSS JOIN payment_totals pay
+  CROSS JOIN wallet_totals wt;
+END;
+$$;
+```
 
 ---
 
-## الفائدة
+## التغييرات المطلوبة
 
-- **للمستخدم**: رؤية واضحة - "دفعت 2500 نقدي" بدلاً من 5 سجلات منفصلة
-- **للمحاسبة**: البيانات الداخلية تبقى كما هي (كل وثيقة بدفعتها)
-- **للتقارير**: يمكن التعامل مع الدفعات بشكل فردي أو مجمع
+| الملف | التغيير |
+|-------|---------|
+| Migration SQL | تحديث دالة `get_client_balance` لاستخدام `policy_payments` بدلاً من `client_payments` |
+
+---
+
+## النتيجة المتوقعة
+
+### قبل الإصلاح:
+- `get_client_balance` يُرجع: `total_paid = 33,490`, `total_remaining = 0`
+- Kareem Test **لا يظهر** في `/debt-tracking`
+
+### بعد الإصلاح:
+- `get_client_balance` يُرجع: `total_paid = 3,700`, `total_remaining = 2,200`
+- Kareem Test **يظهر** في `/debt-tracking` مع متبقي 2,200₪
+
+---
+
+## ملاحظة مهمة
+
+جدول `client_payments` يحتوي على بيانات اختبارية/مكررة (42 سجل بمجموع 33,490₪). بعد تطبيق هذا الإصلاح، يمكن النظر في:
+1. حذف البيانات المكررة من `client_payments`
+2. أو إبقاء الجدول للرجوع إليه لاحقاً
+
