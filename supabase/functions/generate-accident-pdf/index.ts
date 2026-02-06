@@ -154,6 +154,15 @@ serve(async (req) => {
       .eq("accident_report_id", accident_report_id)
       .order("sort_order");
 
+    // Fetch attached files (images, PDFs)
+    const { data: attachedFiles } = await supabase
+      .from("accident_report_files")
+      .select("file_url, file_name, file_type")
+      .eq("accident_report_id", accident_report_id)
+      .order("created_at");
+    
+    console.log("Attached files found:", attachedFiles?.length || 0);
+
     // Build field values
     const fieldValues = buildFieldValues(report as AccidentReport, thirdParties || []);
 
@@ -185,7 +194,8 @@ serve(async (req) => {
             thirdParties || [],
             editedFields,
             supabaseUrl,
-            supabaseAnonKey
+            supabaseAnonKey,
+            attachedFiles || []
           );
           usedTemplate = true;
           console.log("Successfully generated HTML overlay report", editedFields ? "(with saved edits)" : "(fresh)");
@@ -383,8 +393,8 @@ function buildFieldValues(report: AccidentReport, thirdParties: ThirdParty[]): R
    values.employee_notes = report.employee_notes || "";
    values.employee_signature_date = formatDate(report.employee_signature_date);
    
-   // Customer signature - show signature indicator if present
-   values.customer_signature = report.customer_signature_url ? "✓ تم التوقيع" : "";
+   // Customer signature - pass URL directly for image rendering
+   values.customer_signature = report.customer_signature_url || "";
   
   // Add third party info
   if (thirdParties.length > 0) {
@@ -422,7 +432,8 @@ function generateHtmlOverlayReport(
   thirdParties: ThirdParty[],
   editedFieldsJson: any | null,
   supabaseUrl: string,
-  supabaseAnonKey: string
+  supabaseAnonKey: string,
+  attachedFiles: Array<{ file_url: string; file_name: string | null; file_type: string | null }> = []
 ): string {
   // Build field data - use edited fields if available, otherwise use mapping
   let fieldsByPage: Record<number, Array<{ id: string; config: { x: number; y: number; size: number }; value: string }>> = {};
@@ -477,6 +488,11 @@ function generateHtmlOverlayReport(
 
   // Escape field data for embedding in JS
   const fieldDataJson = JSON.stringify(fieldsByPage).replace(/'/g, "\\'").replace(/\n/g, "\\n");
+  
+  // Prepare attachments data
+  const imageFiles = attachedFiles.filter(f => f.file_type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(f.file_url));
+  const pdfFiles = attachedFiles.filter(f => f.file_type?.includes('pdf') || f.file_url.toLowerCase().endsWith('.pdf'));
+  const attachmentsJson = JSON.stringify({ images: imageFiles, pdfs: pdfFiles }).replace(/'/g, "\\'").replace(/\n/g, "\\n");
 
   return `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -740,6 +756,129 @@ function generateHtmlOverlayReport(
       font-size: 13px;
       font-weight: 500;
     }
+    
+    /* Attachments section styles */
+    .attachments-section {
+      page-break-before: always;
+      background: white;
+      padding: 30px;
+      margin-top: 30px;
+      border-radius: 12px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+      max-width: 892px;
+    }
+    
+    .attachments-section h2 {
+      font-size: 20px;
+      color: #2563eb;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #e5e7eb;
+    }
+    
+    .attachment-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    
+    .attachment-item {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #f9fafb;
+    }
+    
+    .attachment-item img {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    
+    .attachment-item img:hover {
+      transform: scale(1.02);
+    }
+    
+    .attachment-item .file-name {
+      padding: 10px;
+      font-size: 12px;
+      color: #6b7280;
+      text-align: center;
+      border-top: 1px solid #e5e7eb;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .pdf-links {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    
+    .pdf-link {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background: #fef3c7;
+      border-radius: 8px;
+      text-decoration: none;
+      color: #92400e;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    
+    .pdf-link:hover {
+      background: #fde68a;
+    }
+    
+    .pdf-link svg {
+      flex-shrink: 0;
+    }
+    
+    /* Full page image for print */
+    .attachment-page {
+      page-break-before: always;
+      page-break-after: always;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: white;
+      padding: 20px;
+    }
+    
+    .attachment-page img {
+      max-width: 100%;
+      max-height: 90vh;
+      object-fit: contain;
+    }
+    
+    .attachment-page .caption {
+      margin-top: 15px;
+      font-size: 14px;
+      color: #6b7280;
+    }
+    
+    @media print {
+      .attachments-section {
+        box-shadow: none;
+        padding: 15mm;
+      }
+      
+      .attachment-grid {
+        display: none;
+      }
+      
+      .pdf-links {
+        display: none;
+      }
+    }
   </style>
 </head>
 <body>
@@ -779,6 +918,8 @@ function generateHtmlOverlayReport(
 
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    
+    const ATTACHMENTS_DATA = JSON.parse('${attachmentsJson}');
     
     const TEMPLATE_URL = '${templatePdfUrl}';
     const RENDER_SCALE = ${MAPPER_RENDER_SCALE};
@@ -893,7 +1034,22 @@ function generateHtmlOverlayReport(
       el.style.left = config.x + 'px';
       el.style.top = config.y + 'px';
       el.style.fontSize = fontSize + 'px';
-      el.textContent = value;
+      
+      // Check if this is the customer_signature field with a URL
+      if (field.id === 'customer_signature' && value && value.startsWith('http')) {
+        // Render as image
+        const img = document.createElement('img');
+        img.src = value;
+        img.style.maxHeight = (fontSize * 4) + 'px';
+        img.style.maxWidth = '200px';
+        img.style.objectFit = 'contain';
+        img.alt = 'توقيع العميل';
+        el.appendChild(img);
+        el.style.padding = '2px';
+        el.style.background = 'transparent';
+      } else {
+        el.textContent = value;
+      }
       
       addDeleteButton(el);
       return el;
@@ -1100,7 +1256,90 @@ function generateHtmlOverlayReport(
       }
     });
     
-    renderPdf();
+    // Function to render attachments section
+    function renderAttachments() {
+      const pageWrapper = document.getElementById('pageWrapper');
+      
+      const hasImages = ATTACHMENTS_DATA.images && ATTACHMENTS_DATA.images.length > 0;
+      const hasPdfs = ATTACHMENTS_DATA.pdfs && ATTACHMENTS_DATA.pdfs.length > 0;
+      
+      if (!hasImages && !hasPdfs) return;
+      
+      // Create attachments section for screen view
+      const section = document.createElement('div');
+      section.className = 'attachments-section';
+      section.innerHTML = '<h2>📎 المرفقات</h2>';
+      
+      // Images grid
+      if (hasImages) {
+        const grid = document.createElement('div');
+        grid.className = 'attachment-grid';
+        
+        ATTACHMENTS_DATA.images.forEach((file, index) => {
+          const item = document.createElement('div');
+          item.className = 'attachment-item';
+          
+          const img = document.createElement('img');
+          img.src = file.file_url;
+          img.alt = file.file_name || 'صورة مرفقة';
+          img.onclick = () => window.open(file.file_url, '_blank');
+          
+          const name = document.createElement('div');
+          name.className = 'file-name';
+          name.textContent = file.file_name || ('صورة ' + (index + 1));
+          
+          item.appendChild(img);
+          item.appendChild(name);
+          grid.appendChild(item);
+        });
+        
+        section.appendChild(grid);
+      }
+      
+      // PDF links
+      if (hasPdfs) {
+        const linksContainer = document.createElement('div');
+        linksContainer.className = 'pdf-links';
+        
+        ATTACHMENTS_DATA.pdfs.forEach((file, index) => {
+          const link = document.createElement('a');
+          link.className = 'pdf-link';
+          link.href = file.file_url;
+          link.target = '_blank';
+          link.innerHTML = '<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>' + 
+            (file.file_name || ('ملف PDF ' + (index + 1)));
+          linksContainer.appendChild(link);
+        });
+        
+        section.appendChild(linksContainer);
+      }
+      
+      pageWrapper.appendChild(section);
+      
+      // Create full-page images for print
+      if (hasImages) {
+        ATTACHMENTS_DATA.images.forEach((file, index) => {
+          const page = document.createElement('div');
+          page.className = 'attachment-page';
+          
+          const img = document.createElement('img');
+          img.src = file.file_url;
+          img.alt = file.file_name || 'صورة مرفقة';
+          
+          const caption = document.createElement('div');
+          caption.className = 'caption';
+          caption.textContent = file.file_name || ('مرفق ' + (index + 1));
+          
+          page.appendChild(img);
+          page.appendChild(caption);
+          pageWrapper.appendChild(page);
+        });
+      }
+    }
+    
+    renderPdf().then(() => {
+      renderAttachments();
+    });
   <\/script>
 </body>
 </html>`;
