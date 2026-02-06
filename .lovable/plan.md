@@ -1,85 +1,107 @@
 
+# خطة تحسين صفحة الوثائق
 
-# خطة إصلاح توقيع العميل وإضافة المرفقات لـ PDF بلاغ الحادث
-
-## المشاكل المكتشفة
-
-### المشكلة الأولى: توقيع العميل
-الكود الحالي في السطر 387 يعرض فقط "✓ تم التوقيع" كنص بدلاً من **صورة التوقيع الفعلية**:
-```typescript
-values.customer_signature = report.customer_signature_url ? "✓ تم التوقيع" : "";
-```
-
-**الإصلاح**: يجب تعديل الكود ليعرض صورة التوقيع كـ `<img>` في المكان المحدد في القالب.
-
-### المشكلة الثانية: ملفات الحادث
-لا يوجد كود في `generate-accident-pdf` لجلب الملفات من جدول `accident_report_files` وإضافتها للـ PDF. 
-
-البيانات موجودة بالفعل:
-- `c220d142-712f-4302-8a6a-1299faf55c86` يحتوي على:
-  - PDF: טופס 29
-  - صورة: WhatsApp Image
+## ملخص المتطلبات
+1. عرض الوثائق كـ Cards (بطاقات) بدلاً من جدول - مثل تصميم PolicyTreeView
+2. تمييز الباقات (Packages) عن الوثائق المفردة
+3. إضافة فلترة بالتاريخ (من - إلى)
+4. إضافة خيارات سريعة: "هذا الشهر"، "اختيار سنة"، "تاريخ مخصص"
 
 ---
 
 ## التغييرات المطلوبة
 
-### 1. تحديث `generate-accident-pdf/index.ts`
+### 1. تحديث واجهة الفلترة (PolicyFilters.tsx)
 
-#### جلب ملفات الحادث
-إضافة query لجلب الملفات المرفقة:
-```typescript
-const { data: attachedFiles } = await supabase
-  .from("accident_report_files")
-  .select("file_url, file_name, file_type")
-  .eq("accident_report_id", accident_report_id)
-  .order("created_at");
+إضافة حقول جديدة:
+- **الفترة الزمنية**: اختيار سريع (الكل، اليوم، هذا الشهر، الشهر الماضي، مخصص)
+- **من تاريخ / إلى تاريخ**: باستخدام ArabicDatePicker
+- **السنة**: اختيار سنة محددة (2024، 2025، 2026...)
+
+```text
+┌─────────────────────────────────────────────────────────┐
+│  الفترة: [الكل ▼] [هذا الشهر ▼] [السنة: 2026 ▼]         │
+│                                                          │
+│  من تاريخ: [DD/MM/YYYY 📅]  إلى تاريخ: [DD/MM/YYYY 📅]  │
+└─────────────────────────────────────────────────────────┘
 ```
 
-#### معالجة حقل توقيع العميل كصورة
-تغيير طريقة عرض `customer_signature` من نص إلى صورة:
-- في `buildFieldValues()`: تمرير URL التوقيع كما هو
-- في `generateHtmlOverlayReport()`: التعرف على حقل `customer_signature` وعرضه كـ `<img>` بدلاً من نص
+### 2. تحديث صفحة Policies.tsx
 
-#### إضافة المرفقات كصفحات إضافية
-إضافة قسم "المرفقات" في نهاية الـ HTML:
-- عرض كل صورة مرفقة في صفحة منفصلة
-- عرض روابط ملفات PDF مع إمكانية فتحها
+#### أ. استبدال Table بـ Cards
+- استخدام تصميم مشابه لـ `PolicyTreeView`
+- عرض الوثائق المفردة بتصميم بسيط
+- عرض الباقات بتصميم قابل للتوسيع يُظهر المكونات
 
-### 2. تحديث Template Mapper (اختياري)
-إضافة نوع حقل جديد `type: "image"` لحقل التوقيع ليكون مختلفاً عن الحقول النصية.
+#### ب. تجميع الوثائق حسب group_id
+- الوثائق ذات نفس group_id تُعرض كباقة واحدة
+- عند التوسيع تظهر تفاصيل كل وثيقة
 
----
-
-## التفاصيل التقنية
-
-### معالجة حقل التوقيع
+#### ج. إضافة فلترة التاريخ
+تحديث الـ state:
 ```typescript
-// في buildFieldValues - تمرير URL كما هو
-values.customer_signature = report.customer_signature_url || "";
+const [filters, setFilters] = useState<PolicyFilterValues>({
+  policyType: 'all',
+  companyId: 'all',
+  status: 'all',
+  brokerId: 'all',
+  creatorId: 'all',
+  branchId: 'all',
+  datePreset: 'all',      // جديد
+  dateFrom: '',           // جديد
+  dateTo: '',             // جديد
+  year: 'all',            // جديد
+});
+```
 
-// في generateHtmlOverlayReport - عرض كصورة إذا كان حقل التوقيع
-if (field.id === 'customer_signature' && field.value && field.value.startsWith('http')) {
-  // عرض كصورة بدلاً من نص
-  return `<img src="${field.value}" style="max-height: ${fontSize * 3}px; object-fit: contain;" />`;
+تحديث الـ query:
+```typescript
+// فلترة بتاريخ الإنشاء
+if (filters.dateFrom) {
+  query = query.gte('created_at', filters.dateFrom);
+}
+if (filters.dateTo) {
+  query = query.lte('created_at', filters.dateTo + 'T23:59:59');
+}
+// فلترة بالسنة
+if (filters.year !== 'all') {
+  query = query
+    .gte('created_at', `${filters.year}-01-01`)
+    .lte('created_at', `${filters.year}-12-31T23:59:59`);
 }
 ```
 
-### إضافة المرفقات كصفحات
-```html
-<!-- بعد صفحات القالب -->
-<div class="attachments-section" style="page-break-before: always;">
-  <h2>المرفقات</h2>
-  <!-- صور -->
-  <div class="attachment-image">
-    <img src="..." style="max-width: 100%; max-height: 90vh;" />
-    <p>صورة 1</p>
-  </div>
-  <!-- روابط PDF -->
-  <div class="attachment-link">
-    <a href="...">📄 ملف PDF</a>
-  </div>
-</div>
+### 3. تصميم البطاقة الجديدة
+
+#### بطاقة الباقة (Package):
+```text
+┌────────────────────────────────────────────────────────────────────┐
+│ ▶ [باقة 📦] [ثالث] + [إلزامي] + [خدمات طريق]  [متبقي ₪2,300]     │
+│                                                                    │
+│  🏢 الشركة        🚗 السيارة      📅 الفترة                المبلغ   │
+│  اراضي مقدسة      12345678        02/02/2026 ← 02/02/2027  ₪2,300  │
+│                                                                    │
+│  📦 مكونات الباقة                                                  │
+│  ├─ [ثالث] اراضي مقدسة  02/02/2026 ← 02/02/2027  ₪1,000           │
+│  ├─ [إلزامي] منورا      02/02/2026 ← 02/02/2027  ₪1,000           │
+│  └─ [خدمات طريق] شركة X 02/02/2026 ← 02/02/2027  ₪300             │
+│                                                                    │
+│  📝 ملاحظات: تحويل من سيارة 21212121 - إضافة ضمن باقة             │
+│                                                    [⋮] [✈] [دفع]   │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+#### بطاقة الوثيقة المفردة:
+```text
+┌────────────────────────────────────────────────────────────────────┐
+│ [ثالث/شامل] [✓ مدفوع] [✓ سارية]                                   │
+│                                                                    │
+│  🏢 الشركة        🚗 السيارة      📅 الفترة                المبلغ   │
+│  منورا            21212121        02/02/2026 ← 02/02/2027  ₪2,400  │
+│                                                                    │
+│  📝 ملاحظات: لا توجد ملاحظات - اضغط للإضافة                        │
+│                                                         [⋮] [✈]   │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -88,28 +110,92 @@ if (field.id === 'customer_signature' && field.value && field.value.startsWith('
 
 | الملف | نوع التغيير |
 |-------|-------------|
-| `supabase/functions/generate-accident-pdf/index.ts` | تعديل كبير |
+| `src/pages/Policies.tsx` | تعديل كبير - استبدال Table بـ Cards |
+| `src/components/policies/PolicyFilters.tsx` | إضافة فلترة التاريخ |
+| `src/components/policies/PolicyCard.tsx` | مكون جديد |
+| `src/components/policies/PolicyPackageCard.tsx` | مكون جديد |
 
 ---
 
-## سير العمل بعد التعديل
+## التفاصيل التقنية
+
+### PolicyFilterValues الجديد:
+```typescript
+export interface PolicyFilterValues {
+  policyType: string;
+  companyId: string;
+  status: string;
+  brokerId: string;
+  creatorId: string;
+  branchId: string;
+  // فلاتر التاريخ الجديدة
+  datePreset: 'all' | 'today' | 'this_week' | 'this_month' | 'last_month' | 'custom';
+  dateFrom: string;
+  dateTo: string;
+  year: string;
+}
+```
+
+### خيارات الفترة الزمنية:
+- **الكل**: بدون فلترة بالتاريخ
+- **اليوم**: created_at = today
+- **هذا الأسبوع**: من بداية الأسبوع للآن
+- **هذا الشهر**: من بداية الشهر للآن
+- **الشهر الماضي**: الشهر السابق كاملاً
+- **مخصص**: إظهار حقول من/إلى
+
+### تجميع الباقات:
+```typescript
+// نفس منطق PolicyTreeView
+const groupedPolicies = useMemo(() => {
+  const groups: Map<string, PolicyGroup> = new Map();
+  
+  policies.forEach(policy => {
+    if (policy.group_id) {
+      // إضافة للباقة
+      if (!groups.has(policy.group_id)) {
+        groups.set(policy.group_id, {
+          groupId: policy.group_id,
+          mainPolicy: null,
+          addons: [],
+          client: policy.clients,
+          // ...
+        });
+      }
+      // منطق تحديد الوثيقة الرئيسية
+    } else {
+      // وثيقة مفردة
+      groups.set(`standalone-${policy.id}`, {
+        groupId: null,
+        mainPolicy: policy,
+        addons: [],
+        // ...
+      });
+    }
+  });
+  
+  return Array.from(groups.values());
+}, [policies]);
+```
+
+---
+
+## سير العمل
 
 ```text
-1. الموظف يضغط "إنشاء PDF"
-2. النظام يجلب بيانات البلاغ + المرفقات
-3. يعالج حقل التوقيع كصورة (إذا وُجد)
-4. يولد صفحات القالب مع النصوص
-5. يضيف صفحات المرفقات في النهاية:
-   - كل صورة في صفحة منفصلة (للطباعة)
-   - روابط ملفات PDF
-6. يرفع الملف إلى CDN
-7. يعود برابط PDF الجديد
+1. المستخدم يفتح صفحة الوثائق
+2. يختار الفترة الزمنية (هذا الشهر، سنة معينة، أو مخصص)
+3. الوثائق تُعرض كبطاقات:
+   - الباقات مُجمّعة مع إمكانية التوسيع
+   - الوثائق المفردة بتصميم بسيط
+4. عند الضغط على بطاقة تفتح تفاصيل الوثيقة
+5. أزرار الإجراءات (دفع، إرسال، المزيد) متاحة مباشرة
 ```
 
 ---
 
 ## ملاحظات
-- الصور ستظهر في صفحات منفصلة عند الطباعة
-- ملفات PDF المرفقة ستظهر كروابط (لأن دمجها يحتاج معالجة معقدة)
-- صورة التوقيع ستظهر في المكان المحدد في القالب بحجم مناسب
-
+- استخدام نفس تصميم PolicyTreeView للحفاظ على التناسق
+- الفلترة بالتاريخ على created_at وليس start_date
+- دعم فلترة بالسنة للتقارير السنوية
+- الحفاظ على الأداء عبر server-side pagination
