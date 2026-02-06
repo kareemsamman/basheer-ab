@@ -194,101 +194,118 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Processing ${images.length} image(s) for cheque detection`);
+    console.log(`Processing ${images.length} image(s) for cheque detection in PARALLEL`);
 
-    const allDetectedCheques: DetectedCheque[] = [];
+    // Process all images in parallel for speed
+    const imageResults = await Promise.all(
+      images.map(async (rawImage, imgIndex) => {
+        let imageBase64 = rawImage;
+        
+        // Remove data URL prefix if present
+        if (imageBase64.startsWith("data:")) {
+          imageBase64 = imageBase64.split(",")[1];
+        }
 
-    // Process each image
-    for (let imgIndex = 0; imgIndex < images.length; imgIndex++) {
-      let imageBase64 = images[imgIndex];
-      
-      // Remove data URL prefix if present
-      if (imageBase64.startsWith("data:")) {
-        imageBase64 = imageBase64.split(",")[1];
-      }
+        console.log(`[Parallel] Starting image ${imgIndex + 1}/${images.length}...`);
 
-      console.log(`Analyzing image ${imgIndex + 1}/${images.length}...`);
-
-      // Call Gemini Vision API
-      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-3-pro-preview",
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: CHEQUE_DETECTION_PROMPT },
-                { 
-                  type: "image_url", 
-                  image_url: { 
-                    url: `data:image/jpeg;base64,${imageBase64}` 
-                  } 
+        try {
+          // Call Gemini Vision API with faster model
+          const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash",
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    { type: "text", text: CHEQUE_DETECTION_PROMPT },
+                    { 
+                      type: "image_url", 
+                      image_url: { 
+                        url: `data:image/jpeg;base64,${imageBase64}` 
+                      } 
+                    }
+                  ]
                 }
               ]
-            }
-          ]
-        }),
-      });
+            }),
+          });
 
-      if (!aiResponse.ok) {
-        const errorText = await aiResponse.text();
-        console.error(`AI API error for image ${imgIndex + 1}:`, aiResponse.status, errorText);
-        
-        if (aiResponse.status === 429) {
-          return new Response(
-            JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
-            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
+          if (!aiResponse.ok) {
+            const errorText = await aiResponse.text();
+            console.error(`[Parallel] AI API error for image ${imgIndex + 1}:`, aiResponse.status, errorText);
+            
+            // Return error info instead of throwing - let other images continue
+            return { 
+              imgIndex, 
+              imageBase64, 
+              cheques: [], 
+              error: aiResponse.status === 429 ? "rate_limit" : aiResponse.status === 402 ? "payment_required" : "api_error" 
+            };
+          }
+
+          const aiData = await aiResponse.json();
+          const content = aiData.choices?.[0]?.message?.content;
+
+          if (!content) {
+            console.error(`[Parallel] No content in AI response for image ${imgIndex + 1}`);
+            return { imgIndex, imageBase64, cheques: [], error: null };
+          }
+
+          console.log(`[Parallel] AI response for image ${imgIndex + 1}:`, content.substring(0, 300));
+
+          const detectedCheques = parseAIResponse(content);
+          console.log(`[Parallel] Found ${detectedCheques.length} cheques in image ${imgIndex + 1}`);
+
+          return { imgIndex, imageBase64, cheques: detectedCheques, error: null };
+        } catch (err) {
+          console.error(`[Parallel] Error processing image ${imgIndex + 1}:`, err);
+          return { imgIndex, imageBase64, cheques: [], error: "exception" };
         }
-        if (aiResponse.status === 402) {
-          return new Response(
-            JSON.stringify({ error: "AI credits exhausted. Please add funds to continue." }),
-            { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-        continue; // Skip this image and continue with others
-      }
+      })
+    );
 
-      const aiData = await aiResponse.json();
-      const content = aiData.choices?.[0]?.message?.content;
+    // Check for critical errors (rate limit or payment required)
+    const rateLimitError = imageResults.find(r => r.error === "rate_limit");
+    if (rateLimitError) {
+      return new Response(
+        JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const paymentError = imageResults.find(r => r.error === "payment_required");
+    if (paymentError) {
+      return new Response(
+        JSON.stringify({ error: "AI credits exhausted. Please add funds to continue." }),
+        { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-      if (!content) {
-        console.error(`No content in AI response for image ${imgIndex + 1}`);
-        continue;
-      }
-
-      console.log(`AI response for image ${imgIndex + 1}:`, content.substring(0, 500));
-
-      const detectedCheques = parseAIResponse(content);
-      console.log(`Found ${detectedCheques.length} cheques in image ${imgIndex + 1}`);
-
-      // For each detected cheque, upload the image and add CDN URL
-      for (let chequeIndex = 0; chequeIndex < detectedCheques.length; chequeIndex++) {
-        const cheque = detectedCheques[chequeIndex];
+    // Aggregate all detected cheques
+    const allDetectedCheques: DetectedCheque[] = [];
+    
+    for (const result of imageResults) {
+      for (let chequeIndex = 0; chequeIndex < result.cheques.length; chequeIndex++) {
+        const cheque = result.cheques[chequeIndex];
         
         // Generate unique filename
         const timestamp = Date.now();
-        const fileName = `cheque_${cheque.cheque_number || timestamp}_${imgIndex}_${chequeIndex}.jpg`;
+        const fileName = `cheque_${cheque.cheque_number || timestamp}_${result.imgIndex}_${chequeIndex}.jpg`;
         
-        // For now, we'll upload the full image and include bounding box for client-side cropping
-        // A more advanced implementation would crop server-side
-        const cdnUrl = await uploadToBunny(imageBase64, fileName);
+        // Upload to CDN
+        const cdnUrl = await uploadToBunny(result.imageBase64, fileName);
         
         if (cdnUrl) {
           cheque.image_url = cdnUrl;
         } else {
-          // Fallback: use base64 data URL if CDN upload fails
-          cheque.image_url = `data:image/jpeg;base64,${imageBase64}`;
+          cheque.image_url = `data:image/jpeg;base64,${result.imageBase64}`;
         }
         
-        // Include source image for client-side fallback
-        cheque.cropped_base64 = imageBase64;
-        
+        cheque.cropped_base64 = result.imageBase64;
         allDetectedCheques.push(cheque);
       }
     }
