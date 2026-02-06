@@ -1,87 +1,101 @@
 
-# إصلاح مسح الشيكات - معالجة خطأ الاعتمادات وإلغاء القص
+# خطة التحسينات: عرض التاريخ في المهام + إصلاح عرض خطأ مسح الشيكات
 
 ## المشاكل المكتشفة
 
-### 1. خطأ 402 - نفاد الاعتمادات
-```
-AI API error for image 1: 402 {"type":"payment_required","message":"Not enough credits"}
-```
-الـ Edge Function يُرجع الخطأ بشكل صحيح، لكن الـ Frontend يعرض رسالة عامة بدلاً من الرسالة الفعلية.
+### 1. المهام - عدم ظهور التاريخ
+المهام المتأخرة تظهر فقط بالوقت (12:00) لكن بدون تاريخها الأصلي. هذا يسبب ارتباكاً لأن المستخدم لا يعرف من أي يوم هذه المهمة.
 
-### 2. منطق قص الصور الحالي
-النظام الحالي يقوم بقص كل شيك من الصورة الأصلية، مما قد يُنتج صوراً متطابقة أو يضر بالجودة.
+### 2. مسح الشيكات - رسالة الخطأ غير واضحة
+الخطأ الفعلي هو **402 - نفاد اعتمادات AI** لكن يظهر رسالة عامة "Edge Function returned a non-2xx status code" مع رابط غير مناسب (ScanApp).
 
 ---
 
-## الحل المقترح
+## التغييرات المطلوبة
 
-### الجزء 1: تحسين عرض الأخطاء في الـ Frontend
+### الملف 1: `src/components/tasks/TaskCard.tsx`
 
-**الملف:** `src/components/payments/ChequeScannerDialog.tsx`
+**إضافة عرض التاريخ للمهام المتأخرة**
 
 ```tsx
-// السطر 505-515 تقريباً
+// في قسم Time badge - السطر 84-89
+<div className={cn(
+  "flex flex-col items-center justify-center min-w-[70px] py-3 px-3 rounded-xl shadow-sm",
+  ...
+)}>
+  <Clock className="h-4 w-4 mb-1" />
+  <span className="text-base font-bold font-mono ltr-nums">
+    {formatTime(task.due_time)}
+  </span>
+  {/* إضافة: عرض التاريخ للمهام المتأخرة */}
+  {task.isOverdue && (
+    <span className="text-[10px] mt-0.5 opacity-75">
+      {format(new Date(task.due_date), 'd/M', { locale: ar })}
+    </span>
+  )}
+</div>
+```
+
+**تحديث Props و interface:**
+```tsx
+interface TaskCardProps {
+  task: Task & { isOverdue?: boolean };
+  // ...
+}
+```
+
+---
+
+### الملف 2: `src/components/payments/ChequeScannerDialog.tsx`
+
+**تحسين معالجة الأخطاء لعرض رسائل واضحة:**
+
+#### التغيير 1: تحسين قراءة خطأ Edge Function (السطر 505-520)
+```tsx
 const { data, error: fnError } = await supabase.functions.invoke('process-cheque-scan', {
   body: { images: base64Images }
 });
 
-// تحسين معالجة الأخطاء
+// تحسين: التعامل مع أخطاء Edge Function بشكل أفضل
 if (fnError) {
-  // معالجة أخطاء محددة
-  if (fnError.message?.includes('402') || fnError.message?.includes('credits')) {
+  const errorMsg = fnError.message || '';
+  console.error('Edge function error:', errorMsg);
+  
+  // Check if error body contains specific error info
+  if (errorMsg.includes('402') || errorMsg.includes('credits') || errorMsg.includes('payment')) {
     throw new Error('نفدت اعتمادات AI. يرجى إضافة رصيد للمتابعة.');
   }
-  if (fnError.message?.includes('429') || fnError.message?.includes('rate')) {
+  if (errorMsg.includes('429') || errorMsg.includes('rate')) {
     throw new Error('تم تجاوز الحد المسموح. يرجى المحاولة لاحقاً.');
   }
-  throw new Error(fnError.message);
+  // Default: Show the actual error or a generic message
+  throw new Error('خطأ في الاتصال بخدمة التحليل. حاول مرة أخرى.');
 }
 ```
 
-### الجزء 2: إلغاء القص - استخدام الصورة الكاملة
-
-**الملف:** `supabase/functions/process-cheque-scan/index.ts`
-
-التغييرات:
-1. استخدام نموذج `gemini-2.5-flash` بدلاً من `gemini-2.5-pro` (أسرع وأرخص)
-2. إلغاء إرسال `bounding_box` و `cropped_base64`
-3. رفع الصورة الأصلية الكاملة **مرة واحدة** لكل صورة ممسوحة
-4. كل الشيكات المكتشفة في نفس الصورة تشترك في نفس `image_url`
-
-```typescript
-// تبسيط المنطق: رفع الصورة الأصلية مرة واحدة
-for (const result of imageResults) {
-  // رفع الصورة الأصلية مرة واحدة فقط
-  const fileName = `scan_${Date.now()}_${result.imgIndex}.jpg`;
-  const cdnUrl = await uploadToBunny(result.imageBase64, fileName);
-  
-  // كل الشيكات في هذه الصورة تستخدم نفس الـ URL
-  for (const cheque of result.cheques) {
-    cheque.image_url = cdnUrl || `data:image/jpeg;base64,${result.imageBase64}`;
-    // لا نرسل cropped_base64 أو bounding_box للـ client
-    delete cheque.cropped_base64;
-    allDetectedCheques.push(cheque);
-  }
-}
-```
-
-### الجزء 3: تبسيط معالجة الـ Client
-
-**الملف:** `src/components/payments/ChequeScannerDialog.tsx`
-
-إزالة منطق القص والتدوير - استخدام `image_url` مباشرة:
+#### التغيير 2: تحسين عرض رسالة الخطأ (السطر 641-656)
 
 ```tsx
-// السطر 517-564 - تبسيط
-const rawCheques = data.cheques || [];
-const processedCheques: DetectedCheque[] = rawCheques.map(c => ({
-  ...c,
-  isEditing: false,
-  isConfirmed: false,
-}));
-
-setDetectedCheques(processedCheques);
+{/* Error Message - Context-aware */}
+{error && (
+  <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 flex items-start gap-2">
+    <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+    <div className="text-sm">
+      <p className="text-destructive font-medium">{error}</p>
+      {/* عرض رابط ScanApp فقط إذا كان الخطأ متعلق بالسكانر */}
+      {(error.includes('سكانر') || error.includes('ScanApp') || error.includes('مسح')) && (
+        <a 
+          href="https://asprise.com/document-scan-upload-image-browser/html-web-scanner-download.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary underline text-xs mt-1 block"
+        >
+          تحميل ScanApp
+        </a>
+      )}
+    </div>
+  </div>
+)}
 ```
 
 ---
@@ -90,31 +104,29 @@ setDetectedCheques(processedCheques);
 
 | الملف | التغيير |
 |-------|---------|
-| `process-cheque-scan/index.ts` | استخدام `gemini-2.5-flash`، رفع الصورة الكاملة مرة واحدة، إزالة `cropped_base64` |
-| `ChequeScannerDialog.tsx` | تحسين عرض الأخطاء، إزالة منطق القص، استخدام `image_url` مباشرة |
+| `TaskCard.tsx` | إضافة عرض التاريخ (يوم/شهر) أسفل الوقت للمهام المتأخرة |
+| `ChequeScannerDialog.tsx` | تحسين رسائل الخطأ + إخفاء رابط ScanApp عند أخطاء AI |
 
 ---
 
 ## النتيجة المتوقعة
 
 ### قبل:
-- كل شيك له صورة مقصوصة منفصلة
-- رسالة خطأ عامة عند نفاد الاعتمادات
-- نموذج `gemini-2.5-pro` (مكلف)
+| المهام | مسح الشيكات |
+|--------|-------------|
+| متأخر 12:00 (بدون تاريخ) | خطأ عام + رابط ScanApp |
 
 ### بعد:
-- كل الشيكات في نفس الصورة تشترك في الصورة الأصلية الكاملة (جودة عالية)
-- رسائل خطأ واضحة بالعربية
-- نموذج `gemini-2.5-flash` (أسرع وأرخص)
+| المهام | مسح الشيكات |
+|--------|-------------|
+| متأخر 12:00 + 5/2 (التاريخ) | "نفدت اعتمادات AI" (بدون رابط ScanApp) |
 
 ---
 
-## ملاحظة هامة
+## ملاحظة هامة حول نفاد الاعتمادات
 
-**خطأ نفاد الاعتمادات** يحتاج إلى إضافة رصيد في حساب Lovable:
-Settings → Workspace → Usage → Add Credits
+خطأ **402 - Payment Required** يعني أن اعتمادات Lovable AI نفدت.
 
-لكن الإصلاحات أعلاه ستضمن:
-1. عرض رسالة واضحة للمستخدم
-2. تقليل استهلاك الاعتمادات باستخدام نموذج أرخص
-3. عدم هدر الاعتمادات على رفع صور متعددة
+**الحل**: إضافة رصيد من: Settings → Workspace → Usage → Add Credits
+
+الإصلاحات في الكود ستضمن عرض رسالة واضحة بالعربية للمستخدم بدلاً من الرسالة التقنية.
