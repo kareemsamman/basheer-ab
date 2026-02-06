@@ -323,7 +323,26 @@ export default function DebtTracking() {
     }
     phone = phone.replace('+', '');
     
-    const message = `مرحباً ${client.client_name}، لديك مبلغ متبقي ${client.total_remaining.toLocaleString()} شيكل. يرجى التواصل معنا لتسوية المبلغ.`;
+    // Build policy details for the message
+    const policyDetails = client.policies
+      .filter(p => p.remaining > 0)
+      .slice(0, 5)
+      .map(p => {
+        const typeLabel = getPolicyTypeLabel(p.policy_type_parent, p.policy_type_child);
+        const carNum = p.car_number || '';
+        const remaining = Math.round(p.remaining);
+        return `• ${typeLabel}${carNum ? ` - ${carNum}` : ''} - ₪${remaining.toLocaleString()}`;
+      })
+      .join('\n');
+    
+    const message = `مرحباً ${client.client_name}،
+
+عليك تسديد المبلغ: ${client.total_remaining.toLocaleString()} شيكل
+
+الوثائق:
+${policyDetails}
+
+يرجى التواصل معنا للتسوية.`;
     return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   };
 

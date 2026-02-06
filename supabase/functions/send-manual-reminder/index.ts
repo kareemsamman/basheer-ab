@@ -12,6 +12,23 @@ interface ManualReminderRequest {
   sms_type?: string;
 }
 
+// Helper to get policy type label in Arabic
+const POLICY_TYPE_LABELS: Record<string, string> = {
+  'ELZAMI': 'إلزامي',
+  'THIRD_FULL': 'ثالث/شامل',
+  'THIRD_ONLY': 'طرف ثالث',
+  'ROAD_SERVICE': 'خدمات طريق',
+  'ACCIDENT_FEE_EXEMPTION': 'إعفاء رسوم',
+};
+
+const getPolicyTypeLabel = (parent: string | null, child: string | null): string => {
+  if (!parent) return 'وثيقة';
+  const parentLabel = POLICY_TYPE_LABELS[parent] || parent;
+  if (child && parent === 'THIRD_FULL') {
+    return child === 'FULL' ? 'شامل' : child === 'THIRD' ? 'ثالث' : parentLabel;
+  }
+  return parentLabel;
+};
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -130,12 +147,33 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Build final message with unified total
+      // Fetch policy details for this client
+      const { data: policies } = await supabase.rpc(
+        'report_debt_policies_for_clients',
+        { p_client_ids: [client_id] }
+      );
+
+      // Build policy lines (max 5 to keep SMS short)
+      const policyLines = (policies || [])
+        .filter((p: any) => (p.remaining || 0) > 0)
+        .map((p: any) => {
+          const typeLabel = getPolicyTypeLabel(p.policy_type_parent, p.policy_type_child);
+          const car = p.car_number || '';
+          const remaining = Math.round(p.remaining || 0);
+          return `• ${typeLabel}${car ? ` - ${car}` : ''} - ₪${remaining.toLocaleString()}`;
+        })
+        .slice(0, 5)
+        .join('\n');
+
+      // Build final message with policy details
       finalMessage = `مرحباً ${client.full_name}،
 
-لديك مبلغ متبقي على وثائق التأمين: ₪${totalRemaining.toLocaleString()}
+عليك تسديد المبلغ: ₪${totalRemaining.toLocaleString()}
 
-يرجى التواصل معنا لتسوية المبلغ.`;
+الوثائق:
+${policyLines}
+
+يرجى التواصل معنا للتسوية.`;
     }
 
     // Send SMS
