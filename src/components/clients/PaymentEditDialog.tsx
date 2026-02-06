@@ -31,16 +31,9 @@ interface PaymentRecord {
   payment_type: string;
   cheque_number: string | null;
   cheque_image_url: string | null;
-  card_last_four: string | null;
   refused: boolean | null;
   notes: string | null;
-  locked: boolean | null;
-  policy_id: string;
-  policy: {
-    id: string;
-    policy_type_parent: string;
-    insurance_price: number;
-  } | null;
+  client_id: string;
 }
 
 interface PaymentEditDialogProps {
@@ -49,19 +42,6 @@ interface PaymentEditDialogProps {
   payment: PaymentRecord | null;
   onSuccess: () => void;
 }
-
-const policyTypeLabels: Record<string, string> = {
-  ELZAMI: 'إلزامي',
-  THIRD_FULL: 'ثالث/شامل',
-  ROAD_SERVICE: 'خدمات الطريق',
-  ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
-  HEALTH: 'تأمين صحي',
-  LIFE: 'تأمين حياة',
-  PROPERTY: 'تأمين ممتلكات',
-  TRAVEL: 'تأمين سفر',
-  BUSINESS: 'تأمين أعمال',
-  OTHER: 'أخرى',
-};
 
 const paymentTypeLabels: Record<string, string> = {
   cash: 'نقدي',
@@ -130,7 +110,7 @@ export function PaymentEditDialog({
       }
 
       const { error } = await supabase
-        .from('policy_payments')
+        .from('client_payments')
         .update(updateData)
         .eq('id', payment.id);
 
@@ -149,8 +129,6 @@ export function PaymentEditDialog({
 
   if (!payment) return null;
 
-  const isLocked = payment.locked === true;
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md" dir="rtl">
@@ -159,26 +137,6 @@ export function PaymentEditDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Policy Info Badge */}
-          {payment.policy && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>الوثيقة:</span>
-              <Badge variant="outline">
-                {policyTypeLabels[payment.policy.policy_type_parent] || payment.policy.policy_type_parent}
-              </Badge>
-              <span className="text-xs">
-                (سعر الوثيقة: ₪{payment.policy.insurance_price.toLocaleString()})
-              </span>
-            </div>
-          )}
-
-          {/* Locked Warning */}
-          {isLocked && (
-            <div className="bg-warning/10 border border-warning/30 text-warning-foreground px-3 py-2 rounded-lg text-sm">
-              ⚠️ هذه دفعة مقفولة (إلزامي) - التعديل محدود
-            </div>
-          )}
-
           {/* Amount */}
           <div className="space-y-2">
             <Label htmlFor="amount">المبلغ (₪)</Label>
@@ -189,7 +147,6 @@ export function PaymentEditDialog({
               step={0.01}
               value={formData.amount}
               onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
-              disabled={isLocked}
               className="text-lg font-semibold"
             />
           </div>
@@ -200,7 +157,6 @@ export function PaymentEditDialog({
             <Select
               value={formData.payment_type}
               onValueChange={(value) => setFormData({ ...formData, payment_type: value })}
-              disabled={isLocked}
             >
               <SelectTrigger>
                 <SelectValue placeholder="اختر طريقة الدفع" />
@@ -208,7 +164,6 @@ export function PaymentEditDialog({
               <SelectContent>
                 <SelectItem value="cash">نقدي</SelectItem>
                 <SelectItem value="cheque">شيك</SelectItem>
-                <SelectItem value="visa">بطاقة</SelectItem>
                 <SelectItem value="transfer">تحويل</SelectItem>
               </SelectContent>
             </Select>
@@ -228,7 +183,6 @@ export function PaymentEditDialog({
                 maxLength={CHEQUE_NUMBER_MAX_LENGTH}
                 className="font-mono"
                 placeholder="أدخل رقم الشيك"
-                disabled={isLocked}
               />
             </div>
           )}
@@ -242,7 +196,6 @@ export function PaymentEditDialog({
                 ...formData, 
                 payment_date: date || '' 
               })}
-              disabled={isLocked}
             />
           </div>
 
@@ -269,7 +222,6 @@ export function PaymentEditDialog({
               id="refused"
               checked={formData.refused}
               onCheckedChange={(checked) => setFormData({ ...formData, refused: checked === true })}
-              disabled={isLocked}
             />
             <Label htmlFor="refused" className="cursor-pointer">
               راجع (مرفوض)
@@ -284,7 +236,7 @@ export function PaymentEditDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             إلغاء
           </Button>
-          <Button onClick={handleSave} disabled={saving || isLocked}>
+          <Button onClick={handleSave} disabled={saving}>
             {saving ? (
               <>
                 <Loader2 className="h-4 w-4 ml-2 animate-spin" />

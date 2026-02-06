@@ -176,16 +176,9 @@ interface PaymentRecord {
   payment_type: string;
   cheque_number: string | null;
   cheque_image_url: string | null;
-  card_last_four: string | null;
   refused: boolean | null;
   notes: string | null;
-  locked: boolean | null;
-  policy_id: string;
-  policy: {
-    id: string;
-    policy_type_parent: string;
-    insurance_price: number;
-  } | null;
+  client_id: string;
 }
 
 interface ClientDetailsProps {
@@ -527,36 +520,15 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
   const fetchPayments = async () => {
     setLoadingPayments(true);
     try {
-      // Get all policies for this client first
-      const { data: policiesData } = await supabase
-        .from('policies')
-        .select('id, policy_type_parent, insurance_price')
-        .eq('client_id', client.id)
-        .is('deleted_at', null);
-
-      if (!policiesData || policiesData.length === 0) {
-        setPayments([]);
-        return;
-      }
-
-      const policyIds = policiesData.map(p => p.id);
-
-      // Get all payments for these policies
+      // Get payments from client_payments (wallet-based)
       const { data: paymentsData, error } = await supabase
-        .from('policy_payments')
-        .select('id, amount, payment_date, payment_type, cheque_number, cheque_image_url, card_last_four, refused, notes, policy_id, locked')
-        .in('policy_id', policyIds)
+        .from('client_payments')
+        .select('id, amount, payment_date, payment_type, cheque_number, cheque_image_url, refused, notes, client_id')
+        .eq('client_id', client.id)
         .order('payment_date', { ascending: false });
 
       if (error) throw error;
-
-      // Map payments with policy info
-      const paymentsWithPolicy = (paymentsData || []).map(payment => ({
-        ...payment,
-        policy: policiesData.find(p => p.id === payment.policy_id) || null,
-      }));
-
-      setPayments(paymentsWithPolicy);
+      setPayments(paymentsData || []);
     } catch (error) {
       console.error('Error fetching payments:', error);
     } finally {
@@ -674,7 +646,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
     setDeletingPayment(true);
     try {
       const { error } = await supabase
-        .from('policy_payments')
+        .from('client_payments')
         .delete()
         .eq('id', deletePaymentId);
       
@@ -1630,7 +1602,6 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                       <TableHead className="text-right">المبلغ</TableHead>
                       <TableHead className="text-right">التاريخ</TableHead>
                       <TableHead className="text-right">طريقة الدفع</TableHead>
-                      <TableHead className="text-right">نوع التأمين</TableHead>
                       <TableHead className="text-right">رقم الشيك</TableHead>
                       <TableHead className="text-right">الحالة</TableHead>
                       <TableHead className="text-right">ملفات</TableHead>
@@ -1657,26 +1628,11 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                           <TableCell className="font-semibold">₪{payment.amount.toLocaleString()}</TableCell>
                           <TableCell>{formatDate(payment.payment_date)}</TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-1.5">
-                              <Badge variant="outline">
-                                {payment.payment_type === 'cash' ? 'نقدي' :
-                                 payment.payment_type === 'cheque' ? 'شيك' :
-                                 payment.payment_type === 'visa' ? 'بطاقة' :
-                                 payment.payment_type === 'transfer' ? 'تحويل' : payment.payment_type}
-                              </Badge>
-                              {payment.payment_type === 'visa' && payment.card_last_four && (
-                                <span className="text-xs text-muted-foreground font-mono">
-                                  *{payment.card_last_four}
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {payment.policy && (
-                              <Badge className={cn("border", policyTypeColors[payment.policy.policy_type_parent])}>
-                                {policyTypeLabels[payment.policy.policy_type_parent] || payment.policy.policy_type_parent}
-                              </Badge>
-                            )}
+                            <Badge variant="outline">
+                              {payment.payment_type === 'cash' ? 'نقدي' :
+                               payment.payment_type === 'cheque' ? 'شيك' :
+                               payment.payment_type === 'transfer' ? 'تحويل' : payment.payment_type}
+                            </Badge>
                           </TableCell>
                           <TableCell className="font-mono">{payment.cheque_number || '-'}</TableCell>
                           <TableCell>
@@ -1709,33 +1665,20 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem 
-                                  onClick={() => handleGeneratePaymentReceipt(payment.id)}
-                                  disabled={generatingReceipt === payment.id}
-                                >
-                                  {generatingReceipt === payment.id ? (
-                                    <Loader2 className="h-4 w-4 ml-2 animate-spin" />
-                                  ) : (
-                                    <Receipt className="h-4 w-4 ml-2" />
-                                  )}
-                                  إيصال
-                                </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleEditPayment(payment)}>
                                   <Edit className="h-4 w-4 ml-2" />
                                   تعديل
                                 </DropdownMenuItem>
-                                {!payment.locked && (
-                                  <DropdownMenuItem 
-                                    className="text-destructive focus:text-destructive"
-                                    onClick={() => {
-                                      setDeletePaymentId(payment.id);
-                                      setDeletePaymentDialogOpen(true);
-                                    }}
-                                  >
-                                    <Trash2 className="h-4 w-4 ml-2" />
-                                    حذف
-                                  </DropdownMenuItem>
-                                )}
+                                <DropdownMenuItem 
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => {
+                                    setDeletePaymentId(payment.id);
+                                    setDeletePaymentDialogOpen(true);
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4 ml-2" />
+                                  حذف
+                                </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
