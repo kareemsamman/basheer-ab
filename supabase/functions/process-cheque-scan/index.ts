@@ -311,15 +311,23 @@ serve(async (req) => {
     const rateLimitError = imageResults.find(r => r.error === "rate_limit");
     if (rateLimitError) {
       return new Response(
-        JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
-        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ 
+          success: false, 
+          error: "rate_limit",
+          message: "تم تجاوز الحد المسموح. يرجى المحاولة لاحقاً." 
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
     const paymentError = imageResults.find(r => r.error === "payment_required");
     if (paymentError) {
       return new Response(
-        JSON.stringify({ error: "AI credits exhausted. Please add funds to continue." }),
-        { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ 
+          success: false, 
+          error: "payment_required",
+          message: "نفدت اعتمادات AI. يرجى إضافة رصيد للمتابعة." 
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -374,9 +382,11 @@ serve(async (req) => {
     console.error("Error in process-cheque-scan:", error);
     return new Response(
       JSON.stringify({ 
-        error: error instanceof Error ? error.message : "Unknown error occurred" 
+        success: false,
+        error: "server_error",
+        message: error instanceof Error ? error.message : "خطأ غير متوقع" 
       }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

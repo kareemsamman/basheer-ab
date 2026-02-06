@@ -506,31 +506,27 @@ export function ChequeScannerDialog({
         body: { images: base64Images }
       });
 
-      // Handle specific error codes with clear Arabic messages
+      // Network/connection error (no response at all)
       if (fnError) {
-        const errorMsg = fnError.message || '';
-        if (errorMsg.includes('402') || errorMsg.includes('credits') || errorMsg.includes('payment')) {
-          throw new Error('نفدت اعتمادات AI. يرجى إضافة رصيد للمتابعة.');
-        }
-        if (errorMsg.includes('429') || errorMsg.includes('rate')) {
-          throw new Error('تم تجاوز الحد المسموح. يرجى المحاولة لاحقاً.');
-        }
-        throw new Error(fnError.message || 'خطأ في معالجة الشيكات');
+        console.error('Edge function connection error:', fnError);
+        throw new Error('خطأ في الاتصال بالخادم. تحقق من الإنترنت.');
       }
 
-      // Check for error in response data
+      // Server returned error in body (new pattern - always 200 with error in body)
       if (data?.error) {
-        const errorMsg = data.error || '';
-        if (errorMsg.includes('credits') || errorMsg.includes('payment')) {
-          throw new Error('نفدت اعتمادات AI. يرجى إضافة رصيد للمتابعة.');
+        if (data.error === 'payment_required') {
+          throw new Error(data.message || 'نفدت اعتمادات AI. يرجى إضافة رصيد للمتابعة.');
         }
-        if (errorMsg.includes('rate') || errorMsg.includes('limit')) {
-          throw new Error('تم تجاوز الحد المسموح. يرجى المحاولة لاحقاً.');
+        if (data.error === 'rate_limit') {
+          throw new Error(data.message || 'تم تجاوز الحد المسموح. يرجى المحاولة لاحقاً.');
         }
-        throw new Error(errorMsg);
+        if (data.error === 'server_error') {
+          throw new Error(data.message || 'خطأ في الخادم. حاول مرة أخرى.');
+        }
+        throw new Error(data.message || 'خطأ في معالجة الشيكات');
       }
 
-      if (!data || !data.success) {
+      if (!data?.success) {
         throw new Error('فشل في معالجة الصور');
       }
 
