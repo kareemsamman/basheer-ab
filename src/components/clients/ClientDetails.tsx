@@ -181,11 +181,28 @@ interface PaymentRecord {
   notes: string | null;
   locked: boolean | null;
   policy_id: string;
+  batch_id: string | null;
   policy: {
     id: string;
     policy_type_parent: string;
     insurance_price: number;
   } | null;
+}
+
+// Grouped payment for display (combines payments with same batch_id)
+interface GroupedPayment {
+  id: string; // batch_id or individual payment id
+  totalAmount: number;
+  payment_date: string;
+  payment_type: string;
+  cheque_number: string | null;
+  cheque_image_url: string | null;
+  card_last_four: string | null;
+  refused: boolean | null;
+  notes: string | null;
+  locked: boolean | null;
+  payments: PaymentRecord[]; // Individual payments in this group
+  policyTypes: string[]; // Unique policy types in this group
 }
 
 interface ClientDetailsProps {
@@ -541,10 +558,10 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
 
       const policyIds = policiesData.map(p => p.id);
 
-      // Get all payments for these policies
+      // Get all payments for these policies (include batch_id for grouping)
       const { data: paymentsData, error } = await supabase
         .from('policy_payments')
-        .select('id, amount, payment_date, payment_type, cheque_number, cheque_image_url, card_last_four, refused, notes, policy_id, locked')
+        .select('id, amount, payment_date, payment_type, cheque_number, cheque_image_url, card_last_four, refused, notes, policy_id, locked, batch_id')
         .in('policy_id', policyIds)
         .order('payment_date', { ascending: false });
 
@@ -1003,6 +1020,77 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
     const types = new Set(policies.map(p => p.policy_type_parent));
     return Array.from(types);
   }, [policies]);
+
+  // Group payments by batch_id for unified display
+  const groupedPayments = useMemo((): GroupedPayment[] => {
+    const groups = new Map<string, GroupedPayment>();
+    
+    // Filter payments first based on search and type filter
+    const filteredPayments = payments.filter(payment => {
+      if (paymentSearch) {
+        const search = paymentSearch.toLowerCase();
+        if (!payment.cheque_number?.toLowerCase().includes(search) && 
+            !payment.notes?.toLowerCase().includes(search)) {
+          return false;
+        }
+      }
+      if (paymentTypeFilter !== 'all' && payment.payment_type !== paymentTypeFilter) {
+        return false;
+      }
+      return true;
+    });
+
+    for (const payment of filteredPayments) {
+      // Use batch_id if exists, otherwise use individual payment id
+      const groupKey = payment.batch_id || payment.id;
+      
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, {
+          id: groupKey,
+          totalAmount: 0,
+          payment_date: payment.payment_date,
+          payment_type: payment.payment_type,
+          cheque_number: payment.cheque_number,
+          cheque_image_url: payment.cheque_image_url,
+          card_last_four: payment.card_last_four,
+          refused: payment.refused,
+          notes: payment.notes,
+          locked: payment.locked,
+          payments: [],
+          policyTypes: [],
+        });
+      }
+      
+      const group = groups.get(groupKey)!;
+      group.payments.push(payment);
+      group.totalAmount += payment.amount;
+      
+      // Collect unique policy types
+      if (payment.policy?.policy_type_parent && !group.policyTypes.includes(payment.policy.policy_type_parent)) {
+        group.policyTypes.push(payment.policy.policy_type_parent);
+      }
+      
+      // Use earliest date if batched
+      if (payment.payment_date < group.payment_date) {
+        group.payment_date = payment.payment_date;
+      }
+      
+      // If any payment in batch is refused, mark whole batch
+      if (payment.refused) {
+        group.refused = true;
+      }
+      
+      // If any payment is locked, mark whole batch
+      if (payment.locked) {
+        group.locked = true;
+      }
+    }
+    
+    // Sort by date descending
+    return Array.from(groups.values()).sort((a, b) => 
+      new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()
+    );
+  }, [payments, paymentSearch, paymentTypeFilter]);
 
   // Loading skeleton
   if (initialLoading) {
@@ -1638,109 +1726,127 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {payments
-                      .filter(payment => {
-                        if (paymentSearch) {
-                          const search = paymentSearch.toLowerCase();
-                          if (!payment.cheque_number?.toLowerCase().includes(search) && 
-                              !payment.notes?.toLowerCase().includes(search)) {
-                            return false;
-                          }
-                        }
-                        if (paymentTypeFilter !== 'all' && payment.payment_type !== paymentTypeFilter) {
-                          return false;
-                        }
-                        return true;
-                      })
-                      .map((payment) => (
-                        <TableRow key={payment.id}>
-                          <TableCell className="font-semibold">₪{payment.amount.toLocaleString()}</TableCell>
-                          <TableCell>{formatDate(payment.payment_date)}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1.5">
-                              <Badge variant="outline">
-                                {payment.payment_type === 'cash' ? 'نقدي' :
-                                 payment.payment_type === 'cheque' ? 'شيك' :
-                                 payment.payment_type === 'visa' ? 'بطاقة' :
-                                 payment.payment_type === 'transfer' ? 'تحويل' : payment.payment_type}
-                              </Badge>
-                              {payment.payment_type === 'visa' && payment.card_last_four && (
-                                <span className="text-xs text-muted-foreground font-mono">
-                                  *{payment.card_last_four}
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {payment.policy && (
-                              <Badge className={cn("border", policyTypeColors[payment.policy.policy_type_parent])}>
-                                {policyTypeLabels[payment.policy.policy_type_parent] || payment.policy.policy_type_parent}
+                    {groupedPayments.map((group) => (
+                      <TableRow key={group.id}>
+                        <TableCell className="font-semibold">
+                          <div className="flex items-center gap-1">
+                            ₪{group.totalAmount.toLocaleString()}
+                            {group.payments.length > 1 && (
+                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                {group.payments.length} دفعات
                               </Badge>
                             )}
-                          </TableCell>
-                          <TableCell className="font-mono">{payment.cheque_number || '-'}</TableCell>
-                          <TableCell>
-                            {payment.refused ? (
-                              <Badge variant="destructive">راجع</Badge>
-                            ) : (
-                              <Badge variant="success">مقبول</Badge>
+                          </div>
+                        </TableCell>
+                        <TableCell>{formatDate(group.payment_date)}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1.5">
+                            <Badge variant="outline">
+                              {group.payment_type === 'cash' ? 'نقدي' :
+                               group.payment_type === 'cheque' ? 'شيك' :
+                               group.payment_type === 'visa' ? 'بطاقة' :
+                               group.payment_type === 'transfer' ? 'تحويل' : group.payment_type}
+                            </Badge>
+                            {group.payment_type === 'visa' && group.card_last_four && (
+                              <span className="text-xs text-muted-foreground font-mono">
+                                *{group.card_last_four}
+                              </span>
                             )}
-                          </TableCell>
-                          <TableCell>
-                            {payment.cheque_image_url ? (
-                              <a 
-                                href={payment.cheque_image_url} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-primary hover:underline flex items-center gap-1"
-                              >
-                                <FileImage className="h-4 w-4" />
-                                <span className="text-xs">عرض</span>
-                              </a>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem 
-                                  onClick={() => handleGeneratePaymentReceipt(payment.id)}
-                                  disabled={generatingReceipt === payment.id}
-                                >
-                                  {generatingReceipt === payment.id ? (
-                                    <Loader2 className="h-4 w-4 ml-2 animate-spin" />
-                                  ) : (
-                                    <Receipt className="h-4 w-4 ml-2" />
-                                  )}
-                                  إيصال
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleEditPayment(payment)}>
-                                  <Edit className="h-4 w-4 ml-2" />
-                                  تعديل
-                                </DropdownMenuItem>
-                                {!payment.locked && (
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {group.policyTypes.map(type => (
+                              <Badge key={type} className={cn("border", policyTypeColors[type])}>
+                                {policyTypeLabels[type] || type}
+                              </Badge>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-mono">{group.cheque_number || '-'}</TableCell>
+                        <TableCell>
+                          {group.refused ? (
+                            <Badge variant="destructive">راجع</Badge>
+                          ) : (
+                            <Badge variant="success">مقبول</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {group.cheque_image_url ? (
+                            <a 
+                              href={group.cheque_image_url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline flex items-center gap-1"
+                            >
+                              <FileImage className="h-4 w-4" />
+                              <span className="text-xs">عرض</span>
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {group.payments.length === 1 && (
+                                <>
                                   <DropdownMenuItem 
-                                    className="text-destructive focus:text-destructive"
-                                    onClick={() => {
-                                      setDeletePaymentId(payment.id);
-                                      setDeletePaymentDialogOpen(true);
-                                    }}
+                                    onClick={() => handleGeneratePaymentReceipt(group.payments[0].id)}
+                                    disabled={generatingReceipt === group.payments[0].id}
                                   >
-                                    <Trash2 className="h-4 w-4 ml-2" />
-                                    حذف
+                                    {generatingReceipt === group.payments[0].id ? (
+                                      <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                                    ) : (
+                                      <Receipt className="h-4 w-4 ml-2" />
+                                    )}
+                                    إيصال
                                   </DropdownMenuItem>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                                  <DropdownMenuItem onClick={() => handleEditPayment(group.payments[0])}>
+                                    <Edit className="h-4 w-4 ml-2" />
+                                    تعديل
+                                  </DropdownMenuItem>
+                                  {!group.locked && (
+                                    <DropdownMenuItem 
+                                      className="text-destructive focus:text-destructive"
+                                      onClick={() => {
+                                        setDeletePaymentId(group.payments[0].id);
+                                        setDeletePaymentDialogOpen(true);
+                                      }}
+                                    >
+                                      <Trash2 className="h-4 w-4 ml-2" />
+                                      حذف
+                                    </DropdownMenuItem>
+                                  )}
+                                </>
+                              )}
+                              {group.payments.length > 1 && (
+                                <>
+                                  <DropdownMenuItem disabled className="text-muted-foreground text-xs">
+                                    دفعة مجمعة ({group.payments.length} سجلات)
+                                  </DropdownMenuItem>
+                                  {group.payments.map((payment, idx) => (
+                                    <DropdownMenuItem 
+                                      key={payment.id}
+                                      onClick={() => handleEditPayment(payment)}
+                                      className="text-sm"
+                                    >
+                                      <Edit className="h-3 w-3 ml-2" />
+                                      تعديل: ₪{payment.amount} - {policyTypeLabels[payment.policy?.policy_type_parent || ''] || 'غير محدد'}
+                                    </DropdownMenuItem>
+                                  ))}
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               </Card>

@@ -3270,6 +3270,7 @@ export type Database = {
       policy_payments: {
         Row: {
           amount: number
+          batch_id: string | null
           branch_id: string | null
           card_expiry: string | null
           card_last_four: string | null
@@ -3301,6 +3302,7 @@ export type Database = {
         }
         Insert: {
           amount: number
+          batch_id?: string | null
           branch_id?: string | null
           card_expiry?: string | null
           card_last_four?: string | null
@@ -3332,6 +3334,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          batch_id?: string | null
           branch_id?: string | null
           card_expiry?: string | null
           card_last_four?: string | null

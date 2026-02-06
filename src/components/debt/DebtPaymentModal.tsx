@@ -643,6 +643,10 @@ export function DebtPaymentModal({
           const splits = calculateSplitPayments(paymentLine.amount, paymentLine.paymentType);
           
           if (splits.length > 0) {
+            // Generate batch_id for grouping split payments in the UI
+            // This links all payments from a single debt payment action
+            const batchId = splits.length > 1 ? crypto.randomUUID() : null;
+            
             const paymentsToInsert = splits.map(split => ({
               policy_id: split.policyId,
               amount: split.amount,
@@ -651,6 +655,7 @@ export function DebtPaymentModal({
               cheque_number: paymentLine.paymentType === 'cheque' ? paymentLine.chequeNumber : null,
               notes: paymentLine.notes || `تسديد دين`,
               branch_id: split.branchId,
+              batch_id: batchId,
             }));
 
             const { data: insertedPayments, error } = await supabase
