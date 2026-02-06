@@ -251,9 +251,9 @@ export function ChequeScannerDialog({
     setStage('processing');
     setError(null);
     
-    // Start progress tracking
-    const estimatedSecondsPerImage = 12; // ~12 seconds per image with Gemini 3 Pro
-    const totalEstimated = scannedImages.length * estimatedSecondsPerImage;
+    // Start progress tracking - faster with gemini-2.5-flash + parallel processing
+    const estimatedSecondsPerImage = 5; // ~5 seconds with parallel + flash model
+    const totalEstimated = Math.max(10, scannedImages.length * estimatedSecondsPerImage);
     setProcessingProgress({
       totalImages: scannedImages.length,
       estimatedSeconds: totalEstimated,
