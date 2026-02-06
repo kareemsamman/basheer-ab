@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -20,7 +20,8 @@ import {
   RefreshCw,
   Edit2,
   Check,
-  Scan
+  Scan,
+  Upload
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -66,9 +67,11 @@ export function ChequeScannerDialog({
   const [stage, setStage] = useState<Stage>('scanning');
   const [isScanning, setIsScanning] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isLoadingPdf, setIsLoadingPdf] = useState(false);
   const [scannedImages, setScannedImages] = useState<string[]>([]);
   const [detectedCheques, setDetectedCheques] = useState<DetectedCheque[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const checkScannerReady = useCallback((): boolean => {
     if (!window.scanner) {
@@ -143,6 +146,71 @@ export function ChequeScannerDialog({
       setError('خطأ في الاتصال بالسكانر. تأكد من تثبيت ScanApp.');
     }
   }, [checkScannerReady]);
+
+  // PDF/Image upload handler
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handlePdfUpload = useCallback(async (files: FileList) => {
+    if (files.length === 0) return;
+    
+    setIsLoadingPdf(true);
+    setError(null);
+    
+    try {
+      const pdfjsLib = await import('pdfjs-dist');
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 
+        `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+      
+      const newImages: string[] = [];
+      
+      for (const file of Array.from(files)) {
+        if (file.type !== 'application/pdf') {
+          // Handle image files directly
+          const base64 = await fileToBase64(file);
+          newImages.push(base64);
+          continue;
+        }
+        
+        // Convert PDF to images
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const viewport = page.getViewport({ scale: 2.0 }); // ~300 DPI
+          
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d')!;
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          
+          await page.render({ 
+            canvasContext: ctx, 
+            viewport,
+            canvas 
+          }).promise;
+          newImages.push(canvas.toDataURL('image/jpeg', 0.95));
+        }
+      }
+      
+      setScannedImages(prev => [...prev, ...newImages]);
+      toast.success(`تم تحميل ${newImages.length} صورة`);
+      
+    } catch (err) {
+      console.error('PDF processing error:', err);
+      setError('خطأ في معالجة ملف PDF');
+    } finally {
+      setIsLoadingPdf(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }, []);
 
   const processImages = useCallback(async () => {
     if (scannedImages.length === 0) {
@@ -284,11 +352,11 @@ export function ChequeScannerDialog({
           {/* Stage: Scanning */}
           {stage === 'scanning' && (
             <>
-              {/* Scan Button */}
-              <div className="flex justify-center gap-3">
+              {/* Scan & Upload Buttons */}
+              <div className="flex justify-center gap-3 flex-wrap">
                 <Button
                   onClick={handleScan}
-                  disabled={isScanning}
+                  disabled={isScanning || isLoadingPdf}
                   size="lg"
                   className="gap-2"
                 >
@@ -300,10 +368,41 @@ export function ChequeScannerDialog({
                   ) : (
                     <>
                       <Printer className="h-5 w-5" />
-                      {scannedImages.length > 0 ? 'مسح صفحة إضافية' : 'بدء المسح'}
+                      مسح من السكانر
                     </>
                   )}
                 </Button>
+
+                {/* PDF/Image Upload Button */}
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="gap-2"
+                  disabled={isScanning || isLoadingPdf}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {isLoadingPdf ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      جاري التحميل...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-5 w-5" />
+                      رفع PDF / صور
+                    </>
+                  )}
+                </Button>
+
+                {/* Hidden File Input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => e.target.files && handlePdfUpload(e.target.files)}
+                />
               </div>
 
               {/* Scanned Images Preview */}
@@ -369,8 +468,8 @@ export function ChequeScannerDialog({
               {/* Instructions */}
               {scannedImages.length === 0 && !error && (
                 <div className="text-center text-sm text-muted-foreground space-y-1">
-                  <p>ضع الشيكات على السكانر واضغط "بدء المسح"</p>
-                  <p className="text-xs">يمكنك مسح صفحة واحدة تحتوي على عدة شيكات</p>
+                  <p>امسح الشيكات من السكانر أو ارفع ملفات PDF/صور</p>
+                  <p className="text-xs">يمكنك رفع عدة ملفات PDF وسيتم تحويل كل صفحة لصورة</p>
                 </div>
               )}
             </>
@@ -578,7 +677,7 @@ export function ChequeScannerDialog({
           <Button
             variant="outline"
             onClick={handleClose}
-            disabled={isScanning || isProcessing}
+            disabled={isScanning || isProcessing || isLoadingPdf}
           >
             إلغاء
           </Button>
