@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { formatDistanceToNow, startOfDay, endOfDay, isWithinInterval, parseISO, subHours } from "date-fns";
+import { formatDistanceToNow, startOfDay, endOfDay, isWithinInterval, parseISO, subHours, startOfMonth, endOfMonth } from "date-fns";
 import { ar } from "date-fns/locale";
 
 interface Activity {
@@ -130,6 +130,17 @@ const typeIcons = {
   car: Car,
 };
 
+// Helper function to format date and time
+const formatDateTime = (dateStr: string) => {
+  const date = new Date(dateStr);
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const year = date.getFullYear();
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${day}/${month}/${year} ${hours}:${minutes}`;
+};
+
 // Group activities by client
 function groupActivitiesByClient(activities: Activity[]): GroupedClientActivity[] {
   const groups = new Map<string, GroupedClientActivity>();
@@ -208,6 +219,204 @@ function groupActivitiesByClient(activities: Activity[]): GroupedClientActivity[
     .sort((a, b) => new Date(b.latestActivityAt).getTime() - new Date(a.latestActivityAt).getTime());
 }
 
+// Fetch activities helper function
+async function fetchActivities(branchId: string | null, startDate: string, endDate?: string): Promise<Activity[]> {
+  const results: Activity[] = [];
+  const branchFilter = branchId ? { branch_id: branchId } : {};
+
+  // Fetch policies
+  let policiesQuery = supabase
+    .from("policies")
+    .select(`
+      id, created_at, policy_type_parent, policy_type_child, cancelled, insurance_price,
+      clients(id, full_name, file_number, deleted_at),
+      cars(car_number),
+      insurance_companies(name, name_ar),
+      created_by_profile:profiles!policies_created_by_admin_id_fkey(full_name)
+    `)
+    .gte("created_at", startDate)
+    .order("created_at", { ascending: false })
+    .match(branchFilter)
+    .eq("cancelled", false)
+    .limit(500);
+
+  if (endDate) {
+    policiesQuery = policiesQuery.lte("created_at", endDate);
+  }
+
+  const { data: policies } = await policiesQuery;
+
+  if (policies) {
+    for (const p of policies) {
+      if ((p.clients as any)?.deleted_at) continue;
+      const clientName = (p.clients as any)?.full_name || "عميل";
+      const fileNumber = (p.clients as any)?.file_number || "";
+      const policyLabel = POLICY_TYPE_LABELS[p.policy_type_parent] || p.policy_type_parent || "وثيقة";
+      const companyName = (p.insurance_companies as any)?.name_ar || (p.insurance_companies as any)?.name || "";
+      const carNumber = (p.cars as any)?.car_number || "";
+
+      results.push({
+        id: `policy-${p.id}`,
+        type: "policy",
+        action: "وثيقة جديدة",
+        created_at: p.created_at,
+        createdBy: (p.created_by_profile as any)?.full_name || undefined,
+        details: {
+          policy_type: policyLabel,
+          company_name: companyName,
+          car_number: carNumber,
+          client_id: (p.clients as any)?.id,
+          client_name: clientName,
+          client_file_number: fileNumber,
+          insurance_price: p.insurance_price || undefined,
+          policy_id: p.id,
+        },
+      });
+    }
+  }
+
+  // Fetch payments
+  let paymentsQuery = supabase
+    .from("policy_payments")
+    .select(`
+      id, created_at, amount, payment_type, cheque_number,
+      policies(
+        id, cancelled, 
+        policy_type_parent,
+        insurance_companies(name, name_ar),
+        cars(car_number),
+        clients(id, full_name, file_number, deleted_at)
+      ),
+      created_by_profile:profiles!policy_payments_created_by_admin_id_fkey(full_name)
+    `)
+    .gte("created_at", startDate)
+    .order("created_at", { ascending: false })
+    .match(branchFilter)
+    .limit(500);
+
+  if (endDate) {
+    paymentsQuery = paymentsQuery.lte("created_at", endDate);
+  }
+
+  const { data: payments } = await paymentsQuery;
+
+  if (payments) {
+    for (const pay of payments) {
+      if ((pay.policies as any)?.cancelled) continue;
+      if ((pay.policies as any)?.clients?.deleted_at) continue;
+      if ((pay.policies as any)?.policy_type_parent === "ELZAMI") continue;
+
+      const clientName = (pay.policies as any)?.clients?.full_name || "عميل";
+      const fileNumber = (pay.policies as any)?.clients?.file_number || "";
+      const policyType = POLICY_TYPE_LABELS[(pay.policies as any)?.policy_type_parent] || "";
+      const companyName =
+        (pay.policies as any)?.insurance_companies?.name_ar ||
+        (pay.policies as any)?.insurance_companies?.name ||
+        "";
+      const carNumber = (pay.policies as any)?.cars?.car_number || "";
+
+      results.push({
+        id: `payment-${pay.id}`,
+        type: "payment",
+        action: "دفعة مستلمة",
+        created_at: pay.created_at,
+        createdBy: (pay.created_by_profile as any)?.full_name || undefined,
+        details: {
+          amount: pay.amount,
+          payment_type: pay.payment_type || "cash",
+          cheque_number: pay.cheque_number || undefined,
+          policy_type: policyType,
+          company_name: companyName,
+          car_number: carNumber,
+          client_id: (pay.policies as any)?.clients?.id,
+          client_name: clientName,
+          client_file_number: fileNumber,
+          policy_id: (pay.policies as any)?.id,
+        },
+      });
+    }
+  }
+
+  // Fetch clients
+  let clientsQuery = supabase
+    .from("clients")
+    .select(`
+      id, created_at, full_name, file_number,
+      created_by_profile:profiles!clients_created_by_admin_id_fkey(full_name)
+    `)
+    .gte("created_at", startDate)
+    .order("created_at", { ascending: false })
+    .match(branchFilter)
+    .is("deleted_at", null)
+    .limit(100);
+
+  if (endDate) {
+    clientsQuery = clientsQuery.lte("created_at", endDate);
+  }
+
+  const { data: clients } = await clientsQuery;
+
+  if (clients) {
+    for (const c of clients) {
+      results.push({
+        id: `client-${c.id}`,
+        type: "client",
+        action: "عميل جديد",
+        created_at: c.created_at,
+        createdBy: (c.created_by_profile as any)?.full_name || undefined,
+        details: {
+          client_id: c.id,
+          client_name: c.full_name,
+          client_file_number: c.file_number || "",
+        },
+      });
+    }
+  }
+
+  // Fetch cars
+  let carsQuery = supabase
+    .from("cars")
+    .select(`
+      id, created_at, updated_at, car_number,
+      clients(id, full_name, file_number),
+      created_by_profile:profiles!cars_created_by_admin_id_fkey(full_name)
+    `)
+    .gte("updated_at", startDate)
+    .order("updated_at", { ascending: false })
+    .match(branchFilter)
+    .is("deleted_at", null)
+    .limit(100);
+
+  if (endDate) {
+    carsQuery = carsQuery.lte("updated_at", endDate);
+  }
+
+  const { data: cars } = await carsQuery;
+
+  if (cars) {
+    for (const car of cars) {
+      const isNew = car.created_at === car.updated_at;
+      results.push({
+        id: `car-${car.id}`,
+        type: "car",
+        action: isNew ? "سيارة جديدة" : "تحديث سيارة",
+        created_at: car.updated_at,
+        createdBy: (car.created_by_profile as any)?.full_name || undefined,
+        details: {
+          car_number: car.car_number,
+          client_id: (car.clients as any)?.id,
+          client_name: (car.clients as any)?.full_name || "",
+          client_file_number: (car.clients as any)?.file_number || "",
+        },
+      });
+    }
+  }
+
+  // Sort all by created_at descending
+  results.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  return results;
+}
+
 export function RecentActivity() {
   const { profile } = useAuth();
   const branchId = profile?.branch_id;
@@ -219,181 +428,35 @@ export function RecentActivity() {
   const [dateTo, setDateTo] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
 
+  // Dashboard query - last 24 hours only
   const { data: activities = [], isLoading } = useQuery({
     queryKey: ["recent-activity-24h", branchId],
     queryFn: async () => {
-      const results: Activity[] = [];
-      const branchFilter = branchId ? { branch_id: branchId } : {};
       const twentyFourHoursAgo = subHours(new Date(), 24).toISOString();
-
-      // Fetch recent policies with full details
-      const { data: policies } = await supabase
-        .from("policies")
-        .select(`
-          id, created_at, policy_type_parent, policy_type_child, cancelled, insurance_price,
-          clients(id, full_name, file_number, deleted_at),
-          cars(car_number),
-          insurance_companies(name, name_ar),
-          created_by_profile:profiles!policies_created_by_admin_id_fkey(full_name)
-        `)
-        .gte("created_at", twentyFourHoursAgo)
-        .order("created_at", { ascending: false })
-        .match(branchFilter)
-        .eq("cancelled", false)
-        .limit(100);
-
-      if (policies) {
-        for (const p of policies) {
-          if ((p.clients as any)?.deleted_at) continue;
-          const clientName = (p.clients as any)?.full_name || "عميل";
-          const fileNumber = (p.clients as any)?.file_number || "";
-          const policyLabel = POLICY_TYPE_LABELS[p.policy_type_parent] || p.policy_type_parent || "وثيقة";
-          const companyName = (p.insurance_companies as any)?.name_ar || (p.insurance_companies as any)?.name || "";
-          const carNumber = (p.cars as any)?.car_number || "";
-
-          results.push({
-            id: `policy-${p.id}`,
-            type: "policy",
-            action: "وثيقة جديدة",
-            created_at: p.created_at,
-            createdBy: (p.created_by_profile as any)?.full_name || undefined,
-            details: {
-              policy_type: policyLabel,
-              company_name: companyName,
-              car_number: carNumber,
-              client_id: (p.clients as any)?.id,
-              client_name: clientName,
-              client_file_number: fileNumber,
-              insurance_price: p.insurance_price || undefined,
-              policy_id: p.id,
-            },
-          });
-        }
-      }
-
-      // Fetch recent payments with full details
-      const { data: payments } = await supabase
-        .from("policy_payments")
-        .select(`
-          id, created_at, amount, payment_type, cheque_number,
-          policies(
-            id, cancelled, 
-            policy_type_parent,
-            insurance_companies(name, name_ar),
-            cars(car_number),
-            clients(id, full_name, file_number, deleted_at)
-          ),
-          created_by_profile:profiles!policy_payments_created_by_admin_id_fkey(full_name)
-        `)
-        .gte("created_at", twentyFourHoursAgo)
-        .order("created_at", { ascending: false })
-        .match(branchFilter)
-        .limit(200);
-
-      if (payments) {
-        for (const pay of payments) {
-          if ((pay.policies as any)?.cancelled) continue;
-          if ((pay.policies as any)?.clients?.deleted_at) continue;
-          if ((pay.policies as any)?.policy_type_parent === "ELZAMI") continue;
-
-          const clientName = (pay.policies as any)?.clients?.full_name || "عميل";
-          const fileNumber = (pay.policies as any)?.clients?.file_number || "";
-          const policyType = POLICY_TYPE_LABELS[(pay.policies as any)?.policy_type_parent] || "";
-          const companyName =
-            (pay.policies as any)?.insurance_companies?.name_ar ||
-            (pay.policies as any)?.insurance_companies?.name ||
-            "";
-          const carNumber = (pay.policies as any)?.cars?.car_number || "";
-
-          results.push({
-            id: `payment-${pay.id}`,
-            type: "payment",
-            action: "دفعة مستلمة",
-            created_at: pay.created_at,
-            createdBy: (pay.created_by_profile as any)?.full_name || undefined,
-            details: {
-              amount: pay.amount,
-              payment_type: pay.payment_type || "cash",
-              cheque_number: pay.cheque_number || undefined,
-              policy_type: policyType,
-              company_name: companyName,
-              car_number: carNumber,
-              client_id: (pay.policies as any)?.clients?.id,
-              client_name: clientName,
-              client_file_number: fileNumber,
-              policy_id: (pay.policies as any)?.id,
-            },
-          });
-        }
-      }
-
-      // Fetch recent clients
-      const { data: clients } = await supabase
-        .from("clients")
-        .select(`
-          id, created_at, full_name, file_number,
-          created_by_profile:profiles!clients_created_by_admin_id_fkey(full_name)
-        `)
-        .gte("created_at", twentyFourHoursAgo)
-        .order("created_at", { ascending: false })
-        .match(branchFilter)
-        .is("deleted_at", null)
-        .limit(50);
-
-      if (clients) {
-        for (const c of clients) {
-          results.push({
-            id: `client-${c.id}`,
-            type: "client",
-            action: "عميل جديد",
-            created_at: c.created_at,
-            createdBy: (c.created_by_profile as any)?.full_name || undefined,
-            details: {
-              client_id: c.id,
-              client_name: c.full_name,
-              client_file_number: c.file_number || "",
-            },
-          });
-        }
-      }
-
-      // Fetch recent cars
-      const { data: cars } = await supabase
-        .from("cars")
-        .select(`
-          id, created_at, updated_at, car_number,
-          clients(id, full_name, file_number),
-          created_by_profile:profiles!cars_created_by_admin_id_fkey(full_name)
-        `)
-        .gte("updated_at", twentyFourHoursAgo)
-        .order("updated_at", { ascending: false })
-        .match(branchFilter)
-        .is("deleted_at", null)
-        .limit(50);
-
-      if (cars) {
-        for (const car of cars) {
-          const isNew = car.created_at === car.updated_at;
-          results.push({
-            id: `car-${car.id}`,
-            type: "car",
-            action: isNew ? "سيارة جديدة" : "تحديث سيارة",
-            created_at: car.updated_at,
-            createdBy: (car.created_by_profile as any)?.full_name || undefined,
-            details: {
-              car_number: car.car_number,
-              client_id: (car.clients as any)?.id,
-              client_name: (car.clients as any)?.full_name || "",
-              client_file_number: (car.clients as any)?.file_number || "",
-            },
-          });
-        }
-      }
-
-      // Sort all by created_at descending
-      results.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      return results;
+      return fetchActivities(branchId || null, twentyFourHoursAgo);
     },
+    staleTime: 60 * 1000,
+  });
+
+  // Dialog query - current month (fetches when dialog opens)
+  const { data: dialogActivities = [], isLoading: isDialogLoading } = useQuery({
+    queryKey: ["recent-activity-month", branchId, dateFrom, dateTo],
+    queryFn: async () => {
+      // If custom date range is set, use that; otherwise use current month
+      let start: string;
+      let end: string | undefined;
+
+      if (dateFrom) {
+        start = startOfDay(parseISO(dateFrom)).toISOString();
+        end = dateTo ? endOfDay(parseISO(dateTo)).toISOString() : undefined;
+      } else {
+        start = startOfMonth(new Date()).toISOString();
+        end = endOfMonth(new Date()).toISOString();
+      }
+
+      return fetchActivities(branchId || null, start, end);
+    },
+    enabled: showDialog,
     staleTime: 60 * 1000,
   });
 
@@ -422,21 +485,11 @@ export function RecentActivity() {
 
   // Dialog filtered activities
   const dialogFilteredActivities = useMemo(() => {
-    let filtered = [...activities];
+    let filtered = [...dialogActivities];
 
     // Type filter
     if (typeFilter !== "all") {
       filtered = filtered.filter((a) => a.type === typeFilter);
-    }
-
-    // Date filter
-    if (dateFrom || dateTo) {
-      filtered = filtered.filter((a) => {
-        const activityDate = parseISO(a.created_at);
-        const from = dateFrom ? startOfDay(parseISO(dateFrom)) : new Date(0);
-        const to = dateTo ? endOfDay(parseISO(dateTo)) : new Date(2100, 0, 1);
-        return isWithinInterval(activityDate, { start: from, end: to });
-      });
     }
 
     // Search
@@ -459,7 +512,7 @@ export function RecentActivity() {
     }
 
     return filtered;
-  }, [activities, typeFilter, dateFrom, dateTo, dialogSearch]);
+  }, [dialogActivities, typeFilter, dialogSearch]);
 
   const dialogGroupedActivities = useMemo(() => {
     return groupActivitiesByClient(dialogFilteredActivities);
@@ -470,6 +523,15 @@ export function RecentActivity() {
       .filter((a) => a.type === "payment")
       .reduce((sum, a) => sum + (a.details.amount || 0), 0);
   }, [dialogFilteredActivities]);
+
+  const clearFilters = () => {
+    setDateFrom("");
+    setDateTo("");
+    setTypeFilter("all");
+    setDialogSearch("");
+  };
+
+  const hasActiveFilters = dateFrom || dateTo || typeFilter !== "all" || dialogSearch;
 
   if (isLoading) {
     return (
@@ -532,7 +594,7 @@ export function RecentActivity() {
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle className="text-xl">سجل النشاط الكامل</DialogTitle>
+            <DialogTitle className="text-xl">سجل النشاط - الشهر الحالي</DialogTitle>
           </DialogHeader>
 
           {/* Filters */}
@@ -567,22 +629,40 @@ export function RecentActivity() {
                 <SelectItem value="car">السيارات</SelectItem>
               </SelectContent>
             </Select>
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
+                مسح الفلاتر
+              </Button>
+            )}
           </div>
 
           {/* Summary */}
           <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground py-2">
-            <span>عرض {dialogGroupedActivities.length} عميل</span>
-            {dialogPaymentTotal > 0 && (
-              <Badge variant="secondary" className="bg-success/10 text-success">
-                مجموع الدفعات: ₪{dialogPaymentTotal.toLocaleString()}
-              </Badge>
+            {isDialogLoading ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                جاري التحميل...
+              </span>
+            ) : (
+              <>
+                <span>عرض {dialogGroupedActivities.length} عميل ({dialogFilteredActivities.length} نشاط)</span>
+                {dialogPaymentTotal > 0 && (
+                  <Badge variant="secondary" className="bg-success/10 text-success">
+                    مجموع الدفعات: ₪{dialogPaymentTotal.toLocaleString()}
+                  </Badge>
+                )}
+              </>
             )}
           </div>
 
           {/* Scrollable Content */}
           <ScrollArea className="flex-1 pr-3">
             <div className="space-y-4 pb-4">
-              {dialogGroupedActivities.length === 0 ? (
+              {isDialogLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : dialogGroupedActivities.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">لا توجد نتائج مطابقة</div>
               ) : (
                 dialogGroupedActivities.map((group) => (
@@ -664,31 +744,42 @@ function GroupedActivityCard({ group, compact = false }: { group: GroupedClientA
             ))}
           </div>
 
-          {/* Policy info from first payment */}
+          {/* Policy info from first payment - changed → to + */}
           {group.payments.items[0] && (group.payments.items[0].policyType || group.payments.items[0].companyName) && (
             <div className="text-xs text-muted-foreground">
               {group.payments.items[0].policyType}
-              {group.payments.items[0].companyName && ` → ${group.payments.items[0].companyName}`}
+              {group.payments.items[0].companyName && ` + ${group.payments.items[0].companyName}`}
             </div>
           )}
 
-          {/* Detailed payment items in dialog view */}
-          {!compact && group.payments.items.length > 1 && (
-            <div className="border-t pt-2 mt-2 space-y-1">
+          {/* Detailed payment items in dialog view - with creator name and datetime */}
+          {!compact && group.payments.items.length > 0 && (
+            <div className="border-t pt-2 mt-2 space-y-2">
               <span className="text-xs text-muted-foreground font-medium">تفاصيل الدفعات:</span>
               {group.payments.items.map((item) => (
-                <div key={item.id} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className={cn("text-[10px] px-1", PAYMENT_TYPE_COLORS[item.paymentType])}
-                    >
-                      {PAYMENT_TYPE_LABELS[item.paymentType] || item.paymentType}
-                    </Badge>
-                    {item.chequeNumber && <span className="text-muted-foreground">#{item.chequeNumber}</span>}
-                    <span className="text-muted-foreground">{item.policyType}</span>
+                <div key={item.id} className="flex flex-col gap-0.5 text-xs border-b last:border-0 pb-1.5 last:pb-0">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className={cn("text-[10px] px-1", PAYMENT_TYPE_COLORS[item.paymentType])}
+                      >
+                        {PAYMENT_TYPE_LABELS[item.paymentType] || item.paymentType}
+                      </Badge>
+                      {item.chequeNumber && <span className="text-muted-foreground">#{item.chequeNumber}</span>}
+                      <span className="text-muted-foreground">
+                        {item.policyType}
+                        {item.companyName && ` + ${item.companyName}`}
+                      </span>
+                    </div>
+                    <span className="font-medium ltr-nums">₪{item.amount.toLocaleString()}</span>
                   </div>
-                  <span className="font-medium ltr-nums">₪{item.amount.toLocaleString()}</span>
+                  {/* Creator name + datetime */}
+                  <div className="text-[10px] text-muted-foreground">
+                    {item.createdBy && <span>{item.createdBy}</span>}
+                    {item.createdBy && item.createdAt && <span> • </span>}
+                    {item.createdAt && <span>{formatDateTime(item.createdAt)}</span>}
+                  </div>
                 </div>
               ))}
             </div>
@@ -696,22 +787,30 @@ function GroupedActivityCard({ group, compact = false }: { group: GroupedClientA
         </div>
       )}
 
-      {/* Policies */}
+      {/* Policies - changed → to + */}
       {hasPolicies && !compact && (
         <div className="bg-primary/5 rounded-lg p-2 space-y-1">
           <span className="text-xs font-medium text-primary">الوثائق ({group.policies.length})</span>
           {group.policies.map((policy) => (
-            <div key={policy.id} className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <span>{policy.type}</span>
-                {policy.companyName && <span className="text-muted-foreground">→ {policy.companyName}</span>}
-                {policy.carNumber && (
-                  <Badge variant="outline" className="text-[10px] px-1">
-                    {policy.carNumber}
-                  </Badge>
-                )}
+            <div key={policy.id} className="flex flex-col gap-0.5">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <span>{policy.type}</span>
+                  {policy.companyName && <span className="text-muted-foreground">+ {policy.companyName}</span>}
+                  {policy.carNumber && (
+                    <Badge variant="outline" className="text-[10px] px-1">
+                      {policy.carNumber}
+                    </Badge>
+                  )}
+                </div>
+                {policy.price > 0 && <span className="font-medium ltr-nums">₪{policy.price.toLocaleString()}</span>}
               </div>
-              {policy.price > 0 && <span className="font-medium ltr-nums">₪{policy.price.toLocaleString()}</span>}
+              {/* Creator + datetime for policies */}
+              <div className="text-[10px] text-muted-foreground">
+                {policy.createdBy && <span>{policy.createdBy}</span>}
+                {policy.createdBy && policy.createdAt && <span> • </span>}
+                {policy.createdAt && <span>{formatDateTime(policy.createdAt)}</span>}
+              </div>
             </div>
           ))}
         </div>
@@ -722,23 +821,31 @@ function GroupedActivityCard({ group, compact = false }: { group: GroupedClientA
         <div className="bg-warning/5 rounded-lg p-2 space-y-1">
           <span className="text-xs font-medium text-warning">السيارات ({group.cars.length})</span>
           {group.cars.map((car) => (
-            <div key={car.id} className="flex items-center justify-between text-xs">
-              <span>{car.action}</span>
-              <Badge variant="outline" className="text-[10px] px-1">
-                {car.carNumber}
-              </Badge>
+            <div key={car.id} className="flex flex-col gap-0.5">
+              <div className="flex items-center justify-between text-xs">
+                <span>{car.action}</span>
+                <Badge variant="outline" className="text-[10px] px-1">
+                  {car.carNumber}
+                </Badge>
+              </div>
+              {/* Creator + datetime for cars */}
+              <div className="text-[10px] text-muted-foreground">
+                {car.createdBy && <span>{car.createdBy}</span>}
+                {car.createdBy && car.createdAt && <span> • </span>}
+                {car.createdAt && <span>{formatDateTime(car.createdAt)}</span>}
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Compact: Single line summary for policies/cars */}
+      {/* Compact: Single line summary for policies/cars - changed → to + */}
       {compact && (hasPolicies || hasCars) && !hasPayments && (
         <div className="text-xs text-muted-foreground">
           {hasPolicies && (
             <span>
               {group.policies[0].type}
-              {group.policies[0].companyName && ` → ${group.policies[0].companyName}`}
+              {group.policies[0].companyName && ` + ${group.policies[0].companyName}`}
               {group.policies[0].price > 0 && ` | ₪${group.policies[0].price.toLocaleString()}`}
             </span>
           )}
