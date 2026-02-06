@@ -40,13 +40,14 @@ export function useTasks(selectedDate?: Date) {
   const queryClient = useQueryClient();
   const dateStr = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
 
-  // Fetch tasks for selected date using RPC to bypass RLS for user names
+  // Fetch tasks for selected date + overdue pending tasks from previous days
   const { data: tasks = [], isLoading, refetch } = useQuery({
     queryKey: ['tasks', dateStr, user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
       
-      const { data, error } = await supabase.rpc('get_tasks_with_users', {
+      // Use new RPC that includes pending tasks from previous days
+      const { data, error } = await supabase.rpc('get_tasks_with_users_and_pending', {
         target_date: dateStr
       });
 
@@ -78,22 +79,24 @@ export function useTasks(selectedDate?: Date) {
           full_name: row.assignee_full_name, 
           email: row.assignee_email 
         } : null,
-      })) as Task[];
+        isOverdue: row.is_overdue || false,
+      })) as (Task & { isOverdue?: boolean })[];
     },
     enabled: !!user?.id,
   });
 
-  // Fetch today's pending tasks count for badge
+  // Fetch ALL pending tasks count for badge (including overdue from previous days)
   const { data: pendingCount = 0 } = useQuery({
     queryKey: ['tasks-pending-count', user?.id],
     queryFn: async () => {
       if (!user?.id) return 0;
       const today = format(new Date(), 'yyyy-MM-dd');
       
+      // Count all pending tasks up to and including today (overdue + today's)
       const { count, error } = await supabase
         .from('tasks')
         .select('*', { count: 'exact', head: true })
-        .eq('due_date', today)
+        .lte('due_date', today)
         .eq('status', 'pending')
         .eq('assigned_to', user.id);
 
