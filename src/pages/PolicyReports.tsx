@@ -316,14 +316,54 @@ export default function PolicyReports() {
         fromDate = today.toISOString().split('T')[0];
         toDate = fromDate;
         break;
+      case 'yesterday': {
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        fromDate = toDate = yesterday.toISOString().split('T')[0];
+        break;
+      }
+      case 'last_7_days': {
+        const d7 = new Date(today);
+        d7.setDate(today.getDate() - 6);
+        fromDate = d7.toISOString().split('T')[0];
+        toDate = today.toISOString().split('T')[0];
+        break;
+      }
+      case 'last_30_days': {
+        const d30 = new Date(today);
+        d30.setDate(today.getDate() - 29);
+        fromDate = d30.toISOString().split('T')[0];
+        toDate = today.toISOString().split('T')[0];
+        break;
+      }
+      case 'this_week': {
+        const weekStart = new Date(today);
+        weekStart.setDate(today.getDate() - today.getDay());
+        fromDate = weekStart.toISOString().split('T')[0];
+        toDate = today.toISOString().split('T')[0];
+        break;
+      }
+      case 'last_week': {
+        const lastWeekEnd = new Date(today);
+        lastWeekEnd.setDate(today.getDate() - today.getDay() - 1);
+        const lastWeekStart = new Date(lastWeekEnd);
+        lastWeekStart.setDate(lastWeekEnd.getDate() - 6);
+        fromDate = lastWeekStart.toISOString().split('T')[0];
+        toDate = lastWeekEnd.toISOString().split('T')[0];
+        break;
+      }
       case 'this_month':
         fromDate = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
         toDate = today.toISOString().split('T')[0];
         break;
-      case 'last_month':
+      case 'last_month': {
         const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
         fromDate = lastMonth.toISOString().split('T')[0];
         toDate = new Date(today.getFullYear(), today.getMonth(), 0).toISOString().split('T')[0];
+        break;
+      }
+      case 'specific_date':
+        fromDate = toDate = createdFromDate || null;
         break;
       case 'custom':
         fromDate = createdFromDate || null;
@@ -332,6 +372,16 @@ export default function PolicyReports() {
     }
     
     return { fromDate, toDate };
+  };
+
+  // Format date range for display badge
+  const formatDateRangeDisplay = () => {
+    const { fromDate, toDate } = getDateRange();
+    if (!fromDate) return '';
+    if (fromDate === toDate) {
+      return new Date(fromDate).toLocaleDateString('en-GB');
+    }
+    return `${new Date(fromDate).toLocaleDateString('en-GB')} - ${new Date(toDate!).toLocaleDateString('en-GB')}`;
   };
 
   // Fetch created policies
@@ -815,28 +865,59 @@ export default function PolicyReports() {
             <Card className="p-4">
               <div className="flex flex-wrap gap-3">
                 <Select value={createdDatePreset} onValueChange={(v) => { setCreatedDatePreset(v); setCreatedPage(0); }}>
-                  <SelectTrigger className="w-[140px]">
+                  <SelectTrigger className="w-[150px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="today">اليوم</SelectItem>
+                    <SelectItem value="yesterday">أمس</SelectItem>
+                    <SelectItem value="last_7_days">آخر 7 أيام</SelectItem>
+                    <SelectItem value="last_30_days">آخر 30 يوم</SelectItem>
+                    <SelectItem value="this_week">هذا الأسبوع</SelectItem>
+                    <SelectItem value="last_week">الأسبوع الماضي</SelectItem>
                     <SelectItem value="this_month">هذا الشهر</SelectItem>
                     <SelectItem value="last_month">الشهر الماضي</SelectItem>
-                    <SelectItem value="custom">مخصص</SelectItem>
+                    <SelectItem value="specific_date">تاريخ محدد</SelectItem>
+                    <SelectItem value="custom">نطاق مخصص</SelectItem>
                   </SelectContent>
                 </Select>
 
+                {/* Single date picker for specific date */}
+                {createdDatePreset === 'specific_date' && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">التاريخ:</span>
+                    <ArabicDatePicker
+                      value={createdFromDate}
+                      onChange={(date) => {
+                        setCreatedFromDate(date);
+                        setCreatedToDate(date);
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* Two date pickers for custom range */}
                 {createdDatePreset === 'custom' && (
-                  <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">من:</span>
                     <ArabicDatePicker
                       value={createdFromDate}
                       onChange={(date) => setCreatedFromDate(date)}
                     />
+                    <span className="text-sm text-muted-foreground">إلى:</span>
                     <ArabicDatePicker
                       value={createdToDate}
                       onChange={(date) => setCreatedToDate(date)}
                     />
-                  </>
+                  </div>
+                )}
+
+                {/* Date range display badge for preset selections */}
+                {createdDatePreset !== 'custom' && createdDatePreset !== 'specific_date' && formatDateRangeDisplay() && (
+                  <Badge variant="outline" className="px-2 py-1 font-mono text-xs h-10 flex items-center">
+                    <Calendar className="h-3 w-3 ml-1" />
+                    {formatDateRangeDisplay()}
+                  </Badge>
                 )}
 
                 {/* Created By filter - Admin only */}
