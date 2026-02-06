@@ -1,77 +1,105 @@
 
 
-# إصلاح "وثائق تنتهي قريباً" - استثناء الوثائق المُجددة
+# تحسين بطاقات النشاط الأخير - اسم العميل قابل للنقر
 
-## المشكلة
-الوثائق التي تم تجديدها (تم إنشاء وثيقة جديدة للعميل) لا تزال تظهر في قسم "وثائق تنتهي قريباً" على الـ Dashboard.
+## المشاكل
+1. **اسم العميل غير قابل للنقر** - لا يمكن الانتقال لصفحة العميل مباشرة
+2. **نص "12 دفعات" غير ضروري** - المستخدم لا يريد رؤية عدد الدفعات
 
-## السبب
-الكود الحالي في `ExpiringPolicies.tsx` يجلب كل الوثائق المنتهية ويعرض حالة التجديد كـ Badge، لكنه **لا يستبعد** الوثائق التي حالتها `renewed`.
+## التغييرات المطلوبة
 
-## الحل
+### الملف: `src/components/dashboard/RecentActivity.tsx`
 
-### تعديل Query في الـ Frontend
-
-بما أن Supabase JS لا يدعم فلترة متقدمة على الـ JOIN بسهولة، نحتاج إما:
-1. **فلترة في الـ Frontend** بعد جلب البيانات (سهل وسريع)
-2. **إنشاء RPC function** (أكثر تعقيداً)
-
-**الحل المختار:** فلترة Frontend (الأبسط والأسرع)
-
-### الملف: `src/components/dashboard/ExpiringPolicies.tsx`
+#### 1. إضافة استيراد `useNavigate`
 
 ```tsx
-// في سطر 69 بعد جلب البيانات
-if (error) throw error;
+import { useNavigate } from "react-router-dom";
+```
 
-// فلترة الوثائق المُجددة قبل عرضها
-const filteredPolicies = (data || []).filter(policy => {
-  const renewalStatus = policy.renewal_tracking?.[0]?.renewal_status;
-  // استبعاد الوثائق التي تم تجديدها
-  return renewalStatus !== 'renewed';
-});
+#### 2. تمرير `navigate` للـ Component
 
-setPolicies(filteredPolicies);
+```tsx
+// داخل RecentActivity component
+const navigate = useNavigate();
+
+// تمرير للـ GroupedActivityCard
+<GroupedActivityCard 
+  key={group.clientId || group.clientName} 
+  group={group} 
+  compact 
+  onClientClick={() => navigate(`/clients?open=${group.clientId}`)}
+/>
+```
+
+#### 3. تحديث `GroupedActivityCard` Component
+
+**قبل (سطر 704-706):**
+```tsx
+<span className="font-semibold text-foreground truncate">
+  {group.clientName}
+</span>
+```
+
+**بعد:**
+```tsx
+<button
+  onClick={onClientClick}
+  className="font-semibold text-foreground truncate hover:text-primary hover:underline transition-colors"
+>
+  {group.clientName}
+</button>
+```
+
+#### 4. إزالة نص "X دفعات" (سطر 728-730)
+
+**قبل:**
+```tsx
+<span className="text-sm font-medium">
+  {group.payments.count} {group.payments.count === 1 ? "دفعة" : "دفعات"}
+</span>
+```
+
+**بعد:**
+```tsx
+{/* Removed payment count as per user request */}
+```
+
+أو إذا أردنا عرض معلومة مفيدة بديلة:
+```tsx
+<span className="text-sm font-medium text-muted-foreground">الدفعات</span>
 ```
 
 ---
 
-## التفاصيل التقنية
+## ملخص التغييرات
 
-### قبل التغيير:
-```tsx
-if (error) throw error;
-setPolicies(data || []);  // يعرض كل الوثائق بما فيها المُجددة
-```
-
-### بعد التغيير:
-```tsx
-if (error) throw error;
-
-// استبعاد الوثائق المُجددة من القائمة
-const filteredPolicies = (data || []).filter(policy => {
-  const renewalStatus = policy.renewal_tracking?.[0]?.renewal_status;
-  return renewalStatus !== 'renewed';
-});
-
-setPolicies(filteredPolicies);
-```
+| السطر | التغيير |
+|-------|---------|
+| أعلى الملف | إضافة `import { useNavigate }` |
+| 421 | إنشاء `const navigate = useNavigate()` |
+| 585 | إضافة prop `onClientClick` |
+| 669 | إضافة prop `onClientClick` |
+| 681 | تحديث signature: `onClientClick?: () => void` |
+| 704-706 | تحويل `span` لـ `button` قابل للنقر |
+| 728-730 | إزالة نص "X دفعات" |
 
 ---
 
 ## النتيجة المتوقعة
 
-| حالة التجديد | يظهر في Dashboard؟ |
-|--------------|---------------------|
-| `null` (جديد) | ✅ نعم |
-| `sms_sent` | ✅ نعم |
-| `called` | ✅ نعم |
-| `not_interested` | ✅ نعم |
-| **`renewed`** | ❌ **لا** |
+### قبل:
+```
+[أيقونة] Kareem Test [F1019]          منذ أقل من دقيقة
+         12 دفعات                     ₪5,398
+```
 
----
+### بعد:
+```
+[أيقونة] Kareem Test [F1019]          منذ أقل من دقيقة
+                                      ₪5,398
+```
 
-## ملاحظة عن الـ Badge
-
-سيتم الإبقاء على عرض Badge للحالات الأخرى (`sms_sent`, `called`, `not_interested`) لأنها معلومات مفيدة للمستخدم لمعرفة حالة متابعة الوثيقة.
+- **اسم العميل** يتحول للون الـ primary عند hover + underline
+- **الضغط على الاسم** ينقل مباشرة لصفحة `/clients?open=[client_id]`
+- **عدد الدفعات** تمت إزالته
 
