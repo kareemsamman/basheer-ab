@@ -163,7 +163,12 @@ async function uploadToBunny(
       return null;
     }
 
-    const cdnUrl = `${BUNNY_CDN_URL}/${uploadPath}`;
+    // Ensure https:// prefix exists (fix for misconfigured env var)
+    let cdnBase = BUNNY_CDN_URL;
+    if (!cdnBase.startsWith('http://') && !cdnBase.startsWith('https://')) {
+      cdnBase = `https://${cdnBase}`;
+    }
+    const cdnUrl = `${cdnBase}/${uploadPath}`;
     console.log(`[Bunny] SUCCESS - CDN URL: ${cdnUrl}`);
     
     return cdnUrl;
