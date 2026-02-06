@@ -4689,6 +4689,32 @@ export type Database = {
           updated_at: string
         }[]
       }
+      get_tasks_with_users_and_pending: {
+        Args: { target_date: string }
+        Returns: {
+          assigned_to: string
+          assignee_email: string
+          assignee_full_name: string
+          assignee_id: string
+          branch_id: string
+          completed_at: string
+          completed_by: string
+          created_at: string
+          created_by: string
+          creator_email: string
+          creator_full_name: string
+          creator_id: string
+          description: string
+          due_date: string
+          due_time: string
+          id: string
+          is_overdue: boolean
+          reminder_shown: boolean
+          status: string
+          title: string
+          updated_at: string
+        }[]
+      }
       get_user_branch_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
