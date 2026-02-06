@@ -25,6 +25,7 @@ export interface PolicyRecord {
     full_name: string;
     less_than_24: boolean | null;
     phone_number?: string | null;
+    file_number?: string | null;
   };
   cars?: {
     id: string;

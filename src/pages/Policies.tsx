@@ -113,7 +113,7 @@ export default function Policies() {
         .from('policies')
         .select(`
           *,
-          clients(id, full_name, phone_number, less_than_24, under24_type, under24_driver_name, under24_driver_id),
+          clients(id, full_name, phone_number, file_number, less_than_24, under24_type, under24_driver_name, under24_driver_id),
           cars(id, car_number, car_type, car_value, year),
           insurance_companies(id, name, name_ar),
           created_by:profiles!policies_created_by_admin_id_fkey(full_name, email),

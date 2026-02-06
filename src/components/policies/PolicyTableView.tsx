@@ -26,7 +26,6 @@ import {
   getPolicyStatus,
   policyTypeLabels,
   policyChildLabels,
-  policyTypeColors,
 } from './cards/types';
 
 const MAIN_POLICY_TYPES = ['ELZAMI', 'THIRD_FULL'];
@@ -182,8 +181,8 @@ export function PolicyTableView({
     return { totalPrice, totalPaid, remaining, isPaid };
   };
 
-  // Get all policy types in a group as badges
-  const getPolicyTypeBadges = (group: PolicyGroup) => {
+  // Get insurance lines with company names for multi-line display
+  const getInsuranceLines = (group: PolicyGroup) => {
     const allPolicies = [
       ...(group.mainPolicy ? [group.mainPolicy] : []),
       ...group.addons,
@@ -195,19 +194,12 @@ export function PolicyTableView({
           ? policyChildLabels[policy.policy_type_child] || policy.policy_type_child
           : policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent;
 
-      const colorClass =
-        policyTypeColors[policy.policy_type_parent] ||
-        'bg-muted text-muted-foreground';
+      const companyName =
+        policy.insurance_companies?.name_ar ||
+        policy.insurance_companies?.name ||
+        '';
 
-      return (
-        <Badge
-          key={policy.id}
-          variant="outline"
-          className={`text-[10px] px-1.5 py-0 ${colorClass}`}
-        >
-          {label}
-        </Badge>
-      );
+      return { label, companyName, policyId: policy.id };
     });
   };
 
@@ -218,19 +210,32 @@ export function PolicyTableView({
     return getPolicyStatus(representativePolicy);
   };
 
-  // Get file count for the group
-  const getFileCount = (group: PolicyGroup) => {
-    return (group.mainPolicy ? 1 : 0) + group.addons.length;
+  // Get file number from client
+  const getFileNumber = (group: PolicyGroup) => {
+    return group.client?.file_number || '-';
   };
 
-  // Get date range from the group
-  const getDateRange = (group: PolicyGroup) => {
-    const representativePolicy = group.mainPolicy || group.addons[0];
-    if (!representativePolicy) return { start: '-', end: '-' };
-    return {
-      start: formatDate(representativePolicy.start_date),
-      end: formatDate(representativePolicy.end_date),
-    };
+  // Get unique date ranges from the group (for packages with different dates)
+  const getDateRanges = (group: PolicyGroup) => {
+    const allPolicies = [
+      ...(group.mainPolicy ? [group.mainPolicy] : []),
+      ...group.addons,
+    ];
+
+    // Collect unique date ranges
+    const uniqueRanges = new Map<string, { start: string; end: string }>();
+
+    allPolicies.forEach((policy) => {
+      const key = `${policy.start_date}-${policy.end_date}`;
+      if (!uniqueRanges.has(key)) {
+        uniqueRanges.set(key, {
+          start: formatDate(policy.start_date),
+          end: formatDate(policy.end_date),
+        });
+      }
+    });
+
+    return Array.from(uniqueRanges.values());
   };
 
   // Get creator name
@@ -273,11 +278,11 @@ export function PolicyTableView({
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50 hover:bg-muted/50">
-              <TableHead className="w-[60px] text-center">ملفات</TableHead>
+              <TableHead className="w-[80px] text-center">رقم الملف</TableHead>
               <TableHead className="min-w-[140px]">العميل</TableHead>
-              <TableHead className="min-w-[160px]">المحتوى</TableHead>
+              <TableHead className="min-w-[120px]">التأمينات</TableHead>
               <TableHead className="w-[100px]">السيارة</TableHead>
-              <TableHead className="w-[140px]">الفترة</TableHead>
+              <TableHead className="min-w-[180px]">الفترة</TableHead>
               <TableHead className="w-[80px]">الإجمالي</TableHead>
               <TableHead className="w-[100px]">أنشأها</TableHead>
               <TableHead className="w-[80px] text-center">الحالة</TableHead>
@@ -290,8 +295,9 @@ export function PolicyTableView({
 
               const paymentStatus = getPackagePaymentStatus(group);
               const groupStatus = getGroupStatus(group);
-              const fileCount = getFileCount(group);
-              const dateRange = getDateRange(group);
+              const fileNumber = getFileNumber(group);
+              const dateRanges = getDateRanges(group);
+              const insuranceLines = getInsuranceLines(group);
               const creatorName = getCreatorName(group);
               const clientName = group.client?.full_name || '-';
               const clientPhone = group.client?.phone_number || '';
@@ -303,9 +309,9 @@ export function PolicyTableView({
                   className="cursor-pointer hover:bg-muted/50 transition-colors even:bg-muted/20"
                   onClick={() => handleRowClick(group)}
                 >
-                  {/* File count */}
-                  <TableCell className="text-center font-medium">
-                    {fileCount}
+                  {/* File number */}
+                  <TableCell className="text-center font-medium text-xs">
+                    {fileNumber}
                   </TableCell>
 
                   {/* Client */}
@@ -329,10 +335,17 @@ export function PolicyTableView({
                     </div>
                   </TableCell>
 
-                  {/* Policy content badges */}
+                  {/* Insurance types with company names - multi-line */}
                   <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {getPolicyTypeBadges(group)}
+                    <div className="flex flex-col gap-0.5 text-xs">
+                      {insuranceLines.map((line) => (
+                        <div key={line.policyId} className="whitespace-nowrap">
+                          <span className="font-medium">{line.label}</span>
+                          {line.companyName && (
+                            <span className="text-muted-foreground"> → {line.companyName}</span>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </TableCell>
 
@@ -341,11 +354,15 @@ export function PolicyTableView({
                     {carNumber}
                   </TableCell>
 
-                  {/* Date range */}
+                  {/* Date ranges - single or multiple lines */}
                   <TableCell>
-                    <div className="flex flex-col text-xs">
-                      <span>{dateRange.start}</span>
-                      <span className="text-muted-foreground">← {dateRange.end}</span>
+                    <div className="flex flex-col gap-0.5 text-xs">
+                      {dateRanges.map((range, idx) => (
+                        <div key={idx} className="whitespace-nowrap">
+                          <span>{range.end}</span>
+                          <span className="text-muted-foreground"> ← {range.start}</span>
+                        </div>
+                      ))}
                     </div>
                   </TableCell>
 
