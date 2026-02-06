@@ -14,6 +14,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { FileUploader } from "@/components/media/FileUploader";
 import { BrokerPaymentModal } from "@/components/brokers/BrokerPaymentModal";
 import { CustomerChequeSelector, SelectableCheque } from "@/components/shared/CustomerChequeSelector";
+import { ChequeScannerDialog } from "@/components/payments/ChequeScannerDialog";
 import { 
   ArrowLeft, 
   Plus, 
@@ -34,6 +35,7 @@ import {
   TrendingUp,
   TrendingDown,
   FileText,
+  Scan,
 } from "lucide-react";
 import {
   Dialog,
@@ -193,6 +195,7 @@ export default function BrokerWallet() {
   // Tranzila modal
   const [showTranzilaModal, setShowTranzilaModal] = useState(false);
   const [selectedVisaPaymentIndex, setSelectedVisaPaymentIndex] = useState<number | null>(null);
+  const [chequeScannerOpen, setChequeScannerOpen] = useState(false);
 
   useEffect(() => {
     if (brokerId) {
@@ -321,6 +324,18 @@ export default function BrokerWallet() {
     
     setPaymentLines(newPayments);
     setSplitPopoverOpen(false);
+  };
+
+  const handleScannedCheques = (cheques: any[]) => {
+    const newPayments: PaymentLine[] = cheques.map(cheque => ({
+      id: crypto.randomUUID(),
+      payment_type: 'cheque' as PaymentType,
+      amount: cheque.amount || 0,
+      payment_date: cheque.payment_date || new Date().toISOString().split('T')[0],
+      cheque_number: cheque.cheque_number || '',
+    }));
+    setPaymentLines(prev => [...prev, ...newPayments]);
+    toast({ title: "تم الإضافة", description: `تم إضافة ${newPayments.length} دفعة شيك` });
   };
 
   const handleVisaPayClick = (index: number) => {
@@ -1020,6 +1035,11 @@ export default function BrokerWallet() {
                     </PopoverContent>
                   </Popover>
 
+                  <Button type="button" variant="outline" size="sm" onClick={() => setChequeScannerOpen(true)} className="gap-2">
+                    <Scan className="h-4 w-4" />
+                    مسح شيكات
+                  </Button>
+
                   <Button type="button" variant="outline" size="sm" onClick={addPaymentLine} className="gap-2">
                     <Plus className="h-4 w-4" />
                     إضافة دفعة
@@ -1295,6 +1315,12 @@ export default function BrokerWallet() {
             onFailure={handleVisaFailure}
           />
         )}
+
+        <ChequeScannerDialog
+          open={chequeScannerOpen}
+          onOpenChange={setChequeScannerOpen}
+          onConfirm={handleScannedCheques}
+        />
       </div>
     </MainLayout>
   );

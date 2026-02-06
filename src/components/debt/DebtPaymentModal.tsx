@@ -9,11 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Loader2, CreditCard, Banknote, Wallet, AlertCircle, CheckCircle, DollarSign, Plus, Trash2, Split, Upload, X, ImageIcon, HelpCircle, Car, Package, FileText, Info } from 'lucide-react';
+import { Loader2, CreditCard, Banknote, Wallet, AlertCircle, CheckCircle, DollarSign, Plus, Trash2, Split, Upload, X, ImageIcon, HelpCircle, Car, Package, FileText, Info, Scan } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { TranzilaPaymentModal } from '@/components/payments/TranzilaPaymentModal';
+import { ChequeScannerDialog } from '@/components/payments/ChequeScannerDialog';
 import { sanitizeChequeNumber, CHEQUE_NUMBER_MAX_LENGTH } from '@/lib/chequeUtils';
 import { useToast } from '@/hooks/use-toast';
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
@@ -114,6 +115,7 @@ export function DebtPaymentModal({
   const [splitCount, setSplitCount] = useState(2);
   const [previewUrls, setPreviewUrls] = useState<PreviewUrls>({});
   const [selectedCars, setSelectedCars] = useState<string[]>([]);
+  const [chequeScannerOpen, setChequeScannerOpen] = useState(false);
 
   // Extract unique car numbers for filter
   const uniqueCars = React.useMemo(() => {
@@ -431,6 +433,18 @@ export function DebtPaymentModal({
     
     setPaymentLines(newPayments);
     setSplitPopoverOpen(false);
+  };
+
+  const handleScannedCheques = (cheques: any[]) => {
+    const newPayments: PaymentLine[] = cheques.map(cheque => ({
+      id: crypto.randomUUID(),
+      amount: cheque.amount || 0,
+      paymentType: 'cheque' as const,
+      paymentDate: cheque.payment_date || new Date().toISOString().split('T')[0],
+      chequeNumber: cheque.cheque_number || '',
+    }));
+    setPaymentLines(prev => [...prev, ...newPayments]);
+    toast.success(`تم إضافة ${newPayments.length} دفعة شيك`);
   };
 
   /**
@@ -861,6 +875,10 @@ export function DebtPaymentModal({
                       </div>
                     </PopoverContent>
                   </Popover>
+                  <Button variant="outline" size="sm" onClick={() => setChequeScannerOpen(true)}>
+                    <Scan className="h-4 w-4 ml-2" />
+                    مسح شيكات
+                  </Button>
                   <Button variant="outline" size="sm" onClick={addPaymentLine}>
                     <Plus className="h-4 w-4 ml-2" />
                     إضافة دفعة
@@ -1070,6 +1088,12 @@ export function DebtPaymentModal({
           }}
         />
       )}
+
+      <ChequeScannerDialog
+        open={chequeScannerOpen}
+        onOpenChange={setChequeScannerOpen}
+        onConfirm={handleScannedCheques}
+      />
     </Dialog>
   );
 }

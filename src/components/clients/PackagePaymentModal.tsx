@@ -7,11 +7,12 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Card } from '@/components/ui/card';
-import { Loader2, CreditCard, Banknote, Wallet, AlertCircle, CheckCircle, Package, Plus, Trash2, Split, Upload, X, ImageIcon } from 'lucide-react';
+import { Loader2, CreditCard, Banknote, Wallet, AlertCircle, CheckCircle, Package, Plus, Trash2, Split, Upload, X, ImageIcon, Scan } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { TranzilaPaymentModal } from '@/components/payments/TranzilaPaymentModal';
+import { ChequeScannerDialog } from '@/components/payments/ChequeScannerDialog';
 import { sanitizeChequeNumber, CHEQUE_NUMBER_MAX_LENGTH } from '@/lib/chequeUtils';
 import { useToast } from '@/hooks/use-toast';
 import type { Enums } from "@/integrations/supabase/types";
@@ -85,6 +86,7 @@ export function PackagePaymentModal({
   const [splitPopoverOpen, setSplitPopoverOpen] = useState(false);
   const [splitCount, setSplitCount] = useState(2);
   const [previewUrls, setPreviewUrls] = useState<PreviewUrls>({});
+  const [chequeScannerOpen, setChequeScannerOpen] = useState(false);
 
   const totalRemaining = policies.reduce((sum, p) => sum + p.remaining, 0);
   const totalPrice = policies.reduce((sum, p) => sum + p.price, 0);
@@ -296,6 +298,18 @@ export function PackagePaymentModal({
     setSplitPopoverOpen(false);
   };
 
+  const handleScannedCheques = (cheques: any[]) => {
+    const newPayments: PaymentLine[] = cheques.map(cheque => ({
+      id: crypto.randomUUID(),
+      amount: cheque.amount || 0,
+      paymentType: 'cheque' as const,
+      paymentDate: cheque.payment_date || new Date().toISOString().split('T')[0],
+      chequeNumber: cheque.cheque_number || '',
+    }));
+    setPaymentLines(prev => [...prev, ...newPayments]);
+    toast.success(`تم إضافة ${newPayments.length} دفعة شيك`);
+  };
+
   const handleVisaPayClick = (index: number) => {
     const payment = paymentLines[index];
     if (!payment || payment.amount <= 0) return;
@@ -442,6 +456,7 @@ export function PackagePaymentModal({
   const activeVisaPayment = activeVisaPaymentIndex !== null ? paymentLines[activeVisaPaymentIndex] : null;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" dir="rtl">
         <DialogHeader>
@@ -526,6 +541,10 @@ export function PackagePaymentModal({
                       </div>
                     </PopoverContent>
                   </Popover>
+                  <Button variant="outline" size="sm" onClick={() => setChequeScannerOpen(true)}>
+                    <Scan className="h-4 w-4 ml-2" />
+                    مسح شيكات
+                  </Button>
                   <Button variant="outline" size="sm" onClick={addPaymentLine}>
                     <Plus className="h-4 w-4 ml-2" />
                     إضافة دفعة
@@ -725,5 +744,12 @@ export function PackagePaymentModal({
         />
       )}
     </Dialog>
+
+      <ChequeScannerDialog
+        open={chequeScannerOpen}
+        onOpenChange={setChequeScannerOpen}
+        onConfirm={handleScannedCheques}
+      />
+    </>
   );
 }

@@ -21,10 +21,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Pencil, Trash2, CreditCard, Loader2, ImageIcon, X, AlertCircle, Upload, ChevronLeft, ChevronRight, RotateCcw, Split, Banknote, Wallet, CheckCircle, FileText, Receipt } from "lucide-react";
+import { Plus, Pencil, Trash2, CreditCard, Loader2, ImageIcon, X, AlertCircle, Upload, ChevronLeft, ChevronRight, RotateCcw, Split, Banknote, Wallet, CheckCircle, FileText, Receipt, Scan } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal";
+import { ChequeScannerDialog } from "@/components/payments/ChequeScannerDialog";
 import type { Enums } from "@/integrations/supabase/types";
 import { sanitizeChequeNumber, CHEQUE_NUMBER_MAX_LENGTH } from "@/lib/chequeUtils";
 
@@ -131,6 +132,7 @@ export function PolicyPaymentsSection({
   const [splitPopoverOpen, setSplitPopoverOpen] = useState(false);
   const [splitCount, setSplitCount] = useState(2);
   const [previewUrls, setPreviewUrls] = useState<PreviewUrls>({});
+  const [chequeScannerOpen, setChequeScannerOpen] = useState(false);
 
   // Edit form state (for single payment edit)
   const [editFormData, setEditFormData] = useState({
@@ -280,6 +282,18 @@ export function PolicyPaymentsSection({
     setPreviewUrls({});
     setPaymentLines(newPayments);
     setSplitPopoverOpen(false);
+  };
+
+  const handleScannedCheques = (cheques: any[]) => {
+    const newPayments: PaymentLine[] = cheques.map(cheque => ({
+      id: crypto.randomUUID(),
+      amount: cheque.amount || 0,
+      paymentType: 'cheque' as const,
+      paymentDate: cheque.payment_date || new Date().toISOString().split('T')[0],
+      chequeNumber: cheque.cheque_number || '',
+    }));
+    setPaymentLines(prev => [...prev, ...newPayments]);
+    toast({ title: "تم الإضافة", description: `تم إضافة ${newPayments.length} دفعة شيك` });
   };
 
   // Image handling for multi-line payments
@@ -888,8 +902,12 @@ export function PolicyPaymentsSection({
                         تقسيم إلى {splitCount} دفعات
                       </Button>
                     </div>
-                  </PopoverContent>
+                </PopoverContent>
                 </Popover>
+                <Button variant="outline" size="sm" onClick={() => setChequeScannerOpen(true)}>
+                  <Scan className="h-4 w-4 ml-2" />
+                  مسح شيكات
+                </Button>
                 <Button variant="outline" size="sm" onClick={addPaymentLine}>
                   <Plus className="h-4 w-4 ml-2" />
                   إضافة دفعة
@@ -1280,6 +1298,12 @@ export function PolicyPaymentsSection({
           onFailure={handleTranzilaFailure}
         />
       )}
+
+      <ChequeScannerDialog
+        open={chequeScannerOpen}
+        onOpenChange={setChequeScannerOpen}
+        onConfirm={handleScannedCheques}
+      />
     </>
   );
 }
