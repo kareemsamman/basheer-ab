@@ -20,6 +20,9 @@ export interface PolicyRecord {
   created_by_admin_id: string | null;
   group_id: string | null;
   branch_id: string | null;
+  created_at?: string;
+  road_service_id?: string | null;
+  accident_fee_service_id?: string | null;
   clients?: {
     id: string;
     full_name: string;
@@ -40,6 +43,16 @@ export interface PolicyRecord {
     name: string;
     name_ar: string | null;
   };
+  road_services?: {
+    id: string;
+    name: string;
+    name_ar: string | null;
+  } | null;
+  accident_fee_services?: {
+    id: string;
+    name: string;
+    name_ar: string | null;
+  } | null;
   created_by?: {
     full_name: string | null;
     email: string;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Header } from "@/components/layout/Header";
 import { Input } from "@/components/ui/input";
@@ -42,6 +42,9 @@ interface PolicyRecord {
   created_by_admin_id: string | null;
   group_id: string | null;
   branch_id: string | null;
+  created_at?: string;
+  road_service_id?: string | null;
+  accident_fee_service_id?: string | null;
   clients?: {
     id: string;
     full_name: string;
@@ -49,6 +52,8 @@ interface PolicyRecord {
     under24_type?: 'none' | 'client' | 'additional_driver' | null;
     under24_driver_name?: string | null;
     under24_driver_id?: string | null;
+    phone_number?: string | null;
+    file_number?: string | null;
   };
   cars?: {
     id: string;
@@ -62,6 +67,16 @@ interface PolicyRecord {
     name: string;
     name_ar: string | null;
   };
+  road_services?: {
+    id: string;
+    name: string;
+    name_ar: string | null;
+  } | null;
+  accident_fee_services?: {
+    id: string;
+    name: string;
+    name_ar: string | null;
+  } | null;
   created_by?: {
     full_name: string | null;
     email: string;
@@ -116,6 +131,8 @@ export default function Policies() {
           clients(id, full_name, phone_number, file_number, less_than_24, under24_type, under24_driver_name, under24_driver_id),
           cars(id, car_number, car_type, car_value, year),
           insurance_companies(id, name, name_ar),
+          road_services(id, name, name_ar),
+          accident_fee_services(id, name, name_ar),
           created_by:profiles!policies_created_by_admin_id_fkey(full_name, email),
           branch:branches(id, name, name_ar),
           group_id
@@ -434,11 +451,12 @@ export default function Policies() {
           </div>
         </div>
 
-        {/* Table View */}
+        {/* Table View - with frontend search filter */}
         <PolicyTableView
           policies={policies}
           loading={loading}
           onPolicyClick={handleViewDetails}
+          searchQuery={searchQuery}
         />
 
         {/* Pagination */}

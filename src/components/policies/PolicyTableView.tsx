@@ -34,27 +34,57 @@ interface PolicyTableViewProps {
   policies: PolicyRecord[];
   loading: boolean;
   onPolicyClick: (policyId: string) => void;
+  searchQuery?: string;
 }
+
+// Format date and time for creator column
+const formatDateTime = (dateStr: string) => {
+  const date = new Date(dateStr);
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const year = date.getFullYear();
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${day}/${month}/${year} • ${hours}:${minutes}`;
+};
 
 export function PolicyTableView({
   policies,
   loading,
   onPolicyClick,
+  searchQuery = '',
 }: PolicyTableViewProps) {
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo>({});
   const [loadingPayments, setLoadingPayments] = useState(true);
 
+  // Frontend search filter
+  const filteredPolicies = useMemo(() => {
+    if (!searchQuery.trim()) return policies;
+    const q = searchQuery.toLowerCase().trim();
+    return policies.filter(p => {
+      const clientName = p.clients?.full_name?.toLowerCase() || '';
+      const fileNumber = p.clients?.file_number?.toLowerCase() || '';
+      const phone = p.clients?.phone_number?.toLowerCase() || '';
+      const carNumber = p.cars?.car_number?.toLowerCase() || '';
+      const creatorName = p.created_by?.full_name?.toLowerCase() || '';
+      const creatorEmail = p.created_by?.email?.toLowerCase() || '';
+      return clientName.includes(q) || fileNumber.includes(q) || 
+             phone.includes(q) || carNumber.includes(q) ||
+             creatorName.includes(q) || creatorEmail.includes(q);
+    });
+  }, [policies, searchQuery]);
+
   // Fetch payment info for all policies
   useEffect(() => {
     const fetchPaymentInfo = async () => {
-      if (policies.length === 0) {
+      if (filteredPolicies.length === 0) {
         setPaymentInfo({});
         setLoadingPayments(false);
         return;
       }
 
       setLoadingPayments(true);
-      const policyIds = policies.map((p) => p.id);
+      const policyIds = filteredPolicies.map((p) => p.id);
 
       try {
         const { data: paymentsData } = await supabase
@@ -63,7 +93,7 @@ export function PolicyTableView({
           .in('policy_id', policyIds);
 
         const info: PaymentInfo = {};
-        policies.forEach((p) => {
+        filteredPolicies.forEach((p) => {
           const policyPayments = (paymentsData || []).filter(
             (pay) => pay.policy_id === p.id && !pay.refused
           );
@@ -82,13 +112,13 @@ export function PolicyTableView({
     };
 
     fetchPaymentInfo();
-  }, [policies]);
+  }, [filteredPolicies]);
 
   // Group policies by group_id
   const groupedPolicies = useMemo(() => {
     const groups: Map<string, PolicyGroup> = new Map();
 
-    policies.forEach((policy) => {
+    filteredPolicies.forEach((policy) => {
       const isMainType = MAIN_POLICY_TYPES.includes(policy.policy_type_parent);
       const status = getPolicyStatus(policy);
 
@@ -152,7 +182,7 @@ export function PolicyTableView({
     groupArray.sort((a, b) => b.newestDate.getTime() - a.newestDate.getTime());
 
     return groupArray;
-  }, [policies]);
+  }, [filteredPolicies]);
 
   const getPackagePaymentStatus = (group: PolicyGroup) => {
     const allPolicyIds = [
@@ -165,7 +195,7 @@ export function PolicyTableView({
     let totalPaid = 0;
 
     allPolicyIds.forEach((id) => {
-      const policy = policies.find((p) => p.id === id);
+      const policy = filteredPolicies.find((p) => p.id === id);
       if (policy) {
         totalPrice += policy.insurance_price;
         if (policy.policy_type_parent !== 'ELZAMI') {
@@ -181,7 +211,7 @@ export function PolicyTableView({
     return { totalPrice, totalPaid, remaining, isPaid };
   };
 
-  // Get insurance lines with company names for multi-line display
+  // Get insurance lines with company names and service subtypes for multi-line display
   const getInsuranceLines = (group: PolicyGroup) => {
     const allPolicies = [
       ...(group.mainPolicy ? [group.mainPolicy] : []),
@@ -199,7 +229,15 @@ export function PolicyTableView({
         policy.insurance_companies?.name ||
         '';
 
-      return { label, companyName, policyId: policy.id };
+      // Service subtype for ROAD_SERVICE and ACCIDENT_FEE_EXEMPTION
+      let serviceName = '';
+      if (policy.policy_type_parent === 'ROAD_SERVICE' && policy.road_services) {
+        serviceName = policy.road_services.name_ar || policy.road_services.name;
+      } else if (policy.policy_type_parent === 'ACCIDENT_FEE_EXEMPTION' && policy.accident_fee_services) {
+        serviceName = policy.accident_fee_services.name_ar || policy.accident_fee_services.name;
+      }
+
+      return { label, companyName, serviceName, policyId: policy.id };
     });
   };
 
@@ -238,11 +276,13 @@ export function PolicyTableView({
     return Array.from(uniqueRanges.values());
   };
 
-  // Get creator name
-  const getCreatorName = (group: PolicyGroup) => {
+  // Get creator name and timestamp
+  const getCreatorInfo = (group: PolicyGroup) => {
     const representativePolicy = group.mainPolicy || group.addons[0];
-    if (!representativePolicy?.created_by) return '-';
-    return representativePolicy.created_by.full_name || representativePolicy.created_by.email;
+    if (!representativePolicy) return { name: '-', createdAt: null };
+    const name = representativePolicy.created_by?.full_name || representativePolicy.created_by?.email || '-';
+    const createdAt = representativePolicy.created_at || null;
+    return { name, createdAt };
   };
 
   // Handle row click - navigate to main policy or first addon
@@ -263,11 +303,13 @@ export function PolicyTableView({
     );
   }
 
-  if (policies.length === 0) {
+  if (filteredPolicies.length === 0) {
     return (
       <Card className="text-center py-12">
         <FileText className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
-        <p className="text-muted-foreground">لا توجد وثائق تأمين</p>
+        <p className="text-muted-foreground">
+          {searchQuery.trim() ? 'لا توجد نتائج للبحث' : 'لا توجد وثائق تأمين'}
+        </p>
       </Card>
     );
   }
@@ -282,11 +324,11 @@ export function PolicyTableView({
               <TableHead className="min-w-[140px]">العميل</TableHead>
               <TableHead className="min-w-[120px]">التأمينات</TableHead>
               <TableHead className="w-[100px]">السيارة</TableHead>
-              <TableHead className="min-w-[180px]">الفترة</TableHead>
+              <TableHead className="min-w-[170px]">الفترة</TableHead>
               <TableHead className="w-[80px]">الإجمالي</TableHead>
-              <TableHead className="w-[100px]">أنشأها</TableHead>
+              <TableHead className="w-[120px]">أنشأها</TableHead>
               <TableHead className="w-[80px] text-center">الحالة</TableHead>
-              <TableHead className="w-[100px] text-center">الدفع</TableHead>
+              <TableHead className="min-w-[130px] text-center">الدفع</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -298,7 +340,7 @@ export function PolicyTableView({
               const fileNumber = getFileNumber(group);
               const dateRanges = getDateRanges(group);
               const insuranceLines = getInsuranceLines(group);
-              const creatorName = getCreatorName(group);
+              const creatorInfo = getCreatorInfo(group);
               const clientName = group.client?.full_name || '-';
               const clientPhone = group.client?.phone_number || '';
               const carNumber = group.car?.car_number || '-';
@@ -335,14 +377,17 @@ export function PolicyTableView({
                     </div>
                   </TableCell>
 
-                  {/* Insurance types with company names - multi-line */}
+                  {/* Insurance types with company names and service subtypes - multi-line */}
                   <TableCell>
                     <div className="flex flex-col gap-0.5 text-xs">
                       {insuranceLines.map((line) => (
                         <div key={line.policyId} className="whitespace-nowrap">
                           <span className="font-medium">{line.label}</span>
                           {line.companyName && (
-                            <span className="text-muted-foreground"> → {line.companyName}</span>
+                            <span className="text-muted-foreground"> ← {line.companyName}</span>
+                          )}
+                          {line.serviceName && (
+                            <span className="text-muted-foreground"> ← {line.serviceName}</span>
                           )}
                         </div>
                       ))}
@@ -354,13 +399,13 @@ export function PolicyTableView({
                     {carNumber}
                   </TableCell>
 
-                  {/* Date ranges - single or multiple lines */}
+                  {/* Date ranges - start date first, then end date */}
                   <TableCell>
                     <div className="flex flex-col gap-0.5 text-xs">
                       {dateRanges.map((range, idx) => (
                         <div key={idx} className="whitespace-nowrap">
-                          <span>{range.end}</span>
-                          <span className="text-muted-foreground"> ← {range.start}</span>
+                          <span>{range.start}</span>
+                          <span className="text-muted-foreground"> ← {range.end}</span>
                         </div>
                       ))}
                     </div>
@@ -371,18 +416,25 @@ export function PolicyTableView({
                     {formatCurrency(paymentStatus.totalPrice)}
                   </TableCell>
 
-                  {/* Created by */}
+                  {/* Created by with timestamp */}
                   <TableCell>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="truncate max-w-[90px] block text-sm">
-                          {creatorName}
+                    <div className="flex flex-col">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="truncate max-w-[110px] block text-sm">
+                            {creatorInfo.name}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          <p>{creatorInfo.name}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      {creatorInfo.createdAt && (
+                        <span className="text-[10px] text-muted-foreground">
+                          {formatDateTime(creatorInfo.createdAt)}
                         </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        <p>{creatorName}</p>
-                      </TooltipContent>
-                    </Tooltip>
+                      )}
+                    </div>
                   </TableCell>
 
                   {/* Policy status */}
@@ -397,7 +449,7 @@ export function PolicyTableView({
                   {/* Payment status */}
                   <TableCell className="text-center">
                     {loadingPayments ? (
-                      <Skeleton className="h-5 w-16 mx-auto" />
+                      <Skeleton className="h-5 w-20 mx-auto" />
                     ) : paymentStatus.isPaid ? (
                       <Badge variant="success" className="text-[10px]">
                         مدفوع
