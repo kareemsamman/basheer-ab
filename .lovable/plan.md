@@ -1,200 +1,178 @@
 
-# إصلاح نص رسائل تذكير الدفع
+# تحديث جدول الوثائق - تصحيح الأعمدة والعرض
 
-## المشكلة
+## ملخص التغييرات
 
-النص الحالي في رسائل SMS يقول:
+تحديث جدول الوثائق بناءً على الملاحظات:
+1. تغيير "ملفات" إلى "رقم الملف" وعرض الرقم الفعلي (مثل F1019)
+2. تغيير "المحتوى" إلى "التأمينات"
+3. عرض التأمينات كأسطر متعددة مع اسم الشركة
+4. تعديل عرض الأعمدة (تقليل التأمينات، زيادة الفترة)
+5. عرض تواريخ متعددة للحزم ذات التواريخ المختلفة
+
+---
+
+## التغييرات التفصيلية
+
+### 1. تغيير عمود "ملفات" → "رقم الملف"
+
+| قبل | بعد |
+|-----|------|
+| `ملفات` | `رقم الملف` |
+| رقم (1، 3، 12) | رقم الملف الفعلي (F1019) |
+
+**مصدر البيانات:** `clients.file_number`
+
+### 2. تغيير عمود "المحتوى" → "التأمينات"
+
+| قبل | بعد |
+|-----|------|
+| `المحتوى` | `التأمينات` |
+| شرائح متراصة أفقياً | أسطر متعددة |
+
+### 3. تنسيق عمود التأمينات (الأهم)
+
+**التنسيق الجديد:**
 ```
-لديك مبلغ متبقي: ₪10,098
+ثالث → اسم الشركة
+خدمات الطريق → اسم الشركة
+إلزامي → اسم الشركة
 ```
 
-هذا يعطي انطباع أن AB مدينة للعميل! لكن العكس صحيح.
+**القواعد:**
+- كل تأمين في سطر منفصل
+- استخدام السهم (→) كفاصل
+- عرض اسم الشركة العربي إن وُجد
 
-**المطلوب:**
+### 4. تعديل عرض الأعمدة
+
+| العمود | قبل | بعد |
+|--------|-----|------|
+| التأمينات | `min-w-[160px]` | `min-w-[120px]` |
+| الفترة | `w-[140px]` | `min-w-[180px]` |
+
+### 5. منطق عمود الفترة (للحزم)
+
+**الحالة 1: كل الوثائق بنفس التاريخ**
 ```
-عليك تسديد المبلغ: ₪10,098
+09/02/2027 ← 10/02/2026
+```
 
-الوثائق:
-• إلزامي - 12-345-67 - ₪500
-• شامل - 12-345-67 - ₪1,200
-...
+**الحالة 2: تواريخ مختلفة**
+```
+09/02/2027 ← 10/02/2026
+09/02/2027 ← 09/02/2026
+15/03/2027 ← 15/03/2026
 ```
 
 ---
 
-## الملفات المتأثرة
+## التفاصيل التقنية
 
-| الملف | السبب |
-|-------|-------|
-| `supabase/functions/send-bulk-debt-sms/index.ts` | رسائل SMS الجماعية |
-| `supabase/functions/send-manual-reminder/index.ts` | رسالة SMS الفردية |
-| `src/pages/DebtTracking.tsx` | رابط WhatsApp |
+### الملفات المتأثرة
 
----
+| الملف | التغيير |
+|-------|---------|
+| `src/pages/Policies.tsx` | إضافة `file_number` للـ query |
+| `src/components/policies/PolicyTableView.tsx` | تحديث الأعمدة والمنطق |
+| `src/components/policies/cards/types.ts` | إضافة `file_number` للـ interface |
 
-## التغييرات المطلوبة
+### تحديث الـ Query
 
-### 1. تحديث `send-bulk-debt-sms/index.ts`
-
-**قبل:**
 ```typescript
-let message = `مرحباً ${clientName}،
-
-لديك مبلغ متبقي: ₪${totalRemaining.toLocaleString()}
-
-AB للتأمين`;
+// في Policies.tsx
+clients(id, full_name, phone_number, file_number, less_than_24, ...)
 ```
 
-**بعد:**
-```typescript
-// جلب تفاصيل الوثائق للعميل
-const { data: policies } = await supabase.rpc(
-  "report_debt_policies_for_clients",
-  { p_client_ids: [client.client_id] }
-);
-
-// بناء قائمة الوثائق
-const policyLines = (policies || [])
-  .filter((p: any) => (p.remaining || 0) > 0)
-  .map((p: any) => {
-    const typeLabel = getPolicyTypeLabel(p.policy_type_parent, p.policy_type_child);
-    const car = p.car_number || '';
-    const remaining = Math.round(p.remaining || 0);
-    return `• ${typeLabel} - ${car} - ₪${remaining.toLocaleString()}`;
-  })
-  .slice(0, 5)  // أقصى 5 وثائق لتقليل طول الرسالة
-  .join('\n');
-
-let message = `مرحباً ${clientName}،
-
-عليك تسديد المبلغ: ₪${totalRemaining.toLocaleString()}
-
-الوثائق:
-${policyLines}
-
-AB للتأمين`;
-```
-
-### 2. تحديث `send-manual-reminder/index.ts`
-
-**قبل:**
-```typescript
-finalMessage = `مرحباً ${client.full_name}،
-
-لديك مبلغ متبقي على وثائق التأمين: ₪${totalRemaining.toLocaleString()}
-
-يرجى التواصل معنا لتسوية المبلغ.`;
-```
-
-**بعد:**
-```typescript
-// جلب تفاصيل الوثائق للعميل
-const { data: policies } = await supabase.rpc(
-  "report_debt_policies_for_clients",
-  { p_client_ids: [client_id] }
-);
-
-// بناء قائمة الوثائق
-const policyLines = (policies || [])
-  .filter((p: any) => (p.remaining || 0) > 0)
-  .map((p: any) => {
-    const typeLabel = getPolicyTypeLabel(p.policy_type_parent, p.policy_type_child);
-    const car = p.car_number || '';
-    const remaining = Math.round(p.remaining || 0);
-    return `• ${typeLabel} - ${car} - ₪${remaining.toLocaleString()}`;
-  })
-  .slice(0, 5)
-  .join('\n');
-
-finalMessage = `مرحباً ${client.full_name}،
-
-عليك تسديد المبلغ: ₪${totalRemaining.toLocaleString()}
-
-الوثائق:
-${policyLines}
-
-يرجى التواصل معنا للتسوية.`;
-```
-
-### 3. تحديث `DebtTracking.tsx` - WhatsApp
-
-**قبل:**
-```typescript
-const message = `مرحباً ${client.client_name}، لديك مبلغ متبقي ${client.total_remaining.toLocaleString()} شيكل. يرجى التواصل معنا لتسوية المبلغ.`;
-```
-
-**بعد:**
-```typescript
-// بناء قائمة الوثائق للواتساب
-const policyDetails = client.policies
-  .filter(p => p.remaining > 0)
-  .slice(0, 5)
-  .map(p => {
-    const typeLabel = getPolicyTypeLabel(p.policy_type_parent, p.policy_type_child);
-    return `• ${typeLabel} - ${p.car_number || ''} - ₪${p.remaining.toLocaleString()}`;
-  })
-  .join('\n');
-
-const message = `مرحباً ${client.client_name}،
-
-عليك تسديد المبلغ: ${client.total_remaining.toLocaleString()} شيكل
-
-الوثائق:
-${policyDetails}
-
-يرجى التواصل معنا للتسوية.`;
-```
-
----
-
-## دالة مساعدة مشتركة (Edge Functions)
-
-إضافة دالة `getPolicyTypeLabel` في كل Edge Function:
+### تحديث الـ Interface
 
 ```typescript
-const POLICY_TYPE_LABELS: Record<string, string> = {
-  'ELZAMI': 'إلزامي',
-  'THIRD_FULL': 'ثالث/شامل',
-  'THIRD_ONLY': 'طرف ثالث',
-  'ROAD_SERVICE': 'خدمات طريق',
-  'ACCIDENT_FEE_EXEMPTION': 'إعفاء رسوم',
-};
-
-const getPolicyTypeLabel = (parent: string | null, child: string | null): string => {
-  if (!parent) return 'وثيقة';
-  const parentLabel = POLICY_TYPE_LABELS[parent] || parent;
-  if (child && parent === 'THIRD_FULL') {
-    return child === 'FULL' ? 'شامل' : child === 'THIRD' ? 'ثالث' : childLabel;
-  }
-  return parentLabel;
+// في types.ts
+clients?: {
+  id: string;
+  full_name: string;
+  less_than_24: boolean | null;
+  phone_number?: string | null;
+  file_number?: string | null;  // جديد
 };
 ```
 
----
+### دالة جديدة: `getInsuranceLines`
 
-## مثال على الرسالة الجديدة
+```typescript
+// عرض التأمينات كأسطر
+const getInsuranceLines = (group: PolicyGroup) => {
+  const allPolicies = [
+    ...(group.mainPolicy ? [group.mainPolicy] : []),
+    ...group.addons,
+  ];
 
+  return allPolicies.map((policy) => {
+    const label = policy.policy_type_parent === 'THIRD_FULL' && policy.policy_type_child
+      ? policyChildLabels[policy.policy_type_child]
+      : policyTypeLabels[policy.policy_type_parent];
+    
+    const companyName = policy.insurance_companies?.name_ar 
+      || policy.insurance_companies?.name 
+      || '';
+    
+    return { label, companyName, policyId: policy.id };
+  });
+};
 ```
-مرحباً Kareem Test،
 
-عليك تسديد المبلغ: ₪10,098
+### دالة جديدة: `getDateRanges`
 
-الوثائق:
-• إلزامي - 12-345-67 - ₪2,500
-• شامل - 12-345-67 - ₪4,000
-• خدمات طريق - 12-345-67 - ₪598
-• إلزامي - 98-765-43 - ₪3,000
+```typescript
+// عرض التواريخ (سطر واحد أو متعدد)
+const getDateRanges = (group: PolicyGroup) => {
+  const allPolicies = [
+    ...(group.mainPolicy ? [group.mainPolicy] : []),
+    ...group.addons,
+  ];
 
-AB للتأمين
-📍 بيت حنينا
-📞 026307377 | 0544494440 | 0546060886
+  // جمع التواريخ الفريدة
+  const uniqueRanges = new Map<string, { start: string; end: string }>();
+  
+  allPolicies.forEach((policy) => {
+    const key = `${policy.start_date}-${policy.end_date}`;
+    if (!uniqueRanges.has(key)) {
+      uniqueRanges.set(key, {
+        start: formatDate(policy.start_date),
+        end: formatDate(policy.end_date),
+      });
+    }
+  });
+
+  return Array.from(uniqueRanges.values());
+};
+```
+
+### هيكل الجدول الجديد
+
+```text
+┌──────────┬──────────┬──────────────────────┬─────────┬──────────────────────┬───────┬...
+│ رقم الملف│ العميل   │ التأمينات            │ السيارة │ الفترة               │الإجمالي│
+├──────────┼──────────┼──────────────────────┼─────────┼──────────────────────┼───────┤
+│ F1019    │ أحمد     │ ثالث → البيمة        │ 12-345  │ 09/02/2027 ← 10/02   │ ₪500  │
+│          │ 050-xxx  │ إلزامي → مشرق        │         │                      │       │
+│          │          │ خدمات طريق → البيمة  │         │                      │       │
+├──────────┼──────────┼──────────────────────┼─────────┼──────────────────────┼───────┤
+│ F1022    │ سارة     │ إلزامي → الشرق       │ 78-901  │ 15/03/2027 ← 15/03   │ ₪300  │
+│          │ 052-xxx  │                      │         │ 10/02/2027 ← 10/02   │       │
+│          │          │                      │         │ 01/01/2027 ← 01/01   │       │
+└──────────┴──────────┴──────────────────────┴─────────┴──────────────────────┴───────┘
 ```
 
 ---
 
 ## خطوات التنفيذ
 
-1. تحديث `send-bulk-debt-sms/index.ts` مع الرسالة الجديدة + تفاصيل الوثائق
-2. تحديث `send-manual-reminder/index.ts` مع الرسالة الجديدة + تفاصيل الوثائق  
-3. تحديث `DebtTracking.tsx` لرابط WhatsApp
-4. نشر Edge Functions المحدثة
+1. **تحديث `types.ts`** - إضافة `file_number` للـ interface
+2. **تحديث `Policies.tsx`** - إضافة `file_number` للـ query
+3. **تحديث `PolicyTableView.tsx`**:
+   - تغيير عناوين الأعمدة
+   - إضافة دالة `getInsuranceLines`
+   - إضافة دالة `getDateRanges`
+   - تحديث عرض الأعمدة
+   - تعديل الـ JSX للعرض الجديد
