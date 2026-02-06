@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -418,6 +419,7 @@ async function fetchActivities(branchId: string | null, startDate: string, endDa
 }
 
 export function RecentActivity() {
+  const navigate = useNavigate();
   const { profile } = useAuth();
   const branchId = profile?.branch_id;
 
@@ -582,7 +584,12 @@ export function RecentActivity() {
                 </div>
               ) : (
                 groupedActivities.map((group) => (
-                  <GroupedActivityCard key={group.clientId || group.clientName} group={group} compact />
+                  <GroupedActivityCard 
+                    key={group.clientId || group.clientName} 
+                    group={group} 
+                    compact 
+                    onClientClick={() => group.clientId && navigate(`/clients?open=${group.clientId}`)}
+                  />
                 ))
               )}
             </div>
@@ -666,7 +673,11 @@ export function RecentActivity() {
                 <div className="text-center py-12 text-muted-foreground">لا توجد نتائج مطابقة</div>
               ) : (
                 dialogGroupedActivities.map((group) => (
-                  <GroupedActivityCard key={group.clientId || group.clientName} group={group} />
+                  <GroupedActivityCard 
+                    key={group.clientId || group.clientName} 
+                    group={group}
+                    onClientClick={() => group.clientId && navigate(`/clients?open=${group.clientId}`)}
+                  />
                 ))
               )}
             </div>
@@ -678,7 +689,15 @@ export function RecentActivity() {
 }
 
 // Grouped Activity Card Component
-function GroupedActivityCard({ group, compact = false }: { group: GroupedClientActivity; compact?: boolean }) {
+function GroupedActivityCard({ 
+  group, 
+  compact = false, 
+  onClientClick 
+}: { 
+  group: GroupedClientActivity; 
+  compact?: boolean;
+  onClientClick?: () => void;
+}) {
   const hasPayments = group.payments.count > 0;
   const hasPolicies = group.policies.length > 0;
   const hasCars = group.cars.length > 0;
@@ -701,9 +720,12 @@ function GroupedActivityCard({ group, compact = false }: { group: GroupedClientA
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-foreground truncate">
+              <button
+                onClick={onClientClick}
+                className="font-semibold text-foreground truncate hover:text-primary hover:underline transition-colors text-right"
+              >
                 {group.clientName}
-              </span>
+              </button>
               {group.clientFileNumber && (
                 <Badge variant="outline" className="text-[10px] px-1.5">
                   {group.clientFileNumber}
@@ -724,10 +746,7 @@ function GroupedActivityCard({ group, compact = false }: { group: GroupedClientA
       {/* Payments Summary */}
       {hasPayments && (
         <div className={cn("bg-muted/50 rounded-lg p-2", compact ? "space-y-1" : "space-y-2")}>
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">
-              {group.payments.count} {group.payments.count === 1 ? "دفعة" : "دفعات"}
-            </span>
+          <div className="flex items-center justify-end">
             <span className="font-bold text-success ltr-nums">₪{group.payments.total.toLocaleString()}</span>
           </div>
 
