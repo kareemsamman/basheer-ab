@@ -70,6 +70,7 @@ interface PaymentLine {
   notes?: string;
   tranzilaPaid?: boolean;
   pendingImages?: File[];
+  cheque_image_url?: string;
 }
 
 interface PreviewUrls {
@@ -313,10 +314,13 @@ export function PolicyPaymentsSection({
         paymentType: 'cheque' as const,
         paymentDate: cheque.payment_date || new Date().toISOString().split('T')[0],
         chequeNumber: cheque.cheque_number || '',
+        cheque_image_url: cheque.image_url,
       };
       
-      // Convert cropped image to File and add to pendingImages
-      if (cheque.cropped_base64) {
+      // Use CDN URL if available, otherwise fallback to cropped_base64
+      if (cheque.image_url) {
+        newPreviewUrls[paymentId] = [{ url: cheque.image_url, isPdf: false }];
+      } else if (cheque.cropped_base64) {
         try {
           const blob = base64ToBlob(cheque.cropped_base64);
           const file = new File([blob], `cheque_${cheque.cheque_number || paymentId}.jpg`, { type: 'image/jpeg' });
@@ -484,6 +488,7 @@ export function PolicyPaymentsSection({
             payment_type: paymentLine.paymentType as Enums<'payment_type'>,
             payment_date: paymentLine.paymentDate,
             cheque_number: paymentLine.paymentType === 'cheque' ? paymentLine.chequeNumber : null,
+            cheque_image_url: paymentLine.paymentType === 'cheque' ? paymentLine.cheque_image_url : null,
             cheque_status: paymentLine.paymentType === 'cheque' ? 'pending' : null,
             refused: false,
             notes: paymentLine.notes || null,
