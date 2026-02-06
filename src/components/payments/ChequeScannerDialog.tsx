@@ -66,6 +66,48 @@ const formatElapsedTime = (seconds: number): string => {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
+// Client-side image cropping using Canvas
+const cropImageOnClient = async (
+  base64Image: string,
+  boundingBox: { x: number; y: number; width: number; height: number }
+): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return reject('Failed to get canvas context');
+      
+      // Calculate actual pixel values from percentages
+      const cropX = (boundingBox.x / 100) * img.naturalWidth;
+      const cropY = (boundingBox.y / 100) * img.naturalHeight;
+      const cropW = (boundingBox.width / 100) * img.naturalWidth;
+      const cropH = (boundingBox.height / 100) * img.naturalHeight;
+      
+      // Ensure minimum size
+      const finalW = Math.max(cropW, 50);
+      const finalH = Math.max(cropH, 30);
+      
+      canvas.width = finalW;
+      canvas.height = finalH;
+      
+      ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, finalW, finalH);
+      
+      // Return base64 without prefix for consistency
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      const base64Only = dataUrl.split(',')[1];
+      resolve(base64Only);
+    };
+    
+    img.onerror = () => reject('Failed to load image');
+    img.src = base64Image.startsWith('data:') 
+      ? base64Image 
+      : `data:image/jpeg;base64,${base64Image}`;
+  });
+};
+
 export function ChequeScannerDialog({
   open,
   onOpenChange,
@@ -290,19 +332,46 @@ export function ChequeScannerDialog({
         throw new Error(data?.error || 'فشل في معالجة الصور');
       }
 
-      const cheques: DetectedCheque[] = (data.cheques || []).map((c: DetectedCheque) => ({
-        ...c,
-        isEditing: false,
-        isConfirmed: false,
-      }));
+      // Process cheques and crop images on client
+      const rawCheques = data.cheques || [];
+      const processedCheques: DetectedCheque[] = [];
+      
+      for (const c of rawCheques) {
+        let croppedBase64 = c.cropped_base64;
+        
+        // If we have bounding box and original image, crop on client
+        if (c.bounding_box && c.cropped_base64) {
+          const { x, y, width, height } = c.bounding_box;
+          // Only crop if bounding box is not the full image
+          if (x > 0 || y > 0 || width < 100 || height < 100) {
+            try {
+              croppedBase64 = await cropImageOnClient(
+                `data:image/jpeg;base64,${c.cropped_base64}`,
+                c.bounding_box
+              );
+              console.log(`Cropped cheque ${c.cheque_number}: ${x},${y} ${width}x${height}`);
+            } catch (cropErr) {
+              console.error('Failed to crop cheque image:', cropErr);
+              // Keep original if crop fails
+            }
+          }
+        }
+        
+        processedCheques.push({
+          ...c,
+          cropped_base64: croppedBase64,
+          isEditing: false,
+          isConfirmed: false,
+        });
+      }
 
-      setDetectedCheques(cheques);
+      setDetectedCheques(processedCheques);
       setStage('results');
 
-      if (cheques.length === 0) {
+      if (processedCheques.length === 0) {
         toast.warning('لم يتم اكتشاف أي شيكات في الصور');
       } else {
-        toast.success(`تم اكتشاف ${cheques.length} شيك`);
+        toast.success(`تم اكتشاف ${processedCheques.length} شيك`);
       }
     } catch (err) {
       console.error('Error processing cheques:', err);
