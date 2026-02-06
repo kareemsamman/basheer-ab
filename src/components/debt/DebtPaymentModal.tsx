@@ -53,6 +53,7 @@ interface PaymentLine {
   notes?: string;
   tranzilaPaid?: boolean;
   pendingImages?: File[];
+  cheque_image_url?: string;
 }
 
 interface PreviewUrls {
@@ -476,10 +477,15 @@ export function DebtPaymentModal({
         paymentType: 'cheque' as const,
         paymentDate: cheque.payment_date || new Date().toISOString().split('T')[0],
         chequeNumber: cheque.cheque_number || '',
+        cheque_image_url: cheque.image_url,
       };
       
-      // Convert cropped image to File and add to pendingImages
-      if (cheque.cropped_base64) {
+      // Add CDN URL to preview if available
+      if (cheque.image_url) {
+        newPreviewUrls[paymentId] = [cheque.image_url];
+      }
+      // Fallback: Convert cropped image to File (legacy support)
+      else if (cheque.cropped_base64) {
         try {
           const blob = base64ToBlob(cheque.cropped_base64);
           const file = new File([blob], `cheque_${cheque.cheque_number || paymentId}.jpg`, { type: 'image/jpeg' });
