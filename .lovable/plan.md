@@ -1,27 +1,61 @@
 
-# خطة إصلاح عرض صور الشيكات في نافذة تسديد الديون
+# خطة إصلاح عدم ظهور صور الشيكات في جميع الأماكن
 
-## المشكلة
+## المشكلة الجذرية
 
-عند مسح الشيكات في نافذة "تسديد الديون"، البيانات تُضاف بشكل صحيح (المبلغ، رقم الشيك، التاريخ) لكن الصور لا تظهر في قسم "صور الشيك".
+بعد التحقق من قاعدة البيانات، وجدت أن حقل `cheque_image_url` فارغ (`null`) لجميع الشيكات:
 
-## تشخيص السبب
+```sql
+SELECT cheque_number, cheque_image_url FROM policy_payments WHERE cheque_number IN ('80001251', '80001252', '80001253');
 
-الـ Edge Function يُرجع الآن `image_url` (رابط CDN) بدلاً من `cropped_base64`:
-- الكود الحالي في `handleScannedCheques` يبحث فقط عن `cropped_base64`
-- لا يوجد حقل `cheque_image_url` في interface الدفعة
-- قسم عرض الصور لا يعرض روابط CDN
+-- النتيجة:
+-- 80001251 | null
+-- 80001252 | null  
+-- 80001253 | null
+```
+
+**السبب**: عند حفظ الدفعات، لا يتم تضمين `cheque_image_url` في أمر الإدراج.
 
 ---
 
-## الحل المقترح
+## الملفات المتأثرة والإصلاحات المطلوبة
 
-### التغيير 1: إضافة حقل `cheque_image_url` للـ interface
+### 1. إصلاح `DebtPaymentModal.tsx` (نافذة تسديد الديون)
 
-**الملف**: `src/components/debt/DebtPaymentModal.tsx`  
-**السطر**: 47-56
+**المشكلة**: سطر 656-665 لا يحفظ `cheque_image_url`:
 
 ```typescript
+// الكود الحالي
+const paymentsToInsert = splits.map(split => ({
+  policy_id: split.policyId,
+  amount: split.amount,
+  payment_type: paymentLine.paymentType,
+  payment_date: paymentLine.paymentDate,
+  cheque_number: paymentLine.paymentType === 'cheque' ? paymentLine.chequeNumber : null,
+  notes: paymentLine.notes || `تسديد دين`,
+  branch_id: split.branchId,
+  batch_id: batchId,
+  // ❌ cheque_image_url غير موجود!
+}));
+```
+
+**الحل**: إضافة `cheque_image_url` للإدراج:
+
+```typescript
+const paymentsToInsert = splits.map(split => ({
+  // ... الحقول الموجودة
+  cheque_image_url: paymentLine.paymentType === 'cheque' ? paymentLine.cheque_image_url : null,
+}));
+```
+
+---
+
+### 2. إصلاح `PolicyPaymentsSection.tsx` (سجل الدفعات في الوثيقة)
+
+**المشكلة 1**: Interface لا يحتوي على `cheque_image_url`:
+
+```typescript
+// سطر 64-73
 interface PaymentLine {
   id: string;
   amount: number;
@@ -31,85 +65,47 @@ interface PaymentLine {
   notes?: string;
   tranzilaPaid?: boolean;
   pendingImages?: File[];
-  cheque_image_url?: string;  // إضافة هذا الحقل
+  // ❌ cheque_image_url غير موجود!
 }
 ```
 
----
+**الحل**: إضافة الحقل للـ interface.
 
-### التغيير 2: تحديث `handleScannedCheques` لحفظ رابط CDN
-
-**الملف**: `src/components/debt/DebtPaymentModal.tsx`  
-**السطر**: 467-499
+**المشكلة 2**: Insert لا يحفظ `cheque_image_url` (سطر 479-491):
 
 ```typescript
-const handleScannedCheques = (cheques: any[]) => {
-  const newPayments: PaymentLine[] = [];
-  const newPreviewUrls: PreviewUrls = {};
-  
-  for (const cheque of cheques) {
-    const paymentId = crypto.randomUUID();
-    const payment: PaymentLine = {
-      id: paymentId,
-      amount: cheque.amount || 0,
-      paymentType: 'cheque' as const,
-      paymentDate: cheque.payment_date || new Date().toISOString().split('T')[0],
-      chequeNumber: cheque.cheque_number || '',
-      cheque_image_url: cheque.image_url,  // حفظ رابط CDN
-    };
-    
-    // إضافة رابط CDN إلى previewUrls إذا موجود
-    if (cheque.image_url) {
-      newPreviewUrls[paymentId] = [cheque.image_url];
-    }
-    // fallback: استخدام base64 إذا لم يوجد CDN URL
-    else if (cheque.cropped_base64) {
-      try {
-        const blob = base64ToBlob(cheque.cropped_base64);
-        const file = new File([blob], `cheque_${cheque.cheque_number || paymentId}.jpg`, { type: 'image/jpeg' });
-        payment.pendingImages = [file];
-        newPreviewUrls[paymentId] = [URL.createObjectURL(blob)];
-      } catch (e) {
-        console.error('Failed to convert cheque image:', e);
-      }
-    }
-    
-    newPayments.push(payment);
-  }
-  
-  setPreviewUrls(prev => ({ ...prev, ...newPreviewUrls }));
-  setPaymentLines(prev => [...prev, ...newPayments]);
-  toast.success(`تم إضافة ${newPayments.length} دفعة شيك مع الصور`);
+const { data, error } = await supabase
+  .from('policy_payments')
+  .insert({
+    policy_id: policyId,
+    amount: paymentLine.amount,
+    payment_type: paymentLine.paymentType,
+    payment_date: paymentLine.paymentDate,
+    cheque_number: paymentLine.paymentType === 'cheque' ? paymentLine.chequeNumber : null,
+    cheque_status: paymentLine.paymentType === 'cheque' ? 'pending' : null,
+    refused: false,
+    notes: paymentLine.notes || null,
+    branch_id: branchId || null,
+    // ❌ cheque_image_url غير موجود!
+  })
+```
+
+**الحل**: إضافة `cheque_image_url` للإدراج.
+
+**المشكلة 3**: `handleScannedCheques` لا يحفظ CDN URL (سطر 304-336):
+
+```typescript
+const payment: PaymentLine = {
+  id: paymentId,
+  amount: cheque.amount || 0,
+  paymentType: 'cheque' as const,
+  paymentDate: cheque.payment_date || new Date().toISOString().split('T')[0],
+  chequeNumber: cheque.cheque_number || '',
+  // ❌ cheque.image_url (CDN) غير محفوظ!
 };
 ```
 
----
-
-### التغيير 3: إضافة عرض صورة CDN في قسم الصور (احتياطي)
-
-**الملف**: `src/components/debt/DebtPaymentModal.tsx`  
-**السطر**: 1052
-
-إضافة عرض صورة CDN إذا موجودة وغير معروضة في previewUrls:
-
-```typescript
-<div className="flex flex-wrap gap-2">
-  {/* عرض صورة CDN من الماسح */}
-  {payment.cheque_image_url && !getPreviewUrls(payment.id).includes(payment.cheque_image_url) && (
-    <div className="relative group">
-      <img 
-        src={payment.cheque_image_url} 
-        alt="صورة الشيك" 
-        className="h-14 w-18 object-cover rounded border"
-      />
-    </div>
-  )}
-  {/* عرض الصور من previewUrls */}
-  {getPreviewUrls(payment.id).map((url, imgIndex) => (
-    // ... الكود الحالي
-  ))}
-</div>
-```
+**الحل**: حفظ `cheque.image_url` في `cheque_image_url`.
 
 ---
 
@@ -117,15 +113,45 @@ const handleScannedCheques = (cheques: any[]) => {
 
 | الملف | السطر | التغيير |
 |-------|-------|---------|
-| `DebtPaymentModal.tsx` | 47-56 | إضافة `cheque_image_url` للـ interface |
-| `DebtPaymentModal.tsx` | 467-499 | تحديث `handleScannedCheques` لحفظ وعرض CDN URL |
-| `DebtPaymentModal.tsx` | 1052 | إضافة عرض صورة CDN احتياطية |
+| `PolicyPaymentsSection.tsx` | 64-73 | إضافة `cheque_image_url?: string` للـ interface |
+| `PolicyPaymentsSection.tsx` | 304-336 | حفظ `cheque.image_url` في `handleScannedCheques` |
+| `PolicyPaymentsSection.tsx` | 479-491 | إضافة `cheque_image_url` للإدراج |
+| `DebtPaymentModal.tsx` | 656-665 | إضافة `cheque_image_url` للإدراج |
+
+---
+
+## التدفق بعد الإصلاح
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  1. المستخدم يمسح الشيكات بالماسح الضوئي                     │
+│     ↓                                                        │
+│  2. Edge Function يحلل الشيكات ويرفعها إلى CDN              │
+│     ↓                                                        │
+│  3. يُرجع image_url (رابط CDN) مع بيانات الشيك              │
+│     ↓                                                        │
+│  4. Frontend يحفظ image_url في cheque_image_url ✓           │
+│     ↓                                                        │
+│  5. عند الحفظ، cheque_image_url يُدرج في قاعدة البيانات ✓    │
+│     ↓                                                        │
+│  6. UI يعرض الصور من cheque_image_url ✓                     │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## النتيجة المتوقعة
 
 بعد التنفيذ:
-1. عند مسح الشيكات، سيتم حفظ رابط صورة CDN
-2. الصورة ستظهر فوراً في قسم "صور الشيك (أمامي/خلفي)"
-3. ستعمل مع كل من CDN URL و base64 fallback
+1. ✅ صور الشيكات ستُحفظ في قاعدة البيانات عند الإضافة
+2. ✅ صور الشيكات ستظهر في سجل الدفعات (Policy Details)
+3. ✅ صور الشيكات ستظهر في صفحة /cheques
+4. ✅ صور الشيكات ستظهر في نافذة تسديد الديون
+
+---
+
+## ملاحظة هامة
+
+الشيكات الموجودة حالياً (80001251, 80001252, 80001253) ليس لديها صور محفوظة في قاعدة البيانات. لإصلاحها يجب:
+- إما إعادة مسحها بعد تطبيق الإصلاح
+- أو تحديث البيانات يدوياً في قاعدة البيانات إذا كانت الصور موجودة على CDN
