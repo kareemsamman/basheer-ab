@@ -1,101 +1,122 @@
 
-# خطة التحسينات: عرض التاريخ في المهام + إصلاح عرض خطأ مسح الشيكات
+# إصلاح مشكلة "Edge Function returned a non-2xx status code"
 
-## المشاكل المكتشفة
+## المشكلة الجذرية
 
-### 1. المهام - عدم ظهور التاريخ
-المهام المتأخرة تظهر فقط بالوقت (12:00) لكن بدون تاريخها الأصلي. هذا يسبب ارتباكاً لأن المستخدم لا يعرف من أي يوم هذه المهمة.
+عندما يُرجع الـ Edge Function كود HTTP غير 200 (مثل 402 أو 429)، مكتبة Supabase تلتقط الخطأ وتظهر رسالة عامة:
 
-### 2. مسح الشيكات - رسالة الخطأ غير واضحة
-الخطأ الفعلي هو **402 - نفاد اعتمادات AI** لكن يظهر رسالة عامة "Edge Function returned a non-2xx status code" مع رابط غير مناسب (ScanApp).
+```
+"Edge Function returned a non-2xx status code"
+```
+
+**المشكلة**: الـ response body الذي يحتوي على الرسالة المفصلة لا يُمرر للـ `error.message` - إنما يُخزن في `error.context` الذي لا يُقرأ بسهولة.
+
+## الحل
+
+**تغيير منطق الـ Edge Function**: إرجاع HTTP 200 دائماً، مع تضمين حالة الخطأ في الـ JSON body.
 
 ---
 
 ## التغييرات المطلوبة
 
-### الملف 1: `src/components/tasks/TaskCard.tsx`
+### الملف: `supabase/functions/process-cheque-scan/index.ts`
 
-**إضافة عرض التاريخ للمهام المتأخرة**
+**التغيير 1**: عند خطأ rate limit (السطر 312-316)
 
-```tsx
-// في قسم Time badge - السطر 84-89
-<div className={cn(
-  "flex flex-col items-center justify-center min-w-[70px] py-3 px-3 rounded-xl shadow-sm",
-  ...
-)}>
-  <Clock className="h-4 w-4 mb-1" />
-  <span className="text-base font-bold font-mono ltr-nums">
-    {formatTime(task.due_time)}
-  </span>
-  {/* إضافة: عرض التاريخ للمهام المتأخرة */}
-  {task.isOverdue && (
-    <span className="text-[10px] mt-0.5 opacity-75">
-      {format(new Date(task.due_date), 'd/M', { locale: ar })}
-    </span>
-  )}
-</div>
+```typescript
+// قبل
+if (rateLimitError) {
+  return new Response(
+    JSON.stringify({ error: "Rate limit exceeded..." }),
+    { status: 429, headers: {...} }  // ❌ هذا يسبب المشكلة
+  );
+}
+
+// بعد
+if (rateLimitError) {
+  return new Response(
+    JSON.stringify({ 
+      success: false, 
+      error: "rate_limit",
+      message: "تم تجاوز الحد المسموح. يرجى المحاولة لاحقاً." 
+    }),
+    { status: 200, headers: {...} }  // ✅ نرجع 200 مع error في الـ body
+  );
+}
 ```
 
-**تحديث Props و interface:**
-```tsx
-interface TaskCardProps {
-  task: Task & { isOverdue?: boolean };
-  // ...
+**التغيير 2**: عند خطأ نفاد الاعتمادات (السطر 318-324)
+
+```typescript
+// قبل
+if (paymentError) {
+  return new Response(
+    JSON.stringify({ error: "AI credits exhausted..." }),
+    { status: 402, headers: {...} }  // ❌ هذا يسبب المشكلة
+  );
+}
+
+// بعد
+if (paymentError) {
+  return new Response(
+    JSON.stringify({ 
+      success: false, 
+      error: "payment_required",
+      message: "نفدت اعتمادات AI. يرجى إضافة رصيد للمتابعة." 
+    }),
+    { status: 200, headers: {...} }  // ✅ نرجع 200 مع error في الـ body
+  );
+}
+```
+
+**التغيير 3**: عند خطأ عام (السطر 373-380)
+
+```typescript
+// بعد
+} catch (error) {
+  console.error("Error in process-cheque-scan:", error);
+  return new Response(
+    JSON.stringify({ 
+      success: false,
+      error: "server_error",
+      message: error instanceof Error ? error.message : "خطأ غير متوقع" 
+    }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
 }
 ```
 
 ---
 
-### الملف 2: `src/components/payments/ChequeScannerDialog.tsx`
+### الملف: `src/components/payments/ChequeScannerDialog.tsx`
 
-**تحسين معالجة الأخطاء لعرض رسائل واضحة:**
+**تبسيط معالجة الأخطاء** (السطر 509-531):
 
-#### التغيير 1: تحسين قراءة خطأ Edge Function (السطر 505-520)
-```tsx
+```typescript
 const { data, error: fnError } = await supabase.functions.invoke('process-cheque-scan', {
   body: { images: base64Images }
 });
 
-// تحسين: التعامل مع أخطاء Edge Function بشكل أفضل
+// Network/connection error (no response at all)
 if (fnError) {
-  const errorMsg = fnError.message || '';
-  console.error('Edge function error:', errorMsg);
-  
-  // Check if error body contains specific error info
-  if (errorMsg.includes('402') || errorMsg.includes('credits') || errorMsg.includes('payment')) {
-    throw new Error('نفدت اعتمادات AI. يرجى إضافة رصيد للمتابعة.');
-  }
-  if (errorMsg.includes('429') || errorMsg.includes('rate')) {
-    throw new Error('تم تجاوز الحد المسموح. يرجى المحاولة لاحقاً.');
-  }
-  // Default: Show the actual error or a generic message
-  throw new Error('خطأ في الاتصال بخدمة التحليل. حاول مرة أخرى.');
+  throw new Error('خطأ في الاتصال بالخادم. تحقق من الإنترنت.');
 }
-```
 
-#### التغيير 2: تحسين عرض رسالة الخطأ (السطر 641-656)
+// Server returned error in body (new pattern)
+if (data?.error) {
+  // Specific error messages based on error type
+  if (data.error === 'payment_required') {
+    throw new Error(data.message || 'نفدت اعتمادات AI. يرجى إضافة رصيد للمتابعة.');
+  }
+  if (data.error === 'rate_limit') {
+    throw new Error(data.message || 'تم تجاوز الحد المسموح. يرجى المحاولة لاحقاً.');
+  }
+  throw new Error(data.message || 'خطأ في معالجة الشيكات');
+}
 
-```tsx
-{/* Error Message - Context-aware */}
-{error && (
-  <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 flex items-start gap-2">
-    <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-    <div className="text-sm">
-      <p className="text-destructive font-medium">{error}</p>
-      {/* عرض رابط ScanApp فقط إذا كان الخطأ متعلق بالسكانر */}
-      {(error.includes('سكانر') || error.includes('ScanApp') || error.includes('مسح')) && (
-        <a 
-          href="https://asprise.com/document-scan-upload-image-browser/html-web-scanner-download.html"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary underline text-xs mt-1 block"
-        >
-          تحميل ScanApp
-        </a>
-      )}
-    </div>
-  </div>
-)}
+if (!data?.success) {
+  throw new Error('فشل في معالجة الصور');
+}
 ```
 
 ---
@@ -104,29 +125,31 @@ if (fnError) {
 
 | الملف | التغيير |
 |-------|---------|
-| `TaskCard.tsx` | إضافة عرض التاريخ (يوم/شهر) أسفل الوقت للمهام المتأخرة |
-| `ChequeScannerDialog.tsx` | تحسين رسائل الخطأ + إخفاء رابط ScanApp عند أخطاء AI |
+| `process-cheque-scan/index.ts` | إرجاع HTTP 200 دائماً + تضمين نوع الخطأ والرسالة في JSON |
+| `ChequeScannerDialog.tsx` | قراءة `data.error` و `data.message` بدل `fnError.message` |
 
 ---
 
 ## النتيجة المتوقعة
 
-### قبل:
-| المهام | مسح الشيكات |
-|--------|-------------|
-| متأخر 12:00 (بدون تاريخ) | خطأ عام + رابط ScanApp |
-
-### بعد:
-| المهام | مسح الشيكات |
-|--------|-------------|
-| متأخر 12:00 + 5/2 (التاريخ) | "نفدت اعتمادات AI" (بدون رابط ScanApp) |
+| قبل | بعد |
+|-----|-----|
+| "Edge Function returned a non-2xx status code" | "نفدت اعتمادات AI. يرجى إضافة رصيد للمتابعة." |
 
 ---
 
-## ملاحظة هامة حول نفاد الاعتمادات
+## لماذا هذا الحل صحيح؟
 
-خطأ **402 - Payment Required** يعني أن اعتمادات Lovable AI نفدت.
+1. **مشكلة معروفة في Supabase SDK**: عند HTTP غير 200، الـ response body يُهمل
+2. **الحل المعتمد**: إرجاع 200 OK مع `success: false` في الـ body
+3. **أفضل ممارسة**: تضمين `error` (نوع) + `message` (رسالة للمستخدم)
 
-**الحل**: إضافة رصيد من: Settings → Workspace → Usage → Add Credits
+---
 
-الإصلاحات في الكود ستضمن عرض رسالة واضحة بالعربية للمستخدم بدلاً من الرسالة التقنية.
+## ملاحظة عن الاعتمادات
+
+الخطأ الفعلي هو **نفاد اعتمادات Lovable AI**.
+
+**الحل**: إضافة رصيد من Settings → Workspace → Usage
+
+لكن هذا الإصلاح سيضمن ظهور **رسالة واضحة بالعربية** بدلاً من الرسالة التقنية.
