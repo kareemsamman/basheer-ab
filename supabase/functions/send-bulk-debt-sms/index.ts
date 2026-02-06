@@ -6,6 +6,21 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Helper to escape XML special characters
+const escapeXml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+
+// Helper to extract XML tag content
+const extractTag = (xml: string, tag: string) => {
+  const match = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "i"));
+  return match?.[1]?.trim() ?? null;
+};
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -89,7 +104,12 @@ Deno.serve(async (req) => {
     // Send SMS to each client
     for (const client of clientsWithPhone) {
       try {
-        const phoneNumber = client.client_phone.replace(/[\s\-\(\)]/g, "");
+        // Clean phone number - normalize to 05xxxxxxx format
+        let cleanPhone = client.client_phone.replace(/[^0-9]/g, "");
+        if (cleanPhone.startsWith("972")) {
+          cleanPhone = "0" + cleanPhone.substring(3);
+        }
+        
         const clientName = client.client_name || "عميل";
         const remainingAmount = Math.round(Number(client.total_remaining) || 0);
 
@@ -107,7 +127,7 @@ Deno.serve(async (req) => {
             .replace(/\{remaining_amount\}/g, remainingAmount.toString());
         }
 
-        // Send SMS via 019sms
+        // Send SMS via 019sms - using correct POST XML format
         const smsUser = smsSettings.sms_user;
         const smsToken = smsSettings.sms_token;
         const smsSource = smsSettings.sms_source || "AB-Insurance";
@@ -118,32 +138,48 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const smsUrl = `https://019sms.co.il/api?send=1&user=${encodeURIComponent(
-          smsUser
-        )}&password=${encodeURIComponent(smsToken)}&sender=${encodeURIComponent(
-          smsSource
-        )}&recipient=${encodeURIComponent(phoneNumber)}&message=${encodeURIComponent(
-          message
-        )}`;
+        // Build 019sms XML request (official API format)
+        const dlr = crypto.randomUUID();
+        const smsXml =
+          `<?xml version="1.0" encoding="UTF-8"?>` +
+          `<sms>` +
+          `<user><username>${escapeXml(smsUser)}</username></user>` +
+          `<source>${escapeXml(smsSource)}</source>` +
+          `<destinations><phone id="${dlr}">${escapeXml(cleanPhone)}</phone></destinations>` +
+          `<message>${escapeXml(message)}</message>` +
+          `</sms>`;
 
-        const smsResponse = await fetch(smsUrl);
+        console.log(`Sending SMS to ${cleanPhone} from ${smsSource}`);
+
+        const smsResponse = await fetch("https://019sms.co.il/api", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${smsToken}`,
+            "Content-Type": "application/xml; charset=utf-8",
+          },
+          body: smsXml,
+        });
+
         const smsResult = await smsResponse.text();
+        console.log(`019sms response for ${cleanPhone}:`, smsResult);
 
-        console.log(`SMS to ${phoneNumber}: ${smsResult}`);
+        const status = extractTag(smsResult, "status");
+        const apiMessage = extractTag(smsResult, "message");
+        const isSuccess = status === "0";
 
         // Log the SMS
         await supabase.from("sms_logs").insert({
-          phone_number: phoneNumber,
+          phone_number: cleanPhone,
           message: message,
           sms_type: "payment_request",
           client_id: client.client_id,
-          status: smsResult.includes("OK") ? "sent" : "failed",
-          error_message: smsResult.includes("OK") ? null : smsResult,
+          status: isSuccess ? "sent" : "failed",
+          error_message: isSuccess ? null : (apiMessage || smsResult.substring(0, 200)),
           sent_at: new Date().toISOString(),
           created_by: user.id,
         });
 
-        if (smsResult.includes("OK")) {
+        if (isSuccess) {
           sentCount++;
         } else {
           failedCount++;
