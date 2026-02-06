@@ -1,122 +1,59 @@
 
-# خطة تسريع مسح الشيكات وإصلاح Timeout
+
+# إصلاح مشكلة "فشل إرسال الطلب إلى Edge Function"
 
 ## المشكلة المكتشفة
 
-### تحليل السجلات الفعلية:
+عند النقر على زر "إرسال" في نافذة الرسائل الجماعية، يظهر خطأ:
 ```
-12:17:33 → 12:18:23 = صورة 1 (50 ثانية)
-12:18:23 → 12:19:40 = صورة 2 (77 ثانية)  
-12:19:40 → timeout!  = صورة 3 (لم تكتمل)
+خطأ - Failed to send a request to the Edge Function
 ```
 
-**السبب الجذري:**
-- `google/gemini-3-pro-preview` بطيء جداً للصور الكبيرة (~50-80 ثانية/صورة)
-- 3 صور = ~3-4 دقائق (يتجاوز مهلة Edge Function 150 ثانية)
-- المعالجة التسلسلية تضاعف المشكلة
+### تحليل السجلات:
+```
+OPTIONS | 404 | send-bulk-debt-sms
+OPTIONS | 404 | send-manual-reminder
+```
+
+**السبب الجذري:**  
+الـ Edge Functions موجودة في الكود (`supabase/functions/`) ومُعرَّفة في `config.toml`، لكنها **غير منشورة (not deployed)** على الخادم.
 
 ---
 
-## الحل المقترح: نهج ثلاثي الأبعاد
+## الحل
 
-### 1. استخدام نموذج أسرع: `gemini-2.5-flash`
+### نشر الـ Edge Functions المفقودة
 
-| النموذج | وقت التحليل/صورة | الدقة |
-|---------|-----------------|-------|
-| gemini-3-pro-preview | 50-80 ثانية ❌ | عالية جداً |
-| **gemini-2.5-flash** | **5-10 ثانية** ✅ | عالية |
+الـ Functions التي تحتاج للنشر:
+1. `send-bulk-debt-sms` - لإرسال الرسائل الجماعية
+2. `send-manual-reminder` - لإرسال تذكير فردي للعميل
 
-`gemini-2.5-flash` أسرع 10x مع دقة ممتازة للـ OCR.
-
----
-
-### 2. المعالجة المتوازية (Parallel Processing)
-
-```typescript
-// قبل: تسلسلي (3 صور × 50 ثانية = 150+ ثانية)
-for (const image of images) {
-  await processImage(image);
-}
-
-// بعد: متوازي (3 صور في نفس الوقت = ~10-15 ثانية)
-await Promise.all(images.map(image => processImage(image)));
-```
+**لا يوجد تغييرات في الكود** - فقط يجب نشر الـ Functions الموجودة.
 
 ---
 
-### 3. تحديث تقدير الوقت في الواجهة
+## الملفات الموجودة (لا تحتاج تعديل)
 
-```typescript
-// تقدير محدث مع gemini-2.5-flash + parallel
-const estimatedSecondsPerImage = 5; // بدلاً من 12
-const totalEstimated = Math.max(10, scannedImages.length * 5);
-```
-
-**التقديرات الجديدة:**
-| عدد الصور | الوقت (المتوازي) |
-|-----------|-----------------|
-| 1 صورة | ~5-10 ثوان |
-| 3 صور | ~10-15 ثانية |
-| 5 صور | ~10-20 ثانية |
-| 10 صور | ~15-30 ثانية |
+| الملف | الحالة |
+|-------|--------|
+| `supabase/functions/send-bulk-debt-sms/index.ts` | موجود ✓ |
+| `supabase/functions/send-manual-reminder/index.ts` | موجود ✓ |
+| `supabase/config.toml` | مُعرَّف ✓ |
 
 ---
 
-## التغييرات التقنية
+## النتيجة المتوقعة بعد النشر
 
-### ملف 1: `supabase/functions/process-cheque-scan/index.ts`
-
-**أ) تغيير النموذج:**
-```typescript
-// من
-model: "google/gemini-3-pro-preview"
-
-// إلى
-model: "google/gemini-2.5-flash"
-```
-
-**ب) المعالجة المتوازية:**
-```typescript
-// معالجة جميع الصور بالتوازي
-const imageResults = await Promise.all(
-  images.map(async (image, imgIndex) => {
-    // ... AI call for each image
-  })
-);
-
-// تجميع النتائج
-for (const result of imageResults) {
-  allDetectedCheques.push(...result.cheques);
-}
-```
+- زر "إرسال" في الرسائل الجماعية يعمل
+- زر "تذكير" للعميل الفردي يعمل
+- لا مزيد من خطأ 404
 
 ---
 
-### ملف 2: `src/components/payments/ChequeScannerDialog.tsx`
+## التفاصيل التقنية
 
-**تحديث تقدير الوقت:**
-```typescript
-// من
-const estimatedSecondsPerImage = 12;
+الـ Functions تستخدم:
+- `verify_jwt = true` - تتطلب مصادقة المستخدم
+- تتصل بـ `sms_settings` للحصول على بيانات الـ SMS
+- تستخدم RPC `report_client_debts` و `get_client_balance` للحصول على بيانات الديون
 
-// إلى
-const estimatedSecondsPerImage = 5; // مع gemini-2.5-flash + parallel
-```
-
----
-
-## الملخص
-
-| الجانب | قبل | بعد |
-|--------|-----|-----|
-| النموذج | gemini-3-pro-preview | gemini-2.5-flash |
-| المعالجة | تسلسلية | متوازية |
-| 3 صور | ~3-4 دقائق + timeout | ~10-15 ثانية |
-| حد الوقت | يتجاوز 150 ثانية | ضمن الحد بأمان |
-| الدقة | عالية جداً | عالية (كافية للـ OCR) |
-
----
-
-## ملاحظة تقنية مهمة
-
-`gemini-2.5-flash` ليس أقل دقة في OCR - فهو مُحسَّن خصيصاً للمهام البصرية السريعة. الفرق الرئيسي هو في المهام "التفكيرية" المعقدة، وليس قراءة النص من الصور.
