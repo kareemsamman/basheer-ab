@@ -1,48 +1,120 @@
 
-# إزالة شارة "منتهي منذ" من صفحة متابعة الديون
+# إصلاح مسح الشيكات - معالجة خطأ الاعتمادات وإلغاء القص
 
-## المشكلة
+## المشاكل المكتشفة
 
-في صفحة `/debt-tracking`، يظهر badge "منتهي منذ X يوم" بجانب كل عميل. هذه المعلومة غير ضرورية في سياق هذه الصفحة التي تركز على **الديون** وليس على **انتهاء الوثائق**.
+### 1. خطأ 402 - نفاد الاعتمادات
+```
+AI API error for image 1: 402 {"type":"payment_required","message":"Not enough credits"}
+```
+الـ Edge Function يُرجع الخطأ بشكل صحيح، لكن الـ Frontend يعرض رسالة عامة بدلاً من الرسالة الفعلية.
 
-## الحل
-
-إزالة استدعاء `getExpiryBadge(client.days_until_expiry)` من صف العميل الرئيسي.
+### 2. منطق قص الصور الحالي
+النظام الحالي يقوم بقص كل شيك من الصورة الأصلية، مما قد يُنتج صوراً متطابقة أو يضر بالجودة.
 
 ---
 
-## التغييرات
+## الحل المقترح
 
-### الملف: `src/pages/DebtTracking.tsx`
+### الجزء 1: تحسين عرض الأخطاء في الـ Frontend
 
-**السطر 558**: إزالة هذا السطر:
+**الملف:** `src/components/payments/ChequeScannerDialog.tsx`
+
 ```tsx
-// قبل
-<div className="flex items-center gap-3">
-  <ClientNotesPopover ... />
-  {getExpiryBadge(client.days_until_expiry)}  // ← حذف هذا السطر
-  <Badge variant="outline">{client.policies_count} وثيقة</Badge>
-  ...
-</div>
+// السطر 505-515 تقريباً
+const { data, error: fnError } = await supabase.functions.invoke('process-cheque-scan', {
+  body: { images: base64Images }
+});
 
-// بعد
-<div className="flex items-center gap-3">
-  <ClientNotesPopover ... />
-  <Badge variant="outline">{client.policies_count} وثيقة</Badge>
-  ...
-</div>
+// تحسين معالجة الأخطاء
+if (fnError) {
+  // معالجة أخطاء محددة
+  if (fnError.message?.includes('402') || fnError.message?.includes('credits')) {
+    throw new Error('نفدت اعتمادات AI. يرجى إضافة رصيد للمتابعة.');
+  }
+  if (fnError.message?.includes('429') || fnError.message?.includes('rate')) {
+    throw new Error('تم تجاوز الحد المسموح. يرجى المحاولة لاحقاً.');
+  }
+  throw new Error(fnError.message);
+}
+```
+
+### الجزء 2: إلغاء القص - استخدام الصورة الكاملة
+
+**الملف:** `supabase/functions/process-cheque-scan/index.ts`
+
+التغييرات:
+1. استخدام نموذج `gemini-2.5-flash` بدلاً من `gemini-2.5-pro` (أسرع وأرخص)
+2. إلغاء إرسال `bounding_box` و `cropped_base64`
+3. رفع الصورة الأصلية الكاملة **مرة واحدة** لكل صورة ممسوحة
+4. كل الشيكات المكتشفة في نفس الصورة تشترك في نفس `image_url`
+
+```typescript
+// تبسيط المنطق: رفع الصورة الأصلية مرة واحدة
+for (const result of imageResults) {
+  // رفع الصورة الأصلية مرة واحدة فقط
+  const fileName = `scan_${Date.now()}_${result.imgIndex}.jpg`;
+  const cdnUrl = await uploadToBunny(result.imageBase64, fileName);
+  
+  // كل الشيكات في هذه الصورة تستخدم نفس الـ URL
+  for (const cheque of result.cheques) {
+    cheque.image_url = cdnUrl || `data:image/jpeg;base64,${result.imageBase64}`;
+    // لا نرسل cropped_base64 أو bounding_box للـ client
+    delete cheque.cropped_base64;
+    allDetectedCheques.push(cheque);
+  }
+}
+```
+
+### الجزء 3: تبسيط معالجة الـ Client
+
+**الملف:** `src/components/payments/ChequeScannerDialog.tsx`
+
+إزالة منطق القص والتدوير - استخدام `image_url` مباشرة:
+
+```tsx
+// السطر 517-564 - تبسيط
+const rawCheques = data.cheques || [];
+const processedCheques: DetectedCheque[] = rawCheques.map(c => ({
+  ...c,
+  isEditing: false,
+  isConfirmed: false,
+}));
+
+setDetectedCheques(processedCheques);
 ```
 
 ---
 
-## ملاحظة
+## ملخص التغييرات
 
-الـ badge سيبقى يظهر داخل **جدول الوثائق الموسع** (عند الضغط على صف العميل) في عمود "الحالة" لكل وثيقة على حدة (سطر 657). هذا منطقي لأنه يعرض حالة كل وثيقة بشكل منفصل.
+| الملف | التغيير |
+|-------|---------|
+| `process-cheque-scan/index.ts` | استخدام `gemini-2.5-flash`، رفع الصورة الكاملة مرة واحدة، إزالة `cropped_base64` |
+| `ChequeScannerDialog.tsx` | تحسين عرض الأخطاء، إزالة منطق القص، استخدام `image_url` مباشرة |
 
 ---
 
-## النتيجة
+## النتيجة المتوقعة
 
-| قبل | بعد |
-|-----|-----|
-| جمال محمد داري • [منتهي منذ 382 يوم] • 10 وثيقة | جمال محمد داري • 10 وثيقة |
+### قبل:
+- كل شيك له صورة مقصوصة منفصلة
+- رسالة خطأ عامة عند نفاد الاعتمادات
+- نموذج `gemini-2.5-pro` (مكلف)
+
+### بعد:
+- كل الشيكات في نفس الصورة تشترك في الصورة الأصلية الكاملة (جودة عالية)
+- رسائل خطأ واضحة بالعربية
+- نموذج `gemini-2.5-flash` (أسرع وأرخص)
+
+---
+
+## ملاحظة هامة
+
+**خطأ نفاد الاعتمادات** يحتاج إلى إضافة رصيد في حساب Lovable:
+Settings → Workspace → Usage → Add Credits
+
+لكن الإصلاحات أعلاه ستضمن:
+1. عرض رسالة واضحة للمستخدم
+2. تقليل استهلاك الاعتمادات باستخدام نموذج أرخص
+3. عدم هدر الاعتمادات على رفع صور متعددة
