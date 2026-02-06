@@ -1,103 +1,172 @@
 
 
-# إصلاح مشكلة التمرير في Popup "سجل النشاط"
+# إصلاح رسالة التذكير اليدوي - send-manual-reminder
 
-## المشكلة
-الـ Popup لا يمكن تمريره لرؤية المزيد من النتائج. المحتوى يظهر لكن لا يمكن الـ scroll.
+## المشاكل المكتشفة
 
-## السبب التقني
-```tsx
-// السطر 595
-<DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-  ...
-  // السطر 659
-  <ScrollArea className="flex-1 pr-3">
+| المشكلة | الموقع في الكود | الحل |
+|---------|-----------------|------|
+| لا يوجد footer للشركة | سطر 168-176 | إضافة footer كما في bulk-sms |
+| "الوثائق:" تظهر حتى لو فارغة | سطر 173-174 | إضافة شرط: إذا لا يوجد policies، لا تعرض "الوثائق:" |
+
+## المقارنة بين الملفين
+
+### send-bulk-debt-sms (الصحيح) ✅
+```javascript
+// سطر 121-124 - جلب footer
+const companyLocation = smsSettings.company_location || '';
+const phoneLinks = (smsSettings.company_phone_links as any[]) || [];
+const phones = phoneLinks.map((p: any) => p.phone).filter(Boolean).join(' | ');
+
+// سطر 181-199 - بناء الرسالة
+let message = `مرحباً ${clientName}،
+
+عليك تسديد المبلغ: ₪${totalRemaining.toLocaleString()}
+
+الوثائق:
+${policyLines}
+
+AB للتأمين`;
+
+if (companyLocation) {
+  message += `\n📍 ${companyLocation}`;
+}
+if (phones) {
+  message += `\n📞 ${phones}`;
+}
 ```
 
-المشكلة: `ScrollArea` مع `flex-1` لا يعمل بشكل صحيح في Radix Dialog. الـ `flex-1` لا يعطي ارتفاع محدد للـ ScrollArea.
+### send-manual-reminder (الخاطئ) ❌
+```javascript
+// سطر 168-176 - بناء الرسالة بدون footer!
+finalMessage = `مرحباً ${client.full_name}،
 
-## الحل
+عليك تسديد المبلغ: ₪${totalRemaining.toLocaleString()}
 
-### تغيير CSS للـ ScrollArea
+الوثائق:
+${policyLines}
+
+يرجى التواصل معنا للتسوية.`;
+```
+
+## التغييرات المطلوبة
+
+### الملف: `supabase/functions/send-manual-reminder/index.ts`
+
+#### 1. إضافة جلب footer الشركة (بعد سطر 120)
+
+```typescript
+// Get company footer info from SMS settings
+const companyLocation = smsSettings.company_location || '';
+const phoneLinks = (smsSettings.company_phone_links as any[]) || [];
+const phones = phoneLinks.map((p: any) => p.phone).filter(Boolean).join(' | ');
+```
+
+#### 2. تعديل بناء الرسالة (سطر 168-176)
 
 **قبل:**
-```tsx
-<ScrollArea className="flex-1 pr-3">
+```typescript
+finalMessage = `مرحباً ${client.full_name}،
+
+عليك تسديد المبلغ: ₪${totalRemaining.toLocaleString()}
+
+الوثائق:
+${policyLines}
+
+يرجى التواصل معنا للتسوية.`;
 ```
 
 **بعد:**
-```tsx
-<ScrollArea className="h-[calc(90vh-220px)] pr-3">
-```
+```typescript
+// Build policy section only if there are policies
+const policySection = policyLines.length > 0 
+  ? `\n\nالوثائق:\n${policyLines}` 
+  : '';
 
-### الشرح:
-- `90vh` = ارتفاع الـ Dialog الأقصى
-- `220px` = تقريبي للـ Header + Filters + Summary (حوالي 60px + 80px + 40px + padding)
-- النتيجة: ارتفاع ثابت للـ ScrollArea يسمح بالتمرير
+// Build final message with policy details and footer
+let finalMessage = `مرحباً ${client.full_name}،
 
-### التغيير البديل (أفضل):
-```tsx
-<DialogContent className="max-w-4xl h-[90vh] flex flex-col">
-  <DialogHeader className="shrink-0">...</DialogHeader>
-  <div className="shrink-0 flex flex-wrap gap-3 pb-4 border-b">...</div>
-  <div className="shrink-0 flex flex-wrap items-center gap-4 text-sm text-muted-foreground py-2">...</div>
-  <ScrollArea className="flex-1 min-h-0 pr-3">
-    ...
-  </ScrollArea>
-</DialogContent>
-```
+عليك تسديد المبلغ: ₪${totalRemaining.toLocaleString()}${policySection}
 
-**التغييرات:**
-1. تغيير `max-h-[90vh]` إلى `h-[90vh]` - ارتفاع ثابت
-2. إضافة `shrink-0` للعناصر الثابتة (Header, Filters, Summary)
-3. إضافة `min-h-0` للـ ScrollArea - مهم جداً للـ flexbox scroll
+AB للتأمين`;
 
----
+// Add location if available
+if (companyLocation) {
+  finalMessage += `\n📍 ${companyLocation}`;
+}
 
-## الملف المتأثر
-
-| الملف | السطر | التغيير |
-|-------|-------|---------|
-| `src/components/dashboard/RecentActivity.tsx` | 595 | تغيير `max-h-[90vh]` إلى `h-[90vh]` |
-| `src/components/dashboard/RecentActivity.tsx` | 596-598 | إضافة `shrink-0` للـ DialogHeader |
-| `src/components/dashboard/RecentActivity.tsx` | 601 | إضافة `shrink-0` للـ Filters div |
-| `src/components/dashboard/RecentActivity.tsx` | 640 | إضافة `shrink-0` للـ Summary div |
-| `src/components/dashboard/RecentActivity.tsx` | 659 | إضافة `min-h-0` للـ ScrollArea |
-
----
-
-## الكود النهائي
-
-```tsx
-<Dialog open={showDialog} onOpenChange={setShowDialog}>
-  <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
-    <DialogHeader className="shrink-0">
-      <DialogTitle className="text-xl">سجل النشاط - الشهر الحالي</DialogTitle>
-    </DialogHeader>
-
-    {/* Filters - shrink-0 لمنع التقلص */}
-    <div className="shrink-0 flex flex-wrap gap-3 pb-4 border-b">
-      ...
-    </div>
-
-    {/* Summary - shrink-0 لمنع التقلص */}
-    <div className="shrink-0 flex flex-wrap items-center gap-4 text-sm text-muted-foreground py-2">
-      ...
-    </div>
-
-    {/* Scrollable Content - min-h-0 للسماح بالتمرير */}
-    <ScrollArea className="flex-1 min-h-0 pr-3">
-      <div className="space-y-4 pb-4">
-        ...
-      </div>
-    </ScrollArea>
-  </DialogContent>
-</Dialog>
+// Add phones if available
+if (phones) {
+  finalMessage += `\n📞 ${phones}`;
+}
 ```
 
 ---
 
-## لماذا `min-h-0` مهم؟
+## الرسالة النهائية المتوقعة
 
-في Flexbox، العناصر الـ flex بشكل افتراضي لها `min-height: auto` مما يمنعها من أن تصبح أصغر من محتواها. إضافة `min-h-0` تسمح للعنصر بالتقلص وتفعيل الـ scroll.
+### إذا يوجد وثائق:
+```
+مرحباً Kareem Test،
+
+عليك تسديد المبلغ: ₪10,098
+
+الوثائق:
+• شامل - 1234567 - ₪5,000
+• إلزامي - 1234567 - ₪3,098
+• خدمات طريق - ₪2,000
+
+AB للتأمين
+📍 الناصرة، شارع الرئيسي
+📞 04-1234567 | 050-1234567
+```
+
+### إذا لا يوجد وثائق (مثل حالتك):
+```
+مرحباً Kareem Test،
+
+عليك تسديد المبلغ: ₪10,098
+
+AB للتأمين
+📍 الناصرة، شارع الرئيسي
+📞 04-1234567 | 050-1234567
+```
+
+---
+
+## ملخص التغييرات
+
+| السطر | التغيير |
+|-------|---------|
+| بعد 120 | إضافة جلب `companyLocation` و `phones` من SMS settings |
+| 156-166 | تحديث `policyLines` ليكون متغير منفصل |
+| 168-177 | إعادة كتابة بناء الرسالة مع شرط للوثائق + footer الشركة |
+
+---
+
+## سبب المشكلة الأصلية
+
+الكود الحالي:
+1. **لا يستخدم footer** - يكتفي بـ "يرجى التواصل معنا للتسوية"
+2. **لا يتحقق من وجود وثائق** - يعرض "الوثائق:" دائماً حتى لو `policyLines` فارغ
+
+النتيجة التي رأيتها:
+```
+مرحباً Kareem Test،
+عليك تسديد المبلغ: ₪10,098
+
+الوثائق:
+
+يرجى التواصل معنا للتسوية.
+```
+
+بدلاً من:
+```
+مرحباً Kareem Test،
+عليك تسديد المبلغ: ₪10,098
+
+AB للتأمين
+📍 ...
+📞 ...
+```
 
