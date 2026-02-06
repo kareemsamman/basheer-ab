@@ -12,22 +12,6 @@ interface ManualReminderRequest {
   sms_type?: string;
 }
 
-const POLICY_TYPE_LABELS: Record<string, string> = {
-  'THIRD_FULL': 'ثالث/شامل',
-  'THIRD_ONLY': 'طرف ثالث',
-  'ROAD_SERVICE': 'سرفيس',
-  'ACCIDENT_FEE_EXEMPTION': 'إعفاء رسوم الحادث',
-};
-
-function getPolicyTypeLabel(parent: string | null, child: string | null): string {
-  if (!parent) return '';
-  const parentLabel = POLICY_TYPE_LABELS[parent] || parent;
-  if (child && parent === 'THIRD_FULL') {
-    const childLabel = child === 'FULL' ? 'شامل' : child === 'THIRD' ? 'ثالث' : child;
-    return childLabel; // Just show child label for THIRD_FULL
-  }
-  return parentLabel;
-}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -122,122 +106,34 @@ Deno.serve(async (req) => {
     let finalMessage = message || '';
     
     if (!finalMessage) {
-      // Get all unpaid active policies for this client (excluding ELZAMI)
-      const { data: policies, error: policiesError } = await supabase
-        .from('policies')
-        .select(`
-          id,
-          policy_number,
-          insurance_price,
-          policy_type_parent,
-          policy_type_child,
-          end_date,
-          group_id,
-          car:cars(car_number),
-          policy_payments(amount, refused)
-        `)
-        .eq('client_id', client_id)
-        .eq('cancelled', false)
-        .is('deleted_at', null)
-        .neq('policy_type_parent', 'ELZAMI');
+      // Use unified get_client_balance RPC for accurate total
+      const { data: balanceData, error: balanceError } = await supabase.rpc(
+        'get_client_balance',
+        { p_client_id: client_id }
+      );
 
-      if (policiesError) {
-        console.error('Error fetching policies:', policiesError);
+      if (balanceError) {
+        console.error('Error fetching client balance:', balanceError);
         return new Response(
-          JSON.stringify({ error: 'Unable to load policy data. Please try again.' }),
+          JSON.stringify({ error: 'Unable to load balance data. Please try again.' }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Calculate remaining for each policy and filter unpaid ones
-      interface PolicyWithDebt {
-        policyType: string;
-        carNumber: string;
-        remaining: number;
-        endDate: string;
-        groupId: string | null;
-      }
+      const balance = balanceData?.[0];
+      const totalRemaining = Math.round(Number(balance?.total_remaining) || 0);
 
-      const unpaidPolicies: PolicyWithDebt[] = [];
-      let totalRemaining = 0;
-
-      for (const policy of policies || []) {
-        const totalPaid = (policy.policy_payments || [])
-          .filter((p: any) => !p.refused)
-          .reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
-        const remaining = policy.insurance_price - totalPaid;
-
-        if (remaining > 0) {
-          const policyTypeLabel = getPolicyTypeLabel(
-            policy.policy_type_parent, 
-            policy.policy_type_child
-          );
-          const carNumber = (policy.car as any)?.car_number || '';
-          
-          unpaidPolicies.push({
-            policyType: policyTypeLabel,
-            carNumber,
-            remaining,
-            endDate: policy.end_date,
-            groupId: policy.group_id,
-          });
-          totalRemaining += remaining;
-        }
-      }
-
-      if (unpaidPolicies.length === 0) {
+      if (totalRemaining <= 0) {
         return new Response(
-          JSON.stringify({ error: 'No unpaid policies found for this client' }),
+          JSON.stringify({ error: 'No remaining balance for this client' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Group policies by group_id to identify packages
-      const groupedByPackage = new Map<string, PolicyWithDebt[]>();
-      const standalones: PolicyWithDebt[] = [];
-
-      for (const p of unpaidPolicies) {
-        if (p.groupId) {
-          const existing = groupedByPackage.get(p.groupId) || [];
-          existing.push(p);
-          groupedByPackage.set(p.groupId, existing);
-        } else {
-          standalones.push(p);
-        }
-      }
-
-      // Build policy details string
-      const policyLines: string[] = [];
-
-      // Add packages
-      for (const [, pkgPolicies] of groupedByPackage) {
-        if (pkgPolicies.length > 1) {
-          // It's a package
-          const types = pkgPolicies.map(p => p.policyType).join(' + ');
-          const carNum = pkgPolicies[0].carNumber;
-          const pkgTotal = pkgPolicies.reduce((sum, p) => sum + p.remaining, 0);
-          policyLines.push(`📦 باقة (${types}) - سيارة ${carNum}: ₪${pkgTotal.toFixed(0)}`);
-        } else {
-          // Single policy with group_id but no other in package
-          const p = pkgPolicies[0];
-          policyLines.push(`• ${p.policyType} - سيارة ${p.carNumber}: ₪${p.remaining.toFixed(0)}`);
-        }
-      }
-
-      // Add standalone policies
-      for (const p of standalones) {
-        policyLines.push(`• ${p.policyType}${p.carNumber ? ` - سيارة ${p.carNumber}` : ''}: ₪${p.remaining.toFixed(0)}`);
-      }
-
-      // Build final message
+      // Build final message with unified total
       finalMessage = `مرحباً ${client.full_name}،
 
-لديك مبالغ متبقية على وثائق التأمين التالية:
-
-${policyLines.join('\n')}
-
-━━━━━━━━━━━━
-💰 المجموع المتبقي: ₪${totalRemaining.toFixed(0)}
+لديك مبلغ متبقي على وثائق التأمين: ₪${totalRemaining.toLocaleString()}
 
 يرجى التواصل معنا لتسوية المبلغ.`;
     }

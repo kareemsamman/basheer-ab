@@ -4456,6 +4456,15 @@ export type Database = {
           total_payable: number
         }[]
       }
+      get_client_balance: {
+        Args: { p_client_id: string }
+        Returns: {
+          total_insurance: number
+          total_paid: number
+          total_refunds: number
+          total_remaining: number
+        }[]
+      }
       get_client_renewal_policies:
         | {
             Args: { p_client_id: string; p_end_month: string }
@@ -4592,15 +4601,15 @@ export type Database = {
               p_search?: string
             }
             Returns: {
-              cars_count: number
               client_id: string
               client_name: string
               client_phone: string
               days_until_oldest: number
               oldest_end_date: string
               policies_count: number
-              total_owed: number
+              total_insurance: number
               total_paid: number
+              total_refunds: number
               total_remaining: number
               total_rows: number
             }[]
@@ -4618,7 +4627,6 @@ export type Database = {
             Args: { p_filter_days?: number; p_search?: string }
             Returns: {
               total_clients: number
-              total_owed: number
               total_remaining: number
             }[]
           }

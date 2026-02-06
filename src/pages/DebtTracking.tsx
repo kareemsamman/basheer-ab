@@ -143,9 +143,9 @@ export default function DebtTracking() {
         client_id: r.client_id,
         client_name: r.client_name,
         phone_number: r.client_phone,
-        total_owed: Number(r.total_owed) || 0,
-        total_paid: 0, // Calculated per-policy, not from this RPC
-        total_remaining: Number(r.total_remaining) || 0, // Use correct remaining field
+        total_owed: Number(r.total_insurance) || 0, // Use unified total_insurance
+        total_paid: Number(r.total_paid) || 0,      // Now returned from RPC
+        total_remaining: Number(r.total_remaining) || 0, // Unified balance
         policies: [],
         policies_count: Number(r.policies_count) || 0,
         earliest_expiry: r.oldest_end_date ? String(r.oldest_end_date) : null,
@@ -173,9 +173,9 @@ export default function DebtTracking() {
       const s = (summaryRes.data as any[])?.[0];
       setSummary({
         totalClients: Number(s?.total_clients) || 0,
-        totalOwed: Number(s?.total_owed) || 0,
-        expiringSoon: Number(s?.expiring_soon) || 0,
-        expired: Number(s?.expired) || 0,
+        totalOwed: Number(s?.total_remaining) || 0, // Use total_remaining as the unified debt
+        expiringSoon: 0, // These are computed separately if needed
+        expired: 0,
       });
 
       const policiesByClient = new Map<string, PolicyDebt[]>();
