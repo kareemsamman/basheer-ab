@@ -327,15 +327,28 @@ export default function BrokerWallet() {
   };
 
   const handleScannedCheques = (cheques: any[]) => {
-    const newPayments: PaymentLine[] = cheques.map(cheque => ({
-      id: crypto.randomUUID(),
-      payment_type: 'cheque' as PaymentType,
-      amount: cheque.amount || 0,
-      payment_date: cheque.payment_date || new Date().toISOString().split('T')[0],
-      cheque_number: cheque.cheque_number || '',
-    }));
+    const newPayments: PaymentLine[] = [];
+    
+    for (const cheque of cheques) {
+      const paymentId = crypto.randomUUID();
+      const payment: PaymentLine = {
+        id: paymentId,
+        payment_type: 'cheque' as PaymentType,
+        amount: cheque.amount || 0,
+        payment_date: cheque.payment_date || new Date().toISOString().split('T')[0],
+        cheque_number: cheque.cheque_number || '',
+      };
+      
+      // Store the CDN URL if available
+      if (cheque.image_url) {
+        payment.cheque_image_url = cheque.image_url;
+      }
+      
+      newPayments.push(payment);
+    }
+    
     setPaymentLines(prev => [...prev, ...newPayments]);
-    toast({ title: "تم الإضافة", description: `تم إضافة ${newPayments.length} دفعة شيك` });
+    toast({ title: "تم الإضافة", description: `تم إضافة ${newPayments.length} دفعة شيك مع الصور` });
   };
 
   const handleVisaPayClick = (index: number) => {

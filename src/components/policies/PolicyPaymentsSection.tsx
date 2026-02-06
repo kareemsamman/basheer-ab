@@ -284,16 +284,55 @@ export function PolicyPaymentsSection({
     setSplitPopoverOpen(false);
   };
 
+  // Helper to convert base64 to Blob
+  const base64ToBlob = (base64: string, type = 'image/jpeg'): Blob => {
+    try {
+      const cleanBase64 = base64.includes(',') ? base64.split(',')[1] : base64;
+      const byteString = atob(cleanBase64);
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+      }
+      return new Blob([ab], { type });
+    } catch (e) {
+      console.error('Failed to convert base64 to blob:', e);
+      return new Blob([], { type });
+    }
+  };
+
   const handleScannedCheques = (cheques: any[]) => {
-    const newPayments: PaymentLine[] = cheques.map(cheque => ({
-      id: crypto.randomUUID(),
-      amount: cheque.amount || 0,
-      paymentType: 'cheque' as const,
-      paymentDate: cheque.payment_date || new Date().toISOString().split('T')[0],
-      chequeNumber: cheque.cheque_number || '',
-    }));
+    const newPayments: PaymentLine[] = [];
+    const newPreviewUrls: PreviewUrls = {};
+    
+    for (const cheque of cheques) {
+      const paymentId = crypto.randomUUID();
+      const payment: PaymentLine = {
+        id: paymentId,
+        amount: cheque.amount || 0,
+        paymentType: 'cheque' as const,
+        paymentDate: cheque.payment_date || new Date().toISOString().split('T')[0],
+        chequeNumber: cheque.cheque_number || '',
+      };
+      
+      // Convert cropped image to File and add to pendingImages
+      if (cheque.cropped_base64) {
+        try {
+          const blob = base64ToBlob(cheque.cropped_base64);
+          const file = new File([blob], `cheque_${cheque.cheque_number || paymentId}.jpg`, { type: 'image/jpeg' });
+          payment.pendingImages = [file];
+          newPreviewUrls[paymentId] = [{ url: URL.createObjectURL(blob), isPdf: false }];
+        } catch (e) {
+          console.error('Failed to convert cheque image:', e);
+        }
+      }
+      
+      newPayments.push(payment);
+    }
+    
+    setPreviewUrls(prev => ({ ...prev, ...newPreviewUrls }));
     setPaymentLines(prev => [...prev, ...newPayments]);
-    toast({ title: "تم الإضافة", description: `تم إضافة ${newPayments.length} دفعة شيك` });
+    toast({ title: "تم الإضافة", description: `تم إضافة ${newPayments.length} دفعة شيك مع الصور` });
   };
 
   // Image handling for multi-line payments

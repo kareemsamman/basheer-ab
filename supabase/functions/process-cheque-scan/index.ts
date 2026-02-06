@@ -25,55 +25,69 @@ interface DetectedCheque {
   cropped_base64?: string;
 }
 
+// Improved prompt with chain-of-thought reasoning for accurate bounding boxes
 const CHEQUE_DETECTION_PROMPT = `You are an expert OCR system analyzing scanned Israeli bank cheques.
 
-CRITICAL INSTRUCTIONS:
-1. Images may be ROTATED (90°, 180°, 270°) - mentally rotate to read correctly
-2. Amounts are in NIS - typical values range from 500-50,000
-3. NEVER confuse comma separators with decimal points
-   - "1,800" = one thousand eight hundred (1800)
-   - "18,007" would be unusual - verify carefully
-4. Cheque numbers are usually 6-8 digits without commas
+CRITICAL TASK: Detect ALL cheques in this image and provide PRECISE bounding boxes.
 
-For each cheque extract:
-- CHEQUE NUMBER (מספר שיק / رقم الشيك): 6-8 digit number
-- DATE (תאריך / التاريخ): payment due date
-- AMOUNT (סכום / المبلغ): monetary value in NIS (be careful with thousands separator)
-- BANK NAME (if visible)
-- ACCOUNT NUMBER (if visible)
-- BRANCH NUMBER (if visible)
+## STEP-BY-STEP PROCESS:
 
-DATE HANDLING:
-- Convert to YYYY-MM-DD format
-- Israeli dates: DD/MM/YY or DD/MM/YYYY
-- If year is 2 digits (e.g., 26), assume 2026
+### STEP 1: IMAGE ROTATION CHECK
+First, determine if the image is rotated:
+- Check if text appears sideways or upside down
+- If rotated, mentally rotate it to read correctly before proceeding
+- Note the rotation angle (0°, 90°, 180°, 270°)
 
-AMOUNT HANDLING - CRITICAL:
-- Amounts use comma as THOUSANDS separator (e.g., 1,800 = 1800)
-- Common amounts: 500, 800, 1000, 1200, 1400, 1500, 1800, 2000, 2500, 3000
-- If you see something like 18,007 - double check, it's likely 1,800
+### STEP 2: COUNT ALL CHEQUES
+- Scan the entire image from top to bottom
+- Count how many distinct cheque rectangles are visible
+- Cheques are usually rectangular with printed borders
 
-BOUNDING BOX - CRITICAL:
-For each cheque in the image, provide PRECISE bounding box as percentages:
-- x: percentage from LEFT edge where cheque starts (0-100)
-- y: percentage from TOP edge where cheque starts (0-100)  
-- width: percentage of image width the cheque occupies
-- height: percentage of image height the cheque occupies
+### STEP 3: FOR EACH CHEQUE - MEASURE BOUNDING BOX PRECISELY
+Think step by step:
+1. Find the TOP-LEFT corner of the cheque rectangle
+2. Find the BOTTOM-RIGHT corner of the cheque rectangle
+3. Calculate as PERCENTAGES of the full image:
+   - x = (left_edge_distance / total_image_width) × 100
+   - y = (top_edge_distance / total_image_height) × 100
+   - width = (cheque_width / total_image_width) × 100
+   - height = (cheque_height / total_image_height) × 100
 
-IMPORTANT: Measure carefully! Look at the actual cheque rectangle boundaries.
-- For a SINGLE cheque that fills the entire image: x=0, y=0, width=100, height=100
-- For 2 cheques stacked vertically (50% each): 
-  - Top: x=2, y=0, width=96, height=48
-  - Bottom: x=2, y=52, width=96, height=48
-- For 3 cheques stacked vertically (33% each):
-  - Top: x=2, y=0, width=96, height=31
+### BOUNDING BOX REFERENCE GUIDE:
+- SINGLE cheque filling page: x=0, y=0, width=100, height=100
+- 2 cheques stacked (top/bottom): 
+  - Top: x=2, y=2, width=96, height=46
+  - Bottom: x=2, y=52, width=96, height=46
+- 3 cheques stacked:
+  - Top: x=2, y=1, width=96, height=31
   - Middle: x=2, y=34, width=96, height=31
-  - Bottom: x=2, y=68, width=96, height=31
+  - Bottom: x=2, y=67, width=96, height=31
+- 4 cheques stacked:
+  - Each has height ~24% with ~1% gap between them
 
-CRITICAL: Return ONLY valid JSON, no markdown, no explanation.
+### STEP 4: EXTRACT CHEQUE DATA
+For each cheque extract:
+- CHEQUE NUMBER (מספר שיק): Usually 6-8 digits at bottom
+- DATE (תאריך): Payment due date - convert to YYYY-MM-DD
+- AMOUNT (סכום): In NIS - IMPORTANT: commas are THOUSANDS separators!
+  - "1,800" = 1800 (one thousand eight hundred)
+  - "18,500" = 18500 (eighteen thousand five hundred)
+- BANK NAME, ACCOUNT NUMBER, BRANCH NUMBER (if visible)
 
-Output format (strict JSON):
+### DATE HANDLING:
+- Israeli format: DD/MM/YY or DD/MM/YYYY
+- If year is 2 digits (e.g., 26), assume 2026
+- Convert ALL dates to YYYY-MM-DD format
+
+### AMOUNT HANDLING - CRITICAL:
+- Comma (,) is THOUSANDS separator, NOT decimal
+- Period (.) would be decimal (rare in Israeli cheques)
+- Common amounts: 500, 800, 1000, 1200, 1500, 1800, 2000, 2500, 3000, 5000
+
+### OUTPUT FORMAT (strict JSON only, no markdown):
 {
+  "image_rotation": 0,
+  "total_cheques_found": 2,
   "cheques": [
     {
       "cheque_number": "80001254",
@@ -82,23 +96,25 @@ Output format (strict JSON):
       "bank_name": "דיסקונט",
       "account_number": "",
       "branch_number": "",
-      "bounding_box": {"x": 0, "y": 0, "width": 100, "height": 100},
+      "bounding_box": {"x": 2, "y": 2, "width": 96, "height": 46},
+      "confidence": 95
+    },
+    {
+      "cheque_number": "80001255",
+      "payment_date": "2026-04-25",
+      "amount": 1800,
+      "bank_name": "דיסקונט",
+      "account_number": "",
+      "branch_number": "",
+      "bounding_box": {"x": 2, "y": 52, "width": 96, "height": 46},
       "confidence": 95
     }
   ]
 }
 
-If no cheques are found, return: {"cheques": []}`;
+If no cheques are found, return: {"image_rotation": 0, "total_cheques_found": 0, "cheques": []}
 
-async function cropImageWithCanvas(
-  base64Image: string,
-  boundingBox: BoundingBox
-): Promise<string> {
-  // For Deno, we'll return cropping instructions and let the client handle actual cropping
-  // Or we could use a library, but for simplicity, we'll skip server-side cropping
-  // and return the full image with bounding box info for client-side cropping
-  return base64Image;
-}
+RETURN ONLY VALID JSON. No markdown code blocks. No explanations.`;
 
 async function uploadToBunny(
   base64Data: string,
@@ -114,8 +130,11 @@ async function uploadToBunny(
   }
 
   try {
+    // Clean base64 data
+    const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+    
     // Decode base64 to binary
-    const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+    const binaryData = Uint8Array.from(atob(cleanBase64), c => c.charCodeAt(0));
     
     const uploadPath = `cheques/${fileName}`;
     const response = await fetch(
@@ -143,7 +162,7 @@ async function uploadToBunny(
   }
 }
 
-function parseAIResponse(content: string): DetectedCheque[] {
+function parseAIResponse(content: string): { cheques: DetectedCheque[]; rotation: number } {
   try {
     // Remove markdown code blocks if present
     let jsonStr = content.trim();
@@ -161,27 +180,35 @@ function parseAIResponse(content: string): DetectedCheque[] {
     
     if (!parsed.cheques || !Array.isArray(parsed.cheques)) {
       console.error("Invalid AI response structure:", parsed);
-      return [];
+      return { cheques: [], rotation: 0 };
     }
 
-    return parsed.cheques.map((cheque: any) => ({
-      cheque_number: String(cheque.cheque_number || ""),
-      payment_date: cheque.payment_date || "",
-      amount: parseFloat(cheque.amount) || 0,
-      bank_name: cheque.bank_name || "",
-      account_number: cheque.account_number || "",
-      branch_number: cheque.branch_number || "",
-      bounding_box: {
-        x: parseFloat(cheque.bounding_box?.x) || 0,
-        y: parseFloat(cheque.bounding_box?.y) || 0,
-        width: parseFloat(cheque.bounding_box?.width) || 100,
-        height: parseFloat(cheque.bounding_box?.height) || 100,
-      },
-      confidence: parseFloat(cheque.confidence) || 0,
-    }));
+    const rotation = parseInt(parsed.image_rotation) || 0;
+
+    const cheques = parsed.cheques.map((cheque: any) => {
+      // Validate and clamp bounding box values
+      const bb = cheque.bounding_box || {};
+      const x = Math.max(0, Math.min(100, parseFloat(bb.x) || 0));
+      const y = Math.max(0, Math.min(100, parseFloat(bb.y) || 0));
+      const width = Math.max(5, Math.min(100 - x, parseFloat(bb.width) || 100));
+      const height = Math.max(5, Math.min(100 - y, parseFloat(bb.height) || 100));
+
+      return {
+        cheque_number: String(cheque.cheque_number || ""),
+        payment_date: cheque.payment_date || "",
+        amount: parseFloat(cheque.amount) || 0,
+        bank_name: cheque.bank_name || "",
+        account_number: cheque.account_number || "",
+        branch_number: cheque.branch_number || "",
+        bounding_box: { x, y, width, height },
+        confidence: parseFloat(cheque.confidence) || 0,
+      };
+    });
+
+    return { cheques, rotation };
   } catch (error) {
     console.error("Error parsing AI response:", error, "Content:", content);
-    return [];
+    return { cheques: [], rotation: 0 };
   }
 }
 
@@ -205,7 +232,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Processing ${images.length} image(s) for cheque detection in PARALLEL`);
+    console.log(`Processing ${images.length} image(s) for cheque detection with gemini-2.5-pro`);
 
     // Process all images in parallel for speed
     const imageResults = await Promise.all(
@@ -220,7 +247,7 @@ serve(async (req) => {
         console.log(`[Parallel] Starting image ${imgIndex + 1}/${images.length}...`);
 
         try {
-          // Call Gemini Vision API with faster model
+          // Use gemini-2.5-pro for better accuracy with bounding boxes
           const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
             headers: {
@@ -228,7 +255,7 @@ serve(async (req) => {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: "google/gemini-2.5-flash",
+              model: "google/gemini-2.5-pro",
               messages: [
                 {
                   role: "user",
@@ -250,11 +277,11 @@ serve(async (req) => {
             const errorText = await aiResponse.text();
             console.error(`[Parallel] AI API error for image ${imgIndex + 1}:`, aiResponse.status, errorText);
             
-            // Return error info instead of throwing - let other images continue
             return { 
               imgIndex, 
               imageBase64, 
               cheques: [], 
+              rotation: 0,
               error: aiResponse.status === 429 ? "rate_limit" : aiResponse.status === 402 ? "payment_required" : "api_error" 
             };
           }
@@ -264,18 +291,18 @@ serve(async (req) => {
 
           if (!content) {
             console.error(`[Parallel] No content in AI response for image ${imgIndex + 1}`);
-            return { imgIndex, imageBase64, cheques: [], error: null };
+            return { imgIndex, imageBase64, cheques: [], rotation: 0, error: null };
           }
 
-          console.log(`[Parallel] AI response for image ${imgIndex + 1}:`, content.substring(0, 300));
+          console.log(`[Parallel] AI response for image ${imgIndex + 1}:`, content.substring(0, 500));
 
-          const detectedCheques = parseAIResponse(content);
-          console.log(`[Parallel] Found ${detectedCheques.length} cheques in image ${imgIndex + 1}`);
+          const { cheques, rotation } = parseAIResponse(content);
+          console.log(`[Parallel] Found ${cheques.length} cheques in image ${imgIndex + 1}, rotation: ${rotation}°`);
 
-          return { imgIndex, imageBase64, cheques: detectedCheques, error: null };
+          return { imgIndex, imageBase64, cheques, rotation, error: null };
         } catch (err) {
           console.error(`[Parallel] Error processing image ${imgIndex + 1}:`, err);
-          return { imgIndex, imageBase64, cheques: [], error: "exception" };
+          return { imgIndex, imageBase64, cheques: [], rotation: 0, error: "exception" };
         }
       })
     );
@@ -307,16 +334,19 @@ serve(async (req) => {
         const timestamp = Date.now();
         const fileName = `cheque_${cheque.cheque_number || timestamp}_${result.imgIndex}_${chequeIndex}.jpg`;
         
-        // Upload to CDN
+        // Store the original full image base64 for client-side cropping
+        cheque.cropped_base64 = result.imageBase64;
+        
+        // Upload full image to CDN (client will crop)
         const cdnUrl = await uploadToBunny(result.imageBase64, fileName);
         
         if (cdnUrl) {
           cheque.image_url = cdnUrl;
         } else {
+          // Fallback to data URL if upload fails
           cheque.image_url = `data:image/jpeg;base64,${result.imageBase64}`;
         }
         
-        cheque.cropped_base64 = result.imageBase64;
         allDetectedCheques.push(cheque);
       }
     }

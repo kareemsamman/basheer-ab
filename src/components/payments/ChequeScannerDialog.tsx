@@ -66,7 +66,24 @@ const formatElapsedTime = (seconds: number): string => {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
-// Client-side image cropping using Canvas
+// Helper to convert base64 to Blob
+const base64ToBlob = (base64: string, type = 'image/jpeg'): Blob => {
+  try {
+    const cleanBase64 = base64.includes(',') ? base64.split(',')[1] : base64;
+    const byteString = atob(cleanBase64);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+    return new Blob([ab], { type });
+  } catch (e) {
+    console.error('Failed to convert base64 to blob:', e);
+    return new Blob([], { type });
+  }
+};
+
+// Client-side image cropping using Canvas with validation
 const cropImageOnClient = async (
   base64Image: string,
   boundingBox: { x: number; y: number; width: number; height: number }
@@ -76,29 +93,77 @@ const cropImageOnClient = async (
     img.crossOrigin = 'anonymous';
     
     img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return reject('Failed to get canvas context');
-      
-      // Calculate actual pixel values from percentages
-      const cropX = (boundingBox.x / 100) * img.naturalWidth;
-      const cropY = (boundingBox.y / 100) * img.naturalHeight;
-      const cropW = (boundingBox.width / 100) * img.naturalWidth;
-      const cropH = (boundingBox.height / 100) * img.naturalHeight;
-      
-      // Ensure minimum size
-      const finalW = Math.max(cropW, 50);
-      const finalH = Math.max(cropH, 30);
-      
-      canvas.width = finalW;
-      canvas.height = finalH;
-      
-      ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, finalW, finalH);
-      
-      // Return base64 without prefix for consistency
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-      const base64Only = dataUrl.split(',')[1];
-      resolve(base64Only);
+      try {
+        const { x, y, width, height } = boundingBox;
+        
+        // Validate bounding box - if invalid or covers whole image, return as-is
+        const isInvalid = x < 0 || y < 0 || width <= 0 || height <= 0;
+        const isFullImage = x <= 2 && y <= 2 && width >= 96 && height >= 96;
+        
+        if (isInvalid || isFullImage) {
+          console.log('Bounding box covers full image or invalid, returning original');
+          // Return original image as base64 without prefix
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            resolve(dataUrl.split(',')[1]);
+            return;
+          }
+        }
+        
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject('Failed to get canvas context');
+        
+        // Calculate actual pixel values from percentages
+        const cropX = Math.round((x / 100) * img.naturalWidth);
+        const cropY = Math.round((y / 100) * img.naturalHeight);
+        const cropW = Math.round((width / 100) * img.naturalWidth);
+        const cropH = Math.round((height / 100) * img.naturalHeight);
+        
+        // Ensure minimum size (at least 50x30 pixels)
+        const finalW = Math.max(cropW, 50);
+        const finalH = Math.max(cropH, 30);
+        
+        // Clamp to image bounds
+        const safeX = Math.min(cropX, img.naturalWidth - finalW);
+        const safeY = Math.min(cropY, img.naturalHeight - finalH);
+        
+        canvas.width = finalW;
+        canvas.height = finalH;
+        
+        ctx.drawImage(
+          img, 
+          Math.max(0, safeX), Math.max(0, safeY), finalW, finalH, 
+          0, 0, finalW, finalH
+        );
+        
+        // Check if cropped image is too dark (potential black image issue)
+        const imageData = ctx.getImageData(0, 0, finalW, finalH);
+        const avgBrightness = imageData.data.reduce((sum, val, i) => {
+          // Only check RGB values, skip alpha
+          return i % 4 !== 3 ? sum + val : sum;
+        }, 0) / (imageData.data.length * 0.75);
+        
+        if (avgBrightness < 10) {
+          console.warn('Cropped image is too dark, returning original');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          ctx.drawImage(img, 0, 0);
+        }
+        
+        // Return base64 without prefix for consistency
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        const base64Only = dataUrl.split(',')[1];
+        resolve(base64Only);
+      } catch (err) {
+        console.error('Error during crop:', err);
+        reject(err);
+      }
     };
     
     img.onerror = () => reject('Failed to load image');
@@ -106,6 +171,43 @@ const cropImageOnClient = async (
       ? base64Image 
       : `data:image/jpeg;base64,${base64Image}`;
   });
+};
+
+// Upload cropped cheque image immediately to CDN
+const uploadChequeImageToCDN = async (base64Image: string, chequeNumber: string): Promise<string | null> => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      console.warn('No session for cheque upload');
+      return null;
+    }
+    
+    const blob = base64ToBlob(base64Image);
+    const file = new File([blob], `cheque_${chequeNumber}_${Date.now()}.jpg`, { type: 'image/jpeg' });
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('entity_type', 'cheque');
+    
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-media`,
+      { 
+        method: 'POST', 
+        headers: { 'Authorization': `Bearer ${session.access_token}` }, 
+        body: formData 
+      }
+    );
+    
+    if (response.ok) {
+      const data = await response.json();
+      return data.file?.cdn_url || data.url || null;
+    }
+    console.error('Upload failed:', await response.text());
+    return null;
+  } catch (e) {
+    console.error('Failed to upload cheque image:', e);
+    return null;
+  }
 };
 
 export function ChequeScannerDialog({
@@ -332,24 +434,32 @@ export function ChequeScannerDialog({
         throw new Error(data?.error || 'فشل في معالجة الصور');
       }
 
-      // Process cheques and crop images on client
+      // Process cheques: crop images on client and upload to CDN
       const rawCheques = data.cheques || [];
       const processedCheques: DetectedCheque[] = [];
       
       for (const c of rawCheques) {
         let croppedBase64 = c.cropped_base64;
+        let uploadedUrl = c.image_url;
         
         // If we have bounding box and original image, crop on client
         if (c.bounding_box && c.cropped_base64) {
           const { x, y, width, height } = c.bounding_box;
           // Only crop if bounding box is not the full image
-          if (x > 0 || y > 0 || width < 100 || height < 100) {
+          if (x > 2 || y > 2 || width < 96 || height < 96) {
             try {
               croppedBase64 = await cropImageOnClient(
                 `data:image/jpeg;base64,${c.cropped_base64}`,
                 c.bounding_box
               );
-              console.log(`Cropped cheque ${c.cheque_number}: ${x},${y} ${width}x${height}`);
+              console.log(`Cropped cheque ${c.cheque_number}: ${x.toFixed(1)},${y.toFixed(1)} ${width.toFixed(1)}x${height.toFixed(1)}`);
+              
+              // Upload cropped image to CDN immediately
+              const newUrl = await uploadChequeImageToCDN(croppedBase64, c.cheque_number || `unknown_${Date.now()}`);
+              if (newUrl) {
+                uploadedUrl = newUrl;
+                console.log(`Uploaded cropped cheque to: ${newUrl}`);
+              }
             } catch (cropErr) {
               console.error('Failed to crop cheque image:', cropErr);
               // Keep original if crop fails
@@ -360,6 +470,7 @@ export function ChequeScannerDialog({
         processedCheques.push({
           ...c,
           cropped_base64: croppedBase64,
+          image_url: uploadedUrl,
           isEditing: false,
           isConfirmed: false,
         });
