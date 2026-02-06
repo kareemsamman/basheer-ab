@@ -592,13 +592,13 @@ export function RecentActivity() {
 
       {/* Full Activity Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
+        <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="text-xl">سجل النشاط - الشهر الحالي</DialogTitle>
           </DialogHeader>
 
           {/* Filters */}
-          <div className="flex flex-wrap gap-3 pb-4 border-b">
+          <div className="shrink-0 flex flex-wrap gap-3 pb-4 border-b">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -637,7 +637,7 @@ export function RecentActivity() {
           </div>
 
           {/* Summary */}
-          <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground py-2">
+          <div className="shrink-0 flex flex-wrap items-center gap-4 text-sm text-muted-foreground py-2">
             {isDialogLoading ? (
               <span className="flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -656,7 +656,7 @@ export function RecentActivity() {
           </div>
 
           {/* Scrollable Content */}
-          <ScrollArea className="flex-1 pr-3">
+          <ScrollArea className="flex-1 min-h-0 pr-3">
             <div className="space-y-4 pb-4">
               {isDialogLoading ? (
                 <div className="flex items-center justify-center py-12">
