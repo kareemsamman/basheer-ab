@@ -1,97 +1,88 @@
 
-# خطة إصلاح زر إرسال SMS الجماعي في صفحة متابعة الديون
+# خطة إضافة زر مسح الشيكات في جميع نقاط الدفع
 
-## المشكلة
-زر "إرسال للكل" في صفحة متابعة الديون لا يرسل الرسائل - يعرض "تم إرسال 0 رسالة بنجاح (فشل 1)"
+## الوضع الحالي
+زر "مسح شيكات" موجود **فقط** في Policy Wizard (الخطوة 4).
 
-## السبب
-من خلال فحص logs الـ Edge Function، وجدت أن:
-- الـ API يُرجع صفحة HTML كاملة بدلاً من استجابة نجاح
-- السبب: استخدام **تنسيق API خاطئ** للـ 019sms
-
-### التنسيق الخاطئ (المستخدم حالياً):
-```javascript
-// GET request مع query parameters - هذا خاطئ!
-const smsUrl = `https://019sms.co.il/api?send=1&user=...&password=...&sender=...&recipient=...&message=...`;
-const response = await fetch(smsUrl);
-```
-
-### التنسيق الصحيح (المستخدم في باقي الـ functions):
-```javascript
-// POST request مع XML body و Bearer token
-const smsXml = `<?xml version="1.0" encoding="UTF-8"?>
-<sms>
-  <user><username>${sms_user}</username></user>
-  <source>${sms_source}</source>
-  <destinations><phone id="${dlr}">${cleanPhone}</phone></destinations>
-  <message>${message}</message>
-</sms>`;
-
-fetch('https://019sms.co.il/api', {
-  method: 'POST',
-  headers: {
-    Authorization: `Bearer ${sms_token}`,
-    'Content-Type': 'application/xml; charset=utf-8',
-  },
-  body: smsXml,
-});
-```
+## المطلوب
+إضافة الزر في **جميع** الأماكن التي يمكن فيها الدفع بالشيكات، بجانب زر "تقسيط".
 
 ---
 
-## الحل
-تحديث `supabase/functions/send-bulk-debt-sms/index.ts` لاستخدام نفس تنسيق API المستخدم في:
-- `send-sms/index.ts`
-- `send-manual-reminder/index.ts`
+## الأماكن المطلوب التحديث (5 ملفات)
+
+| الملف | الموقع | الوصف |
+|-------|--------|-------|
+| `DebtPaymentModal.tsx` | صفحة متابعة الديون | دفع ديون العميل |
+| `PackagePaymentModal.tsx` | صفحة العميل - الباقات | دفع للباقة |
+| `SinglePolicyPaymentModal.tsx` | صفحة العميل - وثيقة فردية | دفع لوثيقة واحدة |
+| `PolicyPaymentsSection.tsx` | تفاصيل الوثيقة | إضافة دفعة للوثيقة |
+| `BrokerWallet.tsx` | محفظة الوسيط | دفع للوسيط |
 
 ---
 
-## التغييرات المطلوبة
+## التغييرات لكل ملف
 
-### تحديث `send-bulk-debt-sms/index.ts`:
+### لكل ملف سنضيف:
 
-1. **إضافة دالة `escapeXml`** للتعامل مع الأحرف الخاصة في XML
-
-2. **تغيير تنظيف رقم الهاتف** ليطابق باقي الـ functions:
-```javascript
-let cleanPhone = phoneNumber.replace(/[^0-9]/g, "");
-if (cleanPhone.startsWith("972")) {
-  cleanPhone = "0" + cleanPhone.substring(3);
-}
+1. **Import** للمكون:
+```tsx
+import { ChequeScannerDialog } from '@/components/payments/ChequeScannerDialog';
+import { Scan } from 'lucide-react';
 ```
 
-3. **تغيير طريقة إرسال SMS** من GET إلى POST مع XML:
-```javascript
-const dlr = crypto.randomUUID();
-const smsXml =
-  `<?xml version="1.0" encoding="UTF-8"?>` +
-  `<sms>` +
-  `<user><username>${escapeXml(smsUser)}</username></user>` +
-  `<source>${escapeXml(smsSource)}</source>` +
-  `<destinations><phone id="${dlr}">${escapeXml(cleanPhone)}</phone></destinations>` +
-  `<message>${escapeXml(message)}</message>` +
-  `</sms>`;
-
-const smsResponse = await fetch("https://019sms.co.il/api", {
-  method: "POST",
-  headers: {
-    Authorization: `Bearer ${smsToken}`,
-    "Content-Type": "application/xml; charset=utf-8",
-  },
-  body: smsXml,
-});
+2. **State** للـ dialog:
+```tsx
+const [showChequeScannerModal, setShowChequeScannerModal] = useState(false);
 ```
 
-4. **تحديث فحص النجاح** من `includes("OK")` إلى فحص XML status:
-```javascript
-const extractTag = (xml: string, tag: string) => {
-  const match = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "i"));
-  return match?.[1]?.trim() ?? null;
+3. **Function** لمعالجة الشيكات المكتشفة:
+```tsx
+const handleScannedCheques = (cheques: any[]) => {
+  const newPayments = cheques.map(cheque => ({
+    id: crypto.randomUUID(),
+    amount: cheque.amount || 0,
+    paymentType: 'cheque' as const,
+    paymentDate: cheque.payment_date || new Date().toISOString().split('T')[0],
+    chequeNumber: cheque.cheque_number || '',
+  }));
+  setPaymentLines(prev => [...prev, ...newPayments]);
+  toast.success(`تم إضافة ${newPayments.length} دفعة شيك`);
 };
-
-const status = extractTag(smsResult, "status");
-const isSuccess = status === "0";
 ```
+
+4. **زر** بجانب التقسيط:
+```tsx
+<Button
+  variant="outline"
+  size="sm"
+  onClick={() => setShowChequeScannerModal(true)}
+>
+  <Scan className="h-4 w-4 ml-2" />
+  مسح شيكات
+</Button>
+```
+
+5. **Dialog** في نهاية الـ component:
+```tsx
+<ChequeScannerDialog
+  open={showChequeScannerModal}
+  onOpenChange={setShowChequeScannerModal}
+  onConfirm={handleScannedCheques}
+/>
+```
+
+---
+
+## موقع الزر في كل ملف
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ الدفعات                     [تقسيط] [مسح شيكات] [إضافة دفعة] │
+└─────────────────────────────────────────────────────────────┘
+```
+
+الزر سيكون بين "تقسيط" و "إضافة دفعة"
 
 ---
 
@@ -99,11 +90,17 @@ const isSuccess = status === "0";
 
 | الملف | نوع التغيير |
 |-------|-------------|
-| `supabase/functions/send-bulk-debt-sms/index.ts` | تعديل - إصلاح تنسيق API |
+| `src/components/debt/DebtPaymentModal.tsx` | إضافة زر + dialog + handler |
+| `src/components/clients/PackagePaymentModal.tsx` | إضافة زر + dialog + handler |
+| `src/components/clients/SinglePolicyPaymentModal.tsx` | إضافة زر + dialog + handler |
+| `src/components/policies/PolicyPaymentsSection.tsx` | إضافة زر + dialog + handler |
+| `src/pages/BrokerWallet.tsx` | إضافة زر + dialog + handler |
 
 ---
 
 ## النتيجة المتوقعة
-- رسائل SMS ستُرسل بنجاح لجميع العملاء المختارين
-- Toast سيعرض عدد الرسائل المُرسلة الفعلي
-- سجلات SMS ستُحفظ بشكل صحيح في `sms_logs`
+
+1. **زر مسح شيكات** متاح في كل مكان يمكن الدفع فيه
+2. **العميل يمكنه المسح عدة مرات** - الشيكات الجديدة تُضاف للقائمة
+3. **تجربة موحدة** عبر كل النظام
+4. **تقليل وقت الإدخال** للدفعات بالشيكات
