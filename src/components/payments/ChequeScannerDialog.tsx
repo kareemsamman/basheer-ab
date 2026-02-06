@@ -423,16 +423,16 @@ export function ChequeScannerDialog({
                     </Button>
                   </div>
                   
-                  <div className="grid grid-cols-4 gap-2 max-h-[200px] overflow-y-auto p-1">
+                  <div className="grid grid-cols-3 gap-3 max-h-[350px] overflow-y-auto p-1">
                     {scannedImages.map((img, index) => (
                       <div
                         key={index}
-                        className="relative aspect-[4/3] rounded-lg overflow-hidden border bg-muted group"
+                        className="relative aspect-[3/4] rounded-lg overflow-hidden border bg-muted group"
                       >
                         <img
                           src={img}
                           alt={`Scanned page ${index + 1}`}
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-contain"
                         />
                         <button
                           onClick={() => setScannedImages(prev => prev.filter((_, i) => i !== index))}
@@ -447,7 +447,7 @@ export function ChequeScannerDialog({
                     <button
                       onClick={handleScan}
                       disabled={isScanning}
-                      className="aspect-[4/3] rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center hover:border-primary hover:bg-primary/5 transition-colors disabled:opacity-50"
+                      className="aspect-[3/4] rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center hover:border-primary hover:bg-primary/5 transition-colors disabled:opacity-50"
                     >
                       <Plus className="h-6 w-6 text-muted-foreground" />
                     </button>
