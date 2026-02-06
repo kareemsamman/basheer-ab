@@ -547,22 +547,66 @@ export function Step4Payments({
         open={showChequeScannerModal}
         onOpenChange={setShowChequeScannerModal}
         onConfirm={(detectedCheques) => {
-          // Convert detected cheques to payment lines
-          const newPayments: PaymentLine[] = detectedCheques.map((cheque) => ({
-            id: crypto.randomUUID(),
-            payment_type: 'cheque',
-            amount: cheque.amount || 0,
-            payment_date: cheque.payment_date || new Date().toISOString().split('T')[0],
-            cheque_number: cheque.cheque_number || '',
-            refused: false,
-            // Store the image URL if available
-            cheque_image_url: cheque.image_url,
-          }));
+          // Helper function to convert base64 to Blob
+          const base64ToBlob = (base64: string, type = 'image/jpeg'): Blob => {
+            try {
+              const byteString = atob(base64);
+              const ab = new ArrayBuffer(byteString.length);
+              const ia = new Uint8Array(ab);
+              for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
+              }
+              return new Blob([ab], { type });
+            } catch (e) {
+              console.error('Failed to convert base64 to blob:', e);
+              return new Blob([], { type });
+            }
+          };
+
+          // Convert detected cheques to payment lines with images
+          const newPayments: PaymentLine[] = [];
+          const newPreviewUrls: { [key: string]: string[] } = {};
+          
+          for (const cheque of detectedCheques) {
+            const paymentId = crypto.randomUUID();
+            const payment: PaymentLine = {
+              id: paymentId,
+              payment_type: 'cheque',
+              amount: cheque.amount || 0,
+              payment_date: cheque.payment_date || new Date().toISOString().split('T')[0],
+              cheque_number: cheque.cheque_number || '',
+              refused: false,
+              cheque_image_url: cheque.image_url,
+            };
+            
+            // Convert cropped image to File for pendingImages
+            if (cheque.cropped_base64) {
+              try {
+                const blob = base64ToBlob(cheque.cropped_base64);
+                const file = new File(
+                  [blob], 
+                  `cheque_${cheque.cheque_number || paymentId}.jpg`, 
+                  { type: 'image/jpeg' }
+                );
+                payment.pendingImages = [file];
+                
+                // Create preview URL for display
+                newPreviewUrls[paymentId] = [URL.createObjectURL(blob)];
+              } catch (e) {
+                console.error('Failed to convert cheque image:', e);
+              }
+            }
+            
+            newPayments.push(payment);
+          }
+          
+          // Update preview URLs state
+          setPreviewUrls(prev => ({ ...prev, ...newPreviewUrls }));
           
           setPayments([...payments, ...newPayments]);
           toast({
             title: 'تمت إضافة الشيكات',
-            description: `تم إضافة ${newPayments.length} دفعة شيك`,
+            description: `تم إضافة ${newPayments.length} دفعة شيك مع الصور`,
           });
         }}
       />

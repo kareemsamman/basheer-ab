@@ -53,11 +53,22 @@ AMOUNT HANDLING - CRITICAL:
 - Common amounts: 500, 800, 1000, 1200, 1400, 1500, 1800, 2000, 2500, 3000
 - If you see something like 18,007 - double check, it's likely 1,800
 
-BOUNDING BOX:
-- x: percentage from left edge (0 = leftmost)
-- y: percentage from top edge (0 = topmost)
-- width: percentage of total image width
-- height: percentage of total image height
+BOUNDING BOX - CRITICAL:
+For each cheque in the image, provide PRECISE bounding box as percentages:
+- x: percentage from LEFT edge where cheque starts (0-100)
+- y: percentage from TOP edge where cheque starts (0-100)  
+- width: percentage of image width the cheque occupies
+- height: percentage of image height the cheque occupies
+
+IMPORTANT: Measure carefully! Look at the actual cheque rectangle boundaries.
+- For a SINGLE cheque that fills the entire image: x=0, y=0, width=100, height=100
+- For 2 cheques stacked vertically (50% each): 
+  - Top: x=2, y=0, width=96, height=48
+  - Bottom: x=2, y=52, width=96, height=48
+- For 3 cheques stacked vertically (33% each):
+  - Top: x=2, y=0, width=96, height=31
+  - Middle: x=2, y=34, width=96, height=31
+  - Bottom: x=2, y=68, width=96, height=31
 
 CRITICAL: Return ONLY valid JSON, no markdown, no explanation.
 

@@ -106,6 +106,8 @@ export interface PaymentLine {
   source?: 'user' | 'system';
   /** Label to display for locked payments (e.g., "دفعة إلزامي – تلقائية") */
   locked_label?: string;
+  /** CDN URL for cheque image (from scanner) */
+  cheque_image_url?: string;
 }
 
 export interface ValidationErrors {
