@@ -119,6 +119,11 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Get company footer info from SMS settings
+    const companyLocation = smsSettings.company_location || '';
+    const phoneLinks = (smsSettings.company_phone_links as any[]) || [];
+    const phones = phoneLinks.map((p: any) => p.phone).filter(Boolean).join(' | ');
+
     // Build message
     let finalMessage = message || '';
     
@@ -165,15 +170,27 @@ Deno.serve(async (req) => {
         .slice(0, 5)
         .join('\n');
 
-      // Build final message with policy details
+      // Build policy section only if there are policies with remaining balance
+      const policySection = policyLines.length > 0 
+        ? `\n\nالوثائق:\n${policyLines}` 
+        : '';
+
+      // Build final message with policy details and footer
       finalMessage = `مرحباً ${client.full_name}،
 
-عليك تسديد المبلغ: ₪${totalRemaining.toLocaleString()}
+عليك تسديد المبلغ: ₪${totalRemaining.toLocaleString()}${policySection}
 
-الوثائق:
-${policyLines}
+AB للتأمين`;
 
-يرجى التواصل معنا للتسوية.`;
+      // Add location if available
+      if (companyLocation) {
+        finalMessage += `\n📍 ${companyLocation}`;
+      }
+
+      // Add phones if available
+      if (phones) {
+        finalMessage += `\n📞 ${phones}`;
+      }
     }
 
     // Send SMS
