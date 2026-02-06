@@ -337,7 +337,10 @@ serve(async (req) => {
         // Store the original full image base64 for client-side cropping
         cheque.cropped_base64 = result.imageBase64;
         
-        // Upload full image to CDN (client will crop)
+        // Store the rotation detected for this image so client can rotate before cropping
+        (cheque as any).rotation = result.rotation;
+        
+        // Upload full image to CDN (client will rotate and crop)
         const cdnUrl = await uploadToBunny(result.imageBase64, fileName);
         
         if (cdnUrl) {
