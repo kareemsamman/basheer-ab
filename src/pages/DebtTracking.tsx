@@ -555,7 +555,6 @@ ${policyDetails}
                           clientName={client.client_name}
                           branchId={profile?.branch_id}
                         />
-                        {getExpiryBadge(client.days_until_expiry)}
                         <Badge variant="outline">{client.policies_count} وثيقة</Badge>
                         <div className="text-left min-w-[100px]">
                           <p className="font-bold text-lg text-destructive">
