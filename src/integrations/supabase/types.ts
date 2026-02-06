@@ -1252,6 +1252,65 @@ export type Database = {
           },
         ]
       }
+      client_debits: {
+        Row: {
+          amount: number
+          branch_id: string | null
+          client_id: string
+          created_at: string | null
+          description: string | null
+          id: string
+          policy_id: string | null
+        }
+        Insert: {
+          amount: number
+          branch_id?: string | null
+          client_id: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          policy_id?: string | null
+        }
+        Update: {
+          amount?: number
+          branch_id?: string | null
+          client_id?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          policy_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_debits_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_debits_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_debits_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "policies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_debits_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_policies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_notes: {
         Row: {
           branch_id: string | null
@@ -1295,6 +1354,79 @@ export type Database = {
           {
             foreignKeyName: "client_notes_created_by_fkey"
             columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_payments: {
+        Row: {
+          amount: number
+          branch_id: string | null
+          cheque_image_url: string | null
+          cheque_number: string | null
+          client_id: string
+          created_at: string | null
+          created_by_admin_id: string | null
+          id: string
+          notes: string | null
+          payment_date: string
+          payment_type: string
+          refused: boolean | null
+          tranzila_transaction_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          amount: number
+          branch_id?: string | null
+          cheque_image_url?: string | null
+          cheque_number?: string | null
+          client_id: string
+          created_at?: string | null
+          created_by_admin_id?: string | null
+          id?: string
+          notes?: string | null
+          payment_date?: string
+          payment_type: string
+          refused?: boolean | null
+          tranzila_transaction_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          amount?: number
+          branch_id?: string | null
+          cheque_image_url?: string | null
+          cheque_number?: string | null
+          client_id?: string
+          created_at?: string | null
+          created_by_admin_id?: string | null
+          id?: string
+          notes?: string | null
+          payment_date?: string
+          payment_type?: string
+          refused?: boolean | null
+          tranzila_transaction_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_payments_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_payments_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_payments_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -4503,6 +4635,15 @@ export type Database = {
               start_date: string
             }[]
           }
+      get_client_wallet_balance: {
+        Args: { p_client_id: string }
+        Returns: {
+          total_credits: number
+          total_debits: number
+          total_refunds: number
+          wallet_balance: number
+        }[]
+      }
       get_company_balance: {
         Args: { p_company_id: string; p_from_date?: string; p_to_date?: string }
         Returns: {

@@ -328,7 +328,17 @@ export function DebtPaymentModal({
         // Calculate item-level totals
         const fullPrice = policyComponents.reduce((sum, p) => sum + p.price, 0);
         const paidTotal = policyComponents.reduce((sum, p) => sum + p.paid, 0);
-        const remainingTotal = Math.max(0, fullPrice - paidTotal);
+        const fullPackageRemaining = Math.max(0, fullPrice - paidTotal);
+
+        // For debt display: only show non-ELZAMI portion that's actually payable
+        // This follows the business rule: ELZAMI is excluded from wallet/debt
+        const nonElzamiPrice = policyComponents
+          .filter(p => p.policyType !== 'ELZAMI')
+          .reduce((sum, p) => sum + p.price, 0);
+
+        // Remaining debt = min(non-ELZAMI prices, total package remaining)
+        // This ensures we don't show ELZAMI debt as client debt
+        const remainingTotal = Math.max(0, Math.min(nonElzamiPrice, fullPackageRemaining));
 
         // Determine which policies can receive payments (non-ELZAMI with remaining > 0)
         // For packages: distribute payment pool internally
@@ -358,8 +368,10 @@ export function DebtPaymentModal({
           p => p.policyType !== 'ELZAMI' && p.remaining > 0
         );
 
-        // Only include items with remaining debt
-        if (remainingTotal > 0) {
+        // Only include items that have payable policies (with actual debt to collect)
+        // Using payablePolicies.length > 0 instead of remainingTotal > 0 ensures
+        // packages where only ELZAMI is unpaid don't appear as client debt
+        if (payablePolicies.length > 0) {
           items.push({
             itemKey,
             isPackage,
