@@ -21,6 +21,27 @@ const extractTag = (xml: string, tag: string) => {
   return match?.[1]?.trim() ?? null;
 };
 
+// Policy type labels in Arabic
+const POLICY_TYPE_LABELS: Record<string, string> = {
+  'THIRD_FULL': 'ثالث/شامل',
+  'ROAD_SERVICE': 'سرفيس',
+  'ACCIDENT_FEE_EXEMPTION': 'إعفاء رسوم الحادث',
+  'HEALTH': 'تأمين صحي',
+  'LIFE': 'تأمين حياة',
+  'PROPERTY': 'تأمين ممتلكات',
+  'TRAVEL': 'تأمين سفر',
+  'BUSINESS': 'تأمين أعمال',
+  'OTHER': 'أخرى',
+};
+
+function getPolicyTypeLabel(parent: string | null, child: string | null): string {
+  if (!parent) return '';
+  if (child && parent === 'THIRD_FULL') {
+    return child === 'FULL' ? 'شامل' : child === 'THIRD' ? 'ثالث' : child;
+  }
+  return POLICY_TYPE_LABELS[parent] || parent;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -52,7 +73,7 @@ Deno.serve(async (req) => {
     }
 
     // Parse request body
-    const { filter_days, search, custom_message } = await req.json();
+    const { filter_days, search } = await req.json();
 
     console.log(`Bulk SMS request - filter_days: ${filter_days}, search: ${search}`);
 
@@ -98,6 +119,25 @@ Deno.serve(async (req) => {
 
     console.log(`${clientsWithPhone.length} clients have phone numbers`);
 
+    // Get company footer info
+    const companyLocation = smsSettings.company_location || '';
+    const phoneLinks = (smsSettings.company_phone_links as any[]) || [];
+    const phones = phoneLinks.map((p: any) => p.phone).filter(Boolean).join(' | ');
+
+    const smsUser = smsSettings.sms_user;
+    const smsToken = smsSettings.sms_token;
+    const smsSource = smsSettings.sms_source || "AB-Insurance";
+
+    if (!smsUser || !smsToken) {
+      return new Response(
+        JSON.stringify({ error: "SMS credentials not configured" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     let sentCount = 0;
     let failedCount = 0;
 
@@ -111,31 +151,81 @@ Deno.serve(async (req) => {
         }
         
         const clientName = client.client_name || "عميل";
-        const remainingAmount = Math.round(Number(client.total_remaining) || 0);
+        
+        // Fetch unpaid policies for this client
+        const { data: policies, error: policiesError } = await supabase
+          .from('policies')
+          .select(`
+            id,
+            policy_type_parent,
+            policy_type_child,
+            insurance_price,
+            car:cars(car_number),
+            policy_payments(amount, refused)
+          `)
+          .eq('client_id', client.client_id)
+          .neq('policy_type_parent', 'ELZAMI')
+          .eq('cancelled', false)
+          .is('deleted_at', null);
 
-        // Use custom message or template
-        let message = custom_message;
-        if (!message) {
-          message = smsSettings.payment_request_template || 
-            `مرحباً ${clientName}، لديك مبلغ متبقي ${remainingAmount} شيكل. يرجى التواصل معنا لتسوية المبلغ.`;
-          
-          // Replace placeholders
-          message = message
-            .replace(/\{\{client_name\}\}/g, clientName)
-            .replace(/\{client_name\}/g, clientName)
-            .replace(/\{\{remaining_amount\}\}/g, remainingAmount.toString())
-            .replace(/\{remaining_amount\}/g, remainingAmount.toString());
-        }
-
-        // Send SMS via 019sms - using correct POST XML format
-        const smsUser = smsSettings.sms_user;
-        const smsToken = smsSettings.sms_token;
-        const smsSource = smsSettings.sms_source || "AB-Insurance";
-
-        if (!smsUser || !smsToken) {
-          console.log("SMS credentials not configured, skipping");
+        if (policiesError) {
+          console.error(`Error fetching policies for client ${client.client_id}:`, policiesError);
           failedCount++;
           continue;
+        }
+
+        // Calculate remaining for each policy
+        const unpaidPolicies: { policyType: string; carNumber: string | null; remaining: number }[] = [];
+        
+        for (const policy of (policies || [])) {
+          const price = Number(policy.insurance_price) || 0;
+          const payments = (policy.policy_payments || []) as any[];
+          const paidAmount = payments
+            .filter((p: any) => !p.refused)
+            .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+          
+          const remaining = price - paidAmount;
+          
+          if (remaining > 0) {
+            const policyType = getPolicyTypeLabel(policy.policy_type_parent, policy.policy_type_child);
+            const carNumber = (policy.car as any)?.car_number || null;
+            unpaidPolicies.push({ policyType, carNumber, remaining: Math.round(remaining) });
+          }
+        }
+
+        // Skip if no unpaid policies
+        if (unpaidPolicies.length === 0) {
+          console.log(`Client ${client.client_id} has no unpaid policies, skipping`);
+          continue;
+        }
+
+        // Calculate total remaining
+        const totalRemaining = unpaidPolicies.reduce((sum, p) => sum + p.remaining, 0);
+
+        // Build policy lines
+        const policyLines = unpaidPolicies.map(p => 
+          `• ${p.policyType}${p.carNumber ? ` - ${p.carNumber}` : ''}: ₪${p.remaining.toLocaleString()}`
+        );
+
+        // Build final message with footer
+        let message = `مرحباً ${clientName}،
+
+لديك مبالغ متبقية:
+${policyLines.join('\n')}
+
+━━━━━━━━━━━━
+💰 المجموع: ₪${totalRemaining.toLocaleString()}
+
+AB للتأمين`;
+
+        // Add location if available
+        if (companyLocation) {
+          message += `\n📍 ${companyLocation}`;
+        }
+
+        // Add phones if available
+        if (phones) {
+          message += `\n📞 ${phones}`;
         }
 
         // Build 019sms XML request (official API format)
