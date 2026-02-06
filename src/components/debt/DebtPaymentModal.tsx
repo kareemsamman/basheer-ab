@@ -659,6 +659,7 @@ export function DebtPaymentModal({
               payment_type: paymentLine.paymentType,
               payment_date: paymentLine.paymentDate,
               cheque_number: paymentLine.paymentType === 'cheque' ? paymentLine.chequeNumber : null,
+              cheque_image_url: paymentLine.paymentType === 'cheque' ? paymentLine.cheque_image_url : null,
               notes: paymentLine.notes || `تسديد دين`,
               branch_id: split.branchId,
               batch_id: batchId,
