@@ -218,9 +218,9 @@ serve(async (req) => {
   }
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+    if (!OPENROUTER_API_KEY) {
+      throw new Error("OPENROUTER_API_KEY is not configured");
     }
 
     const { images } = await req.json();
@@ -247,12 +247,14 @@ serve(async (req) => {
         console.log(`[Parallel] Starting image ${imgIndex + 1}/${images.length}...`);
 
         try {
-          // Use gemini-2.5-flash for faster and cheaper processing
-          const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          // Use OpenRouter API with gemini-2.5-flash
+          const aiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: {
-              "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+              "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
               "Content-Type": "application/json",
+              "HTTP-Referer": "https://basheer-ab.lovable.app",
+              "X-Title": "AB Insurance CRM - Cheque Scanner",
             },
             body: JSON.stringify({
               model: "google/gemini-2.5-flash",
@@ -325,7 +327,7 @@ serve(async (req) => {
         JSON.stringify({ 
           success: false, 
           error: "payment_required",
-          message: "نفدت اعتمادات AI. يرجى إضافة رصيد للمتابعة." 
+          message: "نفد رصيد OpenRouter. يرجى شحن الحساب." 
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
