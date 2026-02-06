@@ -1,37 +1,23 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Header } from "@/components/layout/Header";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Search,
   ChevronLeft,
   ChevronRight,
   RefreshCw,
   X,
-  Package,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { PolicyDetailsDrawer } from "@/components/policies/PolicyDetailsDrawer";
 import { PolicyEditDrawer } from "@/components/policies/PolicyEditDrawer";
 import { PolicyFilters, PolicyFilterValues } from "@/components/policies/PolicyFilters";
-import { RowActionsMenu } from "@/components/shared/RowActionsMenu";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
-import { ExpiryBadge } from "@/components/shared/ExpiryBadge";
+import { PolicyCardsView } from "@/components/policies/PolicyCardsView";
 import { recalculatePolicyProfit } from "@/lib/pricingCalculator";
 
 interface PolicyRecord {
@@ -87,30 +73,6 @@ interface PolicyRecord {
   };
 }
 
-const policyTypeLabels: Record<string, string> = {
-  "ELZAMI": "إلزامي",
-  "THIRD_FULL": "ثالث/شامل",
-  "ROAD_SERVICE": "خدمات الطريق",
-  "ACCIDENT_FEE_EXEMPTION": "إعفاء رسوم حادث",
-};
-
-const policyChildLabels: Record<string, string> = {
-  "THIRD": "طرف ثالث",
-  "FULL": "شامل",
-};
-
-const policyTypeColors: Record<string, string> = {
-  "ELZAMI": "bg-blue-500/10 text-blue-700 border-blue-500/20",
-  "THIRD_FULL": "bg-purple-500/10 text-purple-700 border-purple-500/20",
-  "ROAD_SERVICE": "bg-orange-500/10 text-orange-700 border-orange-500/20",
-  "ACCIDENT_FEE_EXEMPTION": "bg-emerald-500/10 text-emerald-700 border-emerald-500/20",
-  "HEALTH": "bg-rose-500/10 text-rose-700 border-rose-500/20",
-  "LIFE": "bg-teal-500/10 text-teal-700 border-teal-500/20",
-  "PROPERTY": "bg-amber-500/10 text-amber-700 border-amber-500/20",
-  "TRAVEL": "bg-cyan-500/10 text-cyan-700 border-cyan-500/20",
-  "BUSINESS": "bg-indigo-500/10 text-indigo-700 border-indigo-500/20",
-  "OTHER": "bg-slate-500/10 text-slate-700 border-slate-500/20",
-};
 
 export default function Policies() {
   const { toast } = useToast();
@@ -127,6 +89,10 @@ export default function Policies() {
     brokerId: 'all',
     creatorId: 'all',
     branchId: 'all',
+    datePreset: 'all',
+    dateFrom: '',
+    dateTo: '',
+    year: 'all',
   });
   const pageSize = 25;
 
@@ -185,6 +151,14 @@ export default function Policies() {
       }
       if (filters.branchId !== 'all') {
         query = query.eq('branch_id', filters.branchId);
+      }
+      
+      // Date filters
+      if (filters.dateFrom) {
+        query = query.gte('created_at', filters.dateFrom);
+      }
+      if (filters.dateTo) {
+        query = query.lte('created_at', filters.dateTo + 'T23:59:59');
       }
 
       const { data, error, count } = await query;
@@ -335,10 +309,6 @@ export default function Policies() {
     setEditOpen(true);
   };
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-GB');
-  };
-
   // Format time remaining for recalculation
   const formatTimeRemaining = () => {
     if (!recalcProgress.avgTime || recalcProgress.done === 0) return '';
@@ -354,15 +324,6 @@ export default function Policies() {
   const percentComplete = recalcProgress.total > 0 
     ? Math.round((recalcProgress.done / recalcProgress.total) * 100) 
     : 0;
-
-  const getStatus = (policy: PolicyRecord) => {
-    if (policy.cancelled) return { label: "ملغاة", variant: "secondary" as const };
-    if (policy.transferred) return { label: "محوّلة", variant: "warning" as const };
-    const today = new Date();
-    const endDate = new Date(policy.end_date);
-    if (endDate < today) return { label: "منتهية", variant: "destructive" as const };
-    return { label: "نشطة", variant: "success" as const };
-  };
 
   const totalPages = Math.ceil(totalCount / pageSize);
 
@@ -473,176 +434,45 @@ export default function Policies() {
           </div>
         </div>
 
-        {/* Table */}
-        <Card className="border shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-border/50 hover:bg-transparent">
-                  <TableHead className="text-muted-foreground font-medium">العميل</TableHead>
-                  <TableHead className="text-muted-foreground font-medium">رقم السيارة</TableHead>
-                  <TableHead className="text-muted-foreground font-medium">النوع</TableHead>
-                  <TableHead className="text-muted-foreground font-medium">الشركة</TableHead>
-                  <TableHead className="text-muted-foreground font-medium">الفترة</TableHead>
-                  <TableHead className="text-muted-foreground font-medium">السعر</TableHead>
-                  {/* Profit/Commission column - Admin only */}
-                  {isAdmin && (
-                    <TableHead className="text-muted-foreground font-medium">الربح / العمولة</TableHead>
-                  )}
-                  <TableHead className="text-muted-foreground font-medium">أنشئ بواسطة</TableHead>
-                  <TableHead className="text-muted-foreground font-medium">الفرع</TableHead>
-                  <TableHead className="text-muted-foreground font-medium">انتهاء</TableHead>
-                  <TableHead className="text-muted-foreground font-medium">الحالة</TableHead>
-                  <TableHead className="text-muted-foreground font-medium w-[80px]">إجراءات</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell><Skeleton className="h-8 w-28" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                      {isAdmin && <TableCell><Skeleton className="h-4 w-16" /></TableCell>}
-                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                      <TableCell><Skeleton className="h-8 w-8" /></TableCell>
-                    </TableRow>
-                  ))
-                ) : policies.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={isAdmin ? 12 : 11} className="text-center py-8 text-muted-foreground">
-                      لا توجد بيانات
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  policies.map((policy, index) => {
-                    const status = getStatus(policy);
-                    return (
-                      <TableRow
-                        key={policy.id}
-                        className={cn(
-                          "border-border/30 transition-colors cursor-pointer",
-                          "hover:bg-secondary/50 animate-fade-in"
-                        )}
-                        style={{ animationDelay: `${index * 30}ms` }}
-                        onClick={() => handleViewDetails(policy.id)}
-                      >
-                        <TableCell className="font-medium">
-                          {policy.clients?.full_name || "-"}
-                        </TableCell>
-                        <TableCell className="font-mono text-sm text-muted-foreground">
-                          <bdi>{policy.cars?.car_number || "-"}</bdi>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Badge className={cn("border", policyTypeColors[policy.policy_type_parent] || "bg-secondary")}>
-                              {policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}
-                              {policy.policy_type_child && ` (${policyChildLabels[policy.policy_type_child] || policy.policy_type_child})`}
-                            </Badge>
-                            {policy.group_id && (
-                              <Badge variant="outline" className="gap-1 bg-gradient-to-r from-violet-500/10 to-fuchsia-500/10 text-violet-700 border-violet-500/30">
-                                <Package className="h-3 w-3" />
-                                <span className="text-[10px]">باقة</span>
-                              </Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {policy.insurance_companies?.name_ar || policy.insurance_companies?.name || "-"}
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            <p className="text-foreground">{formatDate(policy.start_date)}</p>
-                            <p className="text-muted-foreground">{formatDate(policy.end_date)}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          ₪{policy.insurance_price.toLocaleString('ar-EG')}
-                        </TableCell>
-                        {/* Profit/Commission column - Admin only */}
-                        {isAdmin && (
-                          <TableCell className={cn(
-                            "font-medium ltr-nums",
-                            policy.policy_type_parent === 'ELZAMI' ? "text-destructive" : "text-success"
-                          )}>
-                            {policy.policy_type_parent === 'ELZAMI' ? (
-                              <>-₪{Math.abs(policy.elzami_cost || policy.profit || 0).toLocaleString('ar-EG')}</>
-                            ) : (
-                              <>₪{(policy.profit || 0).toLocaleString('ar-EG')}</>
-                            )}
-                          </TableCell>
-                        )}
-                        <TableCell className="text-sm text-muted-foreground">
-                          {policy.created_by?.full_name || policy.created_by?.email || '-'}
-                        </TableCell>
-                        <TableCell>
-                          {policy.branch ? (
-                            <Badge variant="outline" className="gap-1 bg-blue-500/10 text-blue-700 border-blue-500/20">
-                              {policy.branch.name_ar || policy.branch.name}
-                            </Badge>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <ExpiryBadge endDate={policy.end_date} cancelled={policy.cancelled} />
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={status.variant}>
-                            {status.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell onClick={(e) => e.stopPropagation()}>
-                          <RowActionsMenu
-                            onView={() => handleViewDetails(policy.id)}
-                            onDelete={isAdmin ? () => {
-                              setDeletingPolicy(policy);
-                              setDeleteDialogOpen(true);
-                            } : undefined}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
+        {/* Cards View */}
+        <PolicyCardsView
+          policies={policies}
+          loading={loading}
+          onPolicyClick={handleViewDetails}
+          onEditPolicy={handleEditPolicy}
+          onDeletePolicy={(policy) => {
+            setDeletingPolicy(policy);
+            setDeleteDialogOpen(true);
+          }}
+        />
 
-          {/* Pagination */}
-          <div className="flex items-center justify-between border-t border-border/30 px-4 py-3">
-            <p className="text-sm text-muted-foreground">
-              عرض {policies.length} من {totalCount} وثيقة
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage((p) => p + 1)}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                صفحة {currentPage} من {totalPages || 1}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage((p) => p - 1)}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-            </div>
+        {/* Pagination */}
+        <div className="flex items-center justify-between px-4 py-3 bg-card rounded-lg border">
+          <p className="text-sm text-muted-foreground">
+            عرض {policies.length} من {totalCount} وثيقة
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage((p) => p + 1)}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              صفحة {currentPage} من {totalPages || 1}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => p - 1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
           </div>
-        </Card>
+        </div>
       </div>
 
       <PolicyDetailsDrawer

@@ -1,14 +1,15 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
-import { Filter, X } from "lucide-react";
+import { Filter, X, Calendar } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useBranches } from "@/hooks/useBranches";
+import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
+import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, subMonths, format } from "date-fns";
 
 interface PolicyFiltersProps {
   onFiltersChange: (filters: PolicyFilterValues) => void;
@@ -22,6 +23,11 @@ export interface PolicyFilterValues {
   brokerId: string;
   creatorId: string;
   branchId: string;
+  // Date filters
+  datePreset: 'all' | 'today' | 'this_week' | 'this_month' | 'last_month' | 'custom';
+  dateFrom: string;
+  dateTo: string;
+  year: string;
 }
 
 const POLICY_TYPES = [
@@ -38,6 +44,25 @@ const STATUS_OPTIONS = [
   { value: "transferred", label: "محوّلة" },
 ];
 
+const DATE_PRESETS = [
+  { value: "all", label: "كل الفترات" },
+  { value: "today", label: "اليوم" },
+  { value: "this_week", label: "هذا الأسبوع" },
+  { value: "this_month", label: "هذا الشهر" },
+  { value: "last_month", label: "الشهر الماضي" },
+  { value: "custom", label: "فترة مخصصة" },
+];
+
+// Generate years from 2020 to current year + 1
+const generateYears = () => {
+  const currentYear = new Date().getFullYear();
+  const years = [];
+  for (let y = currentYear + 1; y >= 2020; y--) {
+    years.push({ value: y.toString(), label: y.toString() });
+  }
+  return years;
+};
+
 export function PolicyFilters({ onFiltersChange, filters }: PolicyFiltersProps) {
   const { isAdmin } = useAuth();
   const { branches } = useBranches();
@@ -46,6 +71,7 @@ export function PolicyFilters({ onFiltersChange, filters }: PolicyFiltersProps) 
   const [brokers, setBrokers] = useState<{ id: string; name: string }[]>([]);
   const [creators, setCreators] = useState<{ id: string; name: string }[]>([]);
   const [localFilters, setLocalFilters] = useState<PolicyFilterValues>(filters);
+  const years = generateYears();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -62,7 +88,80 @@ export function PolicyFilters({ onFiltersChange, filters }: PolicyFiltersProps) 
     fetchData();
   }, []);
 
-  const activeFiltersCount = Object.values(filters).filter(v => v && v !== 'all').length;
+  // Count active filters (excluding date presets when they're 'all')
+  const countActiveFilters = () => {
+    let count = 0;
+    if (filters.policyType !== 'all') count++;
+    if (filters.companyId !== 'all') count++;
+    if (filters.status !== 'all') count++;
+    if (filters.brokerId !== 'all') count++;
+    if (filters.creatorId !== 'all') count++;
+    if (filters.branchId !== 'all') count++;
+    if (filters.datePreset !== 'all') count++;
+    if (filters.year !== 'all') count++;
+    return count;
+  };
+  
+  const activeFiltersCount = countActiveFilters();
+
+  // Handle date preset changes
+  const handleDatePresetChange = (preset: string) => {
+    const today = new Date();
+    let dateFrom = '';
+    let dateTo = '';
+    
+    switch (preset) {
+      case 'today':
+        dateFrom = format(today, 'yyyy-MM-dd');
+        dateTo = format(today, 'yyyy-MM-dd');
+        break;
+      case 'this_week':
+        dateFrom = format(startOfWeek(today, { weekStartsOn: 0 }), 'yyyy-MM-dd');
+        dateTo = format(endOfWeek(today, { weekStartsOn: 0 }), 'yyyy-MM-dd');
+        break;
+      case 'this_month':
+        dateFrom = format(startOfMonth(today), 'yyyy-MM-dd');
+        dateTo = format(endOfMonth(today), 'yyyy-MM-dd');
+        break;
+      case 'last_month':
+        const lastMonth = subMonths(today, 1);
+        dateFrom = format(startOfMonth(lastMonth), 'yyyy-MM-dd');
+        dateTo = format(endOfMonth(lastMonth), 'yyyy-MM-dd');
+        break;
+      case 'custom':
+        // Keep existing dates when switching to custom
+        dateFrom = localFilters.dateFrom;
+        dateTo = localFilters.dateTo;
+        break;
+      default:
+        // 'all' - clear dates
+        dateFrom = '';
+        dateTo = '';
+    }
+    
+    setLocalFilters(f => ({ 
+      ...f, 
+      datePreset: preset as PolicyFilterValues['datePreset'],
+      dateFrom,
+      dateTo,
+      year: 'all' // Clear year when using preset
+    }));
+  };
+
+  // Handle year change
+  const handleYearChange = (year: string) => {
+    if (year === 'all') {
+      setLocalFilters(f => ({ ...f, year: 'all', datePreset: 'all', dateFrom: '', dateTo: '' }));
+    } else {
+      setLocalFilters(f => ({ 
+        ...f, 
+        year, 
+        datePreset: 'all', 
+        dateFrom: `${year}-01-01`, 
+        dateTo: `${year}-12-31` 
+      }));
+    }
+  };
 
   const handleApply = () => {
     onFiltersChange(localFilters);
@@ -77,6 +176,10 @@ export function PolicyFilters({ onFiltersChange, filters }: PolicyFiltersProps) 
       brokerId: 'all',
       creatorId: 'all',
       branchId: 'all',
+      datePreset: 'all',
+      dateFrom: '',
+      dateTo: '',
+      year: 'all',
     };
     setLocalFilters(cleared);
     onFiltersChange(cleared);
@@ -97,7 +200,7 @@ export function PolicyFilters({ onFiltersChange, filters }: PolicyFiltersProps) 
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-4" align="end" dir="rtl">
+      <PopoverContent className="w-96 p-4" align="end" dir="rtl">
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h4 className="font-medium text-right">فلترة متقدمة</h4>
@@ -105,6 +208,77 @@ export function PolicyFilters({ onFiltersChange, filters }: PolicyFiltersProps) 
               <X className="h-3 w-3 ml-1" />
               مسح الكل
             </Button>
+          </div>
+
+          {/* Date Filters Section */}
+          <div className="p-3 bg-muted/30 rounded-lg space-y-3 border">
+            <div className="flex items-center gap-1 text-sm font-medium text-muted-foreground">
+              <Calendar className="h-4 w-4" />
+              فلترة بالتاريخ
+            </div>
+            
+            {/* Date Preset */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label className="text-right block text-xs">الفترة</Label>
+                <Select 
+                  value={localFilters.datePreset} 
+                  onValueChange={handleDatePresetChange}
+                >
+                  <SelectTrigger className="h-9 text-right text-sm">
+                    <SelectValue placeholder="اختر الفترة" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DATE_PRESETS.map(p => (
+                      <SelectItem key={p.value} value={p.value} className="text-right">{p.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Year Filter */}
+              <div className="space-y-1.5">
+                <Label className="text-right block text-xs">السنة</Label>
+                <Select 
+                  value={localFilters.year} 
+                  onValueChange={handleYearChange}
+                >
+                  <SelectTrigger className="h-9 text-right text-sm">
+                    <SelectValue placeholder="كل السنوات" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-right">كل السنوات</SelectItem>
+                    {years.map(y => (
+                      <SelectItem key={y.value} value={y.value} className="text-right">{y.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
+            {/* Custom Date Range */}
+            {localFilters.datePreset === 'custom' && (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1.5">
+                  <Label className="text-right block text-xs">من تاريخ</Label>
+                  <ArabicDatePicker
+                    value={localFilters.dateFrom || undefined}
+                    onChange={(date) => setLocalFilters(f => ({ ...f, dateFrom: date || '' }))}
+                    placeholder="من تاريخ"
+                    compact
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-right block text-xs">إلى تاريخ</Label>
+                  <ArabicDatePicker
+                    value={localFilters.dateTo || undefined}
+                    onChange={(date) => setLocalFilters(f => ({ ...f, dateTo: date || '' }))}
+                    placeholder="إلى تاريخ"
+                    compact
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Policy Type */}
