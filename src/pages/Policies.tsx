@@ -17,7 +17,7 @@ import { PolicyDetailsDrawer } from "@/components/policies/PolicyDetailsDrawer";
 import { PolicyEditDrawer } from "@/components/policies/PolicyEditDrawer";
 import { PolicyFilters, PolicyFilterValues } from "@/components/policies/PolicyFilters";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
-import { PolicyCardsView } from "@/components/policies/PolicyCardsView";
+import { PolicyTableView } from "@/components/policies/PolicyTableView";
 import { recalculatePolicyProfit } from "@/lib/pricingCalculator";
 
 interface PolicyRecord {
@@ -113,7 +113,7 @@ export default function Policies() {
         .from('policies')
         .select(`
           *,
-          clients(id, full_name, less_than_24, under24_type, under24_driver_name, under24_driver_id),
+          clients(id, full_name, phone_number, less_than_24, under24_type, under24_driver_name, under24_driver_id),
           cars(id, car_number, car_type, car_value, year),
           insurance_companies(id, name, name_ar),
           created_by:profiles!policies_created_by_admin_id_fkey(full_name, email),
@@ -434,16 +434,11 @@ export default function Policies() {
           </div>
         </div>
 
-        {/* Cards View */}
-        <PolicyCardsView
+        {/* Table View */}
+        <PolicyTableView
           policies={policies}
           loading={loading}
           onPolicyClick={handleViewDetails}
-          onEditPolicy={handleEditPolicy}
-          onDeletePolicy={(policy) => {
-            setDeletingPolicy(policy);
-            setDeleteDialogOpen(true);
-          }}
         />
 
         {/* Pagination */}
