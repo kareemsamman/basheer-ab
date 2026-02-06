@@ -506,62 +506,49 @@ export function ChequeScannerDialog({
         body: { images: base64Images }
       });
 
+      // Handle specific error codes with clear Arabic messages
       if (fnError) {
-        throw new Error(fnError.message);
+        const errorMsg = fnError.message || '';
+        if (errorMsg.includes('402') || errorMsg.includes('credits') || errorMsg.includes('payment')) {
+          throw new Error('نفدت اعتمادات AI. يرجى إضافة رصيد للمتابعة.');
+        }
+        if (errorMsg.includes('429') || errorMsg.includes('rate')) {
+          throw new Error('تم تجاوز الحد المسموح. يرجى المحاولة لاحقاً.');
+        }
+        throw new Error(fnError.message || 'خطأ في معالجة الشيكات');
+      }
+
+      // Check for error in response data
+      if (data?.error) {
+        const errorMsg = data.error || '';
+        if (errorMsg.includes('credits') || errorMsg.includes('payment')) {
+          throw new Error('نفدت اعتمادات AI. يرجى إضافة رصيد للمتابعة.');
+        }
+        if (errorMsg.includes('rate') || errorMsg.includes('limit')) {
+          throw new Error('تم تجاوز الحد المسموح. يرجى المحاولة لاحقاً.');
+        }
+        throw new Error(errorMsg);
       }
 
       if (!data || !data.success) {
-        throw new Error(data?.error || 'فشل في معالجة الصور');
+        throw new Error('فشل في معالجة الصور');
       }
 
-      // Process cheques: rotate and crop images on client, then upload to CDN
+      // Simple processing - use image_url directly from server (full image, no cropping)
       const rawCheques = data.cheques || [];
-      const processedCheques: DetectedCheque[] = [];
-      
-      for (const c of rawCheques) {
-        let croppedBase64 = c.cropped_base64;
-        let uploadedUrl = c.image_url;
-        
-        // Get rotation from the cheque data (detected by AI)
-        const rotation = c.rotation || 0;
-        
-        // If we have bounding box and original image, rotate and crop on client
-        if (c.cropped_base64) {
-          const { x, y, width, height } = c.bounding_box || { x: 0, y: 0, width: 100, height: 100 };
-          const needsCrop = x > 2 || y > 2 || width < 96 || height < 96;
-          const needsRotation = rotation !== 0;
-          
-          if (needsCrop || needsRotation) {
-            try {
-              // The new cropImageOnClient handles both rotation AND cropping
-              croppedBase64 = await cropImageOnClient(
-                `data:image/jpeg;base64,${c.cropped_base64}`,
-                c.bounding_box || { x: 0, y: 0, width: 100, height: 100 },
-                rotation
-              );
-              console.log(`Processed cheque ${c.cheque_number}: rotation=${rotation}°, crop=${x.toFixed(1)},${y.toFixed(1)} ${width.toFixed(1)}x${height.toFixed(1)}`);
-              
-              // Upload processed image to CDN immediately
-              const newUrl = await uploadChequeImageToCDN(croppedBase64, c.cheque_number || `unknown_${Date.now()}`);
-              if (newUrl) {
-                uploadedUrl = newUrl;
-                console.log(`Uploaded processed cheque to: ${newUrl}`);
-              }
-            } catch (cropErr) {
-              console.error('Failed to process cheque image:', cropErr);
-              // Keep original if processing fails
-            }
-          }
-        }
-        
-        processedCheques.push({
-          ...c,
-          cropped_base64: croppedBase64,
-          image_url: uploadedUrl,
-          isEditing: false,
-          isConfirmed: false,
-        });
-      }
+      const processedCheques: DetectedCheque[] = rawCheques.map((c: any) => ({
+        cheque_number: c.cheque_number || '',
+        payment_date: c.payment_date || '',
+        amount: c.amount || 0,
+        bank_name: c.bank_name || '',
+        account_number: c.account_number || '',
+        branch_number: c.branch_number || '',
+        bounding_box: { x: 0, y: 0, width: 100, height: 100 }, // Not used but keep for type
+        confidence: c.confidence || 0,
+        image_url: c.image_url,
+        isEditing: false,
+        isConfirmed: false,
+      }));
 
       setDetectedCheques(processedCheques);
       setStage('results');

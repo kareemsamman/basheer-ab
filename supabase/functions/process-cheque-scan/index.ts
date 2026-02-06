@@ -232,7 +232,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Processing ${images.length} image(s) for cheque detection with gemini-2.5-pro`);
+    console.log(`Processing ${images.length} image(s) for cheque detection with gemini-2.5-flash`);
 
     // Process all images in parallel for speed
     const imageResults = await Promise.all(
@@ -247,7 +247,7 @@ serve(async (req) => {
         console.log(`[Parallel] Starting image ${imgIndex + 1}/${images.length}...`);
 
         try {
-          // Use gemini-2.5-pro for better accuracy with bounding boxes
+          // Use gemini-2.5-flash for faster and cheaper processing
           const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
             headers: {
@@ -255,7 +255,7 @@ serve(async (req) => {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: "google/gemini-2.5-pro",
+              model: "google/gemini-2.5-flash",
               messages: [
                 {
                   role: "user",
@@ -323,32 +323,28 @@ serve(async (req) => {
       );
     }
 
-    // Aggregate all detected cheques
+    // Aggregate all detected cheques - upload full image ONCE per scanned page
     const allDetectedCheques: DetectedCheque[] = [];
     
     for (const result of imageResults) {
-      for (let chequeIndex = 0; chequeIndex < result.cheques.length; chequeIndex++) {
-        const cheque = result.cheques[chequeIndex];
-        
-        // Generate unique filename
-        const timestamp = Date.now();
-        const fileName = `cheque_${cheque.cheque_number || timestamp}_${result.imgIndex}_${chequeIndex}.jpg`;
-        
-        // Store the original full image base64 for client-side cropping
-        cheque.cropped_base64 = result.imageBase64;
-        
-        // Store the rotation detected for this image so client can rotate before cropping
-        (cheque as any).rotation = result.rotation;
-        
-        // Upload full image to CDN (client will rotate and crop)
-        const cdnUrl = await uploadToBunny(result.imageBase64, fileName);
-        
-        if (cdnUrl) {
-          cheque.image_url = cdnUrl;
-        } else {
-          // Fallback to data URL if upload fails
-          cheque.image_url = `data:image/jpeg;base64,${result.imageBase64}`;
-        }
+      // Skip if no cheques detected in this image
+      if (result.cheques.length === 0) continue;
+      
+      // Upload the FULL original image once for all cheques on this page
+      const timestamp = Date.now();
+      const fileName = `scan_${timestamp}_${result.imgIndex}.jpg`;
+      const cdnUrl = await uploadToBunny(result.imageBase64, fileName);
+      const imageUrl = cdnUrl || `data:image/jpeg;base64,${result.imageBase64}`;
+      
+      console.log(`Uploaded scan image ${result.imgIndex} with ${result.cheques.length} cheques to: ${cdnUrl ? 'CDN' : 'data URL'}`);
+      
+      // All cheques from this image share the same full image URL
+      for (const cheque of result.cheques) {
+        cheque.image_url = imageUrl;
+        // Remove cropped_base64 - we don't need it anymore since we're using full image
+        delete cheque.cropped_base64;
+        // Remove bounding_box from response - not needed by client
+        delete (cheque as any).bounding_box;
         
         allDetectedCheques.push(cheque);
       }
