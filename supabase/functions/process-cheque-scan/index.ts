@@ -25,18 +25,39 @@ interface DetectedCheque {
   cropped_base64?: string;
 }
 
-const CHEQUE_DETECTION_PROMPT = `You are analyzing a scanned image that may contain one or more Israeli bank cheques.
+const CHEQUE_DETECTION_PROMPT = `You are an expert OCR system analyzing scanned Israeli bank cheques.
 
-Your task:
-1. Detect ALL cheques visible in the image
-2. For each cheque, extract the following information:
-   - CHEQUE No. (رقم الشيك / מספר שיק) - usually 6-8 digits
-   - DATE (תאריך / التاريخ) - the payment/due date written on the cheque
-   - Amount in NIS (סכום / المبلغ) - the monetary value
-   - Bank name (if visible)
-   - Account number (if visible)
-   - Branch number (if visible)
-3. Provide the bounding box coordinates for each cheque as percentages of the total image dimensions
+CRITICAL INSTRUCTIONS:
+1. Images may be ROTATED (90°, 180°, 270°) - mentally rotate to read correctly
+2. Amounts are in NIS - typical values range from 500-50,000
+3. NEVER confuse comma separators with decimal points
+   - "1,800" = one thousand eight hundred (1800)
+   - "18,007" would be unusual - verify carefully
+4. Cheque numbers are usually 6-8 digits without commas
+
+For each cheque extract:
+- CHEQUE NUMBER (מספר שיק / رقم الشيك): 6-8 digit number
+- DATE (תאריך / التاريخ): payment due date
+- AMOUNT (סכום / المبلغ): monetary value in NIS (be careful with thousands separator)
+- BANK NAME (if visible)
+- ACCOUNT NUMBER (if visible)
+- BRANCH NUMBER (if visible)
+
+DATE HANDLING:
+- Convert to YYYY-MM-DD format
+- Israeli dates: DD/MM/YY or DD/MM/YYYY
+- If year is 2 digits (e.g., 26), assume 2026
+
+AMOUNT HANDLING - CRITICAL:
+- Amounts use comma as THOUSANDS separator (e.g., 1,800 = 1800)
+- Common amounts: 500, 800, 1000, 1200, 1400, 1500, 1800, 2000, 2500, 3000
+- If you see something like 18,007 - double check, it's likely 1,800
+
+BOUNDING BOX:
+- x: percentage from left edge (0 = leftmost)
+- y: percentage from top edge (0 = topmost)
+- width: percentage of total image width
+- height: percentage of total image height
 
 CRITICAL: Return ONLY valid JSON, no markdown, no explanation.
 
@@ -45,32 +66,16 @@ Output format (strict JSON):
   "cheques": [
     {
       "cheque_number": "80001254",
-      "payment_date": "2026-10-25",
+      "payment_date": "2026-03-25",
       "amount": 1800,
       "bank_name": "דיסקונט",
-      "account_number": "0000338161",
-      "branch_number": "109-5",
-      "bounding_box": {
-        "x": 5,
-        "y": 10,
-        "width": 90,
-        "height": 25
-      },
+      "account_number": "",
+      "branch_number": "",
+      "bounding_box": {"x": 0, "y": 0, "width": 100, "height": 100},
       "confidence": 95
     }
   ]
 }
-
-Date format notes:
-- Convert all dates to YYYY-MM-DD format
-- If year is 2 digits (e.g., 25/10/26), assume 20XX (2026)
-- Israeli dates are typically DD/MM/YY or DD/MM/YYYY
-
-Bounding box notes:
-- x: percentage from left edge (0 = leftmost)
-- y: percentage from top edge (0 = topmost)
-- width: percentage of total image width
-- height: percentage of total image height
 
 If no cheques are found, return: {"cheques": []}`;
 
@@ -212,7 +217,7 @@ serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "google/gemini-2.5-pro",
           messages: [
             {
               role: "user",
@@ -276,9 +281,12 @@ serve(async (req) => {
         
         if (cdnUrl) {
           cheque.image_url = cdnUrl;
+        } else {
+          // Fallback: use base64 data URL if CDN upload fails
+          cheque.image_url = `data:image/jpeg;base64,${imageBase64}`;
         }
         
-        // Include source image for client-side cropping
+        // Include source image for client-side fallback
         cheque.cropped_base64 = imageBase64;
         
         allDetectedCheques.push(cheque);
@@ -286,6 +294,15 @@ serve(async (req) => {
     }
 
     console.log(`Total cheques detected: ${allDetectedCheques.length}`);
+
+    // Sort cheques by payment date (ascending)
+    allDetectedCheques.sort((a, b) => {
+      const dateA = new Date(a.payment_date);
+      const dateB = new Date(b.payment_date);
+      return dateA.getTime() - dateB.getTime();
+    });
+
+    console.log("Cheques sorted by date");
 
     return new Response(
       JSON.stringify({ 
