@@ -3,13 +3,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Loader2, CreditCard, Banknote, Wallet, AlertCircle, CheckCircle, DollarSign, Plus, Trash2, Split, Upload, X, ImageIcon, HelpCircle, Car, Package, FileText, Info, Scan } from 'lucide-react';
+import { Loader2, CreditCard, Banknote, Wallet, CheckCircle, DollarSign, Plus, Trash2, Split, Upload, X, ImageIcon, Scan } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -18,31 +15,8 @@ import { ChequeScannerDialog } from '@/components/payments/ChequeScannerDialog';
 import { sanitizeChequeNumber, CHEQUE_NUMBER_MAX_LENGTH } from '@/lib/chequeUtils';
 import { useToast } from '@/hooks/use-toast';
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
-
-// Represents each policy inside a debt item
-interface PolicyComponent {
-  policyId: string;
-  policyType: string;
-  policyTypeChild: string | null;
-  price: number;
-  paid: number;
-  remaining: number;
-  branchId: string | null;
-}
-
-// Represents a debt item (package or single policy)
-interface DebtItem {
-  itemKey: string;        // group_id or `single_${policy_id}`
-  isPackage: boolean;
-  policies: PolicyComponent[];
-  fullPrice: number;      // Sum of all policies including ELZAMI
-  paidTotal: number;      // Sum of all payments for this item
-  remainingTotal: number; // fullPrice - paidTotal (clamped to 0)
-  carNumber: string | null;
-  includesElzami: boolean;
-  // For payment distribution - policies that can receive payments (non-ELZAMI with remaining > 0)
-  payablePolicies: PolicyComponent[];
-}
+import { useAuth } from '@/hooks/useAuth';
+import { useBranches } from '@/hooks/useBranches';
 
 interface PaymentLine {
   id: string;
@@ -69,24 +43,6 @@ interface DebtPaymentModalProps {
   onSuccess: () => void;
 }
 
-const policyTypeLabels: Record<string, string> = {
-  ELZAMI: 'إلزامي',
-  THIRD_FULL: 'ثالث/شامل',
-  ROAD_SERVICE: 'خدمات الطريق',
-  ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
-  HEALTH: 'تأمين صحي',
-  LIFE: 'تأمين حياة',
-  PROPERTY: 'تأمين ممتلكات',
-  TRAVEL: 'تأمين سفر',
-  BUSINESS: 'تأمين أعمال',
-  OTHER: 'أخرى',
-};
-
-const policyChildLabels: Record<string, string> = {
-  THIRD: 'ثالث',
-  FULL: 'شامل',
-};
-
 const paymentTypes = [
   { value: 'cash', label: 'نقدي', icon: Banknote },
   { value: 'cheque', label: 'شيك', icon: CreditCard },
@@ -104,54 +60,23 @@ export function DebtPaymentModal({
   onSuccess,
 }: DebtPaymentModalProps) {
   const { toast: uiToast } = useToast();
+  const { profile } = useAuth();
+  const { branches } = useBranches();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [debtItems, setDebtItems] = useState<DebtItem[]>([]);
+  const [balance, setBalance] = useState({ totalInsurance: 0, totalPaid: 0, totalRefunds: 0, totalRemaining: 0 });
   const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
   const [tranzilaModalOpen, setTranzilaModalOpen] = useState(false);
+  
+  // Get first active branch as default
+  const defaultBranchId = branches.length > 0 ? branches[0].id : null;
   const [activeVisaPaymentIndex, setActiveVisaPaymentIndex] = useState<number | null>(null);
-  const [activeTranzilaPolicyId, setActiveTranzilaPolicyId] = useState<string | null>(null);
   const [splitPopoverOpen, setSplitPopoverOpen] = useState(false);
   const [splitCount, setSplitCount] = useState(2);
   const [previewUrls, setPreviewUrls] = useState<PreviewUrls>({});
-  const [selectedCars, setSelectedCars] = useState<string[]>([]);
   const [chequeScannerOpen, setChequeScannerOpen] = useState(false);
 
-  // Extract unique car numbers for filter
-  const uniqueCars = React.useMemo(() => {
-    const cars = debtItems
-      .filter(item => item.carNumber)
-      .map(item => item.carNumber!)
-      .filter((v, i, a) => a.indexOf(v) === i);
-    return cars;
-  }, [debtItems]);
-
-  // Toggle car selection
-  const toggleCar = (car: string) => {
-    setSelectedCars(prev => 
-      prev.includes(car) 
-        ? prev.filter(c => c !== car) 
-        : [...prev, car]
-    );
-  };
-
-  // Filter items by selected cars (empty array = all cars)
-  const filteredItems = React.useMemo(() => {
-    if (selectedCars.length === 0) return debtItems;
-    return debtItems.filter(item => item.carNumber && selectedCars.includes(item.carNumber));
-  }, [debtItems, selectedCars]);
-
-  // All payable policies from filtered items
-  const allPayablePolicies = React.useMemo(() => {
-    return filteredItems.flatMap(item => item.payablePolicies);
-  }, [filteredItems]);
-
-  // Summary calculations
-  const totalFullPrice = filteredItems.reduce((sum, item) => sum + item.fullPrice, 0);
-  const totalPaidAmount = filteredItems.reduce((sum, item) => sum + item.paidTotal, 0);
-  const totalRemaining = filteredItems.reduce((sum, item) => sum + item.remainingTotal, 0);
-  
-  // Calculate total payments - count paid visa payments as already completed
+  // Calculate total payments
   const paidVisaTotal = paymentLines
     .filter(p => p.paymentType === 'visa' && p.tranzilaPaid)
     .reduce((sum, p) => sum + (p.amount || 0), 0);
@@ -161,19 +86,14 @@ export function DebtPaymentModal({
     .reduce((sum, p) => sum + (p.amount || 0), 0);
   
   const totalPaymentAmount = paymentLines.reduce((sum, p) => sum + (p.amount || 0), 0);
-  
-  // Remaining to pay should account for already completed visa payments
-  const effectiveRemaining = totalRemaining - paidVisaTotal;
+  const effectiveRemaining = balance.totalRemaining - paidVisaTotal;
   const isOverpaying = pendingPaymentsTotal > effectiveRemaining;
-  
-  // Check for unpaid visa payments
   const hasUnpaidVisa = paymentLines.some(p => p.paymentType === 'visa' && !p.tranzilaPaid);
 
-  // Check if all non-visa payments have valid data, and visa payments are either paid or have valid amount
   const isValid = paymentLines.length > 0 && 
     totalPaymentAmount > 0 && 
     !isOverpaying &&
-    !hasUnpaidVisa && // Block if unpaid visa exists
+    !hasUnpaidVisa &&
     paymentLines.every(p => {
       if (p.paymentType === 'cheque' && !p.chequeNumber?.trim()) return false;
       if (p.paymentType === 'visa' && !p.tranzilaPaid && p.amount <= 0) return false;
@@ -182,8 +102,7 @@ export function DebtPaymentModal({
 
   useEffect(() => {
     if (open && clientId) {
-      fetchDebtItems();
-      // Reset form with one empty payment line
+      fetchClientBalance();
       setPaymentLines([{
         id: crypto.randomUUID(),
         amount: 0,
@@ -191,11 +110,32 @@ export function DebtPaymentModal({
         paymentDate: new Date().toISOString().split('T')[0],
       }]);
       setPreviewUrls({});
-      setSelectedCars([]);
     }
   }, [open, clientId]);
 
-  // Image handling functions
+  const fetchClientBalance = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.rpc('get_client_balance', { p_client_id: clientId });
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const row = data[0];
+        setBalance({
+          totalInsurance: Number(row.total_insurance) || 0,
+          totalPaid: Number(row.total_paid) || 0,
+          totalRefunds: Number(row.total_refunds) || 0,
+          totalRemaining: Number(row.total_remaining) || 0,
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching client balance:', error);
+      toast.error('خطأ في جلب رصيد العميل');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleImageSelect = (paymentId: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
@@ -216,14 +156,12 @@ export function DebtPaymentModal({
 
     if (validFiles.length === 0) return;
 
-    // Create preview URLs
     const newPreviewUrls = validFiles.map(file => URL.createObjectURL(file));
     setPreviewUrls(prev => ({
       ...prev,
       [paymentId]: [...(prev[paymentId] || []), ...newPreviewUrls],
     }));
     
-    // Store files in payment object for later upload
     const payment = paymentLines.find(p => p.id === paymentId);
     if (payment) {
       const existingFiles = payment.pendingImages || [];
@@ -232,13 +170,11 @@ export function DebtPaymentModal({
   };
 
   const removeImage = (paymentId: string, index: number) => {
-    // Revoke preview URL
     const urls = previewUrls[paymentId] || [];
     if (urls[index]) {
       URL.revokeObjectURL(urls[index]);
     }
     
-    // Update preview URLs
     setPreviewUrls(prev => {
       const newUrls = (prev[paymentId] || []).filter((_, i) => i !== index);
       if (newUrls.length === 0) {
@@ -248,7 +184,6 @@ export function DebtPaymentModal({
       return { ...prev, [paymentId]: newUrls };
     });
     
-    // Update payment files
     const payment = paymentLines.find(p => p.id === paymentId);
     if (payment && payment.pendingImages) {
       const newFiles = payment.pendingImages.filter((_, i) => i !== index);
@@ -257,134 +192,6 @@ export function DebtPaymentModal({
   };
 
   const getPreviewUrls = (paymentId: string) => previewUrls[paymentId] || [];
-
-  /**
-   * Fetch all policies and payments for the client, then build DebtItems
-   * grouped by group_id (packages) or individual policies (singles)
-   */
-  const fetchDebtItems = async () => {
-    setLoading(true);
-    try {
-      // Fetch ALL policies for this client (including ELZAMI)
-      // Exclude: cancelled, deleted, transferred, and broker deals
-      const { data: policiesData, error: policiesError } = await supabase
-        .from('policies')
-        .select('id, policy_type_parent, policy_type_child, insurance_price, branch_id, group_id, broker_id, car:cars(car_number)')
-        .eq('client_id', clientId)
-        .eq('cancelled', false)
-        .eq('transferred', false)
-        .is('deleted_at', null)
-        .is('broker_id', null);
-
-      if (policiesError) throw policiesError;
-
-      const allPolicyIds = (policiesData || []).map(p => p.id);
-
-      // Fetch ALL payments for these policies
-      let paymentsMap: Record<string, number> = {};
-      if (allPolicyIds.length > 0) {
-        const { data: paymentsData, error: paymentsError } = await supabase
-          .from('policy_payments')
-          .select('policy_id, amount, refused')
-          .in('policy_id', allPolicyIds);
-
-        if (paymentsError) throw paymentsError;
-
-        (paymentsData || []).forEach(p => {
-          if (!p.refused) {
-            paymentsMap[p.policy_id] = (paymentsMap[p.policy_id] || 0) + p.amount;
-          }
-        });
-      }
-
-      // Group policies by group_id or individual
-      const groupMap = new Map<string, typeof policiesData>();
-      
-      (policiesData || []).forEach(policy => {
-        const key = policy.group_id || `single_${policy.id}`;
-        if (!groupMap.has(key)) {
-          groupMap.set(key, []);
-        }
-        groupMap.get(key)!.push(policy);
-      });
-
-      // Build DebtItems
-      const items: DebtItem[] = [];
-      
-      groupMap.forEach((policies, itemKey) => {
-        const isPackage = policies.length > 1 || (policies[0]?.group_id !== null);
-        
-        // Build policy components
-        const policyComponents: PolicyComponent[] = policies.map(p => ({
-          policyId: p.id,
-          policyType: p.policy_type_parent,
-          policyTypeChild: p.policy_type_child,
-          price: p.insurance_price,
-          paid: paymentsMap[p.id] || 0,
-          remaining: p.insurance_price - (paymentsMap[p.id] || 0),
-          branchId: p.branch_id,
-        }));
-
-        // Calculate item-level totals
-        const fullPrice = policyComponents.reduce((sum, p) => sum + p.price, 0);
-        const paidTotal = policyComponents.reduce((sum, p) => sum + p.paid, 0);
-        const remainingTotal = Math.max(0, fullPrice - paidTotal);
-
-        // Determine which policies can receive payments (non-ELZAMI with remaining > 0)
-        // For packages: distribute payment pool internally
-        const poolPaid = paidTotal;
-        let remainingPool = poolPaid;
-        
-        // Sort by priority: ELZAMI first (fills up first), then others by price ascending
-        const sortedComponents = [...policyComponents].sort((a, b) => {
-          if (a.policyType === 'ELZAMI' && b.policyType !== 'ELZAMI') return -1;
-          if (a.policyType !== 'ELZAMI' && b.policyType === 'ELZAMI') return 1;
-          return a.price - b.price;
-        });
-
-        // Distribute paid amount internally to determine what's left to pay per component
-        const componentsWithInternalRemaining = sortedComponents.map(comp => {
-          const coverAmount = Math.min(remainingPool, comp.price);
-          remainingPool = Math.max(0, remainingPool - coverAmount);
-          const internalRemaining = comp.price - coverAmount;
-          return {
-            ...comp,
-            remaining: internalRemaining,
-          };
-        });
-
-        // Payable policies: non-ELZAMI with internal remaining > 0
-        const payablePolicies = componentsWithInternalRemaining.filter(
-          p => p.policyType !== 'ELZAMI' && p.remaining > 0
-        );
-
-        // Only include items with remaining debt
-        if (remainingTotal > 0) {
-          items.push({
-            itemKey,
-            isPackage,
-            policies: componentsWithInternalRemaining,
-            fullPrice,
-            paidTotal,
-            remainingTotal,
-            carNumber: (policies[0]?.car as any)?.car_number || null,
-            includesElzami: policies.some(p => p.policy_type_parent === 'ELZAMI'),
-            payablePolicies,
-          });
-        }
-      });
-
-      // Sort by remaining (highest first)
-      items.sort((a, b) => b.remainingTotal - a.remainingTotal);
-      
-      setDebtItems(items);
-    } catch (error) {
-      console.error('Error fetching debt items:', error);
-      toast.error('خطأ في جلب بيانات الدفع');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const addPaymentLine = () => {
     setPaymentLines([
@@ -409,10 +216,10 @@ export function DebtPaymentModal({
   };
 
   const handleSplitPayments = () => {
-    if (splitCount < 2 || splitCount > 12 || totalRemaining <= 0) return;
+    if (splitCount < 2 || splitCount > 12 || balance.totalRemaining <= 0) return;
     
-    const amountPerInstallment = Math.floor(totalRemaining / splitCount);
-    const remainder = totalRemaining - (amountPerInstallment * splitCount);
+    const amountPerInstallment = Math.floor(balance.totalRemaining / splitCount);
+    const remainder = balance.totalRemaining - (amountPerInstallment * splitCount);
     
     const today = new Date();
     const newPayments: PaymentLine[] = [];
@@ -435,7 +242,6 @@ export function DebtPaymentModal({
     setSplitPopoverOpen(false);
   };
 
-  // Helper to convert base64 to Blob
   const base64ToBlob = (base64: string, type = 'image/jpeg'): Blob => {
     try {
       const cleanBase64 = base64.includes(',') ? base64.split(',')[1] : base64;
@@ -466,7 +272,6 @@ export function DebtPaymentModal({
         chequeNumber: cheque.cheque_number || '',
       };
       
-      // Convert cropped image to File and add to pendingImages
       if (cheque.cropped_base64) {
         try {
           const blob = base64ToBlob(cheque.cropped_base64);
@@ -486,81 +291,12 @@ export function DebtPaymentModal({
     toast.success(`تم إضافة ${newPayments.length} دفعة شيك مع الصور`);
   };
 
-  /**
-   * Sequential "fill one by one" distribution:
-   * - Uses only payable policies from visible debt items
-   * - Fills policies in order until each is complete before moving to next
-   * - For cheques: Keeps as single record on first policy with space
-   * - For cash/transfer: Can span multiple policies
-   */
-  const calculateSplitPayments = (amount: number, paymentType: string = 'cash') => {
-    const splits: { policyId: string; amount: number; branchId: string | null }[] = [];
-    
-    if (amount <= 0) return splits;
-
-    // Get payable policies from filtered items, sorted by remaining (smallest first)
-    const policiesWithBalance = [...allPayablePolicies]
-      .filter(p => p.remaining > 0)
-      .sort((a, b) => a.remaining - b.remaining);
-
-    if (policiesWithBalance.length === 0) return splits;
-
-    // For cheques: assign FULL amount to a single policy that can fit it
-    if (paymentType === 'cheque') {
-      const policyWithSpace = policiesWithBalance.find(p => p.remaining >= amount);
-      
-      if (policyWithSpace) {
-        splits.push({
-          policyId: policyWithSpace.policyId,
-          amount: amount,
-          branchId: policyWithSpace.branchId,
-        });
-      } else {
-        // Put it on the policy with largest remaining balance
-        const largestPolicy = policiesWithBalance[policiesWithBalance.length - 1];
-        splits.push({
-          policyId: largestPolicy.policyId,
-          amount: amount,
-          branchId: largestPolicy.branchId,
-        });
-      }
-      return splits;
-    }
-
-    // For cash/transfer: fill policies sequentially one by one
-    let remainingAmount = amount;
-    
-    for (const policy of policiesWithBalance) {
-      if (remainingAmount <= 0) break;
-      
-      const paymentForPolicy = Math.min(remainingAmount, policy.remaining);
-      if (paymentForPolicy > 0.001) {
-        const roundedAmount = Math.round(paymentForPolicy * 100) / 100;
-        if (roundedAmount > 0) {
-          splits.push({
-            policyId: policy.policyId,
-            amount: roundedAmount,
-            branchId: policy.branchId,
-          });
-          remainingAmount -= paymentForPolicy;
-        }
-      }
-    }
-
-    return splits.filter(s => s.amount > 0);
-  };
-
   const handleVisaPayClick = (index: number) => {
     const payment = paymentLines[index];
     if (!payment || payment.amount <= 0) return;
 
-    // Use first payable policy for Tranzila
-    const firstPolicy = allPayablePolicies.find(p => p.remaining > 0);
-    if (firstPolicy) {
-      setActiveVisaPaymentIndex(index);
-      setActiveTranzilaPolicyId(firstPolicy.policyId);
-      setTranzilaModalOpen(true);
-    }
+    setActiveVisaPaymentIndex(index);
+    setTranzilaModalOpen(true);
   };
 
   const handleTranzilaSuccess = async () => {
@@ -571,38 +307,24 @@ export function DebtPaymentModal({
     }
     
     setActiveVisaPaymentIndex(null);
-    setActiveTranzilaPolicyId(null);
   };
 
-  const sendPaymentConfirmationSms = async (paidAmount: number, paymentIds: string[]) => {
-    if (!clientPhone || paymentIds.length === 0) return;
-    
+  const uploadChequeImage = async (paymentId: string, file: File): Promise<string | null> => {
     try {
-      // Use bulk receipt function to aggregate all payments into one receipt
-      const { data: receiptData, error: receiptError } = await supabase.functions.invoke('generate-bulk-payment-receipt', {
-        body: { payment_ids: paymentIds, total_amount: paidAmount }
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('entity_type', 'client_payment');
+      formData.append('entity_id', paymentId);
+
+      const { data, error } = await supabase.functions.invoke('upload-media', {
+        body: formData,
       });
-      
-      if (receiptError) {
-        console.error('Error generating bulk payment receipt:', receiptError);
-        return;
-      }
-      
-      const receiptUrl = receiptData?.receipt_url;
-      
-      const message = `مرحباً ${clientName}، تم استلام دفعة بمبلغ ₪${paidAmount.toLocaleString()}. شكراً لك!\n\nلعرض وصل الدفع:\n${receiptUrl || 'غير متوفر'}`;
-      
-      await supabase.functions.invoke('send-sms', {
-        body: {
-          phone: clientPhone,
-          message,
-          sms_type: 'payment_confirmation'
-        }
-      });
-      
-      toast.success('تم إرسال رسالة التأكيد للعميل');
-    } catch (error) {
-      console.error('Error sending payment confirmation SMS:', error);
+
+      if (error) throw error;
+      return data?.url || null;
+    } catch (err) {
+      console.error('Error uploading cheque image:', err);
+      return null;
     }
   };
 
@@ -617,9 +339,6 @@ export function DebtPaymentModal({
 
     setSaving(true);
     
-    // Collect all created payment IDs for bulk receipt
-    const allCreatedPaymentIds: string[] = [];
-    
     try {
       for (const paymentLine of paymentLines) {
         // Skip visa payments that are already paid via Tranzila
@@ -628,74 +347,48 @@ export function DebtPaymentModal({
         }
         
         if (paymentLine.paymentType !== 'visa') {
-          const splits = calculateSplitPayments(paymentLine.amount, paymentLine.paymentType);
-          
-          if (splits.length > 0) {
-            const paymentsToInsert = splits.map(split => ({
-              policy_id: split.policyId,
-              amount: split.amount,
+          // Upload cheque image first if exists
+          let chequeImageUrl: string | null = null;
+          if (paymentLine.paymentType === 'cheque' && paymentLine.pendingImages && paymentLine.pendingImages.length > 0) {
+            chequeImageUrl = await uploadChequeImage(crypto.randomUUID(), paymentLine.pendingImages[0]);
+          }
+
+          // Insert directly into client_payments (wallet-centric)
+          const { error } = await supabase
+            .from('client_payments')
+            .insert({
+              client_id: clientId,
+              amount: paymentLine.amount,
               payment_type: paymentLine.paymentType,
               payment_date: paymentLine.paymentDate,
               cheque_number: paymentLine.paymentType === 'cheque' ? paymentLine.chequeNumber : null,
+              cheque_image_url: chequeImageUrl,
               notes: paymentLine.notes || `تسديد دين`,
-              branch_id: split.branchId,
-            }));
-
-            const { data: insertedPayments, error } = await supabase
-              .from('policy_payments')
-              .insert(paymentsToInsert)
-              .select('id');
-            
-            if (error) throw error;
-
-            // Collect all inserted payment IDs
-            if (insertedPayments) {
-              for (const p of insertedPayments) {
-                allCreatedPaymentIds.push(p.id);
-              }
-            }
-
-            // Upload images
-            if ((paymentLine.paymentType === 'cash' || paymentLine.paymentType === 'cheque' || paymentLine.paymentType === 'transfer') && 
-                paymentLine.pendingImages && paymentLine.pendingImages.length > 0 && 
-                insertedPayments && insertedPayments.length > 0) {
-              
-              const firstPaymentId = insertedPayments[0].id;
-              
-              for (let imgIndex = 0; imgIndex < paymentLine.pendingImages.length; imgIndex++) {
-                const file = paymentLine.pendingImages[imgIndex];
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('entity_type', 'payment');
-                formData.append('entity_id', firstPaymentId);
-
-                try {
-                  const { data: uploadResult, error: uploadError } = await supabase.functions.invoke('upload-media', {
-                    body: formData,
-                  });
-
-                  if (!uploadError && uploadResult?.url) {
-                    await supabase.from('payment_images').insert({
-                      payment_id: firstPaymentId,
-                      image_url: uploadResult.url,
-                      image_type: imgIndex === 0 ? 'front' : 'back',
-                      sort_order: imgIndex,
-                    });
-                  }
-                } catch (uploadErr) {
-                  console.error('Error uploading payment image:', uploadErr);
-                }
-              }
-            }
-          }
+              branch_id: defaultBranchId,
+              created_by_admin_id: profile?.id,
+            });
+          
+          if (error) throw error;
         }
       }
 
       toast.success('تم تسديد الدفعات بنجاح');
       
-      // Send bulk receipt SMS with all payment IDs
-      if (allCreatedPaymentIds.length > 0) {
-        await sendPaymentConfirmationSms(totalPaymentAmount, allCreatedPaymentIds);
+      // Send confirmation SMS
+      if (clientPhone) {
+        try {
+          const message = `مرحباً ${clientName}، تم استلام دفعة بمبلغ ₪${totalPaymentAmount.toLocaleString()}. شكراً لك!`;
+          await supabase.functions.invoke('send-sms', {
+            body: {
+              phone: clientPhone,
+              message,
+              sms_type: 'payment_confirmation'
+            }
+          });
+          toast.success('تم إرسال رسالة التأكيد للعميل');
+        } catch (smsErr) {
+          console.error('Error sending payment SMS:', smsErr);
+        }
       }
       
       onOpenChange(false);
@@ -706,14 +399,6 @@ export function DebtPaymentModal({
     } finally {
       setSaving(false);
     }
-  };
-
-  const getPolicyTypeLabel = (policyType: string, policyTypeChild: string | null) => {
-    // For THIRD_FULL, show the child type (ثالث or شامل)
-    if (policyType === 'THIRD_FULL' && policyTypeChild) {
-      return policyChildLabels[policyTypeChild] || policyTypeLabels[policyType];
-    }
-    return policyTypeLabels[policyType] || policyType;
   };
 
   const activeVisaPayment = activeVisaPaymentIndex !== null ? paymentLines[activeVisaPaymentIndex] : null;
@@ -732,173 +417,63 @@ export function DebtPaymentModal({
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
-        ) : debtItems.length === 0 ? (
+        ) : balance.totalRemaining <= 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <CheckCircle className="h-12 w-12 mx-auto mb-4 text-green-500" />
             <p>لا توجد ديون مستحقة</p>
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Summary Cards */}
+            {/* Summary Cards - Simplified */}
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-muted/50 rounded-lg p-3 text-center">
-                <p className="text-xs text-muted-foreground">إجمالي السعر</p>
-                <p className="text-lg font-bold ltr-nums">₪{totalFullPrice.toLocaleString('en-US')}</p>
+                <p className="text-xs text-muted-foreground">إجمالي التأمين</p>
+                <p className="text-lg font-bold ltr-nums">₪{balance.totalInsurance.toLocaleString('en-US')}</p>
               </div>
               <div className="bg-green-500/10 rounded-lg p-3 text-center">
                 <p className="text-xs text-muted-foreground">المدفوع</p>
                 <p className="text-lg font-bold text-green-600 ltr-nums">
-                  ₪{(totalPaidAmount + paidVisaTotal).toLocaleString('en-US')}
+                  ₪{(balance.totalPaid + paidVisaTotal).toLocaleString('en-US')}
                 </p>
               </div>
               <div className="bg-destructive/10 rounded-lg p-3 text-center">
-                <p className="text-xs text-muted-foreground">المتبقي للدفع</p>
+                <p className="text-xs text-muted-foreground">إجمالي المتبقي</p>
                 <p className="text-lg font-bold text-destructive ltr-nums">
                   ₪{effectiveRemaining.toLocaleString('en-US')}
                 </p>
               </div>
             </div>
 
-            {/* Car Selection */}
-            {uniqueCars.length > 1 && (
-              <Card className="border-2 border-dashed border-primary/30">
-                <CardHeader className="p-3 pb-0">
-                  <Label className="text-base font-semibold flex items-center gap-2">
-                    <Car className="h-4 w-4" />
-                    اختر السيارة للدفع
-                  </Label>
-                </CardHeader>
-                <CardContent className="p-3 pt-2">
-                  <div className="space-y-2">
-                    {/* All Cars Option */}
-                    <div 
-                      onClick={() => setSelectedCars([])}
-                      className={cn(
-                        "flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all",
-                        selectedCars.length === 0 
-                          ? "border-primary bg-primary/5" 
-                          : "border-muted hover:border-primary/50"
-                      )}
-                    >
-                      <Checkbox checked={selectedCars.length === 0} />
-                      <div className="flex-1">
-                        <p className="font-medium">كل السيارات</p>
-                        <p className="text-sm text-muted-foreground">
-                          {uniqueCars.length} سيارات - إجمالي ₪{totalRemaining.toLocaleString('en-US')}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    {/* Individual Cars */}
-                    {uniqueCars.map(car => {
-                      const carItems = debtItems.filter(item => item.carNumber === car);
-                      const carTotal = carItems.reduce((sum, item) => sum + item.remainingTotal, 0);
-                      const isSelected = selectedCars.includes(car);
-                      
-                      return (
-                        <div 
-                          key={car}
-                          onClick={() => toggleCar(car)}
-                          className={cn(
-                            "flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all",
-                            isSelected 
-                              ? "border-primary bg-primary/5" 
-                              : "border-muted hover:border-primary/50"
-                          )}
-                        >
-                          <Checkbox checked={isSelected} />
-                          <div className="flex-1">
-                            <p className="font-bold text-lg font-mono ltr-nums">{car}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {carItems.length} عناصر - ₪{carTotal.toLocaleString('en-US')}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Debt Items List */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-base font-semibold">الوثائق</Label>
-                <Badge variant="secondary" className="text-xs">
-                  {filteredItems.length} عناصر
-                </Badge>
-              </div>
-              <div className="border rounded-lg divide-y max-h-72 overflow-auto scrollbar-thin">
-                {filteredItems.map(item => (
-                  <div key={item.itemKey} className="p-3 hover:bg-muted/30">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3">
-                        {item.isPackage ? (
-                          <Package className="h-5 w-5 text-primary mt-0.5" />
-                        ) : (
-                          <FileText className="h-5 w-5 text-muted-foreground mt-0.5" />
-                        )}
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Badge variant={item.isPackage ? "default" : "outline"} className="text-xs">
-                              {item.isPackage ? `📦 باقة تأمين` : getPolicyTypeLabel(item.policies[0]?.policyType, item.policies[0]?.policyTypeChild)}
-                            </Badge>
-                            {item.includesElzami && (
-                              <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-                                يشمل الإلزامي
-                              </Badge>
-                            )}
-                          </div>
-                          {item.carNumber && (
-                            <span className="text-xs text-muted-foreground font-mono">🚗 {item.carNumber}</span>
-                          )}
-                          {/* Show package components */}
-                          {item.isPackage && (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {item.policies.map((comp, idx) => (
-                                <span key={idx} className="text-xs text-muted-foreground">
-                                  {getPolicyTypeLabel(comp.policyType, comp.policyTypeChild)}
-                                  {idx < item.policies.length - 1 ? ' + ' : ''}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end gap-1 text-sm shrink-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground">السعر:</span>
-                          <span className="font-medium ltr-nums">₪{item.fullPrice.toLocaleString('en-US')}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground">المدفوع:</span>
-                          <span className="font-medium text-green-600 ltr-nums">₪{item.paidTotal.toLocaleString('en-US')}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground">المتبقي:</span>
-                          <span className="font-bold text-destructive ltr-nums">₪{item.remainingTotal.toLocaleString('en-US')}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+            {/* Info Badge */}
+            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-center">
+              <p className="text-sm text-blue-600">
+                💡 الدفعة تُخصم من إجمالي المتبقي للعميل مباشرة (نظام المحفظة الموحد)
+              </p>
             </div>
 
             {/* Payment Lines */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label className="text-base font-semibold">الدفعات</Label>
+                <Label className="text-base font-semibold">سطور الدفع</Label>
                 <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setChequeScannerOpen(true)}
+                    className="gap-2"
+                  >
+                    <Scan className="h-4 w-4" />
+                    مسح شيكات
+                  </Button>
                   <Popover open={splitPopoverOpen} onOpenChange={setSplitPopoverOpen}>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        <Split className="h-4 w-4 ml-2" />
+                      <Button type="button" variant="outline" size="sm" className="gap-2">
+                        <Split className="h-4 w-4" />
                         تقسيط
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-60" align="end">
+                    <PopoverContent className="w-64" align="end">
                       <div className="space-y-3">
                         <Label>عدد الأقساط</Label>
                         <Input
@@ -906,233 +481,235 @@ export function DebtPaymentModal({
                           min={2}
                           max={12}
                           value={splitCount}
-                          onChange={e => setSplitCount(parseInt(e.target.value) || 2)}
+                          onChange={(e) => setSplitCount(parseInt(e.target.value) || 2)}
                         />
+                        <p className="text-xs text-muted-foreground">
+                          قسط شهري: ₪{Math.floor(balance.totalRemaining / splitCount).toLocaleString('en-US')}
+                        </p>
                         <Button onClick={handleSplitPayments} className="w-full">
-                          تقسيم إلى {splitCount} دفعات
+                          تقسيم
                         </Button>
                       </div>
                     </PopoverContent>
                   </Popover>
-                  <Button variant="outline" size="sm" onClick={() => setChequeScannerOpen(true)}>
-                    <Scan className="h-4 w-4 ml-2" />
-                    مسح شيكات
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={addPaymentLine}>
-                    <Plus className="h-4 w-4 ml-2" />
-                    إضافة دفعة
+                  <Button type="button" variant="outline" size="sm" onClick={addPaymentLine} className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    إضافة سطر
                   </Button>
                 </div>
               </div>
 
               {paymentLines.map((payment, index) => (
-                <Card key={payment.id} className={cn(
-                  "p-3",
-                  payment.tranzilaPaid && "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800"
-                )}>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-muted-foreground">دفعة {index + 1}</span>
-                      {paymentLines.length > 1 && !payment.tranzilaPaid && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive"
-                          onClick={() => removePaymentLine(payment.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
+                <Card key={payment.id} className="border-2">
+                  <CardContent className="p-4 space-y-3">
+                    {/* Row 1: Amount + Type + Date */}
+                    <div className="grid grid-cols-12 gap-3">
+                      <div className="col-span-4">
                         <Label className="text-xs">المبلغ</Label>
                         <Input
                           type="number"
                           value={payment.amount || ''}
-                          onChange={e => updatePaymentLine(payment.id, 'amount', parseFloat(e.target.value) || 0)}
-                          placeholder={`أقصى: ₪${effectiveRemaining.toLocaleString()}`}
-                          disabled={payment.tranzilaPaid}
+                          onChange={(e) => updatePaymentLine(payment.id, 'amount', parseFloat(e.target.value) || 0)}
+                          className="ltr-nums text-lg font-bold"
+                          placeholder="0"
                         />
                       </div>
-                      <div>
-                        <Label className="text-xs">طريقة الدفع</Label>
-                        <Select 
-                          value={payment.paymentType} 
-                          onValueChange={v => updatePaymentLine(payment.id, 'paymentType', v)}
-                          disabled={payment.tranzilaPaid}
+                      <div className="col-span-4">
+                        <Label className="text-xs">نوع الدفع</Label>
+                        <Select
+                          value={payment.paymentType}
+                          onValueChange={(value) => updatePaymentLine(payment.id, 'paymentType', value as PaymentLine['paymentType'])}
                         >
                           <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {paymentTypes.map(pt => (
-                                <SelectItem key={pt.value} value={pt.value}>
-                                  <span className="flex items-center gap-2">
-                                    <pt.icon className="h-4 w-4" />
-                                    {pt.label}
-                                  </span>
-                                </SelectItem>
-                              ))}
+                            {paymentTypes.map(type => (
+                              <SelectItem key={type.value} value={type.value}>
+                                <span className="flex items-center gap-2">
+                                  <type.icon className="h-4 w-4" />
+                                  {type.label}
+                                </span>
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label className="text-xs">تاريخ الدفع</Label>
+                      <div className="col-span-3">
+                        <Label className="text-xs">التاريخ</Label>
                         <ArabicDatePicker
                           value={payment.paymentDate}
-                          onChange={(date) => updatePaymentLine(payment.id, 'paymentDate', date)}
-                          disabled={payment.tranzilaPaid}
-                          compact
+                          onChange={(date) => updatePaymentLine(payment.id, 'paymentDate', date || '')}
                         />
                       </div>
-                      {payment.paymentType === 'cheque' && (
+                      <div className="col-span-1 flex items-end justify-center">
+                        {paymentLines.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removePaymentLine(payment.id)}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Cheque Number */}
+                    {payment.paymentType === 'cheque' && (
+                      <div className="grid grid-cols-2 gap-3">
                         <div>
                           <Label className="text-xs">رقم الشيك</Label>
                           <Input
                             value={payment.chequeNumber || ''}
-                            onChange={e => updatePaymentLine(payment.id, 'chequeNumber', sanitizeChequeNumber(e.target.value))}
-                            placeholder="رقم الشيك"
+                            onChange={(e) => updatePaymentLine(payment.id, 'chequeNumber', sanitizeChequeNumber(e.target.value))}
+                            placeholder="أدخل رقم الشيك"
                             maxLength={CHEQUE_NUMBER_MAX_LENGTH}
+                            className="ltr-nums"
                           />
                         </div>
-                      )}
-                    </div>
+                        <div>
+                          <Label className="text-xs">صورة الشيك</Label>
+                          <div className="flex items-center gap-2">
+                            <label className="flex-1 cursor-pointer">
+                              <input
+                                type="file"
+                                accept="image/*,application/pdf"
+                                multiple
+                                onChange={(e) => handleImageSelect(payment.id, e)}
+                                className="hidden"
+                              />
+                              <Button type="button" variant="outline" className="w-full gap-2" asChild>
+                                <span>
+                                  <Upload className="h-4 w-4" />
+                                  {getPreviewUrls(payment.id).length > 0 ? `${getPreviewUrls(payment.id).length} صور` : 'رفع صورة'}
+                                </span>
+                              </Button>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
-                    {/* Visa Pay Button */}
+                    {/* Image Previews */}
+                    {getPreviewUrls(payment.id).length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {getPreviewUrls(payment.id).map((url, imgIndex) => (
+                          <div key={imgIndex} className="relative">
+                            <img src={url} alt="صورة" className="h-16 w-16 object-cover rounded border" />
+                            <button
+                              type="button"
+                              onClick={() => removeImage(payment.id, imgIndex)}
+                              className="absolute -top-1 -right-1 bg-destructive text-white rounded-full p-0.5"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Visa Payment Button */}
                     {payment.paymentType === 'visa' && (
                       <div className="flex items-center gap-2">
                         {payment.tranzilaPaid ? (
-                          <Badge className="bg-green-500">
-                            <CheckCircle className="h-3 w-3 ml-1" />
-                            تم الدفع
-                          </Badge>
+                          <div className="flex items-center gap-2 text-green-600 font-medium">
+                            <CheckCircle className="h-5 w-5" />
+                            <span>تم الدفع بنجاح</span>
+                          </div>
                         ) : (
                           <Button
-                            variant="outline"
-                            size="sm"
+                            type="button"
                             onClick={() => handleVisaPayClick(index)}
-                            disabled={payment.amount <= 0}
+                            disabled={!payment.amount || payment.amount <= 0}
+                            className="gap-2"
                           >
-                            <CreditCard className="h-4 w-4 ml-2" />
-                            ادفع الآن
+                            <CreditCard className="h-4 w-4" />
+                            ادفع ₪{payment.amount?.toLocaleString('en-US') || 0}
                           </Button>
                         )}
                       </div>
                     )}
 
-                    {/* Image Upload Section */}
-                    {(payment.paymentType === 'cash' || payment.paymentType === 'cheque' || payment.paymentType === 'transfer') && (
-                      <div className="pt-3 border-t border-border/50">
-                        <div className="flex-1">
-                          <Label className="text-xs text-muted-foreground mb-2 block">
-                            {payment.paymentType === 'cheque' ? 'صور الشيك (أمامي/خلفي)' : payment.paymentType === 'transfer' ? 'صور إيصال التحويل' : 'صور إيصال الدفع'}
-                          </Label>
-                          <div className="flex flex-wrap gap-2">
-                            {getPreviewUrls(payment.id).map((url, imgIndex) => (
-                              <div key={imgIndex} className="relative group">
-                                <img 
-                                  src={url} 
-                                  alt="" 
-                                  className="h-14 w-18 object-cover rounded border"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => removeImage(payment.id, imgIndex)}
-                                  className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
-                              </div>
-                            ))}
-                            <label className="h-14 w-18 border-2 border-dashed rounded flex flex-col items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
-                              <input 
-                                type="file" 
-                                accept="image/*,application/pdf" 
-                                multiple 
-                                onChange={(e) => handleImageSelect(payment.id, e)} 
-                                className="hidden" 
-                              />
-                              <Upload className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-[10px] text-muted-foreground mt-0.5">إضافة</span>
-                            </label>
-                          </div>
-                          {payment.pendingImages && payment.pendingImages.length > 0 && (
-                            <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
-                              <ImageIcon className="h-3 w-3" />
-                              {payment.pendingImages.length} ملفات سيتم رفعها عند الحفظ
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                    {/* Notes */}
+                    <div>
+                      <Label className="text-xs">ملاحظات (اختياري)</Label>
+                      <Input
+                        value={payment.notes || ''}
+                        onChange={(e) => updatePaymentLine(payment.id, 'notes', e.target.value)}
+                        placeholder="ملاحظات..."
+                      />
+                    </div>
+                  </CardContent>
                 </Card>
               ))}
             </div>
 
-            {/* Total and Validation */}
-            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-              <span className="font-medium">مجموع الدفعات:</span>
-              <span className={cn("text-lg font-bold", isOverpaying && "text-destructive")}>
-                ₪{totalPaymentAmount.toLocaleString()}
-              </span>
-            </div>
-
-            {isOverpaying && (
-              <p className="text-sm text-destructive flex items-center gap-1">
-                <AlertCircle className="h-4 w-4" />
-                مجموع الدفعات أكبر من المبلغ المتبقي (₪{effectiveRemaining.toLocaleString()})
-              </p>
-            )}
-
-            {hasUnpaidVisa && (
-              <div className="flex items-center gap-2 text-amber-600 text-sm p-2 bg-amber-50 dark:bg-amber-950/20 rounded-lg">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>يرجى إتمام الدفع بالبطاقة أولاً قبل الحفظ</span>
+            {/* Payment Summary */}
+            <div className={cn(
+              "rounded-lg p-4",
+              isOverpaying ? "bg-destructive/10 border border-destructive/30" : "bg-primary/10"
+            )}>
+              <div className="flex items-center justify-between">
+                <span className="font-medium">إجمالي المبلغ المدخل:</span>
+                <span className={cn(
+                  "text-xl font-bold ltr-nums",
+                  isOverpaying ? "text-destructive" : "text-primary"
+                )}>
+                  ₪{totalPaymentAmount.toLocaleString('en-US')}
+                </span>
               </div>
-            )}
+              {isOverpaying && (
+                <p className="text-sm text-destructive mt-2">
+                  ⚠️ المبلغ المدخل أكبر من المتبقي. يرجى تعديل المبلغ.
+                </p>
+              )}
+              {hasUnpaidVisa && (
+                <p className="text-sm text-amber-600 mt-2">
+                  ⚠️ يوجد دفعة فيزا غير مكتملة. يرجى إتمام الدفع.
+                </p>
+              )}
+            </div>
           </div>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             إلغاء
           </Button>
-          <Button onClick={handleSubmit} disabled={!isValid || saving || debtItems.length === 0}>
-            {saving && <Loader2 className="h-4 w-4 animate-spin ml-2" />}
-            تسديد المبلغ
+          <Button
+            onClick={handleSubmit}
+            disabled={!isValid || saving || loading}
+            className="gap-2"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+            تأكيد الدفع
           </Button>
         </DialogFooter>
-      </DialogContent>
 
-      {/* Tranzila Payment Modal */}
-      {activeTranzilaPolicyId && activeVisaPayment && (
-        <TranzilaPaymentModal
-          open={tranzilaModalOpen}
-          onOpenChange={setTranzilaModalOpen}
-          policyId={activeTranzilaPolicyId}
-          amount={activeVisaPayment.amount}
-          paymentDate={activeVisaPayment.paymentDate}
-          notes={activeVisaPayment.notes || `تسديد دين`}
-          onSuccess={handleTranzilaSuccess}
-          onFailure={() => {
-            setTranzilaModalOpen(false);
-            setActiveVisaPaymentIndex(null);
-            setActiveTranzilaPolicyId(null);
-          }}
+        {/* Cheque Scanner */}
+        <ChequeScannerDialog
+          open={chequeScannerOpen}
+          onOpenChange={setChequeScannerOpen}
+          onConfirm={handleScannedCheques}
         />
-      )}
 
-      <ChequeScannerDialog
-        open={chequeScannerOpen}
-        onOpenChange={setChequeScannerOpen}
-        onConfirm={handleScannedCheques}
-      />
+        {/* Tranzila Modal */}
+        {activeVisaPayment && (
+          <TranzilaPaymentModal
+            open={tranzilaModalOpen}
+            onOpenChange={setTranzilaModalOpen}
+            policyId={clientId}
+            amount={activeVisaPayment.amount}
+            paymentDate={activeVisaPayment.paymentDate}
+            notes={activeVisaPayment.notes}
+            onSuccess={handleTranzilaSuccess}
+            onFailure={() => setTranzilaModalOpen(false)}
+          />
+        )}
+      </DialogContent>
     </Dialog>
   );
 }

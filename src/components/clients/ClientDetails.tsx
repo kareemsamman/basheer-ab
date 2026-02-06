@@ -169,6 +169,7 @@ interface WalletBalance {
   transaction_count: number;
 }
 
+// Unified payment record supporting both policy_payments (legacy) and client_payments (wallet-centric)
 interface PaymentRecord {
   id: string;
   amount: number;
@@ -180,12 +181,15 @@ interface PaymentRecord {
   refused: boolean | null;
   notes: string | null;
   locked: boolean | null;
-  policy_id: string;
+  // For legacy payments
+  policy_id: string | null;
   policy: {
     id: string;
     policy_type_parent: string;
     insurance_price: number;
   } | null;
+  // Source of payment
+  source: 'policy' | 'client';
 }
 
 interface ClientDetailsProps {
@@ -277,6 +281,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
   
   // Payment delete state
   const [deletePaymentId, setDeletePaymentId] = useState<string | null>(null);
+  const [deletePaymentSource, setDeletePaymentSource] = useState<'policy' | 'client' | null>(null);
   const [deletePaymentDialogOpen, setDeletePaymentDialogOpen] = useState(false);
   const [deletingPayment, setDeletingPayment] = useState(false);
   
@@ -526,37 +531,55 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
 
   const fetchPayments = async () => {
     setLoadingPayments(true);
+    setLoadingPayments(true);
     try {
-      // Get all policies for this client first
+      // Fetch from client_payments (new wallet-centric)
+      const { data: clientPaymentsData, error: clientPaymentsError } = await supabase
+        .from('client_payments')
+        .select('id, amount, payment_date, payment_type, cheque_number, cheque_image_url, refused, notes')
+        .eq('client_id', client.id)
+        .order('payment_date', { ascending: false });
+
+      if (clientPaymentsError) throw clientPaymentsError;
+
+      // Map client payments to unified format
+      const clientPayments: PaymentRecord[] = (clientPaymentsData || []).map(p => ({
+        ...p,
+        card_last_four: null,
+        locked: false,
+        policy_id: null,
+        policy: null,
+        source: 'client' as const,
+      }));
+
+      // Also fetch legacy policy_payments for historical data
       const { data: policiesData } = await supabase
         .from('policies')
         .select('id, policy_type_parent, insurance_price')
         .eq('client_id', client.id)
         .is('deleted_at', null);
 
-      if (!policiesData || policiesData.length === 0) {
-        setPayments([]);
-        return;
+      let legacyPayments: PaymentRecord[] = [];
+      if (policiesData && policiesData.length > 0) {
+        const policyIds = policiesData.map(p => p.id);
+        const { data: policyPaymentsData } = await supabase
+          .from('policy_payments')
+          .select('id, amount, payment_date, payment_type, cheque_number, cheque_image_url, card_last_four, refused, notes, policy_id, locked')
+          .in('policy_id', policyIds)
+          .order('payment_date', { ascending: false });
+
+        legacyPayments = (policyPaymentsData || []).map(payment => ({
+          ...payment,
+          policy: policiesData.find(p => p.id === payment.policy_id) || null,
+          source: 'policy' as const,
+        }));
       }
 
-      const policyIds = policiesData.map(p => p.id);
+      // Combine and sort by date
+      const allPayments = [...clientPayments, ...legacyPayments]
+        .sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime());
 
-      // Get all payments for these policies
-      const { data: paymentsData, error } = await supabase
-        .from('policy_payments')
-        .select('id, amount, payment_date, payment_type, cheque_number, cheque_image_url, card_last_four, refused, notes, policy_id, locked')
-        .in('policy_id', policyIds)
-        .order('payment_date', { ascending: false });
-
-      if (error) throw error;
-
-      // Map payments with policy info
-      const paymentsWithPolicy = (paymentsData || []).map(payment => ({
-        ...payment,
-        policy: policiesData.find(p => p.id === payment.policy_id) || null,
-      }));
-
-      setPayments(paymentsWithPolicy);
+      setPayments(allPayments);
     } catch (error) {
       console.error('Error fetching payments:', error);
     } finally {
@@ -667,14 +690,17 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
     }
   };
 
-  // Delete payment handler
+  // Delete payment handler (supports both policy_payments and client_payments)
   const handleDeletePayment = async () => {
     if (!deletePaymentId) return;
     
     setDeletingPayment(true);
     try {
+      // Determine which table to delete from
+      const tableName = deletePaymentSource === 'client' ? 'client_payments' : 'policy_payments';
+      
       const { error } = await supabase
-        .from('policy_payments')
+        .from(tableName)
         .delete()
         .eq('id', deletePaymentId);
       
@@ -689,6 +715,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
       setDeletingPayment(false);
       setDeletePaymentDialogOpen(false);
       setDeletePaymentId(null);
+      setDeletePaymentSource(null);
     }
   };
 
@@ -1672,10 +1699,16 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                             </div>
                           </TableCell>
                           <TableCell>
-                            {payment.policy && (
+                            {payment.source === 'client' ? (
+                              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                                محفظة العميل
+                              </Badge>
+                            ) : payment.policy ? (
                               <Badge className={cn("border", policyTypeColors[payment.policy.policy_type_parent])}>
                                 {policyTypeLabels[payment.policy.policy_type_parent] || payment.policy.policy_type_parent}
                               </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
                             )}
                           </TableCell>
                           <TableCell className="font-mono">{payment.cheque_number || '-'}</TableCell>
@@ -1729,6 +1762,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                                     className="text-destructive focus:text-destructive"
                                     onClick={() => {
                                       setDeletePaymentId(payment.id);
+                                      setDeletePaymentSource(payment.source);
                                       setDeletePaymentDialogOpen(true);
                                     }}
                                   >
