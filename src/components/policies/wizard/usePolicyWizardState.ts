@@ -76,12 +76,10 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
   const [loadingClients, setLoadingClients] = useState(false);
   const [checkingDuplicate, setCheckingDuplicate] = useState(false);
 
-  // Auto-select preselected client (with race condition prevention)
+  // Auto-select preselected client
   useEffect(() => {
     if (!preselectedClientId || !open) return;
     if (selectedClient?.id === preselectedClientId) return;
-
-    let cancelled = false;
 
     const fetchPreselectedClient = async () => {
       setLoadingClients(true);
@@ -92,10 +90,6 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
         .single();
       
       setLoadingClients(false);
-      
-      // Don't update if cancelled (user changed client manually or dialog closed)
-      if (cancelled) return;
-      
       if (!error && data) {
         setSelectedClient(data as Client);
         setCreateNewClient(false);
@@ -103,11 +97,6 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     };
 
     fetchPreselectedClient();
-    
-    // Cleanup: cancel if preselectedClientId changes or dialog closes
-    return () => {
-      cancelled = true;
-    };
   }, [preselectedClientId, open]);
 
   // Track if renewal data has been processed (to avoid re-processing)
