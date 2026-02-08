@@ -55,12 +55,14 @@ import {
   ChevronDown,
   User,
   Loader2,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { PolicyDetailsDrawer } from "@/components/policies/PolicyDetailsDrawer";
 import { sanitizeChequeNumber, CHEQUE_NUMBER_MAX_LENGTH, getEffectiveChequeStatus, isChequeOverdue } from "@/lib/chequeUtils";
+import { AddCustomerChequeModal } from "@/components/cheques/AddCustomerChequeModal";
 
 interface PaymentImage {
   id: string;
@@ -187,6 +189,9 @@ export default function Cheques() {
 
   // Expanded customers in tree view
   const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
+
+  // Add customer cheque modal
+  const [addChequeModalOpen, setAddChequeModalOpen] = useState(false);
 
   // Group cheques by customer
   const customerGroups = useMemo((): CustomerGroup[] => {
@@ -1052,6 +1057,15 @@ export default function Cheques() {
                   <AlertCircle className="ml-1 h-4 w-4" />
                   متأخرة
                 </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => setAddChequeModalOpen(true)}
+                  className="gap-1"
+                >
+                  <Plus className="h-4 w-4" />
+                  إضافة شيكات لعميل
+                </Button>
                 <div className="flex gap-1">
                   <Button variant="outline" size="sm" onClick={expandAll}>توسيع الكل</Button>
                   <Button variant="outline" size="sm" onClick={collapseAll}>طي الكل</Button>
@@ -1353,6 +1367,15 @@ export default function Cheques() {
         policyId={selectedPolicyId}
         onViewRelatedPolicy={(newPolicyId) => {
           setSelectedPolicyId(newPolicyId);
+        }}
+      />
+      {/* Add Customer Cheque Modal */}
+      <AddCustomerChequeModal
+        open={addChequeModalOpen}
+        onOpenChange={setAddChequeModalOpen}
+        onSuccess={() => {
+          fetchCheques();
+          fetchSummaryStats();
         }}
       />
     </MainLayout>
