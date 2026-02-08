@@ -1,157 +1,115 @@
 
-# خطة إصلاح عدم ظهور صور الشيكات في جميع الأماكن
+# خطة إصلاح مشكلة اختيار العميل الخاطئ عند إنشاء وثيقة جديدة
 
-## المشكلة الجذرية
+## المشكلة
 
-بعد التحقق من قاعدة البيانات، وجدت أن حقل `cheque_image_url` فارغ (`null`) لجميع الشيكات:
+عندما يفتح المستخدم نافذة إنشاء وثيقة جديدة من ملف عميل معين (مثل "Kareem Test")، ثم يغيّر العميل لآخر من القائمة، أحياناً يتم إنشاء الوثيقة للعميل الأصلي بدلاً من العميل الجديد.
 
-```sql
-SELECT cheque_number, cheque_image_url FROM policy_payments WHERE cheque_number IN ('80001251', '80001252', '80001253');
+## السبب الجذري
 
--- النتيجة:
--- 80001251 | null
--- 80001252 | null  
--- 80001253 | null
+**Race Condition في الـ async effect**:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  1. المستخدم في ملف "كريم" → يضغط "وثيقة جديدة"                      │
+│  2. preselectedClientId = "كريم_ID"                                  │
+│  3. useEffect يبدأ fetchPreselectedClient() (async) ⏳               │
+│  4. المستخدم يضغط "تغيير" → يختار "محمد" من القائمة ✓                │
+│  5. selectedClient = "محمد" (صحيح حتى الآن)                          │
+│  6. الـ async call ينتهي → setSelectedClient("كريم") ❌              │
+│  7. النتيجة: العميل "كريم" بدلاً من "محمد" ❌                         │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-**السبب**: عند حفظ الدفعات، لا يتم تضمين `cheque_image_url` في أمر الإدراج.
+## الحل
 
----
+### التغيير المطلوب في `usePolicyWizardState.ts`
 
-## الملفات المتأثرة والإصلاحات المطلوبة
+إضافة آلية إلغاء (cleanup) للـ effect الـ async لمنع تعيين العميل القديم إذا تغيّر:
 
-### 1. إصلاح `DebtPaymentModal.tsx` (نافذة تسديد الديون)
-
-**المشكلة**: سطر 656-665 لا يحفظ `cheque_image_url`:
-
+**قبل (السطور 79-100):**
 ```typescript
-// الكود الحالي
-const paymentsToInsert = splits.map(split => ({
-  policy_id: split.policyId,
-  amount: split.amount,
-  payment_type: paymentLine.paymentType,
-  payment_date: paymentLine.paymentDate,
-  cheque_number: paymentLine.paymentType === 'cheque' ? paymentLine.chequeNumber : null,
-  notes: paymentLine.notes || `تسديد دين`,
-  branch_id: split.branchId,
-  batch_id: batchId,
-  // ❌ cheque_image_url غير موجود!
-}));
+// Auto-select preselected client
+useEffect(() => {
+  if (!preselectedClientId || !open) return;
+  if (selectedClient?.id === preselectedClientId) return;
+
+  const fetchPreselectedClient = async () => {
+    setLoadingClients(true);
+    const { data, error } = await supabase
+      .from('clients')
+      .select('...')
+      .eq('id', preselectedClientId)
+      .single();
+    
+    setLoadingClients(false);
+    if (!error && data) {
+      setSelectedClient(data as Client);  // ❌ Race condition هنا!
+      setCreateNewClient(false);
+    }
+  };
+
+  fetchPreselectedClient();
+}, [preselectedClientId, open]);
 ```
 
-**الحل**: إضافة `cheque_image_url` للإدراج:
-
+**بعد:**
 ```typescript
-const paymentsToInsert = splits.map(split => ({
-  // ... الحقول الموجودة
-  cheque_image_url: paymentLine.paymentType === 'cheque' ? paymentLine.cheque_image_url : null,
-}));
+// Auto-select preselected client
+useEffect(() => {
+  if (!preselectedClientId || !open) return;
+  if (selectedClient?.id === preselectedClientId) return;
+
+  let cancelled = false;  // Flag لإلغاء الـ async call
+
+  const fetchPreselectedClient = async () => {
+    setLoadingClients(true);
+    const { data, error } = await supabase
+      .from('clients')
+      .select('...')
+      .eq('id', preselectedClientId)
+      .single();
+    
+    setLoadingClients(false);
+    
+    // ✅ تحقق: لا تعيّن العميل إذا تم الإلغاء أو إذا تغيّر العميل
+    if (cancelled) return;
+    
+    if (!error && data) {
+      setSelectedClient(data as Client);
+      setCreateNewClient(false);
+    }
+  };
+
+  fetchPreselectedClient();
+  
+  // ✅ Cleanup: إلغاء إذا تغيّر preselectedClientId أو أُغلق الـ dialog
+  return () => {
+    cancelled = true;
+  };
+}, [preselectedClientId, open]);
 ```
-
----
-
-### 2. إصلاح `PolicyPaymentsSection.tsx` (سجل الدفعات في الوثيقة)
-
-**المشكلة 1**: Interface لا يحتوي على `cheque_image_url`:
-
-```typescript
-// سطر 64-73
-interface PaymentLine {
-  id: string;
-  amount: number;
-  paymentType: 'cash' | 'cheque' | 'transfer' | 'visa';
-  paymentDate: string;
-  chequeNumber?: string;
-  notes?: string;
-  tranzilaPaid?: boolean;
-  pendingImages?: File[];
-  // ❌ cheque_image_url غير موجود!
-}
-```
-
-**الحل**: إضافة الحقل للـ interface.
-
-**المشكلة 2**: Insert لا يحفظ `cheque_image_url` (سطر 479-491):
-
-```typescript
-const { data, error } = await supabase
-  .from('policy_payments')
-  .insert({
-    policy_id: policyId,
-    amount: paymentLine.amount,
-    payment_type: paymentLine.paymentType,
-    payment_date: paymentLine.paymentDate,
-    cheque_number: paymentLine.paymentType === 'cheque' ? paymentLine.chequeNumber : null,
-    cheque_status: paymentLine.paymentType === 'cheque' ? 'pending' : null,
-    refused: false,
-    notes: paymentLine.notes || null,
-    branch_id: branchId || null,
-    // ❌ cheque_image_url غير موجود!
-  })
-```
-
-**الحل**: إضافة `cheque_image_url` للإدراج.
-
-**المشكلة 3**: `handleScannedCheques` لا يحفظ CDN URL (سطر 304-336):
-
-```typescript
-const payment: PaymentLine = {
-  id: paymentId,
-  amount: cheque.amount || 0,
-  paymentType: 'cheque' as const,
-  paymentDate: cheque.payment_date || new Date().toISOString().split('T')[0],
-  chequeNumber: cheque.cheque_number || '',
-  // ❌ cheque.image_url (CDN) غير محفوظ!
-};
-```
-
-**الحل**: حفظ `cheque.image_url` في `cheque_image_url`.
-
----
 
 ## ملخص التغييرات
 
 | الملف | السطر | التغيير |
 |-------|-------|---------|
-| `PolicyPaymentsSection.tsx` | 64-73 | إضافة `cheque_image_url?: string` للـ interface |
-| `PolicyPaymentsSection.tsx` | 304-336 | حفظ `cheque.image_url` في `handleScannedCheques` |
-| `PolicyPaymentsSection.tsx` | 479-491 | إضافة `cheque_image_url` للإدراج |
-| `DebtPaymentModal.tsx` | 656-665 | إضافة `cheque_image_url` للإدراج |
+| `usePolicyWizardState.ts` | 79-100 | إضافة `cancelled` flag و cleanup function |
 
----
+## التحسين الإضافي (اختياري)
 
-## التدفق بعد الإصلاح
+لمنع المشكلة بشكل أكثر صرامة، يمكن إضافة تحقق إضافي عند انتهاء الـ async call:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  1. المستخدم يمسح الشيكات بالماسح الضوئي                     │
-│     ↓                                                        │
-│  2. Edge Function يحلل الشيكات ويرفعها إلى CDN              │
-│     ↓                                                        │
-│  3. يُرجع image_url (رابط CDN) مع بيانات الشيك              │
-│     ↓                                                        │
-│  4. Frontend يحفظ image_url في cheque_image_url ✓           │
-│     ↓                                                        │
-│  5. عند الحفظ، cheque_image_url يُدرج في قاعدة البيانات ✓    │
-│     ↓                                                        │
-│  6. UI يعرض الصور من cheque_image_url ✓                     │
-└─────────────────────────────────────────────────────────────┘
+```typescript
+// ✅ لا تعيّن إذا تم تغيير العميل يدوياً خلال فترة التحميل
+if (cancelled || (selectedClient && selectedClient.id !== preselectedClientId)) return;
 ```
 
----
+لكن هذا يتطلب جعل `selectedClient` جزءاً من الـ dependencies مما قد يسبب إعادة تشغيل غير مرغوبة. لذلك الحل الأول (cancelled flag) هو الأفضل.
 
 ## النتيجة المتوقعة
 
 بعد التنفيذ:
-1. ✅ صور الشيكات ستُحفظ في قاعدة البيانات عند الإضافة
-2. ✅ صور الشيكات ستظهر في سجل الدفعات (Policy Details)
-3. ✅ صور الشيكات ستظهر في صفحة /cheques
-4. ✅ صور الشيكات ستظهر في نافذة تسديد الديون
-
----
-
-## ملاحظة هامة
-
-الشيكات الموجودة حالياً (80001251, 80001252, 80001253) ليس لديها صور محفوظة في قاعدة البيانات. لإصلاحها يجب:
-- إما إعادة مسحها بعد تطبيق الإصلاح
-- أو تحديث البيانات يدوياً في قاعدة البيانات إذا كانت الصور موجودة على CDN
+- ✅ عند فتح النافذة من ملف عميل، سيتم اختياره تلقائياً
+- ✅ إذا غيّر المستخدم العميل قبل انتهاء التحميل، لن يتم استبدال اختياره
+- ✅ لا race condition بين الـ async fetch واختيار المستخدم
