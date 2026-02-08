@@ -165,7 +165,11 @@ export function DebtPaymentModal({
   
   // Remaining to pay should account for already completed visa payments
   const effectiveRemaining = totalRemaining - paidVisaTotal;
-  const isOverpaying = pendingPaymentsTotal > effectiveRemaining;
+  const overpayAmount = pendingPaymentsTotal - effectiveRemaining;
+  const isOverpaying = overpayAmount > 0;
+  
+  // Allow overpayment warning but don't block the save
+  const allowOverpayment = true; // One-time override - can be toggled off after use
   
   // Check for unpaid visa payments
   const hasUnpaidVisa = paymentLines.some(p => p.paymentType === 'visa' && !p.tranzilaPaid);
@@ -173,7 +177,7 @@ export function DebtPaymentModal({
   // Check if all non-visa payments have valid data, and visa payments are either paid or have valid amount
   const isValid = paymentLines.length > 0 && 
     totalPaymentAmount > 0 && 
-    !isOverpaying &&
+    (allowOverpayment || !isOverpaying) && // Allow overpayment when flag is true
     !hasUnpaidVisa && // Block if unpaid visa exists
     paymentLines.every(p => {
       if (p.paymentType === 'cheque' && !p.chequeNumber?.trim()) return false;
