@@ -71,6 +71,7 @@ interface PolicyDetails {
   insurance_price: number;
   payed_for_company: number | null;
   profit: number | null;
+  office_commission: number | null;
   cancelled: boolean | null;
   transferred: boolean | null;
   transferred_car_number: string | null;
@@ -1345,6 +1346,16 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                               <p className="font-bold text-lg text-emerald-700 ltr-nums">{formatCurrency(policy.profit)}</p>
                             </div>
                           </div>
+                        </div>
+                      </Section>
+                    )}
+
+                    {/* Office Commission - show for ELZAMI if > 0 */}
+                    {isAdmin && policy.policy_type_parent === 'ELZAMI' && (policy.office_commission || 0) > 0 && (
+                      <Section title="عمولة للمكتب" icon={CircleDollarSign}>
+                        <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                          <p className="font-bold text-lg text-amber-700 ltr-nums">{formatCurrency(policy.office_commission)}</p>
+                          <p className="text-xs text-amber-600 mt-1">مستحقة من العميل لصالح AB</p>
                         </div>
                       </Section>
                     )}

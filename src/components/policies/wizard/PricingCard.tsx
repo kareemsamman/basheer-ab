@@ -12,8 +12,7 @@ interface PricingCardProps {
 
 export function PricingCard({ pricing, showAddons = true, className }: PricingCardProps) {
   const hasAddons = pricing.roadServicePrice > 0 || pricing.accidentFeePrice > 0 || pricing.elzamiPrice > 0 || pricing.thirdFullPrice > 0;
-  const hasElzami = pricing.elzamiPrice > 0;
-  const hasThirdFull = pricing.thirdFullPrice > 0;
+  const hasCommission = pricing.officeCommission > 0;
   
   return (
     <Card className={cn(
@@ -71,11 +70,27 @@ export function PricingCard({ pricing, showAddons = true, className }: PricingCa
             <span className="ltr-nums">₪{pricing.accidentFeePrice.toLocaleString()}</span>
           </div>
         )}
+
+        {/* Office Commission */}
+        {hasCommission && (
+          <div className="flex justify-between text-amber-600">
+            <span>+ عمولة للمكتب:</span>
+            <span className="font-medium ltr-nums">₪{pricing.officeCommission.toLocaleString()}</span>
+          </div>
+        )}
         
         <div className="flex justify-between pt-2 border-t font-semibold text-lg">
           <span>الإجمالي:</span>
           <span className="text-primary ltr-nums">₪{pricing.totalPrice.toLocaleString()}</span>
         </div>
+
+        {/* Payable (debt) if different from total */}
+        {hasCommission && (
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>المستحق على العميل:</span>
+            <span className="ltr-nums">₪{pricing.payablePrice.toLocaleString()}</span>
+          </div>
+        )}
         
       </div>
     </Card>

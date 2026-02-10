@@ -116,6 +116,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
     start_date: policy.start_date,
     end_date: policy.end_date,
     insurance_price: policy.insurance_price?.toString() || "0",
+    office_commission: "0", // Will be fetched from DB
     cancelled: policy.cancelled || false,
     transferred: policy.transferred || false,
     transferred_car_number: policy.transferred_car_number || "",
@@ -149,6 +150,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
         start_date: policy.start_date,
         end_date: policy.end_date,
         insurance_price: policy.insurance_price?.toString() || "0",
+        office_commission: "0",
         cancelled: policy.cancelled || false,
         transferred: policy.transferred || false,
         transferred_car_number: policy.transferred_car_number || "",
@@ -162,6 +164,19 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
       
       setFormData(initialFormData);
       setOriginalDates({ start_date: policy.start_date, end_date: policy.end_date });
+
+      // Fetch office_commission from DB
+      const fetchCommission = async () => {
+        const { data } = await supabase
+          .from('policies')
+          .select('office_commission')
+          .eq('id', policy.id)
+          .single();
+        if (data?.office_commission != null) {
+          setFormData(f => ({ ...f, office_commission: data.office_commission.toString() }));
+        }
+      };
+      fetchCommission();
     }
   }, [open, policy]);
 
@@ -279,6 +294,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
           insurance_price: insurancePrice,
           payed_for_company: companyPayment,
           profit,
+          office_commission: parseFloat(formData.office_commission) || 0,
           cancelled: formData.cancelled,
           transferred: formData.transferred,
           transferred_car_number: formData.transferred ? formData.transferred_car_number : null,
@@ -468,6 +484,23 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
                 className="h-9 text-left ltr-input"
               />
             </div>
+
+            {/* Office Commission - only for ELZAMI */}
+            {formData.policy_type_parent === 'ELZAMI' && (
+              <div className="space-y-1.5">
+                <Label className="text-right block text-sm text-amber-600">عمولة للمكتب (₪)</Label>
+                <Input
+                  type="number"
+                  value={formData.office_commission}
+                  onChange={(e) => setFormData(f => ({ ...f, office_commission: e.target.value }))}
+                  className="h-9 text-left ltr-input"
+                  placeholder="0"
+                />
+                <p className="text-xs text-muted-foreground">
+                  تدخل في حساب العميل كدين
+                </p>
+              </div>
+            )}
 
             {/* ELZAMI Commission Display */}
             {formData.policy_type_parent === 'ELZAMI' && formData.company_id && (

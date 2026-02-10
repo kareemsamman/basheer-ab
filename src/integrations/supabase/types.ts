@@ -2976,6 +2976,7 @@ export type Database = {
           is_under_24: boolean | null
           legacy_wp_id: number | null
           notes: string | null
+          office_commission: number
           payed_for_company: number | null
           policy_number: string | null
           policy_type_child:
@@ -3021,6 +3022,7 @@ export type Database = {
           is_under_24?: boolean | null
           legacy_wp_id?: number | null
           notes?: string | null
+          office_commission?: number
           payed_for_company?: number | null
           policy_number?: string | null
           policy_type_child?:
@@ -3066,6 +3068,7 @@ export type Database = {
           is_under_24?: boolean | null
           legacy_wp_id?: number | null
           notes?: string | null
+          office_commission?: number
           payed_for_company?: number | null
           policy_number?: string | null
           policy_type_child?:

@@ -287,6 +287,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     insurance_price: "",
     broker_buy_price: "",
     full_car_value: "",
+    office_commission: "0",
     cancelled: false,
     transferred: false,
     notes: "",
@@ -348,13 +349,19 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     const accidentAddon = packageAddons.find(a => a.type === 'accident_fee_exemption');
     const accidentFeePrice = packageMode && accidentAddon?.enabled ? parseFloat(accidentAddon.insurance_price) || 0 : 0;
     
+    // Office commission - from main policy (if ELZAMI) or from ELZAMI addon
+    const mainIsElzami = policy.policy_type_parent === 'ELZAMI';
+    const mainCommission = mainIsElzami ? parseFloat(policy.office_commission) || 0 : 0;
+    const addonCommission = packageMode && elzamiAddon?.enabled ? parseFloat(elzamiAddon.office_commission || '0') || 0 : 0;
+    const officeCommission = mainCommission + addonCommission;
+    
     const totalPrice = basePrice + elzamiPrice + thirdFullPrice + roadServicePrice + accidentFeePrice;
     
     // If main policy is ELZAMI, its price doesn't go to client wallet
     // If ELZAMI is an addon, addon price doesn't go to client wallet
-    const mainIsElzami = policy.policy_type_parent === 'ELZAMI';
+    // But office commission ALWAYS goes to client wallet/debt
     const elzamiTotal = mainIsElzami ? basePrice : elzamiPrice;
-    const payablePrice = totalPrice - elzamiTotal;
+    const payablePrice = totalPrice - elzamiTotal + officeCommission;
     
     return {
       basePrice,
@@ -362,10 +369,11 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
       thirdFullPrice,
       roadServicePrice,
       accidentFeePrice,
+      officeCommission,
       totalPrice,
       payablePrice,
     };
-  }, [policy.insurance_price, policy.policy_type_parent, packageMode, packageAddons]);
+  }, [policy.insurance_price, policy.policy_type_parent, policy.office_commission, packageMode, packageAddons]);
 
   // Payment validation
   const totalPaidPayments = payments.filter((p) => !p.refused).reduce((sum, p) => sum + (p.amount || 0), 0);
@@ -453,6 +461,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
       insurance_price: "",
       broker_buy_price: "",
       full_car_value: "",
+      office_commission: "0",
       cancelled: false,
       transferred: false,
       notes: "",

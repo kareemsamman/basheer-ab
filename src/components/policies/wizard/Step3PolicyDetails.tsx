@@ -806,6 +806,23 @@ export function Step3PolicyDetails({
         </div>
       )}
 
+      {/* Office Commission for ELZAMI main policy */}
+      {policy.policy_type_parent === 'ELZAMI' && policy.company_id && (
+        <div>
+          <Label>عمولة للمكتب (₪)</Label>
+          <Input
+            type="number"
+            value={policy.office_commission}
+            onChange={(e) => setPolicy({ ...policy, office_commission: e.target.value })}
+            placeholder="0"
+            className="text-amber-600 font-medium"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            عمولة AB على معاملة الإلزامي (تدخل في حساب العميل)
+          </p>
+        </div>
+      )}
+
       {/* Dates - Before Package Section to clarify these are for main policy */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>

@@ -458,6 +458,18 @@ export function PackageBuilderSection({
                   )}
                 </div>
               </div>
+              {/* Office Commission for ELZAMI addon */}
+              <div>
+                <Label className="text-xs mb-1 block text-amber-600">عمولة للمكتب (₪)</Label>
+                <Input
+                  type="number"
+                  value={elzamiAddon.office_commission || '0'}
+                  onChange={(e) => updateAddon('elzami', { office_commission: e.target.value })}
+                  placeholder="0"
+                  className="h-8 text-xs text-amber-600 font-medium"
+                  disabled={disabled}
+                />
+              </div>
               {/* Date Fields */}
               <div className="grid grid-cols-2 gap-2 pt-2 border-t border-dashed">
                 <div>

@@ -79,6 +79,7 @@ export interface PackageAddon {
   end_date?: string;
   // ELZAMI specific fields
   elzami_commission?: number;
+  office_commission?: string; // عمولة للمكتب for ELZAMI addon
   // THIRD_FULL specific fields
   policy_type_child?: '' | 'THIRD' | 'FULL';
   broker_buy_price?: string;
@@ -146,6 +147,7 @@ export interface PolicyForm {
   insurance_price: string;
   broker_buy_price: string; // Price we buy from broker (when company has broker_id)
   full_car_value: string; // Car value for FULL insurance pricing (entered in Step 3)
+  office_commission: string; // عمولة للمكتب - commission AB charges for ELZAMI handling
   cancelled: boolean;
   transferred: boolean;
   notes: string;
@@ -168,8 +170,9 @@ export interface PricingBreakdown {
   thirdFullPrice: number;
   roadServicePrice: number;
   accidentFeePrice: number;
+  officeCommission: number;
   totalPrice: number;
-  /** Amount that goes through client wallet/debt (excludes ELZAMI) */
+  /** Amount that goes through client wallet/debt (excludes ELZAMI but includes office commission) */
   payablePrice: number;
 }
 
