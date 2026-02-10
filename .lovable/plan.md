@@ -1,63 +1,40 @@
 
-# خطة إصلاح شيكات العملاء في صفحة الشيكات
 
-## المشكلة
+# Fix: Cheques Not Appearing After Adding from Cheques Page
 
-عند إضافة شيكات لعميل من صفحة `/cheques`، يتم حفظها في جدول `client_payments` الذي:
-1. **لا يظهر في صفحة الشيكات** - لأن الصفحة تقرأ فقط من `policy_payments`
-2. **لا يؤثر على رصيد العميل** - لأن دالة `get_client_balance` تقرأ فقط من `policy_payments` + `customer_wallet_transactions`
+## What Happened
 
-الشيكات موجودة فعلاً في `client_payments` مع الصور (9 شيكات لأشرف زياد ناصر)، لكنها "ضائعة" ولا تظهر في أي مكان.
+The cheques you just added for "اشرف زياد ناصر" (9 cheques) went to the wrong table (`client_payments`) because your browser was running the old code. The Cheques page only reads from `policy_payments`, so they don't appear.
 
-## الحل
+## What Will Be Done
 
-تغيير `AddCustomerChequeModal` ليحفظ الشيكات كـ `policy_payments` بدلاً من `client_payments`. بما أن هذه شيكات عامة للعميل (غير مرتبطة بوثيقة محددة)، سنربطها بأول وثيقة نشطة للعميل ونوزع المبالغ تلقائياً على وثائقه غير المدفوعة - بنفس المنطق المستخدم في `DebtPaymentModal`.
+### 1. Delete the 9 orphan cheque records from `client_payments`
+- 9 records created today (2026-02-10) for اشرف زياد ناصر
+- Cheque numbers: 80001255 through 80001262 (including duplicate 80001258)
+- These are invisible and don't affect any balance
 
-### التغييرات المطلوبة:
+### 2. Fix `AddCustomerChequeModal.tsx` to be more robust
+- Add `cheque_status: 'pending'` to every insert (currently missing)
+- Add better error logging with `console.error` so issues are visible in logs
+- Add a fallback: if no payable policies exist, still allow saving by assigning to the first active non-ELZAMI policy (even if fully paid) -- this prevents the "all paid" block for cases like this customer
 
-### 1. تعديل `AddCustomerChequeModal.tsx` - منطق الحفظ
+### 3. After the fix
+- You will need to re-enter the 9 cheques for اشرف زياد ناصر from the Cheques page
+- They will save correctly to `policy_payments` and appear immediately
+- They will properly deduct from the customer's wallet/balance
 
-**تغيير الـ `handleSave`** ليعمل بنفس طريقة `DebtPaymentModal`:
-- جلب وثائق العميل غير المدفوعة بالكامل
-- حساب المبلغ المتبقي لكل وثيقة
-- توزيع كل شيك على الوثائق (بالترتيب) حتى يتم تغطية المبلغ
-- حفظ في `policy_payments` مع `batch_id` لربط الشيكات ببعضها
-- حذف أي سجلات سابقة في `client_payments` إذا وُجدت
+## Technical Details
 
-### 2. حذف الشيكات القديمة من `client_payments`
+| File | Change |
+|------|--------|
+| `src/components/cheques/AddCustomerChequeModal.tsx` | Add `cheque_status: 'pending'` to insert object, improve error handling |
+| Database cleanup | Delete 9 orphan records from `client_payments` |
 
-الـ 9 شيكات الموجودة حالياً لأشرف زياد ناصر في `client_payments` يجب حذفها لأنها لا تؤثر على أي حساب.
+### Insert object fix (line ~271):
+```typescript
+// Before (missing cheque_status)
+{ policy_id, amount, payment_type: 'cheque', ... }
 
----
-
-## التفاصيل التقنية
-
-### منطق التوزيع في `handleSave`:
-
-```text
-1. جلب وثائق العميل النشطة (غير الملغاة، غير المحولة، بدون وسيط)
-2. لكل وثيقة: حساب المتبقي = insurance_price - مجموع policy_payments
-3. ترتيب الوثائق بالمتبقي الأكبر أولاً
-4. لكل شيك:
-   - توزيع المبلغ على الوثائق التي لديها رصيد متبقي
-   - إنشاء سجل policy_payments لكل جزء
-   - تضمين cheque_image_url و cheque_number و batch_id
-5. إذا تبقى مبلغ بعد تغطية كل الوثائق → تحذير المستخدم
+// After
+{ policy_id, amount, payment_type: 'cheque', cheque_status: 'pending', ... }
 ```
-
-### الملفات المتأثرة:
-
-| الملف | التغيير |
-|-------|---------|
-| `src/components/cheques/AddCustomerChequeModal.tsx` | تغيير handleSave ليحفظ في policy_payments مع توزيع على الوثائق |
-
-### بيانات يجب تنظيفها:
-
-حذف 9 سجلات أشرف زياد ناصر من `client_payments` (client_id: `79342964-cef5-46c2-9113-a97cedb5155b`) لأنها لا تظهر في أي مكان ولا تؤثر على الحسابات.
-
-## النتيجة المتوقعة
-
-- الشيكات المضافة من صفحة `/cheques` ستظهر مباشرة في الصفحة
-- الشيكات ستخصم فعلياً من رصيد العميل المتبقي
-- صور الشيكات ستظهر بشكل صحيح
-- يمكن تغيير حالة الشيك (تم صرفه / مرتجع) من الصفحة
