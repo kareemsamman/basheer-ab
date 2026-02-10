@@ -262,36 +262,54 @@ export function AddCustomerChequeModal({
         });
       }
 
-      // 5. Distribute cheques across policies
+      // 5. Distribute cheques across policies (split across multiple if needed)
       const batchId = crypto.randomUUID();
       const allInserts: any[] = [];
       let totalExcess = 0;
 
       for (const cheque of chequeLines) {
-        // For cheques: assign full amount to one policy (same as DebtPaymentModal)
-        const policyWithSpace = payablePolicies.find(p => p.remaining >= cheque.amount);
-        const targetPolicy = policyWithSpace || payablePolicies[payablePolicies.length - 1];
+        let remainingAmount = cheque.amount;
 
-        if (!targetPolicy) {
-          totalExcess += cheque.amount;
-          continue;
+        for (const policy of payablePolicies) {
+          if (remainingAmount <= 0.001) break;
+
+          const assignable = Math.min(remainingAmount, policy.remaining);
+          if (assignable <= 0) continue;
+
+          allInserts.push({
+            policy_id: policy.policyId,
+            amount: assignable,
+            payment_type: 'cheque',
+            payment_date: cheque.payment_date,
+            cheque_number: cheque.cheque_number,
+            cheque_image_url: cheque.cheque_image_url || null,
+            cheque_status: 'pending',
+            notes: cheque.notes || 'شيك من صفحة الشيكات',
+            branch_id: policy.branchId || branchId,
+            batch_id: batchId,
+          });
+
+          policy.remaining = Math.max(0, policy.remaining - assignable);
+          remainingAmount -= assignable;
         }
 
-        allInserts.push({
-          policy_id: targetPolicy.policyId,
-          amount: cheque.amount,
-          payment_type: 'cheque',
-          payment_date: cheque.payment_date,
-          cheque_number: cheque.cheque_number,
-          cheque_image_url: cheque.cheque_image_url || null,
-          cheque_status: 'pending',
-          notes: cheque.notes || 'شيك من صفحة الشيكات',
-          branch_id: targetPolicy.branchId || branchId,
-          batch_id: batchId,
-        });
-
-        // Reduce remaining for that policy so next cheques go elsewhere
-        targetPolicy.remaining = Math.max(0, targetPolicy.remaining - cheque.amount);
+        // If still remaining after all policies, assign to last policy (trigger will skip via batch_id)
+        if (remainingAmount > 0.001) {
+          const lastPolicy = payablePolicies[payablePolicies.length - 1];
+          allInserts.push({
+            policy_id: lastPolicy.policyId,
+            amount: remainingAmount,
+            payment_type: 'cheque',
+            payment_date: cheque.payment_date,
+            cheque_number: cheque.cheque_number,
+            cheque_image_url: cheque.cheque_image_url || null,
+            cheque_status: 'pending',
+            notes: cheque.notes || 'شيك من صفحة الشيكات',
+            branch_id: lastPolicy.branchId || branchId,
+            batch_id: batchId,
+          });
+          totalExcess += remainingAmount;
+        }
       }
 
       if (allInserts.length === 0) {
