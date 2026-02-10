@@ -23,7 +23,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Loader2, Plus, Trash2, Scan, Search, User, Check, ChevronsUpDown, AlertCircle } from 'lucide-react';
+import { Loader2, Plus, Trash2, Scan, User, Check, ChevronsUpDown, AlertCircle, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -65,11 +65,11 @@ export function AddCustomerChequeModal({
   const [clientSearch, setClientSearch] = useState('');
   const [chequeLines, setChequeLines] = useState<ChequeLine[]>([]);
   const [chequeScannerOpen, setChequeScannerOpen] = useState(false);
+  const [excessWarning, setExcessWarning] = useState<number>(0);
 
   // Fetch clients
   useEffect(() => {
     if (!open) return;
-    
     const fetchClients = async () => {
       setLoading(true);
       try {
@@ -78,7 +78,6 @@ export function AddCustomerChequeModal({
           .select('id, full_name, phone_number')
           .is('deleted_at', null)
           .order('full_name');
-        
         setClients(data || []);
       } catch (err) {
         console.error('Error fetching clients:', err);
@@ -86,7 +85,6 @@ export function AddCustomerChequeModal({
         setLoading(false);
       }
     };
-    
     fetchClients();
   }, [open]);
 
@@ -96,20 +94,19 @@ export function AddCustomerChequeModal({
       setSelectedClient(null);
       setChequeLines([]);
       setClientSearch('');
+      setExcessWarning(0);
     }
   }, [open]);
 
-  // Filtered clients based on search
   const filteredClients = useMemo(() => {
     if (!clientSearch.trim()) return clients.slice(0, 50);
     const query = clientSearch.toLowerCase();
-    return clients.filter(c => 
+    return clients.filter(c =>
       c.full_name.toLowerCase().includes(query) ||
       c.phone_number?.includes(query)
     ).slice(0, 50);
   }, [clients, clientSearch]);
 
-  // Add empty cheque line
   const addChequeLine = () => {
     setChequeLines(prev => [...prev, {
       id: crypto.randomUUID(),
@@ -119,17 +116,14 @@ export function AddCustomerChequeModal({
     }]);
   };
 
-  // Remove cheque line
   const removeChequeLine = (id: string) => {
     setChequeLines(prev => prev.filter(c => c.id !== id));
   };
 
-  // Update cheque line
   const updateChequeLine = (id: string, updates: Partial<ChequeLine>) => {
     setChequeLines(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
 
-  // Handle scanner results
   const handleScannerConfirm = (scannedCheques: any[]) => {
     const newLines: ChequeLine[] = scannedCheques.map(cheque => ({
       id: crypto.randomUUID(),
@@ -138,65 +132,175 @@ export function AddCustomerChequeModal({
       payment_date: cheque.payment_date || new Date().toISOString().split('T')[0],
       cheque_image_url: cheque.image_url,
     }));
-    
     setChequeLines(prev => [...prev, ...newLines]);
     setChequeScannerOpen(false);
     toast.success(`تم إضافة ${newLines.length} شيك`);
   };
 
-  // Calculate totals
   const totalAmount = useMemo(() => {
     return chequeLines.reduce((sum, c) => sum + (c.amount || 0), 0);
   }, [chequeLines]);
 
-  // Validation
   const isValid = useMemo(() => {
     if (!selectedClient) return false;
     if (chequeLines.length === 0) return false;
-    
-    return chequeLines.every(c => 
-      c.amount > 0 && 
+    return chequeLines.every(c =>
+      c.amount > 0 &&
       c.cheque_number.trim().length > 0 &&
       c.payment_date
     );
   }, [selectedClient, chequeLines]);
 
-  // Save cheques
+  /**
+   * Save cheques as policy_payments distributed across unpaid policies.
+   * Same logic as DebtPaymentModal.
+   */
   const handleSave = async () => {
     if (!selectedClient || !isValid) return;
-    
+
     setSaving(true);
+    setExcessWarning(0);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      
-      // Get user's branch
       const { data: profile } = await supabase
         .from('profiles')
         .select('branch_id')
         .eq('id', user?.id)
         .single();
-      
       const branchId = profile?.branch_id || null;
-      
-      // Insert cheques as client_payments (wallet payments)
-      const paymentsToInsert = chequeLines.map(cheque => ({
-        client_id: selectedClient.id,
-        amount: cheque.amount,
-        payment_type: 'cheque',
-        payment_date: cheque.payment_date,
-        cheque_number: cheque.cheque_number,
-        cheque_image_url: cheque.cheque_image_url || null,
-        notes: cheque.notes || null,
-        branch_id: branchId,
-        created_by_admin_id: user?.id || null,
-      }));
-      
+
+      // 1. Fetch active non-broker policies for this client
+      const { data: policiesData, error: policiesError } = await supabase
+        .from('policies')
+        .select('id, policy_type_parent, insurance_price, branch_id, group_id')
+        .eq('client_id', selectedClient.id)
+        .eq('cancelled', false)
+        .eq('transferred', false)
+        .is('deleted_at', null)
+        .is('broker_id', null);
+
+      if (policiesError) throw policiesError;
+      if (!policiesData || policiesData.length === 0) {
+        toast.error('لا يوجد وثائق نشطة لهذا العميل');
+        setSaving(false);
+        return;
+      }
+
+      const allPolicyIds = policiesData.map(p => p.id);
+
+      // 2. Fetch existing payments to calculate remaining per policy
+      const { data: paymentsData } = await supabase
+        .from('policy_payments')
+        .select('policy_id, amount, refused')
+        .in('policy_id', allPolicyIds);
+
+      const paymentsMap: Record<string, number> = {};
+      (paymentsData || []).forEach(p => {
+        if (!p.refused) {
+          paymentsMap[p.policy_id] = (paymentsMap[p.policy_id] || 0) + p.amount;
+        }
+      });
+
+      // 3. Group by package (group_id) to apply ELZAMI exclusion logic
+      const groupMap = new Map<string, typeof policiesData>();
+      policiesData.forEach(policy => {
+        const key = policy.group_id || `single_${policy.id}`;
+        if (!groupMap.has(key)) groupMap.set(key, []);
+        groupMap.get(key)!.push(policy);
+      });
+
+      // 4. Build payable policies list (non-ELZAMI with remaining > 0)
+      interface PayablePolicy {
+        policyId: string;
+        remaining: number;
+        branchId: string | null;
+      }
+      const payablePolicies: PayablePolicy[] = [];
+
+      groupMap.forEach((policies) => {
+        const fullPrice = policies.reduce((s, p) => s + p.insurance_price, 0);
+        const paidTotal = policies.reduce((s, p) => s + (paymentsMap[p.id] || 0), 0);
+
+        // Distribute paid amount: ELZAMI first, then others
+        const sorted = [...policies].sort((a, b) => {
+          if (a.policy_type_parent === 'ELZAMI' && b.policy_type_parent !== 'ELZAMI') return -1;
+          if (a.policy_type_parent !== 'ELZAMI' && b.policy_type_parent === 'ELZAMI') return 1;
+          return a.insurance_price - b.insurance_price;
+        });
+
+        let remainingPool = paidTotal;
+        sorted.forEach(comp => {
+          const coverAmount = Math.min(remainingPool, comp.insurance_price);
+          remainingPool = Math.max(0, remainingPool - coverAmount);
+          const internalRemaining = comp.insurance_price - coverAmount;
+
+          if (comp.policy_type_parent !== 'ELZAMI' && internalRemaining > 0) {
+            payablePolicies.push({
+              policyId: comp.id,
+              remaining: internalRemaining,
+              branchId: comp.branch_id,
+            });
+          }
+        });
+      });
+
+      // Sort by remaining ascending (fill smallest first)
+      payablePolicies.sort((a, b) => a.remaining - b.remaining);
+
+      if (payablePolicies.length === 0) {
+        toast.error('لا يوجد وثائق بحاجة لدفع (كل الوثائق مدفوعة أو إلزامي فقط)');
+        setSaving(false);
+        return;
+      }
+
+      // 5. Distribute cheques across policies
+      const batchId = crypto.randomUUID();
+      const allInserts: any[] = [];
+      let totalExcess = 0;
+
+      for (const cheque of chequeLines) {
+        // For cheques: assign full amount to one policy (same as DebtPaymentModal)
+        const policyWithSpace = payablePolicies.find(p => p.remaining >= cheque.amount);
+        const targetPolicy = policyWithSpace || payablePolicies[payablePolicies.length - 1];
+
+        if (!targetPolicy) {
+          totalExcess += cheque.amount;
+          continue;
+        }
+
+        allInserts.push({
+          policy_id: targetPolicy.policyId,
+          amount: cheque.amount,
+          payment_type: 'cheque',
+          payment_date: cheque.payment_date,
+          cheque_number: cheque.cheque_number,
+          cheque_image_url: cheque.cheque_image_url || null,
+          notes: cheque.notes || 'شيك من صفحة الشيكات',
+          branch_id: targetPolicy.branchId || branchId,
+          batch_id: batchId,
+        });
+
+        // Reduce remaining for that policy so next cheques go elsewhere
+        targetPolicy.remaining = Math.max(0, targetPolicy.remaining - cheque.amount);
+      }
+
+      if (allInserts.length === 0) {
+        toast.error('لا يمكن توزيع الشيكات على الوثائق');
+        setSaving(false);
+        return;
+      }
+
+      // 6. Insert into policy_payments
       const { error } = await supabase
-        .from('client_payments')
-        .insert(paymentsToInsert);
-      
+        .from('policy_payments')
+        .insert(allInserts);
+
       if (error) throw error;
-      
+
+      if (totalExcess > 0) {
+        setExcessWarning(totalExcess);
+      }
+
       toast.success(`تم إضافة ${chequeLines.length} شيك للعميل ${selectedClient.full_name}`);
       onSuccess();
       onOpenChange(false);
@@ -252,8 +356,8 @@ export function AddCustomerChequeModal({
                 </PopoverTrigger>
                 <PopoverContent className="w-full p-0" align="start">
                   <Command shouldFilter={false}>
-                    <CommandInput 
-                      placeholder="ابحث بالاسم أو رقم الهاتف..." 
+                    <CommandInput
+                      placeholder="ابحث بالاسم أو رقم الهاتف..."
                       value={clientSearch}
                       onValueChange={setClientSearch}
                     />
@@ -328,11 +432,10 @@ export function AddCustomerChequeModal({
                 </Card>
               ) : (
                 <div className="space-y-3">
-                  {chequeLines.map((cheque, index) => (
+                  {chequeLines.map((cheque) => (
                     <Card key={cheque.id} className="p-4">
                       <div className="flex items-start gap-4">
                         <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                          {/* Amount */}
                           <div className="space-y-1">
                             <Label className="text-xs">المبلغ *</Label>
                             <Input
@@ -343,46 +446,36 @@ export function AddCustomerChequeModal({
                               className="h-9"
                             />
                           </div>
-                          
-                          {/* Cheque Number */}
                           <div className="space-y-1">
                             <Label className="text-xs">رقم الشيك *</Label>
                             <Input
                               value={cheque.cheque_number}
-                              onChange={(e) => updateChequeLine(cheque.id, { 
-                                cheque_number: sanitizeChequeNumber(e.target.value) 
+                              onChange={(e) => updateChequeLine(cheque.id, {
+                                cheque_number: sanitizeChequeNumber(e.target.value)
                               })}
                               placeholder="رقم الشيك"
                               maxLength={CHEQUE_NUMBER_MAX_LENGTH}
                               className="h-9 font-mono"
                             />
                           </div>
-                          
-                          {/* Date */}
                           <div className="space-y-1">
                             <Label className="text-xs">تاريخ الشيك *</Label>
                             <ArabicDatePicker
                               value={cheque.payment_date}
-                              onChange={(date) => updateChequeLine(cheque.id, { 
-                                payment_date: date 
-                              })}
+                              onChange={(date) => updateChequeLine(cheque.id, { payment_date: date })}
                               compact
                             />
                           </div>
                         </div>
-
-                        {/* Cheque image preview */}
                         {cheque.cheque_image_url && (
                           <div className="w-16 h-12 rounded border overflow-hidden shrink-0">
-                            <img 
-                              src={cheque.cheque_image_url} 
+                            <img
+                              src={cheque.cheque_image_url}
                               alt="صورة الشيك"
                               className="w-full h-full object-cover"
                             />
                           </div>
                         )}
-
-                        {/* Delete button */}
                         <Button
                           type="button"
                           variant="ghost"
@@ -407,8 +500,18 @@ export function AddCustomerChequeModal({
                   <span className="text-xl font-bold ltr-nums">{formatCurrency(totalAmount)}</span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  سيتم خصم هذا المبلغ من محفظة العميل
+                  سيتم توزيع المبلغ على وثائق العميل غير المدفوعة وخصمه من رصيده
                 </p>
+              </Card>
+            )}
+
+            {/* Excess warning */}
+            {excessWarning > 0 && (
+              <Card className="p-3 border-amber-500/50 bg-amber-500/10">
+                <div className="flex items-center gap-2 text-amber-600">
+                  <AlertTriangle className="h-4 w-4" />
+                  <span className="text-sm">تبقى {formatCurrency(excessWarning)} بدون توزيع (تجاوز إجمالي الوثائق)</span>
+                </div>
               </Card>
             )}
           </div>
@@ -417,8 +520,8 @@ export function AddCustomerChequeModal({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               إلغاء
             </Button>
-            <Button 
-              onClick={handleSave} 
+            <Button
+              onClick={handleSave}
               disabled={!isValid || saving}
               className="gap-2"
             >
@@ -438,7 +541,6 @@ export function AddCustomerChequeModal({
         </DialogContent>
       </Dialog>
 
-      {/* Cheque Scanner Dialog */}
       <ChequeScannerDialog
         open={chequeScannerOpen}
         onOpenChange={setChequeScannerOpen}
