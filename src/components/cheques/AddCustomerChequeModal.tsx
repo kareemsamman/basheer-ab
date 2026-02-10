@@ -247,10 +247,19 @@ export function AddCustomerChequeModal({
       // Sort by remaining ascending (fill smallest first)
       payablePolicies.sort((a, b) => a.remaining - b.remaining);
 
+      // Fallback: if all policies are fully paid, use first non-ELZAMI policy anyway
       if (payablePolicies.length === 0) {
-        toast.error('لا يوجد وثائق بحاجة لدفع (كل الوثائق مدفوعة أو إلزامي فقط)');
-        setSaving(false);
-        return;
+        const fallback = policiesData.find(p => p.policy_type_parent !== 'ELZAMI');
+        if (!fallback) {
+          toast.error('لا يوجد وثائق غير إلزامي لهذا العميل');
+          setSaving(false);
+          return;
+        }
+        payablePolicies.push({
+          policyId: fallback.id,
+          remaining: 999999,
+          branchId: fallback.branch_id,
+        });
       }
 
       // 5. Distribute cheques across policies
@@ -275,6 +284,7 @@ export function AddCustomerChequeModal({
           payment_date: cheque.payment_date,
           cheque_number: cheque.cheque_number,
           cheque_image_url: cheque.cheque_image_url || null,
+          cheque_status: 'pending',
           notes: cheque.notes || 'شيك من صفحة الشيكات',
           branch_id: targetPolicy.branchId || branchId,
           batch_id: batchId,
