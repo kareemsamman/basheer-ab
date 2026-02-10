@@ -1,49 +1,57 @@
 
+# Multi-Image Cheque Support
 
-# Fix: فشل حفظ الشيكات - Trigger Validation Blocking
-
-## Root Cause
-
-A database trigger (`trg_validate_policy_payment_total`) validates that the total payments for any single policy don't exceed the policy's insurance price. The current code assigns each full cheque (1,800) to one policy, stacking 4 cheques on a policy worth 6,524 -- the trigger sees 7,200 > 6,524 and blocks the insert.
+## Problem
+1. When scanning a PDF with 3 pages or scanning 3 images, each cheque only gets ONE image (`cheque_image_url`), but the user wants ALL scanned pages to be accessible for each cheque
+2. In the client profile (payments table), cheque images are shown as a simple link -- no gallery to browse all images
 
 ## Solution
 
-Two changes are needed:
+### 1. Store all scan images per cheque in `payment_images` table
 
-### 1. Modify the validation trigger to skip batch cheque entries
+When cheques are saved from `AddCustomerChequeModal` (which receives data from the scanner), automatically insert ALL unique scan images from the batch into the `payment_images` table for each cheque payment record.
 
-Add an exception for payments with `batch_id` that have the notes marker `'شيك من صفحة الشيكات'`. Since these are bulk cheque entries managed by the application logic and meant to reduce overall client debt, the per-policy cap should not apply. The trigger will still protect all other payment paths.
+Currently the scanner uploads one full-page image per scanned page, and all cheques from that page share the same `image_url`. If 3 pages were scanned and 9 cheques detected, each cheque gets only its page's image. The fix will:
 
-```sql
--- At the top of validate_policy_payment_total, add:
-IF NEW.batch_id IS NOT NULL AND NEW.notes = 'شيك من صفحة الشيكات' THEN
-  RETURN NEW;
-END IF;
-```
+- Collect ALL unique `image_url` values from the scanner results
+- After inserting cheque payments into `policy_payments`, also insert ALL scan images into `payment_images` for each payment record
+- This way, every cheque in a batch has access to all scanned pages
 
-### 2. Improve cheque distribution in `AddCustomerChequeModal.tsx`
+### 2. Show cheque image gallery in Client Profile
 
-Change the distribution logic to split a single cheque across multiple policies when needed, instead of assigning the full cheque amount to one policy. This way each policy stays within its limit even if the trigger runs.
+In `ClientDetails.tsx`, replace the simple `cheque_image_url` link with a clickable thumbnail that opens a gallery dialog showing:
+- The `cheque_image_url` (main image)
+- All images from `payment_images` for that payment
 
-Current behavior:
-- Cheque of 1,800 -> find ONE policy with enough space -> assign full amount
-- If no policy has enough space -> assign to last policy (trigger fails)
+Add an image gallery dialog (reuse the same pattern from Cheques page) with next/prev navigation.
 
-New behavior:
-- Cheque of 1,800 -> fill first policy's remaining, then overflow to next policy
-- Each insert stays within the policy's limit
-- `cheque_number` and `cheque_image_url` are preserved on all split records
+### 3. Update `ChequeScannerDialog` to pass all image URLs
 
-### Files Changed
+Currently `onConfirm` passes each cheque with its own `image_url`. Add a new field `all_scan_images` to the callback data so that `AddCustomerChequeModal` knows about ALL scanned page images, not just the one for this specific cheque.
+
+## Files Changed
 
 | File | Change |
 |------|--------|
-| Database migration | Modify `validate_policy_payment_total` trigger to skip batch cheque entries |
-| `src/components/cheques/AddCustomerChequeModal.tsx` | Split cheques across policies instead of assigning whole cheque to one policy |
+| `src/components/payments/ChequeScannerDialog.tsx` | Pass `all_scan_images` array (all unique CDN URLs from the scan batch) in the `onConfirm` callback |
+| `src/components/cheques/AddCustomerChequeModal.tsx` | After inserting cheque payments, also insert all scan images into `payment_images` table for each payment |
+| `src/components/clients/ClientDetails.tsx` | Fetch `payment_images` for cheque payments; show clickable thumbnails with gallery dialog instead of plain links |
 
-### Result
+## Flow After Fix
 
-- Cheques for اشرف زياد ناصر (and any future customer) will save successfully
-- Each cheque is distributed across policies respecting per-policy limits
-- The trigger still protects against overpayment in all other flows (debt modal, policy payments, etc.)
+```text
+User scans 3 pages (PDF or scanner)
+  -> 3 images uploaded to CDN
+  -> AI detects 9 cheques across 3 pages
+  -> Each cheque gets its page's image_url
+  -> All 3 CDN URLs collected as all_scan_images
 
+User confirms and saves
+  -> 9 policy_payments records created (each with cheque_image_url = its page)
+  -> For each payment, 3 payment_images records created (all scan pages)
+
+User views cheque in Cheques page or Client Profile
+  -> Sees thumbnail of first image
+  -> Clicks to open gallery with all 3 scan pages
+  -> Can navigate between pages with arrows
+```
