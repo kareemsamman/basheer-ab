@@ -46,6 +46,9 @@ interface ChequeLine {
   notes?: string;
 }
 
+// Track all scan images from the batch for payment_images insertion
+let batchScanImages: string[] = [];
+
 interface AddCustomerChequeModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -95,6 +98,7 @@ export function AddCustomerChequeModal({
       setChequeLines([]);
       setClientSearch('');
       setExcessWarning(0);
+      batchScanImages = [];
     }
   }, [open]);
 
@@ -132,6 +136,11 @@ export function AddCustomerChequeModal({
       payment_date: cheque.payment_date || new Date().toISOString().split('T')[0],
       cheque_image_url: cheque.image_url,
     }));
+    // Collect all unique scan images from this batch
+    if (scannedCheques.length > 0 && scannedCheques[0].all_scan_images) {
+      const newScanImages = scannedCheques[0].all_scan_images as string[];
+      batchScanImages = Array.from(new Set([...batchScanImages, ...newScanImages]));
+    }
     setChequeLines(prev => [...prev, ...newLines]);
     setChequeScannerOpen(false);
     toast.success(`تم إضافة ${newLines.length} شيك`);
@@ -318,12 +327,31 @@ export function AddCustomerChequeModal({
         return;
       }
 
-      // 6. Insert into policy_payments
-      const { error } = await supabase
+      // 6. Insert into policy_payments and get back IDs
+      const { data: insertedPayments, error } = await supabase
         .from('policy_payments')
-        .insert(allInserts);
+        .insert(allInserts)
+        .select('id');
 
       if (error) throw error;
+
+      // 7. Insert all scan images into payment_images for each payment
+      if (insertedPayments && batchScanImages.length > 0) {
+        const imageInserts = insertedPayments.flatMap(payment =>
+          batchScanImages.map((url, idx) => ({
+            payment_id: payment.id,
+            image_url: url,
+            image_type: 'scan',
+            sort_order: idx,
+          }))
+        );
+        if (imageInserts.length > 0) {
+          await supabase.from('payment_images').insert(imageInserts);
+        }
+      }
+
+      // Reset batch images
+      batchScanImages = [];
 
       if (totalExcess > 0) {
         setExcessWarning(totalExcess);

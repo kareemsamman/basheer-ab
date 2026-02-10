@@ -89,6 +89,7 @@ import { AccidentReportWizard } from '@/components/accident-reports/AccidentRepo
 import { ClientAccidentsTab } from '@/components/clients/ClientAccidentsTab';
 import { useClientAccidentInfo } from '@/hooks/useClientAccidentInfo';
 import { cn } from '@/lib/utils';
+import { ChequeImageGallery } from '@/components/shared/ChequeImageGallery';
 import { useBranches } from '@/hooks/useBranches';
 import { useAuth } from '@/hooks/useAuth';
 import type { RenewalData } from '@/components/policies/wizard/types';
@@ -1772,19 +1773,11 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                           )}
                         </TableCell>
                         <TableCell>
-                          {group.cheque_image_url ? (
-                            <a 
-                              href={group.cheque_image_url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="text-primary hover:underline flex items-center gap-1"
-                            >
-                              <FileImage className="h-4 w-4" />
-                              <span className="text-xs">عرض</span>
-                            </a>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
+                          <ChequeImageGallery
+                            primaryImageUrl={group.cheque_image_url}
+                            paymentId={group.payments[0]?.id || group.id}
+                            batchPaymentIds={group.payments.map(p => p.id)}
+                          />
                         </TableCell>
                         <TableCell>
                           <DropdownMenu>

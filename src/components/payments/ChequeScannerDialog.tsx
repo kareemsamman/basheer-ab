@@ -592,7 +592,16 @@ export function ChequeScannerDialog({
 
   const handleConfirmAll = () => {
     if (detectedCheques.length === 0) return;
-    onConfirm(detectedCheques);
+    // Collect all unique scan image URLs from detected cheques
+    const allScanImages = Array.from(
+      new Set(detectedCheques.map(c => c.image_url).filter(Boolean) as string[])
+    );
+    // Attach all_scan_images to each cheque so the consumer knows about all pages
+    const chequesWithAllImages = detectedCheques.map(c => ({
+      ...c,
+      all_scan_images: allScanImages,
+    }));
+    onConfirm(chequesWithAllImages);
     handleClose();
   };
 
