@@ -2013,40 +2013,52 @@ export type Database = {
           amount: number
           branch_id: string | null
           category: string
+          contact_name: string | null
           created_at: string
           created_by_admin_id: string | null
           description: string | null
           expense_date: string
           id: string
           notes: string | null
+          payment_method: string
           receipt_url: string | null
+          reference_number: string | null
           updated_at: string
+          voucher_type: string
         }
         Insert: {
           amount: number
           branch_id?: string | null
           category: string
+          contact_name?: string | null
           created_at?: string
           created_by_admin_id?: string | null
           description?: string | null
           expense_date?: string
           id?: string
           notes?: string | null
+          payment_method?: string
           receipt_url?: string | null
+          reference_number?: string | null
           updated_at?: string
+          voucher_type?: string
         }
         Update: {
           amount?: number
           branch_id?: string | null
           category?: string
+          contact_name?: string | null
           created_at?: string
           created_by_admin_id?: string | null
           description?: string | null
           expense_date?: string
           id?: string
           notes?: string | null
+          payment_method?: string
           receipt_url?: string | null
+          reference_number?: string | null
           updated_at?: string
+          voucher_type?: string
         }
         Relationships: [
           {

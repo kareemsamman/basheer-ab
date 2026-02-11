@@ -147,8 +147,8 @@ const fetchFinancialData = async () => {
     supabase.from('company_settlements').select('total_amount, refused').eq('status', 'completed').neq('refused', true),
     supabase.from('broker_settlements').select('total_amount, direction, status').eq('status', 'completed'),
     supabase.from('policies').select('broker_buy_price, insurance_price, broker_direction').is('deleted_at', null).eq('cancelled', false).eq('broker_direction', 'from_broker'),
-    supabase.from('expenses').select('amount'),
-    supabase.from('expenses').select('amount').gte('expense_date', monthStart).lte('expense_date', monthEnd),
+    supabase.from('expenses').select('amount, voucher_type'),
+    supabase.from('expenses').select('amount, voucher_type').gte('expense_date', monthStart).lte('expense_date', monthEnd),
     supabase.from('insurance_companies').select('id, name, name_ar, broker_id').eq('active', true).is('broker_id', null),
     supabase.from('ab_ledger').select('*').eq('status', 'posted').order('transaction_date', { ascending: false }).order('created_at', { ascending: false }).limit(50),
   ]);
@@ -197,8 +197,8 @@ const fetchFinancialData = async () => {
   });
   brokerDebt -= totalBrokerPayments;
 
-  const totalExpenses = (expensesRes.data || []).reduce((sum, e) => sum + Number(e.amount), 0);
-  const monthExpenses = (monthExpRes.data || []).reduce((sum, e) => sum + Number(e.amount), 0);
+  const totalExpenses = (expensesRes.data || []).filter((e: any) => e.voucher_type !== 'receipt').reduce((sum, e) => sum + Number(e.amount), 0);
+  const monthExpenses = (monthExpRes.data || []).filter((e: any) => e.voucher_type !== 'receipt').reduce((sum, e) => sum + Number(e.amount), 0);
 
   const netCash = totalCashIn - totalCompanyPayments - totalBrokerPayments - totalExpenses;
   companyDebt = companyDebt - totalCompanyPayments;
