@@ -1,55 +1,43 @@
 
-# Fix: Office Commission Missing from Client Views + Auto-Refresh After Payment
+# Fix: DebtPaymentModal Not Including Office Commission
 
-## Problems
+## Problem
+When opening the bulk "دفع" (Pay) modal from the client profile, ELZAMI policies with office commission (e.g., ₪1,200 insurance + ₪100 commission) show as "لا توجد ديون مستحقة" (No outstanding debts) because the modal's debt calculation ignores `office_commission`.
 
-### Problem 1: "المبلغ" shows ₪1,200 instead of ₪1,400
-The policy card in the client profile shows only `insurance_price` without adding `office_commission`. This affects multiple components that each have their own `PolicyRecord` interface and price calculations.
-
-### Problem 2: Wallet/balance not refreshing after payment
-After paying via the "دفع" button, the user must manually reload the page to see updated balances. The `onPaymentAdded` callback already triggers `fetchPaymentSummary()`, `fetchPayments()`, `fetchPolicies()`, and `fetchWalletBalance()`, but the `PackagePaymentModal` closes before the data re-fetches complete, and the `PolicyYearTimeline` internal payment cache doesn't update from the parent's refreshed data.
+The root cause is in `DebtPaymentModal.tsx`:
+1. The Supabase query (line 272) doesn't fetch `office_commission`
+2. All price/remaining calculations use only `insurance_price`
+3. Since ELZAMI's `insurance_price` is fully covered by the auto-locked payment, and `office_commission` isn't counted, the system thinks there's no debt
 
 ## Changes
 
-### 1. ClientDetails.tsx - Fetch `office_commission` in queries
-- Add `office_commission` to the `fetchPolicies` select query (line 434)
-- Add `office_commission` to the `fetchPaymentSummary` select query (line 469)
-- Include `office_commission` in `totalInsurance` calculation (line 481): `sum + insurance_price + (office_commission || 0)`
+### File: `src/components/debt/DebtPaymentModal.tsx`
 
-### 2. PolicyYearTimeline.tsx - Include commission in totals
-- Add `office_commission: number | null` to the `PolicyRecord` interface (after line 53)
-- Update `totalPrice` calculation (line 441) to: `sum + p.insurance_price + (p.office_commission || 0)`
-- Update standalone policy `totalPrice` (line 465) to: `policy.insurance_price + (policy.office_commission || 0)`
-- Update `debtPrice` calculation to include commission for ELZAMI policies
-- Update `refreshPaymentInfo` remaining calc to include commission
+**1. Fetch `office_commission` in the query (line 272)**
+Add `office_commission` to the `.select()` string.
 
-### 3. PolicyTreeView.tsx - Include commission in totals
-- Add `office_commission: number | null` to the `PolicyRecord` interface (after line 49)
-- Update `getPackagePaymentStatus` (line 397): `totalPrice += policy.insurance_price + (policy.office_commission || 0)`
-- Update `debtPrice` to include commission
-- Update `refreshPaymentInfo` remaining calc (line 511) to include commission
-- Update `totalPrice` calc at line 534 to include commission
+**2. Include commission in policy component price (lines 319-327)**
+Change `price: p.insurance_price` to `price: p.insurance_price + (p.office_commission || 0)` and update `remaining` accordingly.
 
-### 4. PackagePaymentModal.tsx - Include commission in price/remaining
-- Add `office_commission` to the `fetchPolicyPaymentInfo` select query (line 194)
-- Update price calculation (line 218): `price: p.insurance_price + (p.office_commission || 0)`
-- Update remaining calculation (line 220) accordingly
+This single change propagates through all downstream calculations (`fullPrice`, `nonElzamiPrice`, `remainingTotal`, `payablePolicies`) since they all derive from the component's `price` field.
 
-### 5. SinglePolicyPaymentModal.tsx - Accept commission in price
-- Add `officeCommission?: number` prop
-- Use `insurancePrice + (officeCommission || 0)` for total/remaining calculations
-- Update call sites in PolicyTreeView and PolicyYearTimeline to pass commission
+**3. Handle ELZAMI office commission as payable debt**
+Currently, ELZAMI policies are excluded from `nonElzamiPrice` and `payablePolicies`. However, the office commission portion of ELZAMI IS client debt. The fix:
+- Keep ELZAMI `insurance_price` excluded from client debt (business rule)
+- But include `office_commission` as payable debt
 
-### 6. Auto-refresh after payment
-- In `PackagePaymentModal` `onSuccess`, ensure the modal closes AFTER the parent refetch completes (currently `onSuccess` is called which triggers async fetches, but the modal closes immediately)
-- Make `onSuccess` in `PolicyYearTimeline` and `PolicyTreeView` await the parent callback before closing the modal, or add a small delay to let refetches propagate
+This means the `nonElzamiPrice` calculation needs to add ELZAMI's `office_commission` (but not its `insurance_price`):
+```
+const nonElzamiPrice = policyComponents
+  .filter(p => p.policyType !== 'ELZAMI')
+  .reduce((sum, p) => sum + p.price, 0)
+  + policyComponents
+    .filter(p => p.policyType === 'ELZAMI')
+    .reduce((sum, p) => sum + (p.officeCommission || 0), 0);
+```
 
-## Files to Change
+And payable policies should include ELZAMI if it has unpaid office commission.
 
 | File | Change |
 |------|--------|
-| `src/components/clients/ClientDetails.tsx` | Add `office_commission` to select queries, include in totals |
-| `src/components/clients/PolicyYearTimeline.tsx` | Add to interface, include in totalPrice/debtPrice calcs |
-| `src/components/clients/PolicyTreeView.tsx` | Add to interface, include in all price calcs |
-| `src/components/clients/PackagePaymentModal.tsx` | Fetch and include commission in price/remaining |
-| `src/components/clients/SinglePolicyPaymentModal.tsx` | Accept and use commission in calculations |
+| `src/components/debt/DebtPaymentModal.tsx` | Fetch `office_commission`, include in price calcs, make ELZAMI commission payable |
