@@ -28,6 +28,7 @@ import {
   CreditCard,
   Building,
   FileText,
+  ShieldCheck,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -35,6 +36,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { format, startOfMonth, endOfMonth, subMonths, addMonths } from "date-fns";
 import { ar } from "date-fns/locale";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
+import { POLICY_TYPE_LABELS } from "@/lib/insuranceTypes";
 
 interface Expense {
   id: string;
@@ -49,6 +51,7 @@ interface Expense {
   payment_method: string;
   reference_number: string | null;
   contact_name: string | null;
+  is_policy_payment?: boolean;
 }
 
 // Payment categories
@@ -113,12 +116,24 @@ export default function Expenses() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Map policy payment_type to our payment_method keys
+  const mapPaymentType = (pt: string): string => {
+    switch (pt) {
+      case 'cash': return 'cash';
+      case 'cheque': return 'cheque';
+      case 'visa': return 'visa';
+      case 'transfer': return 'bank_transfer';
+      default: return 'cash';
+    }
+  };
+
   const fetchExpenses = useCallback(async () => {
     setLoading(true);
     try {
       const monthStart = format(startOfMonth(selectedMonth), 'yyyy-MM-dd');
       const monthEnd = format(endOfMonth(selectedMonth), 'yyyy-MM-dd');
       
+      // Query 1: Manual expenses
       let query = supabase
         .from('expenses')
         .select('*')
@@ -126,43 +141,110 @@ export default function Expenses() {
         .lte('expense_date', monthEnd)
         .order('expense_date', { ascending: false });
       
-      if (voucherFilter !== 'all') {
-        query = query.eq('voucher_type', voucherFilter);
+      if (voucherFilter === 'payment') {
+        query = query.eq('voucher_type', 'payment');
+      } else if (voucherFilter === 'receipt') {
+        query = query.eq('voucher_type', 'receipt');
       }
-      if (categoryFilter !== 'all') {
+      if (categoryFilter !== 'all' && categoryFilter !== 'insurance_premium') {
         query = query.eq('category', categoryFilter);
       }
       if (paymentMethodFilter !== 'all') {
         query = query.eq('payment_method', paymentMethodFilter);
       }
       
-      const { data, error } = await query;
-      if (error) throw error;
+      // Query 2: Policy payments for this month (only when showing all or receipts)
+      const shouldFetchPolicyPayments = voucherFilter !== 'payment' && 
+        (categoryFilter === 'all' || categoryFilter === 'insurance_premium');
       
-      let filtered = data || [];
+      const [expensesResult, policyPaymentsResult] = await Promise.all([
+        query,
+        shouldFetchPolicyPayments
+          ? supabase
+              .from('policy_payments')
+              .select('id, amount, payment_date, payment_type, notes, policy_id, refused, locked, policies!inner(policy_number, policy_type_parent, clients!inner(full_name), cars(car_number))')
+              .gte('payment_date', monthStart)
+              .lte('payment_date', monthEnd)
+              .eq('refused', false)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      
+      if (expensesResult.error) throw expensesResult.error;
+      if (policyPaymentsResult.error) throw policyPaymentsResult.error;
+      
+      let manualExpenses: Expense[] = expensesResult.data || [];
+      
+      // Convert policy payments to Expense shape
+      const policyExpenses: Expense[] = (policyPaymentsResult.data || [])
+        .filter((pp: any) => {
+          if (paymentMethodFilter !== 'all' && mapPaymentType(pp.payment_type) !== paymentMethodFilter) return false;
+          return true;
+        })
+        .map((pp: any) => {
+          const policy = pp.policies;
+          const clientName = policy?.clients?.full_name || '';
+          const carNumber = policy?.cars?.car_number || '';
+          const typeLabel = POLICY_TYPE_LABELS[policy?.policy_type_parent as keyof typeof POLICY_TYPE_LABELS] || '';
+          const desc = [typeLabel, carNumber ? `رقم ${carNumber}` : '', policy?.policy_number ? `بوليصة ${policy.policy_number}` : ''].filter(Boolean).join(' - ');
+          
+          return {
+            id: `pp_${pp.id}`,
+            category: 'insurance_premium',
+            description: desc,
+            amount: Number(pp.amount),
+            expense_date: pp.payment_date,
+            notes: pp.notes,
+            receipt_url: null,
+            created_at: pp.payment_date,
+            voucher_type: 'receipt',
+            payment_method: mapPaymentType(pp.payment_type),
+            reference_number: null,
+            contact_name: clientName,
+            is_policy_payment: true,
+          } as Expense;
+        });
+      
+      // Merge and sort
+      let allExpenses = [...manualExpenses, ...policyExpenses];
+      allExpenses.sort((a, b) => new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime());
+      
+      // Client-side search filter
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        filtered = filtered.filter(e => 
+        allExpenses = allExpenses.filter(e => 
           (e.description && e.description.toLowerCase().includes(q)) ||
           (e.notes && e.notes.toLowerCase().includes(q)) ||
           (e.contact_name && e.contact_name.toLowerCase().includes(q))
         );
       }
       
-      setExpenses(filtered);
+      setExpenses(allExpenses);
       
-      // Calculate totals from ALL data for the month (not filtered)
-      const { data: allData } = await supabase
-        .from('expenses')
-        .select('amount, voucher_type')
-        .gte('expense_date', monthStart)
-        .lte('expense_date', monthEnd);
+      // Calculate totals from ALL data for the month (manual + policy payments)
+      const [totalsResult, policyTotalsResult] = await Promise.all([
+        supabase
+          .from('expenses')
+          .select('amount, voucher_type')
+          .gte('expense_date', monthStart)
+          .lte('expense_date', monthEnd),
+        supabase
+          .from('policy_payments')
+          .select('amount')
+          .gte('payment_date', monthStart)
+          .lte('payment_date', monthEnd)
+          .eq('refused', false),
+      ]);
       
       let receipts = 0, payments = 0;
-      (allData || []).forEach(e => {
+      (totalsResult.data || []).forEach(e => {
         if (e.voucher_type === 'receipt') receipts += Number(e.amount);
         else payments += Number(e.amount);
       });
+      // Add policy payments to receipts total
+      (policyTotalsResult.data || []).forEach(pp => {
+        receipts += Number(pp.amount);
+      });
+      
       setTotalReceipts(receipts);
       setTotalPayments(payments);
       
@@ -465,26 +547,34 @@ export default function Expenses() {
                   <TableBody>
                     {expenses.map((expense) => {
                       const isReceipt = expense.voucher_type === 'receipt';
+                      const isPP = expense.is_policy_payment;
                       const catLabel = allCategories[expense.category] || expense.category;
                       const pm = paymentMethodLabels[expense.payment_method] || paymentMethodLabels.cash;
                       const PmIcon = pm.icon;
                       return (
-                        <TableRow key={expense.id}>
+                        <TableRow key={expense.id} className={isPP ? 'bg-success/[0.03]' : ''}>
                           <TableCell>
-                            <Badge className={isReceipt 
-                              ? 'bg-success/10 text-success border-success/20 hover:bg-success/20' 
-                              : 'bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/20'
-                            }>
-                              {isReceipt ? (
-                                <><ArrowDownRight className="h-3 w-3 ml-1" />سند قبض</>
-                              ) : (
-                                <><ArrowUpRight className="h-3 w-3 ml-1" />سند صرف</>
+                            <div className="flex items-center gap-1.5">
+                              <Badge className={isReceipt 
+                                ? 'bg-success/10 text-success border-success/20 hover:bg-success/20' 
+                                : 'bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/20'
+                              }>
+                                {isReceipt ? (
+                                  <><ArrowDownRight className="h-3 w-3 ml-1" />سند قبض</>
+                                ) : (
+                                  <><ArrowUpRight className="h-3 w-3 ml-1" />سند صرف</>
+                                )}
+                              </Badge>
+                              {isPP && (
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-primary/30 text-primary">
+                                  <ShieldCheck className="h-3 w-3 ml-0.5" />بوليصة
+                                </Badge>
                               )}
-                            </Badge>
+                            </div>
                           </TableCell>
                           <TableCell className="text-sm">{formatDate(expense.expense_date)}</TableCell>
                           <TableCell className="text-sm">{catLabel}</TableCell>
-                          <TableCell className="text-sm">{expense.description || '-'}</TableCell>
+                          <TableCell className="text-sm max-w-[200px] truncate">{expense.description || '-'}</TableCell>
                           <TableCell className="text-sm">{expense.contact_name || '-'}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1 text-sm">
@@ -499,14 +589,18 @@ export default function Expenses() {
                             {expense.reference_number || '-'}
                           </TableCell>
                           <TableCell>
-                            <div className="flex gap-1">
-                              <Button variant="ghost" size="icon" onClick={() => handleEdit(expense)}>
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(expense.id)}>
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            </div>
+                            {isPP ? (
+                              <span className="text-xs text-muted-foreground">للعرض فقط</span>
+                            ) : (
+                              <div className="flex gap-1">
+                                <Button variant="ghost" size="icon" onClick={() => handleEdit(expense)}>
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(expense.id)}>
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
+                            )}
                           </TableCell>
                         </TableRow>
                       );
