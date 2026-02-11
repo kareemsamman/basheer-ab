@@ -231,7 +231,7 @@ export function Step4Payments({
     <div className="space-y-6">
       {/* Payment Summary Bar */}
       <PaymentSummaryBar
-        totalPrice={pricing.totalPrice}
+        totalPrice={pricing.totalPrice + pricing.officeCommission}
         totalPaid={totalPaidPayments}
         remaining={remainingToPay}
         hasError={paymentsExceedPrice}

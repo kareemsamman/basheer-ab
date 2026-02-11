@@ -377,8 +377,9 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
 
   // Payment validation
   const totalPaidPayments = payments.filter((p) => !p.refused).reduce((sum, p) => sum + (p.amount || 0), 0);
-  const remainingToPay = pricing.totalPrice - totalPaidPayments;
-  const paymentsExceedPrice = totalPaidPayments > pricing.totalPrice && pricing.totalPrice > 0;
+  const displayTotal = pricing.totalPrice + pricing.officeCommission;
+  const remainingToPay = displayTotal - totalPaidPayments;
+  const paymentsExceedPrice = totalPaidPayments > displayTotal && displayTotal > 0;
 
   // Steps configuration with validation
   const steps: WizardStep[] = useMemo(() => {
