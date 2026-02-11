@@ -52,6 +52,7 @@ interface Expense {
   reference_number: string | null;
   contact_name: string | null;
   is_policy_payment?: boolean;
+  is_company_due?: boolean;
 }
 
 // Payment categories
@@ -61,6 +62,7 @@ const paymentCategories: Record<string, string> = {
   food: 'طعام المكتب',
   utilities: 'فواتير (كهرباء/ماء/إنترنت)',
   insurance_company: 'دفع لشركة تأمين',
+  insurance_company_due: 'مستحق لشركة تأمين',
   other: 'مصاريف أخرى',
 };
 
@@ -88,6 +90,7 @@ export default function Expenses() {
   // Summary
   const [totalReceipts, setTotalReceipts] = useState(0);
   const [totalPayments, setTotalPayments] = useState(0);
+  const [totalCompanyDues, setTotalCompanyDues] = useState(0);
   
   // Filters
   const [voucherFilter, setVoucherFilter] = useState<string>("all");
@@ -141,23 +144,30 @@ export default function Expenses() {
         .lte('expense_date', monthEnd)
         .order('expense_date', { ascending: false });
       
+      // For manual expenses, filter by voucher type only for receipt/payment tabs
       if (voucherFilter === 'payment') {
         query = query.eq('voucher_type', 'payment');
       } else if (voucherFilter === 'receipt') {
         query = query.eq('voucher_type', 'receipt');
+      } else if (voucherFilter === 'company_dues') {
+        // company_dues tab: no manual expenses needed (they don't have this type)
+        query = query.eq('voucher_type', '__none__'); // return nothing
       }
-      if (categoryFilter !== 'all' && categoryFilter !== 'insurance_premium') {
+      if (categoryFilter !== 'all' && categoryFilter !== 'insurance_premium' && categoryFilter !== 'insurance_company_due') {
         query = query.eq('category', categoryFilter);
       }
       if (paymentMethodFilter !== 'all') {
         query = query.eq('payment_method', paymentMethodFilter);
       }
       
-      // Query 2: Policy payments for this month (only when showing all or receipts)
-      const shouldFetchPolicyPayments = voucherFilter !== 'payment' && 
+      // Query 2: Policy payments for receipts (exclude ELZAMI)
+      const shouldFetchPolicyPayments = (voucherFilter === 'all' || voucherFilter === 'receipt') && 
         (categoryFilter === 'all' || categoryFilter === 'insurance_premium');
       
-      const [expensesResult, policyPaymentsResult] = await Promise.all([
+      // Query 3: Company dues (policies with payed_for_company > 0)
+      const shouldFetchCompanyDues = voucherFilter === 'all' || voucherFilter === 'payment' || voucherFilter === 'company_dues';
+
+      const [expensesResult, policyPaymentsResult, companyDuesResult] = await Promise.all([
         query,
         shouldFetchPolicyPayments
           ? supabase
@@ -166,15 +176,27 @@ export default function Expenses() {
               .gte('payment_date', monthStart)
               .lte('payment_date', monthEnd)
               .eq('refused', false)
+              .neq('policies.policy_type_parent', 'ELZAMI')
+          : Promise.resolve({ data: [], error: null }),
+        shouldFetchCompanyDues
+          ? supabase
+              .from('policies')
+              .select('id, policy_number, policy_type_parent, payed_for_company, start_date, insurance_companies(name), clients!inner(full_name), cars(car_number)')
+              .gte('start_date', monthStart)
+              .lte('start_date', monthEnd)
+              .eq('cancelled', false)
+              .is('deleted_at', null)
+              .gt('payed_for_company', 0)
           : Promise.resolve({ data: [], error: null }),
       ]);
       
       if (expensesResult.error) throw expensesResult.error;
       if (policyPaymentsResult.error) throw policyPaymentsResult.error;
+      if (companyDuesResult.error) throw companyDuesResult.error;
       
       let manualExpenses: Expense[] = expensesResult.data || [];
       
-      // Convert policy payments to Expense shape
+      // Convert policy payments to Expense shape (receipts)
       const policyExpenses: Expense[] = (policyPaymentsResult.data || [])
         .filter((pp: any) => {
           if (paymentMethodFilter !== 'all' && mapPaymentType(pp.payment_type) !== paymentMethodFilter) return false;
@@ -204,8 +226,35 @@ export default function Expenses() {
           } as Expense;
         });
       
+      // Convert company dues to Expense shape (payment vouchers)
+      const companyDueExpenses: Expense[] = (companyDuesResult.data || [])
+        .map((p: any) => {
+          const companyName = p.insurance_companies?.name || 'شركة تأمين';
+          const typeLabel = POLICY_TYPE_LABELS[p.policy_type_parent as keyof typeof POLICY_TYPE_LABELS] || '';
+          const carNumber = p.cars?.car_number || '';
+          const clientName = p.clients?.full_name || '';
+          const desc = [typeLabel, carNumber ? `رقم ${carNumber}` : '', clientName, p.policy_number ? `بوليصة ${p.policy_number}` : ''].filter(Boolean).join(' - ');
+          
+          return {
+            id: `cp_${p.id}`,
+            category: 'insurance_company_due',
+            description: desc,
+            amount: Number(p.payed_for_company),
+            expense_date: p.start_date,
+            notes: null,
+            receipt_url: null,
+            created_at: p.start_date,
+            voucher_type: 'payment',
+            payment_method: 'bank_transfer',
+            reference_number: null,
+            contact_name: companyName,
+            is_policy_payment: true,
+            is_company_due: true,
+          } as Expense;
+        });
+      
       // Merge and sort
-      let allExpenses = [...manualExpenses, ...policyExpenses];
+      let allExpenses = [...manualExpenses, ...policyExpenses, ...companyDueExpenses];
       allExpenses.sort((a, b) => new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime());
       
       // Client-side search filter
@@ -220,8 +269,8 @@ export default function Expenses() {
       
       setExpenses(allExpenses);
       
-      // Calculate totals from ALL data for the month (manual + policy payments)
-      const [totalsResult, policyTotalsResult] = await Promise.all([
+      // Calculate totals from ALL data for the month
+      const [totalsResult, policyTotalsResult, companyDuesTotalsResult] = await Promise.all([
         supabase
           .from('expenses')
           .select('amount, voucher_type')
@@ -229,24 +278,38 @@ export default function Expenses() {
           .lte('expense_date', monthEnd),
         supabase
           .from('policy_payments')
-          .select('amount')
+          .select('amount, policies!inner(policy_type_parent)')
           .gte('payment_date', monthStart)
           .lte('payment_date', monthEnd)
-          .eq('refused', false),
+          .eq('refused', false)
+          .neq('policies.policy_type_parent', 'ELZAMI'),
+        supabase
+          .from('policies')
+          .select('payed_for_company')
+          .gte('start_date', monthStart)
+          .lte('start_date', monthEnd)
+          .eq('cancelled', false)
+          .is('deleted_at', null)
+          .gt('payed_for_company', 0),
       ]);
       
-      let receipts = 0, payments = 0;
+      let receipts = 0, payments = 0, companyDues = 0;
       (totalsResult.data || []).forEach(e => {
         if (e.voucher_type === 'receipt') receipts += Number(e.amount);
         else payments += Number(e.amount);
       });
-      // Add policy payments to receipts total
+      // Add policy payments to receipts (excluding ELZAMI)
       (policyTotalsResult.data || []).forEach(pp => {
         receipts += Number(pp.amount);
+      });
+      // Company dues total
+      (companyDuesTotalsResult.data || []).forEach(p => {
+        companyDues += Number(p.payed_for_company);
       });
       
       setTotalReceipts(receipts);
       setTotalPayments(payments);
+      setTotalCompanyDues(companyDues);
       
     } catch (error) {
       console.error('Error fetching expenses:', error);
@@ -368,7 +431,7 @@ export default function Expenses() {
 
   const currentCategories = formData.voucher_type === 'receipt' ? receiptCategories : paymentCategories;
   const allCategories = { ...paymentCategories, ...receiptCategories };
-  const netMonth = totalReceipts - totalPayments;
+  const netMonth = totalReceipts - totalPayments - totalCompanyDues;
 
   return (
     <MainLayout>
@@ -403,8 +466,8 @@ export default function Expenses() {
           </CardContent>
         </Card>
 
-        {/* Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-3">
+        {/* Summary Cards - 4 cards */}
+        <div className="grid gap-4 md:grid-cols-4">
           <Card className="border-l-4 border-l-success">
             <CardContent className="py-5">
               <div className="flex items-center gap-3">
@@ -432,6 +495,20 @@ export default function Expenses() {
               </div>
             </CardContent>
           </Card>
+
+          <Card className="border-l-4 border-l-warning">
+            <CardContent className="py-5">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-warning/10">
+                  <Building className="h-5 w-5 text-warning" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">المستحق للشركات</p>
+                  <p className="text-2xl font-bold text-warning">{formatCurrency(totalCompanyDues)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
           
           <Card className="border-l-4 border-l-primary">
             <CardContent className="py-5">
@@ -454,12 +531,13 @@ export default function Expenses() {
         <Card>
           <CardContent className="py-4">
             <div className="flex flex-col gap-4">
-              {/* Tabs */}
+              {/* Tabs - 4 tabs */}
               <Tabs value={voucherFilter} onValueChange={setVoucherFilter} dir="rtl">
                 <TabsList className="w-full md:w-auto">
                   <TabsTrigger value="all">الكل</TabsTrigger>
                   <TabsTrigger value="receipt">سند قبض</TabsTrigger>
                   <TabsTrigger value="payment">سند صرف</TabsTrigger>
+                  <TabsTrigger value="company_dues">المستحق للشركات</TabsTrigger>
                 </TabsList>
               </Tabs>
               
@@ -548,23 +626,30 @@ export default function Expenses() {
                     {expenses.map((expense) => {
                       const isReceipt = expense.voucher_type === 'receipt';
                       const isPP = expense.is_policy_payment;
+                      const isCompanyDue = expense.is_company_due;
                       const catLabel = allCategories[expense.category] || expense.category;
                       const pm = paymentMethodLabels[expense.payment_method] || paymentMethodLabels.cash;
                       const PmIcon = pm.icon;
                       return (
-                        <TableRow key={expense.id} className={isPP ? 'bg-success/[0.03]' : ''}>
+                        <TableRow key={expense.id} className={isCompanyDue ? 'bg-warning/[0.04]' : isPP ? 'bg-success/[0.03]' : ''}>
                           <TableCell>
                             <div className="flex items-center gap-1.5">
-                              <Badge className={isReceipt 
-                                ? 'bg-success/10 text-success border-success/20 hover:bg-success/20' 
-                                : 'bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/20'
-                              }>
-                                {isReceipt ? (
-                                  <><ArrowDownRight className="h-3 w-3 ml-1" />سند قبض</>
-                                ) : (
-                                  <><ArrowUpRight className="h-3 w-3 ml-1" />سند صرف</>
-                                )}
-                              </Badge>
+                              {isCompanyDue ? (
+                                <Badge className="bg-warning/10 text-warning border-warning/20 hover:bg-warning/20">
+                                  <Building className="h-3 w-3 ml-1" />مستحق شركة
+                                </Badge>
+                              ) : (
+                                <Badge className={isReceipt 
+                                  ? 'bg-success/10 text-success border-success/20 hover:bg-success/20' 
+                                  : 'bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/20'
+                                }>
+                                  {isReceipt ? (
+                                    <><ArrowDownRight className="h-3 w-3 ml-1" />سند قبض</>
+                                  ) : (
+                                    <><ArrowUpRight className="h-3 w-3 ml-1" />سند صرف</>
+                                  )}
+                                </Badge>
+                              )}
                               {isPP && (
                                 <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-primary/30 text-primary">
                                   <ShieldCheck className="h-3 w-3 ml-0.5" />بوليصة
@@ -582,7 +667,7 @@ export default function Expenses() {
                               {pm.label}
                             </div>
                           </TableCell>
-                          <TableCell className={`font-bold ${isReceipt ? 'text-success' : 'text-destructive'}`}>
+                          <TableCell className={`font-bold ${isCompanyDue ? 'text-warning' : isReceipt ? 'text-success' : 'text-destructive'}`}>
                             {isReceipt ? '+' : '-'}{formatCurrency(expense.amount)}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
