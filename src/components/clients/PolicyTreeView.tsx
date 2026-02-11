@@ -47,6 +47,7 @@ interface PolicyRecord {
   start_date: string;
   end_date: string;
   insurance_price: number;
+  office_commission: number | null;
   profit: number | null;
   cancelled: boolean | null;
   transferred: boolean | null;
@@ -60,7 +61,7 @@ interface PolicyRecord {
 interface PolicyTreeViewProps {
   policies: PolicyRecord[];
   onPolicyClick: (policyId: string) => void;
-  onPaymentAdded?: () => void;
+  onPaymentAdded?: () => void | Promise<void>;
   onTransferPolicy?: (policyId: string) => void;
   onCancelPolicy?: (policyId: string) => void;
   onTransferPackage?: (policyIds: string[]) => void;
@@ -203,10 +204,10 @@ export function PolicyTreeView({
           const policyPayments = (paymentsData || [])
             .filter(pay => pay.policy_id === p.id && !pay.refused);
           const paid = policyPayments.reduce((sum, pay) => sum + pay.amount, 0);
-          info[p.id] = {
-            paid,
-            remaining: p.insurance_price - paid,
-          };
+      info[p.id] = {
+        paid,
+        remaining: (p.insurance_price + (p.office_commission || 0)) - paid,
+      };
         });
         setPaymentInfo(info);
 
@@ -394,11 +395,9 @@ export function PolicyTreeView({
     allPolicyIds.forEach(id => {
       const policy = policies.find(p => p.id === id);
       if (policy) {
-        totalPrice += policy.insurance_price;
-        // Exclude ELZAMI from debt calculation (it's paid by company/system)
-        if (policy.policy_type_parent !== 'ELZAMI') {
-          debtPrice += policy.insurance_price;
-        }
+        totalPrice += policy.insurance_price + (policy.office_commission || 0);
+        // Include all policies in debt (office_commission is always client debt)
+        debtPrice += policy.insurance_price + (policy.office_commission || 0);
         totalPaid += paymentInfo[id]?.paid || 0;
       }
     });
@@ -508,7 +507,7 @@ export function PolicyTreeView({
       const paid = policyPayments.reduce((sum, pay) => sum + pay.amount, 0);
       info[p.id] = {
         paid,
-        remaining: p.insurance_price - paid,
+        remaining: (p.insurance_price + (p.office_commission || 0)) - paid,
       };
     });
     setPaymentInfo(info);
@@ -531,8 +530,8 @@ export function PolicyTreeView({
         const hasAddons = group.addons.length > 0;
         const hasMainPolicy = group.mainPolicy !== null;
         const isPackage = hasMainPolicy && hasAddons;
-        const totalPrice = (group.mainPolicy?.insurance_price || 0) + 
-          group.addons.reduce((sum, a) => sum + a.insurance_price, 0);
+        const totalPrice = ((group.mainPolicy?.insurance_price || 0) + (group.mainPolicy?.office_commission || 0)) + 
+          group.addons.reduce((sum, a) => sum + a.insurance_price + (a.office_commission || 0), 0);
         
         // Get payment status for this package/policy
         const paymentStatus = isPackage || hasMainPolicy 
@@ -603,8 +602,8 @@ export function PolicyTreeView({
         onOpenChange={setPackagePaymentOpen}
         policyIds={selectedPackagePolicyIds}
         branchId={selectedBranchId}
-        onSuccess={() => {
-          if (onPaymentAdded) onPaymentAdded();
+        onSuccess={async () => {
+          if (onPaymentAdded) await onPaymentAdded();
           refreshPaymentInfo();
         }}
       />
@@ -618,9 +617,10 @@ export function PolicyTreeView({
           policyType={selectedSinglePolicy.policy_type_parent}
           policyTypeChild={selectedSinglePolicy.policy_type_child}
           insurancePrice={selectedSinglePolicy.insurance_price}
+          officeCommission={selectedSinglePolicy.office_commission || 0}
           branchId={selectedSinglePolicy.branch_id}
-          onSuccess={() => {
-            if (onPaymentAdded) onPaymentAdded();
+          onSuccess={async () => {
+            if (onPaymentAdded) await onPaymentAdded();
             refreshPaymentInfo();
           }}
         />

@@ -40,8 +40,9 @@ interface SinglePolicyPaymentModalProps {
   policyType: string;
   policyTypeChild?: string | null;
   insurancePrice: number;
+  officeCommission?: number;
   branchId?: string | null;
-  onSuccess: () => void;
+  onSuccess: () => void | Promise<void>;
 }
 
 const policyTypeLabels: Record<string, string> = {
@@ -71,6 +72,7 @@ export function SinglePolicyPaymentModal({
   policyType,
   policyTypeChild,
   insurancePrice,
+  officeCommission,
   branchId,
   onSuccess,
 }: SinglePolicyPaymentModalProps) {
@@ -86,7 +88,8 @@ export function SinglePolicyPaymentModal({
   const [previewUrls, setPreviewUrls] = useState<PreviewUrls>({});
   const [chequeScannerOpen, setChequeScannerOpen] = useState(false);
 
-  const remaining = insurancePrice - totalPaid;
+  const effectiveTotalPrice = insurancePrice + (officeCommission || 0);
+  const remaining = effectiveTotalPrice - totalPaid;
   
   // Calculate total payments - count paid visa payments as already completed
   const paidVisaTotal = paymentLines
@@ -197,7 +200,7 @@ export function SinglePolicyPaymentModal({
 
       setTotalPaid(paid);
       
-      const currentRemaining = insurancePrice - paid;
+      const currentRemaining = effectiveTotalPrice - paid;
       setPaymentLines([{
         id: crypto.randomUUID(),
         amount: currentRemaining > 0 ? currentRemaining : 0,
@@ -416,8 +419,8 @@ export function SinglePolicyPaymentModal({
       }
 
       toast.success(`تمت إضافة ${paymentLines.length} دفعة بنجاح`);
+      await onSuccess();
       onOpenChange(false);
-      onSuccess();
     } catch (error: any) {
       console.error('Error adding payments:', error);
       if (error.message?.includes('Payment total exceeds')) {
@@ -466,7 +469,7 @@ export function SinglePolicyPaymentModal({
             <div className="grid grid-cols-3 gap-2">
               <Card className="p-3 text-center bg-muted/50">
                 <p className="text-xs text-muted-foreground mb-1">إجمالي السعر</p>
-                <p className="text-lg font-bold">₪{insurancePrice.toLocaleString()}</p>
+                <p className="text-lg font-bold">₪{effectiveTotalPrice.toLocaleString()}</p>
               </Card>
               <Card className="p-3 text-center bg-green-50 dark:bg-green-950/20">
                 <p className="text-xs text-muted-foreground mb-1">المدفوع</p>

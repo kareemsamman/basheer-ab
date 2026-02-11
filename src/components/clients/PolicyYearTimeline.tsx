@@ -51,6 +51,7 @@ interface PolicyRecord {
   start_date: string;
   end_date: string;
   insurance_price: number;
+  office_commission: number | null;
   profit: number | null;
   cancelled: boolean | null;
   transferred: boolean | null;
@@ -72,7 +73,7 @@ interface PolicyYearTimelineProps {
   accidentInfo?: Record<string, number>;
   childrenInfo?: Record<string, number>;
   onPolicyClick: (policyId: string) => void;
-  onPaymentAdded?: () => void;
+  onPaymentAdded?: () => void | Promise<void>;
   onTransferPolicy?: (policyId: string) => void;
   onCancelPolicy?: (policyId: string) => void;
   onTransferPackage?: (policyIds: string[]) => void;
@@ -295,7 +296,7 @@ export function PolicyYearTimeline({
           const paid = policyPayments.reduce((sum, pay) => sum + pay.amount, 0);
           info[p.id] = {
             paid,
-            remaining: p.insurance_price - paid,
+            remaining: (p.insurance_price + (p.office_commission || 0)) - paid,
           };
         });
 
@@ -438,11 +439,9 @@ export function PolicyYearTimeline({
         // Package status is determined by main policy, or first addon
         const statusPolicy = mainPolicy || groupPolicies[0];
         const status = getPolicyStatus(statusPolicy);
-        const totalPrice = groupPolicies.reduce((sum, p) => sum + p.insurance_price, 0);
-        // For debt calculation, exclude ELZAMI (it's paid by company/system)
-        const debtPrice = groupPolicies
-          .filter(p => p.policy_type_parent !== 'ELZAMI')
-          .reduce((sum, p) => sum + p.insurance_price, 0);
+        const totalPrice = groupPolicies.reduce((sum, p) => sum + p.insurance_price + (p.office_commission || 0), 0);
+        // For debt calculation, include all policies (office_commission is always client debt)
+        const debtPrice = groupPolicies.reduce((sum, p) => sum + p.insurance_price + (p.office_commission || 0), 0);
 
         packages.push({
           mainPolicy,
@@ -462,8 +461,8 @@ export function PolicyYearTimeline({
           addons: ADDON_POLICY_TYPES.includes(policy.policy_type_parent) ? [policy] : [],
           allPolicyIds: [policy.id],
           status: getPolicyStatus(policy),
-          totalPrice: policy.insurance_price,
-          debtPrice: isElzami ? 0 : policy.insurance_price
+          totalPrice: policy.insurance_price + (policy.office_commission || 0),
+          debtPrice: policy.insurance_price + (policy.office_commission || 0)
         });
       });
 
@@ -741,9 +740,8 @@ export function PolicyYearTimeline({
         onOpenChange={setPackagePaymentOpen}
         policyIds={selectedPackagePolicyIds}
         branchId={selectedBranchId}
-        onSuccess={() => {
-          if (onPaymentAdded) onPaymentAdded();
-          refreshPaymentInfo();
+        onSuccess={async () => {
+          if (onPaymentAdded) await onPaymentAdded();
         }}
       />
 

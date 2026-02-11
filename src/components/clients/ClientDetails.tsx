@@ -146,6 +146,7 @@ interface PolicyRecord {
   start_date: string;
   end_date: string;
   insurance_price: number;
+  office_commission: number | null;
   profit: number | null;
   cancelled: boolean | null;
   transferred: boolean | null;
@@ -402,7 +403,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
         const paid = policyPayments.reduce((sum, pay) => sum + pay.amount, 0);
         paymentInfo[p.id] = {
           paid,
-          remaining: p.insurance_price - paid,
+          remaining: (p.insurance_price + ((p as any).office_commission || 0)) - paid,
         };
       });
       setPolicyPaymentInfo(paymentInfo);
@@ -432,7 +433,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
         .from('policies')
         .select(`
           id, policy_number, policy_type_parent, policy_type_child, start_date, end_date, 
-          insurance_price, profit, cancelled, transferred, group_id,
+          insurance_price, office_commission, profit, cancelled, transferred, group_id,
           transferred_car_number, transferred_to_car_number, transferred_from_policy_id,
           created_at, branch_id, notes,
           company:insurance_companies(name, name_ar),
@@ -466,7 +467,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
       // Get ALL active policies for this client (including ELZAMI for complete view)
       const { data: policiesData } = await supabase
         .from('policies')
-        .select('id, insurance_price, profit, policy_type_parent, cancelled, transferred')
+        .select('id, insurance_price, office_commission, profit, policy_type_parent, cancelled, transferred')
         .eq('client_id', client.id)
         .eq('cancelled', false)
         .eq('transferred', false)
@@ -478,7 +479,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
       }
 
       // Total insurance = ALL policies INCLUDING ELZAMI (for customer view)
-      const totalInsurance = policiesData.reduce((sum, p) => sum + (p.insurance_price || 0), 0);
+      const totalInsurance = policiesData.reduce((sum, p) => sum + (p.insurance_price || 0) + (p.office_commission || 0), 0);
       
       // Total profit from all policies (ELZAMI profit = 0 by design)
       const totalProfit = policiesData.reduce((sum, p) => sum + (p.profit || 0), 0);
@@ -1601,11 +1602,13 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                 accidentInfo={policyAccidentCounts}
                 childrenInfo={policyChildrenCounts}
                 onPolicyClick={handlePolicyClick}
-                onPaymentAdded={() => {
-                  fetchPaymentSummary();
-                  fetchPayments();
-                  fetchPolicies();
-                  fetchWalletBalance();
+                onPaymentAdded={async () => {
+                  await Promise.all([
+                    fetchPaymentSummary(),
+                    fetchPayments(),
+                    fetchPolicies(),
+                    fetchWalletBalance(),
+                  ]);
                 }}
                 onTransferPolicy={(policyId) => {
                   setSelectedPolicyId(policyId);

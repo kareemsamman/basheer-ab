@@ -46,7 +46,7 @@ interface PackagePaymentModalProps {
   onOpenChange: (open: boolean) => void;
   policyIds: string[];
   branchId: string | null;
-  onSuccess: () => void;
+  onSuccess: () => void | Promise<void>;
 }
 
 const policyTypeLabels: Record<string, string> = {
@@ -191,7 +191,7 @@ export function PackagePaymentModal({
       // Fetch policies
       const { data: policiesData, error: policiesError } = await supabase
         .from('policies')
-        .select('id, policy_type_parent, insurance_price')
+        .select('id, policy_type_parent, insurance_price, office_commission')
         .in('id', policyIds);
 
       if (policiesError) throw policiesError;
@@ -212,13 +212,16 @@ export function PackagePaymentModal({
         }
       });
 
-      const policyInfo = (policiesData || []).map(p => ({
-        policyId: p.id,
-        policyType: p.policy_type_parent,
-        price: p.insurance_price,
-        paid: policyPayments[p.id] || 0,
-        remaining: p.insurance_price - (policyPayments[p.id] || 0),
-      }));
+      const policyInfo = (policiesData || []).map(p => {
+        const effectivePrice = p.insurance_price + ((p as any).office_commission || 0);
+        return {
+          policyId: p.id,
+          policyType: p.policy_type_parent,
+          price: effectivePrice,
+          paid: policyPayments[p.id] || 0,
+          remaining: effectivePrice - (policyPayments[p.id] || 0),
+        };
+      });
 
       setPolicies(policyInfo);
 
@@ -476,8 +479,8 @@ export function PackagePaymentModal({
       }
 
       toast.success(`تمت إضافة الدفعات بنجاح`);
+      await onSuccess();
       onOpenChange(false);
-      onSuccess();
     } catch (error: any) {
       console.error('Error adding payments:', error);
       if (error.message?.includes('Payment total exceeds')) {
