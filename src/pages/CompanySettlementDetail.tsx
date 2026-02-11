@@ -272,7 +272,7 @@ export default function CompanySettlementDetail() {
     const labels: Record<string, string> = {
       car: 'سيارة',
       cargo: 'شحن',
-      small: 'صغيرة',
+      small: 'اوتوبس زعير',
       taxi: 'تاكسي',
       tjeradown4: 'تجاري < 4 طن',
       tjeraup4: 'تجاري > 4 طن',

@@ -222,7 +222,7 @@ const policyTypeConfig: Record<string, { icon: React.ElementType; gradient: stri
 const carTypeLabels: Record<string, string> = {
   car: "خصوصي",
   cargo: "شحن",
-  small: "صغير",
+  small: "اوتوبس زعير",
   taxi: "تاكسي",
   tjeradown4: "تجاري (أقل من 4 طن)",
   tjeraup4: "تجاري (أكثر من 4 طن)",

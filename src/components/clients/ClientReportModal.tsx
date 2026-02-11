@@ -122,7 +122,7 @@ const policyTypeLabels: Record<string, string> = {
 const carTypeLabels: Record<string, string> = {
   car: 'خصوصي',
   cargo: 'شحن',
-  small: 'صغير',
+  small: 'اوتوبس زعير',
   taxi: 'تاكسي',
   tjeradown4: 'تجاري (<4 طن)',
   tjeraup4: 'تجاري (>4 طن)',

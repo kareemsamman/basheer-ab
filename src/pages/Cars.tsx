@@ -72,7 +72,7 @@ const carTypeLabels: Record<string, string> = {
   "car": "خصوصي",
   "cargo": "شحن",
   "taxi": "تاكسي",
-  "small": "صغير",
+  "small": "اوتوبس زعير",
   "tjeradown4": "تجاري < 4",
   "tjeraup4": "تجاري > 4",
 };

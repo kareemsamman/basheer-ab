@@ -85,7 +85,7 @@ const CAR_TYPES = [
   { value: 'car', label: 'خصوصي' },
   { value: 'cargo', label: 'تجاري' },
   { value: 'taxi', label: 'مونيت' },
-  { value: 'small', label: 'دراجة نارية' },
+  { value: 'small', label: 'اوتوبس زعير' },
   { value: 'tjeradown4', label: 'تجارة أقل من 4 طن' },
   { value: 'tjeraup4', label: 'تجارة أكثر من 4 طن' },
 ];

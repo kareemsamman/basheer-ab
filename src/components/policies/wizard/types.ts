@@ -214,7 +214,7 @@ export const CAR_POLICY_TYPES = [
 export const CAR_TYPES = [
   { value: "car", label: "خصوصي" },
   { value: "cargo", label: "شحن" },
-  { value: "small", label: "صغير" },
+  { value: "small", label: "اوتوبس زعير" },
   { value: "taxi", label: "تاكسي" },
   { value: "tjeradown4", label: "تجاري (أقل من 4 طن)" },
   { value: "tjeraup4", label: "تجاري (أكثر من 4 طن)" },

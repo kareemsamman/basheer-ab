@@ -30,7 +30,7 @@ const PAYMENT_TYPE_LABELS: Record<string, string> = {
 const CAR_TYPE_LABELS: Record<string, string> = {
   car: 'سيارة خاصة',
   cargo: 'شحن',
-  small: 'صغيرة',
+  small: 'اوتوبس زعير',
   taxi: 'تاكسي',
   tjeradown4: 'تجارة أقل من 4 طن',
   tjeraup4: 'تجارة أكثر من 4 طن',
