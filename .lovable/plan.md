@@ -1,39 +1,55 @@
 
+# Fix: Office Commission Missing from Client Views + Auto-Refresh After Payment
 
-# Fix: DB Trigger + Payment Summary Breakdown for Office Commission
+## Problems
 
-## Problem 1: Database Trigger Blocks Save
-The error `Payment total exceeds policy insurance_price (total=1400.00, price=1200.00)` comes from the `validate_policy_payment_total()` trigger. It compares total payments against `insurance_price` only, but now payments can include the office commission amount (₪200). The trigger must include `office_commission` in the allowed total.
+### Problem 1: "المبلغ" shows ₪1,200 instead of ₪1,400
+The policy card in the client profile shows only `insurance_price` without adding `office_commission`. This affects multiple components that each have their own `PolicyRecord` interface and price calculations.
 
-## Problem 2: Summary Bar Lacks Breakdown
-The PaymentSummaryBar shows "إجمالي الوثيقة ₪1,400" but doesn't explain that it's ₪1,200 (ELZAMI price) + ₪200 (عمولة مكتب). The user needs to see this breakdown.
+### Problem 2: Wallet/balance not refreshing after payment
+After paying via the "دفع" button, the user must manually reload the page to see updated balances. The `onPaymentAdded` callback already triggers `fetchPaymentSummary()`, `fetchPayments()`, `fetchPolicies()`, and `fetchWalletBalance()`, but the `PackagePaymentModal` closes before the data re-fetches complete, and the `PolicyYearTimeline` internal payment cache doesn't update from the parent's refreshed data.
 
 ## Changes
 
-### 1. Database Migration - Update trigger
-Update `validate_policy_payment_total()` to use `insurance_price + COALESCE(office_commission, 0)` instead of just `insurance_price`:
+### 1. ClientDetails.tsx - Fetch `office_commission` in queries
+- Add `office_commission` to the `fetchPolicies` select query (line 434)
+- Add `office_commission` to the `fetchPaymentSummary` select query (line 469)
+- Include `office_commission` in `totalInsurance` calculation (line 481): `sum + insurance_price + (office_commission || 0)`
 
-```sql
--- Single policy:
-SELECT p.insurance_price + COALESCE(p.office_commission, 0), p.group_id
-INTO v_policy_price, v_group_id ...
+### 2. PolicyYearTimeline.tsx - Include commission in totals
+- Add `office_commission: number | null` to the `PolicyRecord` interface (after line 53)
+- Update `totalPrice` calculation (line 441) to: `sum + p.insurance_price + (p.office_commission || 0)`
+- Update standalone policy `totalPrice` (line 465) to: `policy.insurance_price + (policy.office_commission || 0)`
+- Update `debtPrice` calculation to include commission for ELZAMI policies
+- Update `refreshPaymentInfo` remaining calc to include commission
 
--- Package group:
-SELECT COALESCE(SUM(pkg.insurance_price + COALESCE(pkg.office_commission, 0)), 0)
-INTO v_policy_price ...
-```
+### 3. PolicyTreeView.tsx - Include commission in totals
+- Add `office_commission: number | null` to the `PolicyRecord` interface (after line 49)
+- Update `getPackagePaymentStatus` (line 397): `totalPrice += policy.insurance_price + (policy.office_commission || 0)`
+- Update `debtPrice` to include commission
+- Update `refreshPaymentInfo` remaining calc (line 511) to include commission
+- Update `totalPrice` calc at line 534 to include commission
 
-### 2. PaymentSummaryBar - Show commission breakdown
-Add an optional `officeCommission` prop. When > 0, show a small line under the total:
-- "₪1,400" (total)
-- Below it in smaller text: "₪1,200 تأمين + ₪200 عمولة مكتب"
+### 4. PackagePaymentModal.tsx - Include commission in price/remaining
+- Add `office_commission` to the `fetchPolicyPaymentInfo` select query (line 194)
+- Update price calculation (line 218): `price: p.insurance_price + (p.office_commission || 0)`
+- Update remaining calculation (line 220) accordingly
 
-### 3. Step4Payments - Pass commission prop
-Pass `pricing.officeCommission` to `PaymentSummaryBar`.
+### 5. SinglePolicyPaymentModal.tsx - Accept commission in price
+- Add `officeCommission?: number` prop
+- Use `insurancePrice + (officeCommission || 0)` for total/remaining calculations
+- Update call sites in PolicyTreeView and PolicyYearTimeline to pass commission
+
+### 6. Auto-refresh after payment
+- In `PackagePaymentModal` `onSuccess`, ensure the modal closes AFTER the parent refetch completes (currently `onSuccess` is called which triggers async fetches, but the modal closes immediately)
+- Make `onSuccess` in `PolicyYearTimeline` and `PolicyTreeView` await the parent callback before closing the modal, or add a small delay to let refetches propagate
+
+## Files to Change
 
 | File | Change |
 |------|--------|
-| New DB migration | Update `validate_policy_payment_total()` to include `office_commission` |
-| `src/components/policies/wizard/PaymentSummaryBar.tsx` | Add `officeCommission` prop, show breakdown text |
-| `src/components/policies/wizard/Step4Payments.tsx` | Pass `officeCommission` to `PaymentSummaryBar` |
-
+| `src/components/clients/ClientDetails.tsx` | Add `office_commission` to select queries, include in totals |
+| `src/components/clients/PolicyYearTimeline.tsx` | Add to interface, include in totalPrice/debtPrice calcs |
+| `src/components/clients/PolicyTreeView.tsx` | Add to interface, include in all price calcs |
+| `src/components/clients/PackagePaymentModal.tsx` | Fetch and include commission in price/remaining |
+| `src/components/clients/SinglePolicyPaymentModal.tsx` | Accept and use commission in calculations |
