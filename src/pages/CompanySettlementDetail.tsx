@@ -850,18 +850,16 @@ export default function CompanySettlementDetail() {
                             </Badge>
                           </TableCell>
                           <TableCell className="font-mono">
-                            {isFullPolicy(policy) ? (
-                              isEditing ? (
-                                <Input
-                                  type="number"
-                                  value={editValues.car_value}
-                                  onChange={(e) => setEditValues(v => ({ ...v, car_value: Number(e.target.value) }))}
-                                  className="w-24 h-8 text-sm"
-                                />
-                              ) : (
-                                `₪${(policy.car?.car_value || 0).toLocaleString('en-US')}`
-                              )
-                            ) : '-'}
+                            {isEditing ? (
+                              <Input
+                                type="number"
+                                value={editValues.car_value}
+                                onChange={(e) => setEditValues(v => ({ ...v, car_value: Number(e.target.value) }))}
+                                className="w-24 h-8 text-sm"
+                              />
+                            ) : (
+                              policy.car?.car_value ? `₪${policy.car.car_value.toLocaleString('en-US')}` : '-'
+                            )}
                           </TableCell>
                           <TableCell>{formatDate(policy.start_date)}</TableCell>
                           

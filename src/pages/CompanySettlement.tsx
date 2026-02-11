@@ -541,14 +541,21 @@ export default function CompanySettlement() {
               <CardHeader>
                 <div className="flex items-center justify-between gap-4">
                   <CardTitle>تفاصيل التسوية حسب الشركة</CardTitle>
-                  <div className="relative w-64">
-                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="بحث باسم الشركة..."
-                      value={companySearch}
-                      onChange={(e) => setCompanySearch(e.target.value)}
-                      className="pr-10"
-                    />
+                  <div className="flex items-center gap-2">
+                    <div className="relative w-64">
+                      <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="بحث باسم الشركة..."
+                        value={companySearch}
+                        onChange={(e) => setCompanySearch(e.target.value)}
+                        className="pr-10"
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                      />
+                    </div>
+                    <Button variant="default" size="sm" onClick={() => {/* search already reactive */}}>
+                      <Search className="h-4 w-4 ml-1" />
+                      بحث
+                    </Button>
                   </div>
                 </div>
               </CardHeader>

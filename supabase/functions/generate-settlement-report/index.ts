@@ -86,6 +86,8 @@ serve(async (req) => {
         start_date,
         end_date,
         cancelled,
+        transferred,
+        transferred_to_car_number,
         clients (full_name),
         cars (car_number, manufacturer_name, car_type, car_value)
       `)
@@ -273,7 +275,7 @@ function generateReportHtml(
       <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: left; direction: ltr;">₪${formatNumber(p.insurance_price || 0)}</td>
       <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: left; direction: ltr; color: #dc2626;">₪${formatNumber(p.payed_for_company || 0)}</td>
       <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: left; direction: ltr; color: #16a34a;">₪${formatNumber(p.profit || 0)}</td>
-      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${p.cancelled ? '<span style="color: #dc2626;">ملغية</span>' : '<span style="color: #16a34a;">فعالة</span>'}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${p.cancelled ? '<span style="color: #dc2626;">ملغية</span>' : p.transferred ? `<span style="color: #f59e0b;">محولة ← ${p.transferred_to_car_number || ''}</span>` : '<span style="color: #16a34a;">فعالة</span>'}</td>
     </tr>
   `).join("");
 
