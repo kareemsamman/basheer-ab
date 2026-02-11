@@ -193,6 +193,7 @@ export default function Expenses() {
               .eq('cancelled', false)
               .is('deleted_at', null)
               .gt('payed_for_company', 0)
+              .neq('policy_type_parent', 'ELZAMI')
           : Promise.resolve({ data: [], error: null }),
         shouldFetchElzami
           ? supabase
@@ -367,7 +368,8 @@ export default function Expenses() {
           .lte('start_date', monthEnd)
           .eq('cancelled', false)
           .is('deleted_at', null)
-          .gt('payed_for_company', 0),
+          .gt('payed_for_company', 0)
+          .neq('policy_type_parent', 'ELZAMI'),
       ]);
       
       let receipts = 0, payments = 0, companyDues = 0;
