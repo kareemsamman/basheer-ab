@@ -8,6 +8,7 @@ interface PaymentSummaryBarProps {
   remaining: number;
   hasError?: boolean;
   errorMessage?: string;
+  officeCommission?: number;
 }
 
 export function PaymentSummaryBar({ 
@@ -15,7 +16,8 @@ export function PaymentSummaryBar({
   totalPaid, 
   remaining, 
   hasError,
-  errorMessage 
+  errorMessage,
+  officeCommission = 0,
 }: PaymentSummaryBarProps) {
   const isPaid = remaining === 0 && totalPrice > 0;
   const isOverpaid = remaining < 0;
@@ -33,6 +35,11 @@ export function PaymentSummaryBar({
         <div>
           <span className="text-xs text-muted-foreground block mb-1">إجمالي الوثيقة</span>
           <p className="font-bold text-lg">₪{totalPrice.toLocaleString()}</p>
+          {officeCommission > 0 && (
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              ₪{(totalPrice - officeCommission).toLocaleString()} تأمين + ₪{officeCommission.toLocaleString()} عمولة مكتب
+            </p>
+          )}
         </div>
         <div>
           <span className="text-xs text-muted-foreground block mb-1">مجموع الدفعات</span>

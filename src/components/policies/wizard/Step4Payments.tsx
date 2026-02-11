@@ -235,6 +235,7 @@ export function Step4Payments({
         totalPaid={totalPaidPayments}
         remaining={remainingToPay}
         hasError={paymentsExceedPrice}
+        officeCommission={pricing.officeCommission}
       />
 
       {/* Payments List */}
