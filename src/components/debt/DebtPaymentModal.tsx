@@ -28,6 +28,7 @@ interface PolicyComponent {
   paid: number;
   remaining: number;
   branchId: string | null;
+  officeCommission: number;
 }
 
 // Represents a debt item (package or single policy)
@@ -270,7 +271,7 @@ export function DebtPaymentModal({
       // Exclude: cancelled, deleted, transferred, and broker deals
       const { data: policiesData, error: policiesError } = await supabase
         .from('policies')
-        .select('id, policy_type_parent, policy_type_child, insurance_price, branch_id, group_id, broker_id, car:cars(car_number)')
+        .select('id, policy_type_parent, policy_type_child, insurance_price, office_commission, branch_id, group_id, broker_id, car:cars(car_number)')
         .eq('client_id', clientId)
         .eq('cancelled', false)
         .eq('transferred', false)
@@ -316,15 +317,20 @@ export function DebtPaymentModal({
         const isPackage = policies.length > 1 || (policies[0]?.group_id !== null);
         
         // Build policy components
-        const policyComponents: PolicyComponent[] = policies.map(p => ({
-          policyId: p.id,
-          policyType: p.policy_type_parent,
-          policyTypeChild: p.policy_type_child,
-          price: p.insurance_price,
-          paid: paymentsMap[p.id] || 0,
-          remaining: p.insurance_price - (paymentsMap[p.id] || 0),
-          branchId: p.branch_id,
-        }));
+        const policyComponents: PolicyComponent[] = policies.map(p => {
+          const commission = (p as any).office_commission || 0;
+          const effectivePrice = p.insurance_price + commission;
+          return {
+            policyId: p.id,
+            policyType: p.policy_type_parent,
+            policyTypeChild: p.policy_type_child,
+            price: effectivePrice,
+            paid: paymentsMap[p.id] || 0,
+            remaining: effectivePrice - (paymentsMap[p.id] || 0),
+            branchId: p.branch_id,
+            officeCommission: commission,
+          };
+        });
 
         // Calculate item-level totals
         const fullPrice = policyComponents.reduce((sum, p) => sum + p.price, 0);
@@ -335,7 +341,10 @@ export function DebtPaymentModal({
         // This follows the business rule: ELZAMI is excluded from wallet/debt
         const nonElzamiPrice = policyComponents
           .filter(p => p.policyType !== 'ELZAMI')
-          .reduce((sum, p) => sum + p.price, 0);
+          .reduce((sum, p) => sum + p.price, 0)
+          + policyComponents
+            .filter(p => p.policyType === 'ELZAMI')
+            .reduce((sum, p) => sum + p.officeCommission, 0);
 
         // Remaining debt = min(non-ELZAMI prices, total package remaining)
         // This ensures we don't show ELZAMI debt as client debt
@@ -364,9 +373,10 @@ export function DebtPaymentModal({
           };
         });
 
-        // Payable policies: non-ELZAMI with internal remaining > 0
+        // Payable policies: non-ELZAMI with remaining > 0, OR ELZAMI with unpaid office commission
         const payablePolicies = componentsWithInternalRemaining.filter(
-          p => p.policyType !== 'ELZAMI' && p.remaining > 0
+          p => (p.policyType !== 'ELZAMI' && p.remaining > 0) ||
+               (p.policyType === 'ELZAMI' && p.officeCommission > 0 && p.remaining > 0)
         );
 
         // Only include items that have payable policies (with actual debt to collect)
