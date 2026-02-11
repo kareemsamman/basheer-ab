@@ -53,6 +53,7 @@ interface Expense {
   contact_name: string | null;
   is_policy_payment?: boolean;
   is_company_due?: boolean;
+  is_elzami_commission?: boolean;
 }
 
 // Payment categories
@@ -63,6 +64,7 @@ const paymentCategories: Record<string, string> = {
   utilities: 'فواتير (كهرباء/ماء/إنترنت)',
   insurance_company: 'دفع لشركة تأمين',
   insurance_company_due: 'مستحق لشركة تأمين',
+  elzami_company_commission: 'عمولة إلزامي لشركة',
   other: 'مصاريف أخرى',
 };
 
@@ -70,6 +72,7 @@ const paymentCategories: Record<string, string> = {
 const receiptCategories: Record<string, string> = {
   insurance_premium: 'قسط تأمين',
   commission: 'عمولة',
+  elzami_office_commission: 'عمولة مكتب إلزامي',
   debt_collection: 'تحصيل دين',
   other_income: 'إيرادات أخرى',
 };
@@ -167,7 +170,10 @@ export default function Expenses() {
       // Query 3: Company dues (policies with payed_for_company > 0)
       const shouldFetchCompanyDues = voucherFilter === 'all' || voucherFilter === 'payment' || voucherFilter === 'company_dues';
 
-      const [expensesResult, policyPaymentsResult, companyDuesResult] = await Promise.all([
+      // Query 4: ELZAMI policies for office_commission (receipt) and elzami_commission (payment)
+      const shouldFetchElzami = voucherFilter === 'all' || voucherFilter === 'receipt' || voucherFilter === 'payment';
+
+      const [expensesResult, policyPaymentsResult, companyDuesResult, elzamiResult] = await Promise.all([
         query,
         shouldFetchPolicyPayments
           ? supabase
@@ -188,11 +194,22 @@ export default function Expenses() {
               .is('deleted_at', null)
               .gt('payed_for_company', 0)
           : Promise.resolve({ data: [], error: null }),
+        shouldFetchElzami
+          ? supabase
+              .from('policies')
+              .select('id, policy_number, policy_type_parent, office_commission, start_date, insurance_companies(name, elzami_commission), clients!inner(full_name), cars(car_number)')
+              .gte('start_date', monthStart)
+              .lte('start_date', monthEnd)
+              .eq('policy_type_parent', 'ELZAMI')
+              .eq('cancelled', false)
+              .is('deleted_at', null)
+          : Promise.resolve({ data: [], error: null }),
       ]);
       
       if (expensesResult.error) throw expensesResult.error;
       if (policyPaymentsResult.error) throw policyPaymentsResult.error;
       if (companyDuesResult.error) throw companyDuesResult.error;
+      if (elzamiResult.error) throw elzamiResult.error;
       
       let manualExpenses: Expense[] = expensesResult.data || [];
       
@@ -253,8 +270,68 @@ export default function Expenses() {
           } as Expense;
         });
       
+      // Convert ELZAMI policies to commission vouchers
+      const elzamiVouchers: Expense[] = (elzamiResult.data || []).flatMap((p: any) => {
+        const clientName = p.clients?.full_name || '';
+        const companyName = p.insurance_companies?.name || 'شركة تأمين';
+        const carNumber = p.cars?.car_number || '';
+        const desc = ['إلزامي', carNumber ? `رقم ${carNumber}` : '', p.policy_number ? `بوليصة ${p.policy_number}` : ''].filter(Boolean).join(' - ');
+        const results: Expense[] = [];
+        
+        // Office commission → receipt voucher (AB's revenue)
+        if (Number(p.office_commission) > 0) {
+          results.push({
+            id: `oc_${p.id}`,
+            category: 'elzami_office_commission',
+            description: desc,
+            amount: Number(p.office_commission),
+            expense_date: p.start_date,
+            notes: null,
+            receipt_url: null,
+            created_at: p.start_date,
+            voucher_type: 'receipt',
+            payment_method: 'cash',
+            reference_number: null,
+            contact_name: clientName,
+            is_policy_payment: true,
+            is_elzami_commission: true,
+          } as Expense);
+        }
+        
+        // Company elzami commission → payment voucher (AB pays to company)
+        const companyCommission = Number(p.insurance_companies?.elzami_commission || 0);
+        if (companyCommission > 0) {
+          results.push({
+            id: `ec_${p.id}`,
+            category: 'elzami_company_commission',
+            description: desc,
+            amount: companyCommission,
+            expense_date: p.start_date,
+            notes: null,
+            receipt_url: null,
+            created_at: p.start_date,
+            voucher_type: 'payment',
+            payment_method: 'bank_transfer',
+            reference_number: null,
+            contact_name: companyName,
+            is_policy_payment: true,
+            is_elzami_commission: true,
+          } as Expense);
+        }
+        
+        return results;
+      });
+
+      // Filter elzami vouchers by tab
+      const filteredElzamiVouchers = elzamiVouchers.filter(v => {
+        if (voucherFilter === 'receipt') return v.voucher_type === 'receipt';
+        if (voucherFilter === 'payment') return v.voucher_type === 'payment';
+        if (voucherFilter === 'company_dues') return false;
+        return true; // 'all'
+      });
+
       // Merge and sort
-      let allExpenses = [...manualExpenses, ...policyExpenses, ...companyDueExpenses];
+      let allExpenses = [...manualExpenses, ...policyExpenses, ...companyDueExpenses, ...filteredElzamiVouchers];
       allExpenses.sort((a, b) => new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime());
       
       // Client-side search filter
@@ -269,7 +346,7 @@ export default function Expenses() {
       
       setExpenses(allExpenses);
       
-      // Calculate totals from ALL data for the month
+      // Calculate totals from ALL data for the month (reuse already-fetched elzami data)
       const [totalsResult, policyTotalsResult, companyDuesTotalsResult] = await Promise.all([
         supabase
           .from('expenses')
@@ -301,6 +378,11 @@ export default function Expenses() {
       // Add policy payments to receipts (excluding ELZAMI)
       (policyTotalsResult.data || []).forEach(pp => {
         receipts += Number(pp.amount);
+      });
+      // Add ELZAMI office commissions to receipts, company commissions to payments
+      elzamiVouchers.forEach(v => {
+        if (v.voucher_type === 'receipt') receipts += v.amount;
+        else payments += v.amount;
       });
       // Company dues total
       (companyDuesTotalsResult.data || []).forEach(p => {
@@ -627,11 +709,12 @@ export default function Expenses() {
                       const isReceipt = expense.voucher_type === 'receipt';
                       const isPP = expense.is_policy_payment;
                       const isCompanyDue = expense.is_company_due;
+                      const isElzamiComm = expense.is_elzami_commission;
                       const catLabel = allCategories[expense.category] || expense.category;
                       const pm = paymentMethodLabels[expense.payment_method] || paymentMethodLabels.cash;
                       const PmIcon = pm.icon;
                       return (
-                        <TableRow key={expense.id} className={isCompanyDue ? 'bg-warning/[0.04]' : isPP ? 'bg-success/[0.03]' : ''}>
+                        <TableRow key={expense.id} className={isCompanyDue ? 'bg-warning/[0.04]' : isElzamiComm ? 'bg-accent/[0.06]' : isPP ? 'bg-success/[0.03]' : ''}>
                           <TableCell>
                             <div className="flex items-center gap-1.5">
                               {isCompanyDue ? (
@@ -650,7 +733,12 @@ export default function Expenses() {
                                   )}
                                 </Badge>
                               )}
-                              {isPP && (
+                              {isElzamiComm && (
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-accent-foreground/30 text-accent-foreground">
+                                  <ShieldCheck className="h-3 w-3 ml-0.5" />{isReceipt ? 'عمولة مكتب' : 'عمولة إلزامي'}
+                                </Badge>
+                              )}
+                              {isPP && !isElzamiComm && (
                                 <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-primary/30 text-primary">
                                   <ShieldCheck className="h-3 w-3 ml-0.5" />بوليصة
                                 </Badge>
