@@ -135,6 +135,7 @@ interface RelatedPolicy {
   policy_type_parent: string;
   policy_type_child: string | null;
   insurance_price: number;
+  office_commission: number | null;
   profit: number | null;
   road_service_id: string | null;
   accident_fee_service_id: string | null;
@@ -375,7 +376,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
       if (policyData.group_id) {
         const { data: fetchedRelated } = await supabase
           .from("policies")
-          .select("id, policy_type_parent, policy_type_child, insurance_price, profit, road_service_id, accident_fee_service_id, insurance_companies(id, name, name_ar), road_services(id, name, name_ar), accident_fee_services(id, name, name_ar)")
+          .select("id, policy_type_parent, policy_type_child, insurance_price, office_commission, profit, road_service_id, accident_fee_service_id, insurance_companies(id, name, name_ar), road_services(id, name, name_ar), accident_fee_services(id, name, name_ar)")
           .eq("group_id", policyData.group_id)
           .neq("id", policyId)
           .is("deleted_at", null);
@@ -587,7 +588,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
   // Calculate package totals first (needed for distributed payment calculation)
   const hasPackage = relatedPolicies.length > 0;
   const packageTotalPrice = hasPackage 
-    ? (policy?.insurance_price || 0) + relatedPolicies.reduce((sum, rp) => sum + rp.insurance_price, 0)
+    ? (policy?.insurance_price || 0) + (policy?.office_commission || 0) + relatedPolicies.reduce((sum, rp) => sum + rp.insurance_price + (rp.office_commission || 0), 0)
     : 0;
   const packageTotalProfit = hasPackage 
     ? (policy?.profit || 0) + relatedPolicies.reduce((sum, rp) => sum + (rp.profit || 0), 0)
@@ -609,8 +610,9 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
 
     // Single policy - use direct payments
     const paid = payments.filter((p) => !p.refused && p.cheque_status !== 'returned').reduce((sum, p) => sum + p.amount, 0);
-    const rem = policy.insurance_price - paid;
-    const pct = Math.min(100, Math.round((paid / policy.insurance_price) * 100));
+    const effectivePrice = policy.insurance_price + (policy.office_commission || 0);
+    const rem = effectivePrice - paid;
+    const pct = Math.min(100, Math.round((paid / effectivePrice) * 100));
     const status = rem <= 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
     return { paid, remaining: rem, percentage: pct, status };
   };
@@ -918,8 +920,13 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                           </span>
                         </div>
                         <p className="text-2xl font-bold text-slate-900 ltr-nums">
-                          {formatCurrency(hasPackage ? packageTotalPrice : policy.insurance_price)}
+                          {formatCurrency(hasPackage ? packageTotalPrice : (policy.insurance_price + (policy.office_commission || 0)))}
                         </p>
+                        {!hasPackage && (policy.office_commission || 0) > 0 && (
+                          <p className="text-[11px] text-muted-foreground mt-1">
+                            {formatCurrency(policy.insurance_price)} تأمين + {formatCurrency(policy.office_commission)} عمولة مكتب
+                          </p>
+                        )}
                       </div>
 
                       {/* Paid Amount */}
@@ -1421,7 +1428,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                     <PolicyPaymentsSection
                       policyId={policy.id}
                       payments={hasPackage ? packagePayments : payments}
-                      insurancePrice={hasPackage ? packageTotalPrice : policy.insurance_price}
+                      insurancePrice={hasPackage ? packageTotalPrice : (policy.insurance_price + (policy.office_commission || 0))}
                       branchId={policy.branch_id}
                       onPaymentsChange={handlePaymentsChange}
                       autoOpenAdd={showQuickPayment}

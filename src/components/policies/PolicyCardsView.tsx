@@ -165,9 +165,9 @@ export function PolicyCardsView({
     allPolicyIds.forEach(id => {
       const policy = policies.find(p => p.id === id);
       if (policy) {
-        totalPrice += policy.insurance_price;
+        totalPrice += policy.insurance_price + (policy.office_commission || 0);
         if (policy.policy_type_parent !== 'ELZAMI') {
-          debtPrice += policy.insurance_price;
+          debtPrice += policy.insurance_price + (policy.office_commission || 0);
         }
         totalPaid += paymentInfo[id]?.paid || 0;
       }

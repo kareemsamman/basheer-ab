@@ -30,6 +30,7 @@ interface PolicyRecord {
   start_date: string;
   end_date: string;
   insurance_price: number;
+  office_commission: number | null;
   profit: number | null;
   payed_for_company: number | null;
   elzami_cost: number | null;
