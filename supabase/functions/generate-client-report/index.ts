@@ -175,7 +175,7 @@ serve(async (req) => {
 
     // Calculate payment summary
     let totalPaid = 0;
-    let totalInsurance = (policies || []).reduce((sum: number, p: any) => sum + (p.insurance_price || 0), 0);
+    let totalInsurance = (policies || []).filter((p: any) => !p.cancelled).reduce((sum: number, p: any) => sum + (p.insurance_price || 0), 0);
 
     if (policyIds.length > 0) {
       const { data: payments } = await supabase
@@ -371,8 +371,30 @@ function generateReportHtml(
   // Helper to get children for a policy
   const getChildrenForPolicy = (policyId: string) => policyChildren[policyId] || [];
 
+  const getTypeLabel = (policy: PolicyData) => {
+    if (policy.policy_type_parent === 'THIRD_FULL' && policy.policy_type_child) {
+      const childLabels: Record<string, string> = { FULL: 'شامل', THIRD: 'ثالث' };
+      return childLabels[policy.policy_type_child] || policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent;
+    }
+    return policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent;
+  };
+
   const renderPolicyCard = (policy: PolicyData) => {
     const status = getPolicyStatus(policy);
+    const typeLabel = getTypeLabel(policy);
+
+    // Cancelled policies: show minimal one-line summary only
+    if (policy.cancelled) {
+      return `
+        <div class="policy-card" style="opacity:0.6;padding:8px 10px;">
+          <div class="policy-header" style="margin-bottom:0;">
+            <div class="policy-type">${typeLabel}</div>
+            <span class="status status-cancelled">❌ ملغاة</span>
+          </div>
+        </div>
+      `;
+    }
+
     const files = getFilesForPolicy(policy.id);
     const children = getChildrenForPolicy(policy.id);
     const companyName = getCompanyName(policy);
@@ -412,11 +434,11 @@ function generateReportHtml(
         </div>
       </div>
     ` : '';
-    
+
     return `
       <div class="policy-card">
         <div class="policy-header">
-          <div class="policy-type">${policyTypeLabels[policy.policy_type_parent] || policy.policy_type_parent}</div>
+          <div class="policy-type">${typeLabel}</div>
           <span class="status ${status.class}">${status.icon} ${status.label}</span>
         </div>
         <div class="policy-details">
@@ -433,8 +455,25 @@ function generateReportHtml(
   };
 
   const carsHtml = policiesByCar.map(({ car, policies: carPolicies }) => {
-    const totalPrice = carPolicies.reduce((s, p) => s + p.insurance_price, 0);
-    const activeCount = carPolicies.filter(p => !p.cancelled && !p.transferred && new Date(p.end_date) >= new Date()).length;
+    const nonCancelledPolicies = carPolicies.filter(p => !p.cancelled);
+    const allCancelled = nonCancelledPolicies.length === 0 && carPolicies.length > 0;
+    const totalPrice = nonCancelledPolicies.reduce((s, p) => s + p.insurance_price, 0);
+    const activeCount = nonCancelledPolicies.filter(p => !p.transferred && new Date(p.end_date) >= new Date()).length;
+
+    // If all policies for this car are cancelled, show abbreviated section
+    if (allCancelled) {
+      return `
+        <div class="car-section" style="opacity:0.5;">
+          <div class="car-header">
+            <div class="car-plate">${car.car_number}</div>
+            <div class="car-info">
+              <span class="car-name">${car.manufacturer_name || ''} ${car.model || ''} ${car.year || ''}</span>
+              <span class="car-meta" style="color:#dc2626;">جميع الوثائق ملغاة</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
     
     return `
       <div class="car-section">
@@ -442,7 +481,7 @@ function generateReportHtml(
           <div class="car-plate">${car.car_number}</div>
           <div class="car-info">
             <span class="car-name">${car.manufacturer_name || ''} ${car.model || ''} ${car.year || ''}</span>
-            <span class="car-meta">${carPolicies.length} وثائق ${activeCount > 0 ? `• <span class="active-badge">${activeCount} سارية</span>` : ''}</span>
+            <span class="car-meta">${nonCancelledPolicies.length} وثائق ${activeCount > 0 ? `• <span class="active-badge">${activeCount} سارية</span>` : ''}</span>
           </div>
           <div class="car-total">₪${totalPrice.toLocaleString()}</div>
         </div>
