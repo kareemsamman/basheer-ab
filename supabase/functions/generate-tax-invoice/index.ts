@@ -175,7 +175,7 @@ serve(async (req) => {
       filterDesc = "كل الفترات";
     }
 
-    const html = generateHtml(companyName, rows, totalAmount, totalProfit, profit_percent, filterDesc);
+    const html = generateHtml(companyName, rows, totalAmount, totalProfit, profit_percent, filterDesc, supabaseUrl);
 
     // Upload to Bunny CDN
     if (bunnyApiKey) {
@@ -267,12 +267,13 @@ function generateHtml(
   totalAmount: number,
   totalProfit: number,
   profitPercent: number,
-  filterDesc: string
+  filterDesc: string,
+  supabaseUrl: string
 ): string {
   const today = new Date().toLocaleDateString("en-GB", { year: "numeric", month: "2-digit", day: "2-digit" });
 
   const tableRows = rows.map((r, i) => `
-    <tr>
+    <tr id="row-${i}">
       <td style="text-align:center;border:1px solid #e2e8f0;padding:10px;">${i + 1}</td>
       <td style="border:1px solid #e2e8f0;padding:10px;">${r.clientName}</td>
       <td style="border:1px solid #e2e8f0;padding:10px;direction:ltr;text-align:center;">${r.phone}</td>
@@ -280,8 +281,13 @@ function generateHtml(
       <td style="border:1px solid #e2e8f0;padding:10px;">${r.insuranceType}</td>
       <td style="border:1px solid #e2e8f0;padding:10px;text-align:left;direction:ltr;">₪${formatNumber(r.fullAmount)}</td>
       <td style="border:1px solid #e2e8f0;padding:10px;text-align:left;direction:ltr;color:#16a34a;">₪${formatNumber(r.profit)}</td>
+      <td class="rivhit-col" style="border:1px solid #e2e8f0;padding:10px;text-align:center;display:none;">
+        <span class="status-icon" id="status-${i}">⏳</span>
+      </td>
     </tr>
   `).join("");
+
+  const rowsJson = JSON.stringify(rows);
 
   return `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -315,9 +321,16 @@ function generateHtml(
     .total-row { background: #1e3a5f !important; color: white; font-weight: 700; }
     .total-row td { border-color: #2d4a6f; }
     .footer { text-align: center; padding: 20px; background: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8; }
-    .print-btn { display: inline-block; background: linear-gradient(135deg, #1e3a5f 0%, #2d4a6f 100%); color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 700; cursor: pointer; border: none; font-size: 16px; margin: 20px auto; }
+    .btn { display: inline-block; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 700; cursor: pointer; border: none; font-size: 16px; margin: 5px; }
+    .print-btn { background: linear-gradient(135deg, #1e3a5f 0%, #2d4a6f 100%); color: white; }
+    .rivhit-btn { background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: white; }
+    .rivhit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .actions { text-align: center; padding: 20px; }
-    @media print { body { padding: 0; background: white; } .container { box-shadow: none; border-radius: 0; } .actions { display: none; } }
+    .rivhit-status { margin-top: 15px; padding: 15px; border-radius: 8px; display: none; font-weight: 600; }
+    .rivhit-status.sending { display: block; background: #fef9c3; color: #854d0e; }
+    .rivhit-status.success { display: block; background: #dcfce7; color: #166534; }
+    .rivhit-status.error { display: block; background: #fee2e2; color: #991b1b; }
+    @media print { body { padding: 0; background: white; } .container { box-shadow: none; border-radius: 0; } .actions { display: none; } .rivhit-col { display: none !important; } .rivhit-status { display: none !important; } }
     @media (max-width: 768px) { .summary-cards { grid-template-columns: 1fr; } table { font-size: 11px; } th, td { padding: 6px 4px; } }
   </style>
 </head>
@@ -360,6 +373,7 @@ function generateHtml(
               <th>نوع التأمين</th>
               <th>المبلغ الكامل</th>
               <th>المربح</th>
+              <th class="rivhit-col" style="display:none;">ריווחית</th>
             </tr>
           </thead>
           <tbody>
@@ -368,18 +382,80 @@ function generateHtml(
               <td colspan="5" style="border:1px solid #2d4a6f;padding:12px;text-align:center;">الإجمالي (${rows.length} وثيقة)</td>
               <td style="border:1px solid #2d4a6f;padding:12px;text-align:left;direction:ltr;">₪${formatNumber(totalAmount)}</td>
               <td style="border:1px solid #2d4a6f;padding:12px;text-align:left;direction:ltr;">₪${formatNumber(totalProfit)}</td>
+              <td class="rivhit-col" style="display:none;border:1px solid #2d4a6f;padding:12px;"></td>
             </tr>
           </tbody>
         </table>
       </div>
     </div>
     <div class="actions">
-      <button class="print-btn" onclick="window.print()">🖨️ طباعة الفاتورة</button>
+      <button class="btn print-btn" onclick="window.print()">🖨️ طباعة الفاتورة</button>
+      <button class="btn rivhit-btn" id="rivhitBtn" onclick="sendToRivhit()">📤 שלח לריווחית</button>
     </div>
+    <div class="rivhit-status" id="rivhitStatus"></div>
     <div class="footer">
       © بشير للتأمين - جميع الحقوق محفوظة | تم إنشاء هذه الفاتورة تلقائياً
     </div>
   </div>
+
+  <script>
+    const INVOICE_ROWS = ${rowsJson};
+    const SUPABASE_URL = "${supabaseUrl}";
+
+    async function sendToRivhit() {
+      const btn = document.getElementById('rivhitBtn');
+      const statusEl = document.getElementById('rivhitStatus');
+      
+      if (!confirm('هل تريد إرسال ' + INVOICE_ROWS.length + ' عملية إلى ריווחית؟')) return;
+
+      btn.disabled = true;
+      btn.textContent = '⏳ جاري الإرسال...';
+      statusEl.className = 'rivhit-status sending';
+      statusEl.style.display = 'block';
+      statusEl.textContent = 'جاري إرسال ' + INVOICE_ROWS.length + ' عملية إلى ריווחית...';
+
+      // Show rivhit column
+      document.querySelectorAll('.rivhit-col').forEach(el => el.style.display = '');
+
+      try {
+        const response = await fetch(SUPABASE_URL + '/functions/v1/send-to-rivhit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows: INVOICE_ROWS, document_type: 4 }),
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+          statusEl.className = 'rivhit-status error';
+          statusEl.textContent = 'خطأ: ' + data.error;
+          btn.disabled = false;
+          btn.textContent = '📤 שלח לריווחית';
+          return;
+        }
+
+        // Update per-row status
+        if (data.results) {
+          data.results.forEach(r => {
+            const icon = document.getElementById('status-' + r.index);
+            if (icon) {
+              icon.textContent = r.success ? '✅' : '❌';
+              icon.title = r.success ? ('Doc #' + (r.doc_number || 'OK')) : (r.error || 'Error');
+            }
+          });
+        }
+
+        statusEl.className = 'rivhit-status success';
+        statusEl.textContent = 'تم الإرسال: ' + (data.successCount || 0) + ' نجح، ' + (data.failCount || 0) + ' فشل';
+        btn.textContent = '✅ تم الإرسال';
+      } catch (err) {
+        statusEl.className = 'rivhit-status error';
+        statusEl.textContent = 'خطأ في الاتصال: ' + err.message;
+        btn.disabled = false;
+        btn.textContent = '📤 שלח לריווחית';
+      }
+    }
+  </script>
 </body>
 </html>`;
 }

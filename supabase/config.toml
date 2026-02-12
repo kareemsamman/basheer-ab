@@ -128,3 +128,9 @@ verify_jwt = true
 
 [functions.process-cheque-scan]
 verify_jwt = true
+
+[functions.send-to-rivhit]
+verify_jwt = false
+
+[functions.generate-tax-invoice]
+verify_jwt = true
