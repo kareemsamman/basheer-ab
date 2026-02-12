@@ -61,6 +61,7 @@ serve(async (req) => {
       const payload = {
         api_token: rivhitToken,
         document_type: document_type,
+        customer_id: 0,
         last_name: row.clientName || "-",
         id_number: row.idNumber || "",
         phone: row.phone || "",
@@ -70,7 +71,7 @@ serve(async (req) => {
         items: [
           {
             description: row.insuranceType || "عمولة تأمين",
-            price: row.profit,
+            price_nis: row.profit,
             quantity: 1,
           },
         ],
@@ -79,11 +80,25 @@ serve(async (req) => {
       try {
         const response = await fetch(RIVHIT_API_URL, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+          },
           body: JSON.stringify(payload),
         });
 
-        const result = await response.json();
+        const rawText = await response.text();
+        console.log(`[send-to-rivhit] Row ${i} raw response (first 300):`, rawText.substring(0, 300));
+
+        let result: any;
+        try {
+          result = JSON.parse(rawText);
+        } catch {
+          console.error(`[send-to-rivhit] Row ${i}: non-JSON response`);
+          results.push({ index: i, success: false, error: `Non-JSON response: ${rawText.substring(0, 100)}` });
+          continue;
+        }
+
         console.log(`[send-to-rivhit] Row ${i}: error_code=${result.error_code}, doc=${result.document_number}`);
 
         if (result.error_code === 0) {
