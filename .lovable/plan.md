@@ -1,59 +1,62 @@
 
+# Fix: عرض "شامل" او "ثالث" بدل "ثالث/شامل" في كل مكان
 
-# إصلاح ربط ריווחית - المشاكل الحقيقية
-
-## المشاكل المكتشفة من توثيق الـ API
-
-### 1. نوع المستند خاطئ
-نستخدم `document_type: 4` (חשבון עסקה) بينما المطلوب `document_type: 1` (חשבונית מס)
-
-### 2. `id_number` يجب أن يكون رقم (integer) وليس نص (string)
-حسب توثيق الـ API: `id_number: integer | null` - نحن نرسله كـ string مثل `"123456789"` بدل `123456789`. هذا يسبب رفض الطلب.
-
-### 3. إعدادات مفقودة مهمة
-- `validate_id: false` - لمنع رفض المستند بسبب أرقام هوية بصيغة خاطئة
-- `send_mail: false` - لمنع إرسال بريد إلكتروني لكل عميل تلقائيا
+## المشكلة
+عند إنشاء وثيقة من نوع THIRD_FULL مع child type (مثلا FULL = شامل)، يعرض النظام "ثالث/شامل" في كل مكان بدل عرض "شامل" فقط. السبب هو أن أغلب المكونات تستخدم `policyTypeLabels[policy.policy_type_parent]` مباشرة بدون فحص الـ child type.
 
 ## الحل
 
-### تعديل: `supabase/functions/send-to-rivhit/index.ts`
+### 1. إنشاء دالة مركزية واحدة
+توجد بالفعل دالة `getInsuranceTypeLabel` في `src/lib/insuranceTypes.ts` تعمل بشكل صحيح، لكن لا يستخدمها أحد تقريبا. سيتم تحديث كل المكونات لاستخدامها.
 
-| تغيير | قبل | بعد |
-|--------|------|------|
-| نوع المستند | `document_type = 4` | `document_type = 1` (חשבונית מס) |
-| رقم الهوية | `id_number: row.idNumber` (string) | `id_number: parseInt(row.idNumber) او 0` (integer) |
-| فحص الهوية | غير موجود | `validate_id: false` |
-| إرسال بريد | غير موجود | `send_mail: false` |
+### 2. المكونات المطلوب تعديلها (Frontend - 13 ملف)
 
-### تعديل: `supabase/functions/generate-tax-invoice/index.ts`
+| ملف | المشكلة |
+|------|---------|
+| `src/components/clients/ClientDetails.tsx` | عدة أماكن تستخدم `policyTypeLabels[type]` بدون child check |
+| `src/components/clients/PackagePaymentModal.tsx` | يعرض `policyTypeLabels[policy.policyType]` |
+| `src/components/clients/ClientReportModal.tsx` | عدة أماكن |
+| `src/components/clients/PaymentEditDialog.tsx` | يعرض `policyTypeLabels[payment.policy.policy_type_parent]` |
+| `src/components/clients/PolicyYearTimeline.tsx` | `getTypeLabel()` لا يستخدم child types |
+| `src/components/policies/PolicyDetailsDrawer.tsx` | dictionary محلي بدون child check |
+| `src/components/policies/PackageComponentsTable.tsx` | dictionary محلي بدون child check |
+| `src/components/policies/PackagePolicyEditModal.tsx` | dictionary محلي بدون child check |
+| `src/components/policies/PolicyEditDrawer.tsx` | label ثابت |
+| `src/components/dashboard/ExpiringPolicies.tsx` | dictionary محلي بدون child check |
+| `src/components/brokers/BrokerDetails.tsx` | dictionary محلي |
+| `src/components/debt/DebtPaymentModal.tsx` | dictionary محلي |
+| `src/components/accident-reports/PolicySelectionCards.tsx` | dictionary محلي |
 
-- تغيير `document_type` الافتراضي في JS المضمن بالـ HTML من 4 إلى 1
-
-### التغييرات التقنية في الـ payload
-
-```text
-const payload = {
-  api_token: rivhitToken,
-  document_type: 1,           // חשבונית מס (كان 4)
-  customer_id: 0,
-  last_name: row.clientName || "-",
-  id_number: parseInt(row.idNumber) || 0,  // integer (كان string)
-  phone: row.phone || "",
-  create_customer: true,
-  find_by_id: true,
-  validate_id: false,         // جديد - لا ترفض هوية بصيغة خاطئة
-  send_mail: false,           // جديد - لا ترسل بريد
-  price_include_vat: false,
-  items: [{
-    description: row.insuranceType || "عمولة تأمين",
-    price_nis: row.profit,
-    quantity: 1,
-  }],
-};
-```
+### 3. Edge Functions (4 ملفات)
 
 | ملف | تغيير |
 |------|--------|
-| `supabase/functions/send-to-rivhit/index.ts` | document_type=1 + id_number integer + validate_id + send_mail |
-| `supabase/functions/generate-tax-invoice/index.ts` | document_type=1 في JS |
+| `supabase/functions/generate-broker-report/index.ts` | استخدام child label |
+| `supabase/functions/generate-client-payments-invoice/index.ts` | استخدام child label |
+| `supabase/functions/send-invoice-sms/index.ts` | استخدام child label |
+| `supabase/functions/cron-renewal-reminders/index.ts` | استخدام child label |
 
+### التغيير التقني
+
+في كل مكان يعرض نوع الوثيقة، بدل:
+```text
+policyTypeLabels[policy.policy_type_parent]
+// النتيجة: "ثالث/شامل"
+```
+
+سيصبح:
+```text
+// إذا كان THIRD_FULL مع child type → عرض child label فقط
+// وإلا → عرض parent label
+getDisplayLabel(policy.policy_type_parent, policy.policy_type_child)
+// النتيجة: "شامل" او "ثالث"
+```
+
+### ملاحظة مهمة
+الأماكن التالية يجب أن تبقى "ثالث/شامل" لأنها تعرض **فئة** وليس وثيقة محددة:
+- فلاتر البحث (PolicyFilters)
+- نموذج إنشاء وثيقة (PolicyDrawer/Wizard) 
+- إعدادات الشركات (CompanyDrawer)
+- قائمة أنواع التأمين (Companies page)
+
+هذه أماكن يختار فيها المستخدم الفئة العامة قبل تحديد النوع الفرعي.
