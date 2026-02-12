@@ -101,19 +101,20 @@ serve(async (req) => {
           continue;
         }
 
-        console.log(`[send-to-rivhit] Row ${i}: error_code=${result.error_code}, doc=${result.document_number}`);
+        console.log(`[send-to-rivhit] Row ${i}: error_code=${result.error_code}, data=`, JSON.stringify(result.data), `debug_message=${result.debug_message}`);
 
-        if (result.error_code === 0) {
+        if (result.error_code === 0 && result.data) {
           results.push({
             index: i,
             success: true,
-            doc_number: result.document_number,
+            doc_number: result.data.document_number,
+            doc_link: result.data.document_link,
           });
         } else {
           results.push({
             index: i,
             success: false,
-            error: result.client_message || result.error_description || `Error code: ${result.error_code}`,
+            error: result.client_message || result.debug_message || `Error code: ${result.error_code}`,
           });
         }
       } catch (fetchError: unknown) {
