@@ -133,6 +133,9 @@ export default function CompanySettlementDetail() {
   const [selectedPolicyType, setSelectedPolicyType] = useState<string>('all');
   const [includeCancelled, setIncludeCancelled] = useState(false);
   const [generatingReport, setGeneratingReport] = useState(false);
+  const [generatingTaxInvoice, setGeneratingTaxInvoice] = useState(false);
+  const [showTaxInvoiceInput, setShowTaxInvoiceInput] = useState(false);
+  const [profitPercent, setProfitPercent] = useState(10);
 
   // Filtered data
   const filteredPolicies = useMemo(() => {
@@ -516,6 +519,34 @@ export default function CompanySettlementDetail() {
     }
   };
 
+  const handleGenerateTaxInvoice = async () => {
+    if (!companyId) return;
+    setGeneratingTaxInvoice(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-tax-invoice', {
+        body: {
+          company_id: companyId,
+          start_date: showAllTime ? null : startDate,
+          end_date: showAllTime ? null : endDate,
+          policy_type: selectedPolicyType !== 'all' ? selectedPolicyType : null,
+          include_cancelled: includeCancelled,
+          profit_percent: profitPercent,
+        },
+      });
+      if (error) throw error;
+      if (data?.url) {
+        window.open(data.url, '_blank');
+        uiToast({ title: 'تم إنشاء الفاتورة الضريبية', description: 'الفاتورة جاهزة للطباعة' });
+      }
+      setShowTaxInvoiceInput(false);
+    } catch (error) {
+      console.error('Error generating tax invoice:', error);
+      uiToast({ title: 'خطأ', description: 'فشل في إنشاء الفاتورة الضريبية', variant: 'destructive' });
+    } finally {
+      setGeneratingTaxInvoice(false);
+    }
+  };
+
   const handleExplainCalculation = (policy: PolicyDetail) => {
     setSelectedPolicyForCalc(policy);
     setCalculationModalOpen(true);
@@ -680,13 +711,48 @@ export default function CompanySettlementDetail() {
                 </Button>
               </div>
 
-              <div className="flex items-end">
-                <Button variant="ghost" onClick={handleResetFilters} className="w-full">
+              <div className="flex items-end gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowTaxInvoiceInput(!showTaxInvoiceInput)}
+                  className="flex-1"
+                >
+                  <Receipt className="h-4 w-4 ml-2" />
+                  فاتورة ضريبية
+                </Button>
+                <Button variant="ghost" onClick={handleResetFilters}>
                   <RotateCcw className="h-4 w-4 ml-2" />
                   كل الفترات
                 </Button>
               </div>
             </div>
+
+            {/* Tax Invoice Percent Input */}
+            {showTaxInvoiceInput && (
+              <div className="flex items-center gap-3 mt-4 pt-4 border-t border-border">
+                <Label className="whitespace-nowrap">نسبة المربح:</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={profitPercent}
+                  onChange={(e) => setProfitPercent(Number(e.target.value))}
+                  className="w-24"
+                />
+                <span className="text-sm text-muted-foreground">%</span>
+                <Button 
+                  onClick={handleGenerateTaxInvoice}
+                  disabled={generatingTaxInvoice}
+                >
+                  {generatingTaxInvoice ? (
+                    <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                  ) : (
+                    <Receipt className="h-4 w-4 ml-2" />
+                  )}
+                  إنشاء الفاتورة
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
