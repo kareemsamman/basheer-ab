@@ -24,7 +24,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Building2, Download, Wallet, FileText, ChevronLeft, Calendar, RotateCcw, AlertCircle, Printer, AlertTriangle, Eye, Pencil, Search } from 'lucide-react';
+import { Building2, Download, Wallet, FileText, ChevronLeft, Calendar, RotateCcw, AlertCircle, Printer, AlertTriangle, Eye, Pencil, Search, Receipt, Loader2 } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -79,6 +80,11 @@ export default function CompanySettlement() {
   // Policy details drawer
   const [selectedPolicyId, setSelectedPolicyId] = useState<string | null>(null);
   const [detailsDrawerOpen, setDetailsDrawerOpen] = useState(false);
+  
+  // Tax invoice
+  const [taxInvoiceCompanyId, setTaxInvoiceCompanyId] = useState<string | null>(null);
+  const [profitPercent, setProfitPercent] = useState(10);
+  const [generatingTaxInvoice, setGeneratingTaxInvoice] = useState(false);
   
   // Filters - default to all time
   const [showAllTime, setShowAllTime] = useState(true);
@@ -314,6 +320,39 @@ export default function CompanySettlement() {
   const handlePolicyUpdated = () => {
     fetchSettlementData();
     fetchPoliciesWithoutCompany();
+  };
+
+  const handleGenerateTaxInvoice = async (companyId: string) => {
+    setGeneratingTaxInvoice(true);
+    try {
+      const { startDate, endDate } = getDateRange();
+      const response = await supabase.functions.invoke('generate-tax-invoice', {
+        body: {
+          company_id: companyId,
+          start_date: startDate,
+          end_date: endDate,
+          policy_type: selectedCategory !== 'all' ? selectedCategory : null,
+          include_cancelled: includeCancelled,
+          profit_percent: profitPercent,
+        },
+      });
+      if (response.error) throw response.error;
+      const result = response.data;
+      if (result?.url) {
+        window.open(result.url, '_blank');
+      } else if (typeof result === 'string') {
+        const blob = new Blob([result], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+      }
+      setTaxInvoiceCompanyId(null);
+      toast({ title: 'تم إنشاء الفاتورة الضريبية بنجاح' });
+    } catch (error: any) {
+      console.error('Error generating tax invoice:', error);
+      toast({ title: 'خطأ', description: error.message || 'فشل في إنشاء الفاتورة', variant: 'destructive' });
+    } finally {
+      setGeneratingTaxInvoice(false);
+    }
   };
 
   // Format the current filter description
@@ -568,21 +607,23 @@ export default function CompanySettlement() {
                           <TableHead className="text-right">عدد الوثائق</TableHead>
                           <TableHead className="text-right">إجمالي المحصل</TableHead>
                           <TableHead className="text-right">المستحق للشركة</TableHead>
+                          <TableHead className="text-right">إجراءات</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                       {loading ? (
                           Array.from({ length: 5 }).map((_, i) => (
-                            <TableRow key={i}>
+                             <TableRow key={i}>
                               <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                               <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                               <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                               <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                            </TableRow>
+                              <TableCell><Skeleton className="h-4 w-10" /></TableCell>
+                             </TableRow>
                           ))
                       ) : data.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                           <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                             لا توجد بيانات للفترة المحددة
                           </TableCell>
                         </TableRow>
@@ -595,7 +636,7 @@ export default function CompanySettlement() {
                           : data;
                         return filtered.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                            <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                               لا توجد نتائج للبحث
                             </TableCell>
                           </TableRow>
@@ -619,7 +660,52 @@ export default function CompanySettlement() {
                             <TableCell className="text-destructive font-medium">
                               ₪{item.total_company_payment.toLocaleString('en-US')}
                             </TableCell>
-                          </TableRow>
+                            <TableCell>
+                              <Popover open={taxInvoiceCompanyId === item.company_id} onOpenChange={(open) => {
+                                if (open) setTaxInvoiceCompanyId(item.company_id);
+                                else setTaxInvoiceCompanyId(null);
+                              }}>
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    title="فاتورة ضريبية"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <Receipt className="h-4 w-4" />
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-64" onClick={(e) => e.stopPropagation()}>
+                                  <div className="space-y-3">
+                                    <h4 className="font-medium text-sm">فاتورة ضريبية</h4>
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">نسبة المربح %</Label>
+                                      <Input
+                                        type="number"
+                                        value={profitPercent}
+                                        onChange={(e) => setProfitPercent(Number(e.target.value))}
+                                        min={0}
+                                        max={100}
+                                        className="h-8"
+                                      />
+                                    </div>
+                                    <Button
+                                      size="sm"
+                                      className="w-full"
+                                      disabled={generatingTaxInvoice}
+                                      onClick={() => handleGenerateTaxInvoice(item.company_id)}
+                                    >
+                                      {generatingTaxInvoice ? (
+                                        <><Loader2 className="h-4 w-4 animate-spin ml-2" />جاري الإنشاء...</>
+                                      ) : (
+                                        'إنشاء فاتورة'
+                                      )}
+                                    </Button>
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            </TableCell>
+                           </TableRow>
                         ));
                       })()}
                     </TableBody>
