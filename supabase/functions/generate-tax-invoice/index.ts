@@ -105,7 +105,7 @@ serve(async (req) => {
     let allGroupPolicies: any[] = [];
     if (groupIds.length > 0) {
       // Fetch all non-ELZAMI policies for these groups (from all companies)
-      const { data: groupData } = await supabase
+      let groupQuery = supabase
         .from("policies")
         .select(`
           id, policy_type_parent, policy_type_child, insurance_price,
@@ -116,6 +116,11 @@ serve(async (req) => {
         .neq("policy_type_parent", "ELZAMI")
         .is("deleted_at", null);
 
+      if (!include_cancelled) groupQuery = groupQuery.eq("cancelled", false);
+      if (start_date) groupQuery = groupQuery.gte("start_date", start_date);
+      if (end_date) groupQuery = groupQuery.lte("start_date", end_date);
+
+      const { data: groupData } = await groupQuery;
       allGroupPolicies = groupData || [];
     }
 
