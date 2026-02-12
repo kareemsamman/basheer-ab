@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 interface TaxInvoiceParams {
-  company_id: string;
+  company_id?: string | null;
   start_date?: string | null;
   end_date?: string | null;
   policy_type?: string | null;
@@ -50,27 +50,24 @@ serve(async (req) => {
     const body: TaxInvoiceParams = await req.json();
     const { company_id, start_date, end_date, policy_type, include_cancelled, profit_percent } = body;
 
-    if (!company_id) {
-      return new Response(JSON.stringify({ error: "company_id is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    console.log(`[generate-tax-invoice] company: ${company_id || 'ALL'}, profit: ${profit_percent}%`);
 
-    console.log(`[generate-tax-invoice] company: ${company_id}, profit: ${profit_percent}%`);
+    // Fetch company name if specific company
+    let companyName = "جميع الشركات";
+    if (company_id) {
+      const { data: company, error: companyError } = await supabase
+        .from("insurance_companies")
+        .select("id, name, name_ar")
+        .eq("id", company_id)
+        .single();
 
-    // Fetch company
-    const { data: company, error: companyError } = await supabase
-      .from("insurance_companies")
-      .select("id, name, name_ar")
-      .eq("id", company_id)
-      .single();
-
-    if (companyError || !company) {
-      return new Response(JSON.stringify({ error: "Company not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      if (companyError || !company) {
+        return new Response(JSON.stringify({ error: "Company not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      companyName = company.name_ar || company.name;
     }
 
     // Fetch policies for this company, excluding ELZAMI
@@ -82,9 +79,10 @@ serve(async (req) => {
         clients (full_name, phone_number, id_number),
         insurance_companies:company_id (name, name_ar)
       `)
-      .eq("company_id", company_id)
       .neq("policy_type_parent", "ELZAMI")
       .is("deleted_at", null);
+
+    if (company_id) query = query.eq("company_id", company_id);
 
     if (start_date) query = query.gte("start_date", start_date);
     if (end_date) query = query.lte("start_date", end_date);
@@ -177,7 +175,6 @@ serve(async (req) => {
       filterDesc = "كل الفترات";
     }
 
-    const companyName = company.name_ar || company.name;
     const html = generateHtml(companyName, rows, totalAmount, totalProfit, profit_percent, filterDesc);
 
     // Upload to Bunny CDN
