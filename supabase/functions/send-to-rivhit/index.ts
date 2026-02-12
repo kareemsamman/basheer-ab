@@ -36,7 +36,7 @@ serve(async (req) => {
     }
 
     const body: SendToRivhitRequest = await req.json();
-    const { rows, document_type = 4 } = body;
+    const { rows, document_type = 1 } = body;
 
     if (!rows || !Array.isArray(rows) || rows.length === 0) {
       return new Response(JSON.stringify({ error: "No rows provided" }), {
@@ -63,10 +63,12 @@ serve(async (req) => {
         document_type: document_type,
         customer_id: 0,
         last_name: row.clientName || "-",
-        id_number: row.idNumber || "",
+        id_number: parseInt(row.idNumber) || 0,
         phone: row.phone || "",
         create_customer: true,
         find_by_id: true,
+        validate_id: false,
+        send_mail: false,
         price_include_vat: false,
         items: [
           {

@@ -421,7 +421,7 @@ function generateHtml(
         const response = await fetch(SUPABASE_URL + '/functions/v1/send-to-rivhit', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rows: INVOICE_ROWS, document_type: 4 }),
+          body: JSON.stringify({ rows: INVOICE_ROWS, document_type: 1 }),
         });
 
         const data = await response.json();
