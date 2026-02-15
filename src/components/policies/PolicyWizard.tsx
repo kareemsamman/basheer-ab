@@ -935,7 +935,15 @@ export function PolicyWizard({
             }
           }
 
-          // 4. Calculate main policy profit with correct insurance_price (not total)
+          // 4. Identify which addon was used for the temp policy FIRST (needed for correct pricing)
+          const elzamiAddon = packageAddons.find(a => a.type === 'elzami' && a.enabled);
+          const thirdAddon = packageAddons.find(a => a.type === 'third_full' && a.enabled);
+          const roadAddon = packageAddons.find(a => a.type === 'road_service' && a.enabled);
+          const accidentAddon = packageAddons.find(a => a.type === 'accident_fee_exemption' && a.enabled);
+          const firstAddon = elzamiAddon || thirdAddon || roadAddon || accidentAddon;
+          const firstAddonType = firstAddon?.type || null;
+
+          // 5. Calculate main policy profit (for creating the main policy later)
           const mainInsurancePrice = parseFloat(policy.insurance_price) || 0;
           const selectedCompany = companies.find(c => c.id === policy.company_id);
           const isCompanyLinkedToBroker = !!selectedCompany?.broker_id;
@@ -957,28 +965,61 @@ export function PolicyWizard({
             accidentFeeServiceId: policy.accident_fee_service_id || null,
           });
 
-          // 5. Update the temp policy with group_id and correct insurance_price
+          // 6. Update temp policy with the FIRST ADDON's price (not the main policy price!)
+          // The temp policy was created as the first enabled addon type, so it must use that addon's data
+          const addonTypeMapForTemp: Record<string, PolicyTypeParent> = {
+            'elzami': 'ELZAMI',
+            'third_full': 'THIRD_FULL',
+            'road_service': 'ROAD_SERVICE',
+            'accident_fee_exemption': 'ACCIDENT_FEE_EXEMPTION',
+          };
+          const tempPolicyTypeParent = firstAddon ? addonTypeMapForTemp[firstAddon.type] : policy.policy_type_parent as PolicyTypeParent;
+          const tempPolicyTypeChild = firstAddon?.type === 'third_full' && (firstAddon as any).policy_type_child
+            ? (firstAddon as any).policy_type_child as PolicyTypeChild
+            : null;
+          const firstAddonPrice = firstAddon ? parseFloat(firstAddon.insurance_price) || 0 : mainInsurancePrice;
+          const firstAddonCompanyId = firstAddon?.company_id || policy.company_id;
+          const firstAddonBrokerBuyPrice = firstAddon?.type === 'third_full' && (firstAddon as any).broker_buy_price
+            ? parseFloat((firstAddon as any).broker_buy_price)
+            : null;
+
+          const tempProfitData = await calculatePolicyProfit({
+            policyTypeParent: tempPolicyTypeParent,
+            policyTypeChild: tempPolicyTypeChild,
+            companyId: firstAddonCompanyId,
+            carType: carTypeForCalc,
+            ageBand: tempIsUnder24 ? 'UNDER_24' as const : 'UP_24' as const,
+            carValue: policy.full_car_value ? parseFloat(policy.full_car_value) : carValueForCalc,
+            carYear: carYearForCalc,
+            insurancePrice: firstAddonPrice,
+            brokerBuyPrice: firstAddonBrokerBuyPrice,
+            roadServiceId: firstAddon?.road_service_id || null,
+            accidentFeeServiceId: firstAddon?.accident_fee_service_id || null,
+          });
+
+          const tempOfficeCommission = firstAddon?.type === 'elzami' 
+            ? parseFloat(firstAddon.office_commission || '0') || 0 
+            : 0;
+
           const { error: updateError } = await supabase
             .from('policies')
             .update({ 
               group_id: groupId,
-              insurance_price: mainInsurancePrice,
-              profit: mainProfitData.profit,
-              payed_for_company: mainProfitData.companyPayment,
-              company_cost_snapshot: mainProfitData.companyPayment,
-              broker_buy_price: brokerBuyPriceValue || 0,
+              policy_type_parent: tempPolicyTypeParent,
+              policy_type_child: tempPolicyTypeChild,
+              company_id: firstAddonCompanyId,
+              insurance_price: firstAddonPrice,
+              profit: tempProfitData.profit,
+              payed_for_company: tempProfitData.companyPayment,
+              company_cost_snapshot: tempProfitData.companyPayment,
+              broker_buy_price: firstAddonBrokerBuyPrice || 0,
+              road_service_id: firstAddon?.road_service_id || null,
+              accident_fee_service_id: firstAddon?.accident_fee_service_id || null,
+              office_commission: tempOfficeCommission,
             })
             .eq('id', tempPolicyId);
 
           if (updateError) throw updateError;
-
-          // 6. Find which addon was used for temp policy (first enabled, priority: elzami > third_full > road > accident)
-          const elzamiAddon = packageAddons.find(a => a.type === 'elzami' && a.enabled);
-          const thirdAddon = packageAddons.find(a => a.type === 'third_full' && a.enabled);
-          const roadAddon = packageAddons.find(a => a.type === 'road_service' && a.enabled);
-          const accidentAddon = packageAddons.find(a => a.type === 'accident_fee_exemption' && a.enabled);
-          const firstAddon = elzamiAddon || thirdAddon || roadAddon || accidentAddon;
-          const firstAddonType = firstAddon?.type || null;
 
           // 7. Create addon policies (skip the first one since it's already the temp policy)
           for (const addon of packageAddons) {
