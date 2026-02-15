@@ -151,6 +151,7 @@ serve(async (req) => {
           insuranceType: typeDesc,
           fullAmount: totalAmount,
           profit: Math.round(totalAmount * profit_percent / 100),
+          policyCount: 1,
         });
       } else {
         // Single policy
@@ -165,12 +166,36 @@ serve(async (req) => {
           insuranceType: `${compName} - ${typeName}`,
           fullAmount: amount,
           profit: Math.round(amount * profit_percent / 100),
+          policyCount: 1,
         });
       }
     }
 
-    const totalAmount = rows.reduce((s, r) => s + r.fullAmount, 0);
-    const totalProfit = rows.reduce((s, r) => s + r.profit, 0);
+    // Group rows by client (idNumber)
+    const groupedMap = new Map<string, InvoiceRow>();
+    for (const row of rows) {
+      const key = row.idNumber;
+      const existing = groupedMap.get(key);
+      if (existing) {
+        existing.fullAmount += row.fullAmount;
+        existing.profit += row.profit;
+        existing.policyCount += row.policyCount;
+        // Append unique insurance types
+        const existingTypes = new Set(existing.insuranceType.split(" + "));
+        for (const t of row.insuranceType.split(" + ")) {
+          if (!existingTypes.has(t)) {
+            existing.insuranceType += ` + ${t}`;
+          }
+        }
+      } else {
+        groupedMap.set(key, { ...row });
+      }
+    }
+    const mergedRows = Array.from(groupedMap.values());
+    const totalPolicyCount = mergedRows.reduce((s, r) => s + r.policyCount, 0);
+
+    const totalAmount = mergedRows.reduce((s, r) => s + r.fullAmount, 0);
+    const totalProfit = mergedRows.reduce((s, r) => s + r.profit, 0);
 
     // Build filter description
     let filterDesc = "";
@@ -180,7 +205,7 @@ serve(async (req) => {
       filterDesc = "كل الفترات";
     }
 
-    const html = generateHtml(companyName, rows, totalAmount, totalProfit, profit_percent, filterDesc, supabaseUrl);
+    const html = generateHtml(companyName, mergedRows, totalAmount, totalProfit, profit_percent, filterDesc, supabaseUrl, totalPolicyCount);
 
     // Upload to Bunny CDN
     if (bunnyApiKey) {
@@ -229,6 +254,7 @@ interface InvoiceRow {
   insuranceType: string;
   fullAmount: number;
   profit: number;
+  policyCount: number;
 }
 
 const POLICY_TYPE_LABELS: Record<string, string> = {
@@ -273,7 +299,8 @@ function generateHtml(
   totalProfit: number,
   profitPercent: number,
   filterDesc: string,
-  supabaseUrl: string
+  supabaseUrl: string,
+  totalPolicyCount: number
 ): string {
   const today = new Date().toLocaleDateString("en-GB", { year: "numeric", month: "2-digit", day: "2-digit" });
 
@@ -283,6 +310,7 @@ function generateHtml(
       <td style="border:1px solid #e2e8f0;padding:10px;">${r.clientName}</td>
       <td style="border:1px solid #e2e8f0;padding:10px;direction:ltr;text-align:center;">${r.phone}</td>
       <td style="border:1px solid #e2e8f0;padding:10px;text-align:center;">${r.idNumber}</td>
+      <td style="border:1px solid #e2e8f0;padding:10px;text-align:center;">${r.policyCount}</td>
       <td style="border:1px solid #e2e8f0;padding:10px;">${r.insuranceType}</td>
       <td style="border:1px solid #e2e8f0;padding:10px;text-align:left;direction:ltr;">₪${formatNumber(r.fullAmount)}</td>
       <td style="border:1px solid #e2e8f0;padding:10px;text-align:left;direction:ltr;color:#16a34a;">₪${formatNumber(r.profit)}</td>
@@ -310,7 +338,7 @@ function generateHtml(
     .header .subtitle { opacity: 0.9; font-size: 16px; }
     .header .company-name { font-size: 24px; font-weight: 700; margin-top: 15px; background: rgba(255,255,255,0.15); display: inline-block; padding: 8px 24px; border-radius: 8px; }
     .meta { display: flex; justify-content: space-between; padding: 15px 30px; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; font-size: 14px; color: #64748b; }
-    .summary-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; padding: 25px 30px; }
+    .summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; padding: 25px 30px; }
     .summary-card { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-radius: 12px; padding: 20px; text-align: center; border: 1px solid #e2e8f0; }
     .summary-card .label { font-size: 13px; color: #64748b; margin-bottom: 8px; }
     .summary-card .value { font-size: 22px; font-weight: 800; color: #1e3a5f; }
@@ -353,8 +381,12 @@ function generateHtml(
     </div>
     <div class="summary-cards">
       <div class="summary-card">
-        <div class="label">عدد الوثائق</div>
+        <div class="label">عدد العملاء</div>
         <div class="value">${rows.length}</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">عدد الوثائق</div>
+        <div class="value">${totalPolicyCount}</div>
       </div>
       <div class="summary-card">
         <div class="label">إجمالي المبلغ</div>
@@ -375,6 +407,7 @@ function generateHtml(
               <th>العميل</th>
               <th>الهاتف</th>
               <th>رقم الهوية</th>
+              <th>عدد الوثائق</th>
               <th>نوع التأمين</th>
               <th>المبلغ الكامل</th>
               <th>المربح</th>
@@ -382,9 +415,9 @@ function generateHtml(
             </tr>
           </thead>
           <tbody>
-            ${tableRows || '<tr><td colspan="7" style="text-align:center;padding:30px;">لا توجد وثائق</td></tr>'}
+            ${tableRows || '<tr><td colspan="8" style="text-align:center;padding:30px;">لا توجد وثائق</td></tr>'}
             <tr class="total-row">
-              <td colspan="5" style="border:1px solid #2d4a6f;padding:12px;text-align:center;">الإجمالي (${rows.length} وثيقة)</td>
+              <td colspan="6" style="border:1px solid #2d4a6f;padding:12px;text-align:center;">الإجمالي (${rows.length} عميل / ${totalPolicyCount} وثيقة)</td>
               <td style="border:1px solid #2d4a6f;padding:12px;text-align:left;direction:ltr;">₪${formatNumber(totalAmount)}</td>
               <td style="border:1px solid #2d4a6f;padding:12px;text-align:left;direction:ltr;">₪${formatNumber(totalProfit)}</td>
               <td class="rivhit-col" style="display:none;border:1px solid #2d4a6f;padding:12px;"></td>
