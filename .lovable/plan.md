@@ -1,27 +1,48 @@
 
-# Fix: Dropdown not scrollable in MultiSelectFilter
+# إضافة أرقام السيارات وتاريخ الدفع إلى الفاتورة الضريبية
 
-## Problem
-The `ScrollArea` component uses `max-h-[220px]` which doesn't work correctly with Radix ScrollArea. The Radix viewport doesn't inherit `max-height` from the root, so the list grows unbounded and can't scroll.
+## ما سيتغير
+كل سطر في الفاتورة الضريبية سيعرض عمودين جديدين:
+- **رقم السيارة** - أرقام جميع السيارات المرتبطة بوثائق العميل (مجمعة بفاصلة)
+- **تاريخ الدفع** - تواريخ الدفع من جدول `policy_payments` (أحدث تاريخ أو جميع التواريخ)
 
-## Solution
-Replace `ScrollArea` with a plain `div` that has `overflow-y: auto` and a fixed `max-height`. This is simpler and works reliably.
+## التفاصيل التقنية
 
-## Change
+### ملف: `supabase/functions/generate-tax-invoice/index.ts`
 
-**File:** `src/components/shared/MultiSelectFilter.tsx`
-
-Replace line 118:
+**1. تحديث استعلام الوثائق (السطر ~82)**
+إضافة `car_id` و `cars:car_id (car_number)` إلى الـ SELECT:
 ```
-<ScrollArea className="max-h-[220px]">
-```
-with:
-```
-<div className="max-h-[220px] overflow-y-auto">
+policies → cars:car_id (car_number)
 ```
 
-And replace the closing `</ScrollArea>` on line 139 with `</div>`.
+**2. جلب الدفعات لكل الوثائق**
+بعد جلب الوثائق، جمع كل الـ policy IDs واستعلام `policy_payments` مرة واحدة:
+```sql
+SELECT policy_id, payment_date FROM policy_payments WHERE policy_id IN (...)
+```
+ثم بناء Map بحيث كل policy_id يعطينا تواريخ الدفع.
 
-Remove the unused `ScrollArea` import from line 8.
+**3. تحديث `InvoiceRow` interface**
+إضافة:
+- `carNumbers: string` - أرقام السيارات مفصولة بفاصلة
+- `paymentDates: string` - تواريخ الدفع مفصولة بفاصلة
 
-This is a 3-line change that makes all MultiSelectFilter dropdowns scrollable across Company Settlement and Tax Invoice pages.
+**4. تحديث بناء الأسطر (السطر ~138-178)**
+- استخراج `car_number` من العلاقة `cars`
+- استخراج تواريخ الدفع من الـ Map
+
+**5. تحديث خطوة التجميع (السطر ~182-200)**
+عند دمج أسطر نفس العميل:
+- دمج أرقام السيارات الفريدة
+- دمج تواريخ الدفع الفريدة
+
+**6. تحديث HTML template**
+- إضافة عمود "رقم السيارة" وعمود "تاريخ الدفع" في الجدول
+- تحديث colspan في سطر الإجمالي
+
+### ترتيب الأعمدة الجديد في الجدول:
+`# | العميل | الهاتف | رقم الهوية | عدد الوثائق | رقم السيارة | نوع التأمين | تاريخ الدفع | المبلغ | المربح`
+
+### ملاحظة أداء
+الدفعات تُجلب باستعلام واحد (batch) وليس N+1 - استعلام واحد لكل الـ policy IDs دفعة واحدة.
