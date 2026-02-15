@@ -18,6 +18,18 @@ interface TaxInvoiceParams {
   profit_percent: number;
 }
 
+interface InvoiceRow {
+  clientName: string;
+  phone: string;
+  idNumber: string;
+  insuranceType: string;
+  fullAmount: number;
+  profit: number;
+  policyCount: number;
+  carNumbers: string;
+  paymentDates: string;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -32,7 +44,6 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Verify auth
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -53,13 +64,11 @@ serve(async (req) => {
     const body: TaxInvoiceParams = await req.json();
     const { company_id, company_ids, start_date, end_date, policy_type, policy_types, broker_ids, include_cancelled, profit_percent } = body;
 
-    // Resolve effective arrays (support both legacy single and new array params)
     const effectiveCompanyIds = company_ids?.length ? company_ids : (company_id ? [company_id] : null);
     const effectivePolicyTypes = policy_types?.length ? policy_types : (policy_type && policy_type !== 'all' ? [policy_type] : null);
 
     console.log(`[generate-tax-invoice] companies: ${effectiveCompanyIds?.length || 'ALL'}, types: ${effectivePolicyTypes || 'ALL'}, brokers: ${broker_ids?.length || 'ALL'}, profit: ${profit_percent}%`);
 
-    // Fetch company names
     let companyName = "جميع الشركات";
     if (effectiveCompanyIds && effectiveCompanyIds.length > 0) {
       const { data: companies, error: companyError } = await supabase
@@ -76,14 +85,15 @@ serve(async (req) => {
       companyName = companies.map(c => c.name_ar || c.name).join(" + ");
     }
 
-    // Fetch policies, excluding ELZAMI
+    // Fetch policies with car data
     let query = supabase
       .from("policies")
       .select(`
         id, policy_type_parent, policy_type_child, insurance_price,
-        start_date, end_date, cancelled, group_id, company_id,
+        start_date, end_date, cancelled, group_id, company_id, car_id,
         clients (full_name, phone_number, id_number),
-        insurance_companies:company_id (name, name_ar)
+        insurance_companies:company_id (name, name_ar),
+        cars:car_id (car_number)
       `)
       .neq("policy_type_parent", "ELZAMI")
       .is("deleted_at", null);
@@ -91,7 +101,6 @@ serve(async (req) => {
     if (effectiveCompanyIds) query = query.in("company_id", effectiveCompanyIds);
     if (effectivePolicyTypes) query = query.in("policy_type_parent", effectivePolicyTypes);
     if (broker_ids?.length) query = query.in("broker_id", broker_ids);
-
     if (start_date) query = query.gte("start_date", start_date);
     if (end_date) query = query.lte("start_date", end_date);
     if (!include_cancelled) query = query.eq("cancelled", false);
@@ -106,18 +115,18 @@ serve(async (req) => {
       });
     }
 
-    // Collect all group_ids to fetch package components from other companies
+    // Collect group_ids for package components
     const groupIds = [...new Set((policies || []).filter((p: any) => p.group_id).map((p: any) => p.group_id))];
 
     let allGroupPolicies: any[] = [];
     if (groupIds.length > 0) {
-      // Fetch all non-ELZAMI policies for these groups (from all companies)
       let groupQuery = supabase
         .from("policies")
         .select(`
           id, policy_type_parent, policy_type_child, insurance_price,
-          group_id, company_id,
-          insurance_companies:company_id (name, name_ar)
+          group_id, company_id, car_id,
+          insurance_companies:company_id (name, name_ar),
+          cars:car_id (car_number)
         `)
         .in("group_id", groupIds)
         .neq("policy_type_parent", "ELZAMI")
@@ -131,6 +140,32 @@ serve(async (req) => {
       allGroupPolicies = groupData || [];
     }
 
+    // Batch fetch payment dates for all policy IDs
+    const allPolicyIds = [
+      ...new Set([
+        ...(policies || []).map((p: any) => p.id),
+        ...allGroupPolicies.map((p: any) => p.id),
+      ]),
+    ];
+
+    const paymentMap = new Map<string, string[]>();
+    if (allPolicyIds.length > 0) {
+      // Fetch in chunks of 500 to avoid query limits
+      for (let i = 0; i < allPolicyIds.length; i += 500) {
+        const chunk = allPolicyIds.slice(i, i + 500);
+        const { data: payments } = await supabase
+          .from("policy_payments")
+          .select("policy_id, payment_date")
+          .in("policy_id", chunk);
+
+        for (const pay of (payments || [])) {
+          const existing = paymentMap.get(pay.policy_id) || [];
+          if (pay.payment_date) existing.push(pay.payment_date);
+          paymentMap.set(pay.policy_id, existing);
+        }
+      }
+    }
+
     // Build invoice rows
     const processedGroupIds = new Set<string>();
     const rows: InvoiceRow[] = [];
@@ -142,7 +177,6 @@ serve(async (req) => {
 
       if (p.group_id) {
         processedGroupIds.add(p.group_id);
-        // Package: gather all components
         const components = allGroupPolicies.filter((gp: any) => gp.group_id === p.group_id);
         const totalAmount = components.reduce((sum: number, c: any) => sum + (Number(c.insurance_price) || 0), 0);
         const typeDesc = components.map((c: any) => {
@@ -150,6 +184,14 @@ serve(async (req) => {
           const typeName = getTypeLabel(c.policy_type_parent, c.policy_type_child);
           return `${compName} - ${typeName}`;
         }).join(" + ");
+
+        // Collect car numbers from all components
+        const carNums = new Set<string>();
+        const payDates = new Set<string>();
+        for (const c of components) {
+          if (c.cars?.car_number) carNums.add(c.cars.car_number);
+          for (const d of (paymentMap.get(c.id) || [])) payDates.add(d);
+        }
 
         rows.push({
           clientName: p.clients?.full_name || "-",
@@ -159,12 +201,15 @@ serve(async (req) => {
           fullAmount: totalAmount,
           profit: Math.round(totalAmount * profit_percent / 100),
           policyCount: 1,
+          carNumbers: carNums.size > 0 ? [...carNums].join(", ") : "-",
+          paymentDates: payDates.size > 0 ? [...payDates].map(d => formatDateShort(d)).join(", ") : "-",
         });
       } else {
-        // Single policy
         const compName = p.insurance_companies?.name_ar || p.insurance_companies?.name || "";
         const typeName = getTypeLabel(p.policy_type_parent, p.policy_type_child);
         const amount = Number(p.insurance_price) || 0;
+        const carNum = p.cars?.car_number || "-";
+        const pDates = paymentMap.get(p.id) || [];
 
         rows.push({
           clientName: p.clients?.full_name || "-",
@@ -174,6 +219,8 @@ serve(async (req) => {
           fullAmount: amount,
           profit: Math.round(amount * profit_percent / 100),
           policyCount: 1,
+          carNumbers: carNum,
+          paymentDates: pDates.length > 0 ? pDates.map(d => formatDateShort(d)).join(", ") : "-",
         });
       }
     }
@@ -187,24 +234,32 @@ serve(async (req) => {
         existing.fullAmount += row.fullAmount;
         existing.profit += row.profit;
         existing.policyCount += row.policyCount;
-        // Append unique insurance types
+        // Merge unique insurance types
         const existingTypes = new Set(existing.insuranceType.split(" + "));
         for (const t of row.insuranceType.split(" + ")) {
-          if (!existingTypes.has(t)) {
-            existing.insuranceType += ` + ${t}`;
-          }
+          if (!existingTypes.has(t)) existing.insuranceType += ` + ${t}`;
         }
+        // Merge unique car numbers
+        const existingCars = new Set(existing.carNumbers.split(", ").filter(c => c !== "-"));
+        for (const c of row.carNumbers.split(", ").filter(c => c !== "-")) {
+          existingCars.add(c);
+        }
+        existing.carNumbers = existingCars.size > 0 ? [...existingCars].join(", ") : "-";
+        // Merge unique payment dates
+        const existingDates = new Set(existing.paymentDates.split(", ").filter(d => d !== "-"));
+        for (const d of row.paymentDates.split(", ").filter(d => d !== "-")) {
+          existingDates.add(d);
+        }
+        existing.paymentDates = existingDates.size > 0 ? [...existingDates].join(", ") : "-";
       } else {
         groupedMap.set(key, { ...row });
       }
     }
     const mergedRows = Array.from(groupedMap.values());
     const totalPolicyCount = mergedRows.reduce((s, r) => s + r.policyCount, 0);
-
     const totalAmount = mergedRows.reduce((s, r) => s + r.fullAmount, 0);
     const totalProfit = mergedRows.reduce((s, r) => s + r.profit, 0);
 
-    // Build filter description
     let filterDesc = "";
     if (start_date && end_date) {
       filterDesc = `الفترة: ${formatDateShort(start_date)} - ${formatDateShort(end_date)}`;
@@ -214,7 +269,6 @@ serve(async (req) => {
 
     const html = generateHtml(companyName, mergedRows, totalAmount, totalProfit, profit_percent, filterDesc, supabaseUrl, totalPolicyCount);
 
-    // Upload to Bunny CDN
     if (bunnyApiKey) {
       const now = new Date();
       const year = now.getFullYear();
@@ -239,7 +293,6 @@ serve(async (req) => {
       }
     }
 
-    // Fallback
     return new Response(html, {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" },
@@ -253,16 +306,6 @@ serve(async (req) => {
     });
   }
 });
-
-interface InvoiceRow {
-  clientName: string;
-  phone: string;
-  idNumber: string;
-  insuranceType: string;
-  fullAmount: number;
-  profit: number;
-  policyCount: number;
-}
 
 const POLICY_TYPE_LABELS: Record<string, string> = {
   ELZAMI: "إلزامي",
@@ -318,7 +361,9 @@ function generateHtml(
       <td style="border:1px solid #e2e8f0;padding:10px;direction:ltr;text-align:center;">${r.phone}</td>
       <td style="border:1px solid #e2e8f0;padding:10px;text-align:center;">${r.idNumber}</td>
       <td style="border:1px solid #e2e8f0;padding:10px;text-align:center;">${r.policyCount}</td>
+      <td style="border:1px solid #e2e8f0;padding:10px;direction:ltr;text-align:center;">${r.carNumbers}</td>
       <td style="border:1px solid #e2e8f0;padding:10px;">${r.insuranceType}</td>
+      <td style="border:1px solid #e2e8f0;padding:10px;text-align:center;direction:ltr;">${r.paymentDates}</td>
       <td style="border:1px solid #e2e8f0;padding:10px;text-align:left;direction:ltr;">₪${formatNumber(r.fullAmount)}</td>
       <td style="border:1px solid #e2e8f0;padding:10px;text-align:left;direction:ltr;color:#16a34a;">₪${formatNumber(r.profit)}</td>
       <td class="rivhit-col" style="border:1px solid #e2e8f0;padding:10px;text-align:center;display:none;">
@@ -339,7 +384,7 @@ function generateHtml(
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif; background: #f8fafc; color: #1e293b; line-height: 1.6; padding: 20px; }
-    .container { max-width: 1100px; margin: 0 auto; background: white; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); overflow: hidden; }
+    .container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); overflow: hidden; }
     .header { background: linear-gradient(135deg, #1e3a5f 0%, #2d4a6f 100%); color: white; padding: 30px; text-align: center; }
     .header h1 { font-size: 28px; font-weight: 800; margin-bottom: 5px; }
     .header .subtitle { opacity: 0.9; font-size: 16px; }
@@ -352,8 +397,8 @@ function generateHtml(
     .summary-card.profit .value { color: #16a34a; }
     .content { padding: 0 30px 30px; }
     .section-title { font-size: 18px; font-weight: 700; color: #1e3a5f; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #e2e8f0; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th { background: #1e3a5f; color: white; padding: 12px 8px; text-align: right; font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { background: #1e3a5f; color: white; padding: 10px 6px; text-align: right; font-weight: 600; }
     th:first-child { border-radius: 0 8px 0 0; }
     th:last-child { border-radius: 8px 0 0 0; }
     tr:nth-child(even) { background: #f8fafc; }
@@ -371,7 +416,7 @@ function generateHtml(
     .rivhit-status.success { display: block; background: #dcfce7; color: #166534; }
     .rivhit-status.error { display: block; background: #fee2e2; color: #991b1b; }
     @media print { body { padding: 0; background: white; } .container { box-shadow: none; border-radius: 0; } .actions { display: none; } .rivhit-col { display: none !important; } .rivhit-status { display: none !important; } }
-    @media (max-width: 768px) { .summary-cards { grid-template-columns: 1fr; } table { font-size: 11px; } th, td { padding: 6px 4px; } }
+    @media (max-width: 768px) { .summary-cards { grid-template-columns: 1fr; } table { font-size: 10px; } th, td { padding: 4px 3px; } }
   </style>
 </head>
 <body>
@@ -410,21 +455,23 @@ function generateHtml(
         <table>
           <thead>
             <tr>
-              <th style="width:40px;">#</th>
+              <th style="width:35px;">#</th>
               <th>العميل</th>
               <th>الهاتف</th>
               <th>رقم الهوية</th>
               <th>عدد الوثائق</th>
+              <th>رقم السيارة</th>
               <th>نوع التأمين</th>
+              <th>تاريخ الدفع</th>
               <th>المبلغ الكامل</th>
               <th>المربح</th>
               <th class="rivhit-col" style="display:none;">ריווחית</th>
             </tr>
           </thead>
           <tbody>
-            ${tableRows || '<tr><td colspan="8" style="text-align:center;padding:30px;">لا توجد وثائق</td></tr>'}
+            ${tableRows || '<tr><td colspan="10" style="text-align:center;padding:30px;">لا توجد وثائق</td></tr>'}
             <tr class="total-row">
-              <td colspan="6" style="border:1px solid #2d4a6f;padding:12px;text-align:center;">الإجمالي (${rows.length} عميل / ${totalPolicyCount} وثيقة)</td>
+              <td colspan="8" style="border:1px solid #2d4a6f;padding:12px;text-align:center;">الإجمالي (${rows.length} عميل / ${totalPolicyCount} وثيقة)</td>
               <td style="border:1px solid #2d4a6f;padding:12px;text-align:left;direction:ltr;">₪${formatNumber(totalAmount)}</td>
               <td style="border:1px solid #2d4a6f;padding:12px;text-align:left;direction:ltr;">₪${formatNumber(totalProfit)}</td>
               <td class="rivhit-col" style="display:none;border:1px solid #2d4a6f;padding:12px;"></td>
@@ -459,7 +506,6 @@ function generateHtml(
       statusEl.style.display = 'block';
       statusEl.textContent = 'جاري إرسال ' + INVOICE_ROWS.length + ' عملية إلى ריווחית...';
 
-      // Show rivhit column
       document.querySelectorAll('.rivhit-col').forEach(el => el.style.display = '');
 
       try {
@@ -479,7 +525,6 @@ function generateHtml(
           return;
         }
 
-        // Update per-row status
         if (data.results) {
           data.results.forEach(r => {
             const icon = document.getElementById('status-' + r.index);
