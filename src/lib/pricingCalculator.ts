@@ -79,26 +79,40 @@ export async function calculatePolicyProfit(params: CalculateProfitParams): Prom
 
     if (error) throw error;
 
+    const sortBySpecificity = (a: typeof rules extends (infer T)[] ? T : never, b: typeof rules extends (infer T)[] ? T : never) => {
+      const aScore = (a.car_type === carType ? 2 : 0) + (a.age_band === ageBand ? 1 : 0);
+      const bScore = (b.car_type === carType ? 2 : 0) + (b.age_band === ageBand ? 1 : 0);
+      return bScore - aScore;
+    };
+
     const getRuleValue = (
       ruleType: Enums<'pricing_rule_type'>,
       matchCarType = true,
       matchAgeBand = true
     ): number => {
-      const matchingRules = rules?.filter(r => {
+      // 1. Exact match including car_type
+      const exactMatch = rules?.filter(r => {
         if (r.rule_type !== ruleType) return false;
         if (matchCarType && r.car_type && r.car_type !== carType) return false;
         if (matchAgeBand && r.age_band && r.age_band !== 'ANY' && r.age_band !== ageBand) return false;
         return true;
       }) || [];
 
-      // Sort by specificity (exact match first)
-      matchingRules.sort((a, b) => {
-        const aScore = (a.car_type === carType ? 2 : 0) + (a.age_band === ageBand ? 1 : 0);
-        const bScore = (b.car_type === carType ? 2 : 0) + (b.age_band === ageBand ? 1 : 0);
-        return bScore - aScore;
-      });
+      exactMatch.sort(sortBySpecificity);
+      if (exactMatch.length > 0) return exactMatch[0].value ?? 0;
 
-      return matchingRules[0]?.value ?? 0;
+      // 2. Fallback: ignore car_type filter (use generic rules as default)
+      if (matchCarType) {
+        const fallback = rules?.filter(r => {
+          if (r.rule_type !== ruleType) return false;
+          if (matchAgeBand && r.age_band && r.age_band !== 'ANY' && r.age_band !== ageBand) return false;
+          return true;
+        }) || [];
+        fallback.sort(sortBySpecificity);
+        if (fallback.length > 0) return fallback[0].value ?? 0;
+      }
+
+      return 0;
     };
 
     // ROAD_SERVICE calculation - fetch from company_road_service_prices table
