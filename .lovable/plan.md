@@ -1,54 +1,38 @@
 
-
-# إصلاح عرض نوع التأمين "ثالث/شامل" → "ثالث" أو "شامل"
+# إضافة رابط مباشر لكل عميل (`/clients/:id`)
 
 ## المشكلة
-157 وثيقة في النظام نوعها `THIRD_FULL` لكن بدون تحديد النوع الفرعي (`policy_type_child` = NULL). معظمها مستوردة من WordPress بدون تحديد إذا كانت "ثالث" أو "شامل". النتيجة: يظهر "طرف ثالث / شامل" بدل "ثالث" أو "شامل".
+حالياً عندما تفتح عميل، الرابط يبقى `/clients` فقط - لا يمكنك نسخ الرابط وإرساله لعامل آخر.
 
 ## الحل
+إضافة route جديد `/clients/:id` يفتح تفاصيل العميل مباشرة.
 
-### 1. تصحيح البيانات (SQL Migration)
-تحديث الـ 157 وثيقة تلقائياً بناءً على قيمة السيارة:
-- إذا `car_value > 0` → النوع `FULL` (شامل) - 45 وثيقة
-- إذا `car_value` فارغ أو 0 → النوع `THIRD` (ثالث) - 112 وثيقة
+## التغييرات
 
+### 1. ملف `src/App.tsx`
+إضافة route جديد:
 ```text
-UPDATE policies p
-SET policy_type_child = 
-  CASE 
-    WHEN EXISTS (
-      SELECT 1 FROM cars c 
-      WHERE c.id = p.car_id AND c.car_value IS NOT NULL AND c.car_value > 0
-    ) THEN 'FULL'
-    ELSE 'THIRD'
-  END
-WHERE p.policy_type_parent = 'THIRD_FULL' 
-  AND p.policy_type_child IS NULL;
+<Route path="/clients/:clientId" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
 ```
 
-### 2. منع المشكلة مستقبلاً (SQL Migration)
-إضافة trigger يمنع إدخال وثيقة `THIRD_FULL` بدون تحديد النوع الفرعي:
+### 2. ملف `src/pages/Clients.tsx`
+- استيراد `useParams` من react-router-dom
+- قراءة `clientId` من الـ URL params
+- عند فتح عميل من الجدول: استخدام `navigate(/clients/${client.id})` بدل query params
+- عند فتح عميل من الـ URL param: تحميل بيانات العميل وفتح تفاصيله
+- عند إغلاق تفاصيل العميل: العودة لـ `/clients`
+- الحفاظ على التوافق مع الروابط القديمة (`?open=...`) بحيث تعمل أيضاً
 
-```text
-CREATE OR REPLACE FUNCTION enforce_third_full_child_type()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF NEW.policy_type_parent = 'THIRD_FULL' 
-     AND (NEW.policy_type_child IS NULL OR NEW.policy_type_child = '') THEN
-    NEW.policy_type_child := 'THIRD';
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_enforce_third_full_child
-BEFORE INSERT OR UPDATE ON policies
-FOR EACH ROW EXECUTE FUNCTION enforce_third_full_child_type();
-```
-
-### 3. لا تغيير في الكود
-منطق العرض في الكود صحيح: يعرض النوع الفرعي (ثالث/شامل) عندما يكون موجوداً. المشكلة فقط في البيانات الفارغة.
+### 3. تحديث الروابط في باقي الصفحات
+تغيير كل الأماكن التي تستخدم `/clients?open={id}` إلى `/clients/{id}`:
+- `src/components/dashboard/RecentActivity.tsx`
+- `src/components/layout/GlobalPolicySearch.tsx`
+- `src/components/notifications/PaymentDetailsPanel.tsx`
+- `src/components/policies/PolicyWizard.tsx`
+- `src/pages/CompanySettlementDetail.tsx`
+- `src/pages/PolicyReports.tsx`
 
 ## النتيجة
-- كل الوثائق ستعرض "ثالث" أو "شامل" بدل "طرف ثالث / شامل"
-- وثائق مستقبلية بدون child type ستأخذ "THIRD" تلقائياً
+- كل عميل سيكون له رابط مثل: `https://basheer-ab.lovable.app/clients/abc-123`
+- يمكنك نسخ الرابط وإرساله لأي عامل آخر
+- الروابط القديمة (`?open=...`) ستبقى تعمل للتوافق
