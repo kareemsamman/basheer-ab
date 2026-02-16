@@ -1,40 +1,40 @@
 
-# تعديل نسبة اراضي مقدسة + إصلاح البحث عند فتح عميل
+# Fix: Car step showing previous client's cars when creating a new client
 
-## المشكلة 1: نسبة التسعير
-النسبة المخزنة في قاعدة البيانات لشركة اراضي مقدسة هي 2% بينما النسبة الحقيقية 1.75%.
+## Problem
+When the policy wizard is opened from a client profile (preselectedClientId), the client's cars are fetched and one may be auto-selected. If the user then clicks "Create New Client" in Step 1, `selectedClient` is set to `null`, but:
+- `clientCars` array still holds the old client's cars
+- `selectedCar` still holds the previously selected car
 
-**الإصلاح:** تحديث القيمة في جدول `pricing_rules`:
-```text
-UPDATE pricing_rules SET value = 1.75 WHERE id = 'ca044a6a-5c88-43ed-9a2d-6c7c1c68c5bf';
-```
+Step2Car's `useEffect` only runs `fetchClientCars` when `selectedClient?.id` is truthy -- it never clears `clientCars` when the client changes to null.
 
-## المشكلة 2: البحث لا يعمل عند فتح عميل
-عندما تكون داخل صفحة عميل (نضال صندوقة) وتبحث عن عميل آخر (حمدي ابو سرية) - الضغط على النتيجة لا يفعل شيئاً.
+## Solution
 
-**السبب:** في `src/pages/Clients.tsx` سطر 92، الشرط `!viewingClient` يمنع فتح عميل جديد لأن `viewingClient` مملوء بالعميل الحالي. البحث يُنفذ `navigate('/clients/حمدي')` لكن الـ `useEffect` لا يُعاد تشغيله لأن الشرط يمنعه.
-
-**الإصلاح:** في `src/pages/Clients.tsx`:
-- إزالة شرط `!viewingClient` من الـ `useEffect`
-- مقارنة `openClientId` مع `viewingClient?.id` - إذا كان مختلفاً، يتم تحميل العميل الجديد
-- هذا يسمح بالانتقال بين العملاء مباشرة من البحث
+### File: `src/components/policies/wizard/Step2Car.tsx`
+Modify the `useEffect` (line 63-68) to clear car data when `selectedClient` is null:
 
 ```text
-// قبل:
-if (openClientId && !viewingClient) {
+// Before:
+useEffect(() => {
+  if (selectedClient?.id) {
+    fetchClientCars(selectedClient.id);
+  }
+}, [selectedClient?.id]);
 
-// بعد:
-if (openClientId && openClientId !== viewingClient?.id) {
+// After:
+useEffect(() => {
+  if (selectedClient?.id) {
+    fetchClientCars(selectedClient.id);
+  } else {
+    // Clear cars when no client is selected (e.g. creating new client)
+    setClientCars([]);
+    setSelectedCar(null);
+    setExistingCar(null);
+  }
+}, [selectedClient?.id]);
 ```
 
-## التقنيات
+This ensures that when the user switches to "create new client" mode (which sets `selectedClient` to null), the car list and selected car are cleared, so Step 2 correctly shows an empty car list with the option to add a new car.
 
-### ملف `src/pages/Clients.tsx`
-- تعديل سطر 92: تغيير الشرط من `!viewingClient` إلى `openClientId !== viewingClient?.id`
-
-### قاعدة البيانات
-- تحديث `pricing_rules` لشركة اراضي مقدسة: `FULL_PERCENT` من 2% إلى 1.75%
-
-## النتيجة
-1. حساب المستحق للشركة سيستخدم 1.75% بدل 2% لكل الوثائق الجديدة
-2. البحث سيعمل بشكل صحيح حتى عند تصفح عميل آخر
+### No other files need changes
+The root cause is entirely in Step2Car's effect not handling the null case.
