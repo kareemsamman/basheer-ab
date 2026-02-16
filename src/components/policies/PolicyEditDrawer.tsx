@@ -117,6 +117,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
     end_date: policy.end_date,
     insurance_price: policy.insurance_price?.toString() || "0",
     office_commission: "0", // Will be fetched from DB
+    issue_date: "", // Will be fetched from DB
     cancelled: policy.cancelled || false,
     transferred: policy.transferred || false,
     transferred_car_number: policy.transferred_car_number || "",
@@ -151,6 +152,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
         end_date: policy.end_date,
         insurance_price: policy.insurance_price?.toString() || "0",
         office_commission: "0",
+        issue_date: "",
         cancelled: policy.cancelled || false,
         transferred: policy.transferred || false,
         transferred_car_number: policy.transferred_car_number || "",
@@ -165,18 +167,22 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
       setFormData(initialFormData);
       setOriginalDates({ start_date: policy.start_date, end_date: policy.end_date });
 
-      // Fetch office_commission from DB
-      const fetchCommission = async () => {
+      // Fetch office_commission and issue_date from DB
+      const fetchExtraFields = async () => {
         const { data } = await supabase
           .from('policies')
-          .select('office_commission')
+          .select('office_commission, issue_date')
           .eq('id', policy.id)
           .single();
-        if (data?.office_commission != null) {
-          setFormData(f => ({ ...f, office_commission: data.office_commission.toString() }));
+        if (data) {
+          setFormData(f => ({
+            ...f,
+            office_commission: data.office_commission != null ? data.office_commission.toString() : "0",
+            issue_date: data.issue_date || f.start_date || "",
+          }));
         }
       };
-      fetchCommission();
+      fetchExtraFields();
     }
   }, [open, policy]);
 
@@ -298,6 +304,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
           cancelled: formData.cancelled,
           transferred: formData.transferred,
           transferred_car_number: formData.transferred ? formData.transferred_car_number : null,
+          issue_date: formData.policy_type_parent === 'THIRD_FULL' ? (formData.issue_date || formData.start_date) : null,
           is_under_24: formData.under24_type !== 'none',
           notes: formData.notes || null,
           broker_id: formData.broker_id === NO_BROKER ? null : formData.broker_id,
@@ -473,6 +480,20 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
                 />
               </div>
             </div>
+
+            {/* Issue Date - only for THIRD_FULL */}
+            {formData.policy_type_parent === 'THIRD_FULL' && (
+              <div className="space-y-1.5">
+                <Label className="text-right block text-sm text-primary">تاريخ الإصدار</Label>
+                <ArabicDatePicker
+                  value={formData.issue_date}
+                  onChange={(v) => setFormData(f => ({ ...f, issue_date: v }))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  التاريخ الذي تحسبه الشركة (افتراضياً = تاريخ البدء)
+                </p>
+              </div>
+            )}
 
             {/* Price */}
             <div className="space-y-1.5">
