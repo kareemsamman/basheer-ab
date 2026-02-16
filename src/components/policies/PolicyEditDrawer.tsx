@@ -304,7 +304,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
           cancelled: formData.cancelled,
           transferred: formData.transferred,
           transferred_car_number: formData.transferred ? formData.transferred_car_number : null,
-          issue_date: formData.policy_type_parent === 'THIRD_FULL' ? (formData.issue_date || formData.start_date) : null,
+          issue_date: formData.issue_date || formData.start_date,
           is_under_24: formData.under24_type !== 'none',
           notes: formData.notes || null,
           broker_id: formData.broker_id === NO_BROKER ? null : formData.broker_id,
@@ -481,19 +481,17 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
               </div>
             </div>
 
-            {/* Issue Date - only for THIRD_FULL */}
-            {formData.policy_type_parent === 'THIRD_FULL' && (
-              <div className="space-y-1.5">
-                <Label className="text-right block text-sm text-primary">تاريخ الإصدار</Label>
-                <ArabicDatePicker
-                  value={formData.issue_date}
-                  onChange={(v) => setFormData(f => ({ ...f, issue_date: v }))}
-                />
-                <p className="text-xs text-muted-foreground">
-                  التاريخ الذي تحسبه الشركة (افتراضياً = تاريخ البدء)
-                </p>
-              </div>
-            )}
+            {/* Issue Date - for all types */}
+            <div className="space-y-1.5">
+              <Label className="text-right block text-sm text-primary">تاريخ الإصدار</Label>
+              <ArabicDatePicker
+                value={formData.issue_date}
+                onChange={(v) => setFormData(f => ({ ...f, issue_date: v }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                التاريخ الذي تحسبه الشركة (افتراضياً = تاريخ البدء)
+              </p>
+            </div>
 
             {/* Price */}
             <div className="space-y-1.5">

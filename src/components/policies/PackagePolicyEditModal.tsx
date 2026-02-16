@@ -99,6 +99,7 @@ interface PackagePolicyEditModalProps {
 interface EditState {
   startDate: string;
   endDate: string;
+  issueDate: string;
   insurancePrice: string;
 }
 
@@ -166,6 +167,7 @@ export function PackagePolicyEditModal({
           policy_type_child,
           start_date,
           end_date,
+          issue_date,
           insurance_price,
           is_under_24,
           group_id,
@@ -196,6 +198,7 @@ export function PackagePolicyEditModal({
         states[p.id] = {
           startDate: p.start_date || "",
           endDate: p.end_date || "",
+          issueDate: (p as any).issue_date || p.start_date || "",
           insurancePrice: p.insurance_price?.toString() || "0",
         };
       });
@@ -515,6 +518,7 @@ export function PackagePolicyEditModal({
           .update({
             start_date: state.startDate,
             end_date: state.endDate,
+            issue_date: state.issueDate || state.startDate,
             insurance_price: price,
             payed_for_company: companyPayment,
             profit,
@@ -608,7 +612,15 @@ export function PackagePolicyEditModal({
                       </div>
 
                       {/* Editable Fields */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">تاريخ الإصدار</Label>
+                          <ArabicDatePicker
+                            value={state?.issueDate || ""}
+                            onChange={(v) => updateEditState(policy.id, "issueDate", v)}
+                            compact
+                          />
+                        </div>
                         <div className="space-y-1">
                           <Label className="text-xs text-muted-foreground">تاريخ البدء</Label>
                           <ArabicDatePicker

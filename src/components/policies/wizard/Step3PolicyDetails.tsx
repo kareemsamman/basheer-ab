@@ -823,6 +823,19 @@ export function Step3PolicyDetails({
         </div>
       )}
 
+      {/* Issue Date - before start/end dates, for all types */}
+      <div>
+        <Label>تاريخ الإصدار</Label>
+        <ArabicDatePicker
+          value={policy.issue_date}
+          onChange={(date) => setPolicy({ ...policy, issue_date: date })}
+          placeholder="تاريخ الإصدار (افتراضي = تاريخ البداية)"
+        />
+        <p className="text-xs text-muted-foreground mt-1">
+          التاريخ الذي تحسبه الشركة (افتراضياً = تاريخ البداية)
+        </p>
+      </div>
+
       {/* Dates - Before Package Section to clarify these are for main policy */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
@@ -846,21 +859,6 @@ export function Step3PolicyDetails({
           <FieldError error={errors.end_date} />
         </div>
       </div>
-
-      {/* Issue Date - only for THIRD_FULL */}
-      {policy.policy_type_parent === 'THIRD_FULL' && (
-        <div>
-          <Label>تاريخ الإصدار</Label>
-          <ArabicDatePicker
-            value={policy.issue_date}
-            onChange={(date) => setPolicy({ ...policy, issue_date: date })}
-            placeholder="تاريخ الإصدار (افتراضي = تاريخ البداية)"
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            التاريخ الذي تحسبه الشركة (افتراضياً = تاريخ البداية)
-          </p>
-        </div>
-      )}
 
       {/* Package Mode - For THIRD_FULL and ELZAMI - BEFORE BROKER */}
       {(policy.policy_type_parent === 'THIRD_FULL' || policy.policy_type_parent === 'ELZAMI') && (() => {
