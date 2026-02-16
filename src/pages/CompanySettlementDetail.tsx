@@ -620,18 +620,6 @@ export default function CompanySettlementDetail() {
           </Button>
         </div>
 
-        {/* Search Bar */}
-        <div className="print:hidden">
-          <div className="relative">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="بحث في كل الأعمدة: اسم العميل، رقم السيارة، نوع السيارة، المبالغ..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pr-10"
-            />
-          </div>
-        </div>
 
         {/* Filters */}
         <Card className="print:hidden">
@@ -824,17 +812,28 @@ export default function CompanySettlementDetail() {
         {/* Policies Table */}
         <Card>
           <CardHeader className="print:pb-2">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-3">
               <CardTitle>الوثائق ({filteredPolicies.length})</CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSortAsc(!sortAsc)}
-                className="gap-2 print:hidden"
-              >
-                <ArrowUpDown className="h-4 w-4" />
-                {sortAsc ? 'من الأقدم للأحدث' : 'من الأحدث للأقدم'}
-              </Button>
+              <div className="flex items-center gap-2 flex-1 max-w-md print:hidden">
+                <div className="relative flex-1">
+                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="بحث: اسم، رقم سيارة، مبلغ..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pr-10"
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSortAsc(!sortAsc)}
+                  className="gap-2"
+                >
+                  <ArrowUpDown className="h-4 w-4" />
+                  {sortAsc ? 'من الأقدم للأحدث' : 'من الأحدث للأقدم'}
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
