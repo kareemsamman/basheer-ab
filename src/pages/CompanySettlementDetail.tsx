@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Progress } from '@/components/ui/progress';
 import {
   Table,
   TableBody,
@@ -23,13 +24,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowRight, Building2, Download, TrendingUp, Wallet, FileText, Calculator, Printer, Eye, Pencil, RotateCcw, Loader2, CreditCard, Plus, Search, ArrowUpDown, Check, X, Receipt } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { ArrowRight, Building2, Download, TrendingUp, Wallet, FileText, Calculator, Printer, Eye, Pencil, RotateCcw, Loader2, CreditCard, Plus, Search, ArrowUpDown, Check, X, Receipt, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import { CalculationExplanationModal } from '@/components/reports/CalculationExplanationModal';
 import { PolicyDetailsDrawer } from '@/components/policies/PolicyDetailsDrawer';
+import { recalculatePolicyProfit } from '@/lib/pricingCalculator';
 import { 
   POLICY_TYPE_LABELS, 
   POLICY_CHILD_LABELS, 
@@ -119,6 +131,11 @@ export default function CompanySettlementDetail() {
   const [selectedPolicyId, setSelectedPolicyId] = useState<string | null>(null);
   const [detailsDrawerOpen, setDetailsDrawerOpen] = useState(false);
   
+  // Recalculate profits
+  const [recalculating, setRecalculating] = useState(false);
+  const [recalcProgress, setRecalcProgress] = useState({ current: 0, total: 0 });
+  const [showRecalcConfirm, setShowRecalcConfirm] = useState(false);
+
   // Filters - default to all time
   const [showAllTime, setShowAllTime] = useState(true);
   const [startDate, setStartDate] = useState(() => {
@@ -567,6 +584,30 @@ export default function CompanySettlementDetail() {
     fetchCompanyAndPolicies();
   };
 
+  const handleRecalculateProfits = async () => {
+    setShowRecalcConfirm(false);
+    const eligiblePolicies = filteredPolicies.filter(p => !p.cancelled && !p.transferred);
+    if (eligiblePolicies.length === 0) return;
+
+    setRecalculating(true);
+    setRecalcProgress({ current: 0, total: eligiblePolicies.length });
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < eligiblePolicies.length; i++) {
+      const result = await recalculatePolicyProfit(eligiblePolicies[i].id);
+      if (result) successCount++;
+      else failCount++;
+      setRecalcProgress({ current: i + 1, total: eligiblePolicies.length });
+    }
+
+    setRecalculating(false);
+    await fetchCompanyAndPolicies();
+
+    toast.success(`تم إعادة احتساب ${successCount} وثيقة${failCount > 0 ? ` (${failCount} فشل)` : ''}`);
+  };
+
   const getFilterDescription = () => {
     const parts: string[] = [];
     if (showAllTime) {
@@ -630,7 +671,7 @@ export default function CompanySettlementDetail() {
         {/* Filters */}
         <Card className="print:hidden">
           <CardContent className="pt-6">
-            <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="space-y-2">
                 <Label>من تاريخ</Label>
                 <ArabicDatePicker
@@ -685,41 +726,59 @@ export default function CompanySettlementDetail() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
 
-              <div className="flex items-end gap-2">
+            {/* Action buttons row */}
+            <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-border">
+              <Button 
+                variant="default" 
+                onClick={handleGenerateReport}
+                disabled={generatingReport}
+              >
+                {generatingReport ? (
+                  <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                ) : (
+                  <FileText className="h-4 w-4 ml-2" />
+                )}
+                تقرير PDF
+              </Button>
+              <Button variant="outline" onClick={exportToCSV}>
+                <Download className="h-4 w-4 ml-2" />
+                CSV
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => setShowTaxInvoiceInput(!showTaxInvoiceInput)}
+              >
+                <Receipt className="h-4 w-4 ml-2" />
+                فاتورة ضريبية
+              </Button>
+              <Button variant="ghost" onClick={handleResetFilters} disabled={showAllTime}>
+                <RotateCcw className="h-4 w-4 ml-2" />
+                كل الفترات
+              </Button>
+              <div className="mr-auto">
                 <Button 
-                  variant="default" 
-                  onClick={handleGenerateReport}
-                  disabled={generatingReport}
-                  className="flex-1"
+                  variant="outline"
+                  onClick={() => setShowRecalcConfirm(true)}
+                  disabled={recalculating || filteredPolicies.filter(p => !p.cancelled && !p.transferred).length === 0}
                 >
-                  {generatingReport ? (
-                    <Loader2 className="h-4 w-4 ml-2 animate-spin" />
-                  ) : (
-                    <FileText className="h-4 w-4 ml-2" />
-                  )}
-                  تقرير PDF
-                </Button>
-                <Button variant="outline" onClick={exportToCSV}>
-                  <Download className="h-4 w-4" />
-                </Button>
-              </div>
-
-              <div className="flex items-end gap-2">
-                <Button 
-                  variant="outline" 
-                  onClick={() => setShowTaxInvoiceInput(!showTaxInvoiceInput)}
-                  className="flex-1"
-                >
-                  <Receipt className="h-4 w-4 ml-2" />
-                  فاتورة ضريبية
-                </Button>
-                <Button variant="ghost" onClick={handleResetFilters}>
-                  <RotateCcw className="h-4 w-4 ml-2" />
-                  كل الفترات
+                  <RefreshCw className="h-4 w-4 ml-2" />
+                  إعادة احتساب الأرباح ({filteredPolicies.filter(p => !p.cancelled && !p.transferred).length})
                 </Button>
               </div>
             </div>
+
+            {/* Recalculation Progress */}
+            {recalculating && (
+              <div className="mt-4 pt-4 border-t border-border space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span>جاري إعادة الاحتساب...</span>
+                  <span>{recalcProgress.current} / {recalcProgress.total}</span>
+                </div>
+                <Progress value={(recalcProgress.current / recalcProgress.total) * 100} />
+              </div>
+            )}
 
             {/* Tax Invoice Percent Input */}
             {showTaxInvoiceInput && (
@@ -1120,6 +1179,26 @@ export default function CompanySettlementDetail() {
           setSelectedPolicyId(newPolicyId);
         }}
       />
+
+      {/* Recalculate Profits Confirmation */}
+      <AlertDialog open={showRecalcConfirm} onOpenChange={setShowRecalcConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>إعادة احتساب الأرباح</AlertDialogTitle>
+            <AlertDialogDescription>
+              سيتم إعادة احتساب الأرباح لـ {filteredPolicies.filter(p => !p.cancelled && !p.transferred).length} وثيقة حسب قواعد التسعير الحالية.
+              هل تريد المتابعة؟
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRecalculateProfits}>
+              <RefreshCw className="h-4 w-4 ml-2" />
+              إعادة احتساب
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </MainLayout>
   );
 }
