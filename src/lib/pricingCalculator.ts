@@ -254,7 +254,7 @@ export async function recalculatePolicyProfit(policyId: string): Promise<ProfitR
       .from('policies')
       .select(`
         *,
-        cars!inner (
+        cars (
           car_type,
           car_value,
           year
@@ -274,11 +274,14 @@ export async function recalculatePolicyProfit(policyId: string): Promise<ProfitR
       policyTypeParent: policy.policy_type_parent,
       policyTypeChild: policy.policy_type_child,
       companyId: policy.company_id,
-      carType: policy.cars.car_type || 'car',
+      carType: policy.cars?.car_type || 'car',
       ageBand,
-      carValue: policy.cars.car_value,
-      carYear: policy.cars.year,
+      carValue: policy.cars?.car_value ?? null,
+      carYear: policy.cars?.year ?? null,
       insurancePrice: policy.insurance_price,
+      brokerBuyPrice: policy.broker_buy_price,
+      roadServiceId: policy.road_service_id,
+      accidentFeeServiceId: policy.accident_fee_service_id,
     });
 
     // Update the policy with new values
