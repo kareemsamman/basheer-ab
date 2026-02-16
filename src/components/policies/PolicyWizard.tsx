@@ -801,6 +801,7 @@ export function PolicyWizard({
             company_id: policy.company_id || null,
             start_date: policy.start_date,
             end_date: policy.end_date,
+            issue_date: policy.issue_date || policy.start_date,
             insurance_price: parseFloat(policy.insurance_price) || pricing.totalPrice,
             profit: profitData.profit,
             payed_for_company: profitData.companyPayment,

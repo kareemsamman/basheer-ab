@@ -2986,6 +2986,7 @@ export type Database = {
           insurance_price: number
           invoices_sent_at: string | null
           is_under_24: boolean | null
+          issue_date: string | null
           legacy_wp_id: number | null
           notes: string | null
           office_commission: number
@@ -3032,6 +3033,7 @@ export type Database = {
           insurance_price: number
           invoices_sent_at?: string | null
           is_under_24?: boolean | null
+          issue_date?: string | null
           legacy_wp_id?: number | null
           notes?: string | null
           office_commission?: number
@@ -3078,6 +3080,7 @@ export type Database = {
           insurance_price?: number
           invoices_sent_at?: string | null
           is_under_24?: boolean | null
+          issue_date?: string | null
           legacy_wp_id?: number | null
           notes?: string | null
           office_commission?: number
@@ -3635,6 +3638,8 @@ export type Database = {
           effective_from: string | null
           effective_to: string | null
           id: string
+          max_car_value: number | null
+          min_car_value: number | null
           notes: string | null
           policy_type_parent: Database["public"]["Enums"]["policy_type_parent"]
           rule_type: Database["public"]["Enums"]["pricing_rule_type"]
@@ -3649,6 +3654,8 @@ export type Database = {
           effective_from?: string | null
           effective_to?: string | null
           id?: string
+          max_car_value?: number | null
+          min_car_value?: number | null
           notes?: string | null
           policy_type_parent: Database["public"]["Enums"]["policy_type_parent"]
           rule_type: Database["public"]["Enums"]["pricing_rule_type"]
@@ -3663,6 +3670,8 @@ export type Database = {
           effective_from?: string | null
           effective_to?: string | null
           id?: string
+          max_car_value?: number | null
+          min_car_value?: number | null
           notes?: string | null
           policy_type_parent?: Database["public"]["Enums"]["policy_type_parent"]
           rule_type?: Database["public"]["Enums"]["pricing_rule_type"]
@@ -3942,6 +3951,60 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      settlement_supplements: {
+        Row: {
+          company_id: string
+          company_payment: number
+          created_at: string
+          created_by_admin_id: string | null
+          description: string
+          id: string
+          insurance_price: number
+          profit: number
+          settlement_date: string
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          company_payment?: number
+          created_at?: string
+          created_by_admin_id?: string | null
+          description?: string
+          id?: string
+          insurance_price?: number
+          profit?: number
+          settlement_date?: string
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          company_payment?: number
+          created_at?: string
+          created_by_admin_id?: string | null
+          description?: string
+          id?: string
+          insurance_price?: number
+          profit?: number
+          settlement_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "settlement_supplements_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "settlement_supplements_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       sms_logs: {
         Row: {

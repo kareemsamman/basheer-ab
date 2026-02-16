@@ -34,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { ArrowRight, Building2, Download, TrendingUp, Wallet, FileText, Calculator, Printer, Eye, Pencil, RotateCcw, Loader2, CreditCard, Plus, Search, ArrowUpDown, Check, X, Receipt, RefreshCw } from 'lucide-react';
+import { ArrowRight, Building2, Download, TrendingUp, Wallet, FileText, Calculator, Printer, Eye, Pencil, RotateCcw, Loader2, CreditCard, Plus, Search, ArrowUpDown, Check, X, Receipt, RefreshCw, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -60,6 +60,7 @@ interface PolicyDetail {
   profit: number | null;
   start_date: string;
   end_date: string;
+  issue_date: string | null;
   is_under_24: boolean | null;
   created_at: string;
   cancelled: boolean | null;
@@ -82,6 +83,20 @@ interface PolicyDetail {
     full_name: string | null;
     email: string;
   } | null;
+  // Flag to distinguish supplements from policies
+  _isSupplement?: boolean;
+  _supplementId?: string;
+}
+
+interface SettlementSupplement {
+  id: string;
+  company_id: string;
+  description: string;
+  insurance_price: number;
+  company_payment: number;
+  profit: number;
+  settlement_date: string;
+  created_at: string;
 }
 
 interface CompanyInfo {
@@ -122,6 +137,13 @@ export default function CompanySettlementDetail() {
   // Cheques
   const [companyCheques, setCompanyCheques] = useState<CompanyCheque[]>([]);
   const [loadingCheques, setLoadingCheques] = useState(false);
+  
+  // Settlement supplements
+  const [supplements, setSupplements] = useState<SettlementSupplement[]>([]);
+  const [showSupplementForm, setShowSupplementForm] = useState(false);
+  const [editingSupplement, setEditingSupplement] = useState<SettlementSupplement | null>(null);
+  const [supplementForm, setSupplementForm] = useState({ description: 'ملحق', insurance_price: '0', company_payment: '', profit: '0', settlement_date: new Date().toISOString().split('T')[0] });
+  const [savingSupplement, setSavingSupplement] = useState(false);
   
   // Calculation modal
   const [selectedPolicyForCalc, setSelectedPolicyForCalc] = useState<PolicyDetail | null>(null);
@@ -199,9 +221,9 @@ export default function CompanySettlementDetail() {
     return result;
   }, [policies, selectedPolicyType, includeCancelled, searchQuery, sortAsc]);
 
-  // Summary totals
+  // Summary totals (including supplements)
   const summary = useMemo(() => {
-    return filteredPolicies.reduce(
+    const policySums = filteredPolicies.reduce(
       (acc, policy) => {
         const isTransferred = policy.transferred === true;
         return {
@@ -213,7 +235,14 @@ export default function CompanySettlementDetail() {
       },
       { totalPolicies: 0, totalInsurancePrice: 0, totalCompanyPayment: 0, totalProfit: 0 }
     );
-  }, [filteredPolicies]);
+    // Add supplements
+    for (const s of supplements) {
+      policySums.totalInsurancePrice += Number(s.insurance_price) || 0;
+      policySums.totalCompanyPayment += Number(s.company_payment) || 0;
+      policySums.totalProfit += Number(s.profit) || 0;
+    }
+    return policySums;
+  }, [filteredPolicies, supplements]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -223,8 +252,67 @@ export default function CompanySettlementDetail() {
     if (companyId) {
       fetchCompanyAndPolicies();
       fetchCompanyCheques();
+      fetchSupplements();
     }
   }, [companyId, startDate, endDate, showAllTime]);
+
+  const fetchSupplements = async () => {
+    if (!companyId) return;
+    let query = supabase.from('settlement_supplements').select('*').eq('company_id', companyId);
+    if (!showAllTime) {
+      query = query.gte('settlement_date', startDate).lte('settlement_date', endDate);
+    }
+    const { data } = await query.order('settlement_date', { ascending: true });
+    setSupplements(data || []);
+  };
+
+  const handleSaveSupplement = async () => {
+    if (!companyId) return;
+    setSavingSupplement(true);
+    try {
+      const payload = {
+        company_id: companyId,
+        description: supplementForm.description || 'ملحق',
+        insurance_price: parseFloat(supplementForm.insurance_price) || 0,
+        company_payment: parseFloat(supplementForm.company_payment) || 0,
+        profit: parseFloat(supplementForm.profit) || 0,
+        settlement_date: supplementForm.settlement_date,
+      };
+      if (editingSupplement) {
+        await supabase.from('settlement_supplements').update(payload).eq('id', editingSupplement.id);
+      } else {
+        await supabase.from('settlement_supplements').insert(payload);
+      }
+      setShowSupplementForm(false);
+      setEditingSupplement(null);
+      setSupplementForm({ description: 'ملحق', insurance_price: '0', company_payment: '', profit: '0', settlement_date: new Date().toISOString().split('T')[0] });
+      fetchSupplements();
+      toast.success(editingSupplement ? 'تم تحديث الملحق' : 'تم إضافة الملحق');
+    } catch (e) {
+      toast.error('فشل في حفظ الملحق');
+    } finally {
+      setSavingSupplement(false);
+    }
+  };
+
+  const handleDeleteSupplement = async (id: string) => {
+    if (!confirm('هل أنت متأكد من حذف هذا الملحق؟')) return;
+    await supabase.from('settlement_supplements').delete().eq('id', id);
+    fetchSupplements();
+    toast.success('تم حذف الملحق');
+  };
+
+  const handleEditSupplement = (s: SettlementSupplement) => {
+    setEditingSupplement(s);
+    setSupplementForm({
+      description: s.description,
+      insurance_price: s.insurance_price.toString(),
+      company_payment: s.company_payment.toString(),
+      profit: s.profit.toString(),
+      settlement_date: s.settlement_date,
+    });
+    setShowSupplementForm(true);
+  };
 
   const fetchCompanyAndPolicies = async () => {
     if (!companyId) return;
@@ -251,6 +339,7 @@ export default function CompanySettlementDetail() {
           profit,
           start_date,
           end_date,
+          issue_date,
           is_under_24,
           created_at,
           cancelled,
@@ -279,9 +368,10 @@ export default function CompanySettlementDetail() {
         .is('deleted_at', null);
 
       if (!showAllTime) {
+        // Use issue_date for filtering (falls back to start_date via COALESCE in backfill)
         query = query
-          .gte('start_date', startDate)
-          .lte('start_date', endDate);
+          .gte('issue_date', startDate)
+          .lte('issue_date', endDate);
       }
 
       const { data: policiesData, error: policiesError } = await query.order('created_at', { ascending: true });
@@ -297,6 +387,7 @@ export default function CompanySettlementDetail() {
         profit: p.profit,
         start_date: p.start_date,
         end_date: p.end_date,
+        issue_date: p.issue_date,
         is_under_24: p.is_under_24,
         created_at: p.created_at,
         cancelled: p.cancelled,
@@ -880,6 +971,10 @@ export default function CompanySettlementDetail() {
             <div className="flex items-center justify-between flex-wrap gap-3">
               <CardTitle>الوثائق ({filteredPolicies.length})</CardTitle>
               <div className="flex items-center gap-2 flex-1 max-w-md print:hidden">
+                <Button size="sm" variant="outline" onClick={() => { setEditingSupplement(null); setSupplementForm({ description: 'ملحق', insurance_price: '0', company_payment: '', profit: '0', settlement_date: new Date().toISOString().split('T')[0] }); setShowSupplementForm(true); }}>
+                  <Plus className="h-4 w-4 ml-1" />
+                  ملحق
+                </Button>
                 <div className="relative flex-1">
                   <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -913,6 +1008,7 @@ export default function CompanySettlementDetail() {
                     <TableHead className="text-right">نوع التأمين</TableHead>
                     <TableHead className="text-right">قيمة السيارة</TableHead>
                     <TableHead className="text-right">تاريخ البداية</TableHead>
+                    <TableHead className="text-right">تاريخ الإصدار</TableHead>
                     <TableHead className="text-right">سعر التأمين</TableHead>
                     <TableHead className="text-right">المستحق للشركة</TableHead>
                     <TableHead className="text-right">الربح</TableHead>
@@ -992,6 +1088,9 @@ export default function CompanySettlementDetail() {
                             )}
                           </TableCell>
                           <TableCell>{formatDate(policy.start_date)}</TableCell>
+                          <TableCell className={cn(policy.issue_date && policy.issue_date !== policy.start_date && "text-primary font-medium")}>
+                            {policy.issue_date ? formatDate(policy.issue_date) : formatDate(policy.start_date)}
+                          </TableCell>
                           
                           {/* Insurance Price */}
                           <TableCell className="font-mono">
@@ -1098,6 +1197,28 @@ export default function CompanySettlementDetail() {
                       );
                     })
                   )}
+                  {/* Supplement Rows */}
+                  {supplements.map((s) => (
+                    <TableRow key={`supp-${s.id}`} className="bg-amber-50/50 border-amber-200">
+                      <TableCell className="font-medium">
+                        <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">ملحق</Badge>
+                      </TableCell>
+                      <TableCell colSpan={3}>{s.description}</TableCell>
+                      <TableCell><Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">ملحق</Badge></TableCell>
+                      <TableCell>-</TableCell>
+                      <TableCell>{formatDate(s.settlement_date)}</TableCell>
+                      <TableCell>-</TableCell>
+                      <TableCell className="font-mono">₪{Number(s.insurance_price).toLocaleString('en-US')}</TableCell>
+                      <TableCell className="font-mono text-destructive">₪{Number(s.company_payment).toLocaleString('en-US')}</TableCell>
+                      <TableCell className="font-mono text-success">₪{Number(s.profit).toLocaleString('en-US')}</TableCell>
+                      <TableCell className="print:hidden">
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => handleEditSupplement(s)}><Pencil className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleDeleteSupplement(s.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>
@@ -1195,6 +1316,45 @@ export default function CompanySettlementDetail() {
             <AlertDialogAction onClick={handleRecalculateProfits}>
               <RefreshCw className="h-4 w-4 ml-2" />
               إعادة احتساب
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Supplement Form Dialog */}
+      <AlertDialog open={showSupplementForm} onOpenChange={setShowSupplementForm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{editingSupplement ? 'تعديل ملحق' : 'إضافة ملحق'}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>الوصف</Label>
+              <Input value={supplementForm.description} onChange={(e) => setSupplementForm({ ...supplementForm, description: e.target.value })} placeholder="ملحق" />
+            </div>
+            <div className="space-y-2">
+              <Label>تاريخ التسوية</Label>
+              <ArabicDatePicker value={supplementForm.settlement_date} onChange={(d) => setSupplementForm({ ...supplementForm, settlement_date: d })} />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <Label>سعر التأمين</Label>
+                <Input type="number" value={supplementForm.insurance_price} onChange={(e) => setSupplementForm({ ...supplementForm, insurance_price: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>المستحق للشركة *</Label>
+                <Input type="number" value={supplementForm.company_payment} onChange={(e) => setSupplementForm({ ...supplementForm, company_payment: e.target.value })} placeholder="+ أو -" />
+              </div>
+              <div className="space-y-2">
+                <Label>الربح</Label>
+                <Input type="number" value={supplementForm.profit} onChange={(e) => setSupplementForm({ ...supplementForm, profit: e.target.value })} />
+              </div>
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSaveSupplement} disabled={savingSupplement || !supplementForm.company_payment}>
+              {savingSupplement ? 'جاري الحفظ...' : 'حفظ'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
