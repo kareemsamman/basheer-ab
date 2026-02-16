@@ -1,38 +1,59 @@
 
-# إضافة رابط مباشر لكل عميل (`/clients/:id`)
+
+# إصلاح حساب المستحق للشركة لأنواع السيارات غير المعرّفة
 
 ## المشكلة
-حالياً عندما تفتح عميل، الرابط يبقى `/clients` فقط - لا يمكنك نسخ الرابط وإرساله لعامل آخر.
+سيارة جودت سدر (4306931) نوعها `tjeradown4` (تجاري > 4 طن)، لكن قواعد التسعير لشركة "اراضي مقدسة" معرّفة فقط لنوع `car`. الدالة `getRuleValue` تطلب تطابق نوع السيارة بالضبط، فلا تجد أي قاعدة → المستحق للشركة = 0 والربح = كامل السعر.
+
+**النتيجة الصحيحة:** المستحق للشركة = 900₪ (سعر الطرف الثالث) والربح = 3,400₪
 
 ## الحل
-إضافة route جديد `/clients/:id` يفتح تفاصيل العميل مباشرة.
 
-## التغييرات
+### ملف `src/lib/pricingCalculator.ts` - تعديل دالة `getRuleValue`
 
-### 1. ملف `src/App.tsx`
-إضافة route جديد:
+إضافة **fallback**: إذا لم يُوجد قاعدة تطابق نوع السيارة بالضبط، يتم البحث مرة أخرى بدون فلتر نوع السيارة (أي استخدام القواعد العامة كافتراضي).
+
 ```text
-<Route path="/clients/:clientId" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
+// المنطق الحالي (سطر 82-101):
+const getRuleValue = (...) => {
+  const matchingRules = rules?.filter(r => {
+    if (matchCarType && r.car_type && r.car_type !== carType) return false;
+    ...
+  });
+  return matchingRules[0]?.value ?? 0;
+};
+
+// بعد الإصلاح:
+const getRuleValue = (...) => {
+  // 1. محاولة أولى: تطابق دقيق مع نوع السيارة
+  const exactMatch = rules?.filter(r => {
+    if (r.rule_type !== ruleType) return false;
+    if (matchCarType && r.car_type && r.car_type !== carType) return false;
+    if (matchAgeBand && r.age_band && r.age_band !== 'ANY' && r.age_band !== ageBand) return false;
+    return true;
+  }) || [];
+  
+  // ترتيب حسب الدقة
+  exactMatch.sort(...);
+  if (exactMatch.length > 0) return exactMatch[0].value ?? 0;
+  
+  // 2. fallback: تجاهل نوع السيارة (استخدام القواعد العامة)
+  if (matchCarType) {
+    const fallback = rules?.filter(r => {
+      if (r.rule_type !== ruleType) return false;
+      if (matchAgeBand && r.age_band && r.age_band !== 'ANY' && r.age_band !== ageBand) return false;
+      return true;
+    }) || [];
+    fallback.sort(...);
+    if (fallback.length > 0) return fallback[0].value ?? 0;
+  }
+  
+  return 0;
+};
 ```
 
-### 2. ملف `src/pages/Clients.tsx`
-- استيراد `useParams` من react-router-dom
-- قراءة `clientId` من الـ URL params
-- عند فتح عميل من الجدول: استخدام `navigate(/clients/${client.id})` بدل query params
-- عند فتح عميل من الـ URL param: تحميل بيانات العميل وفتح تفاصيله
-- عند إغلاق تفاصيل العميل: العودة لـ `/clients`
-- الحفاظ على التوافق مع الروابط القديمة (`?open=...`) بحيث تعمل أيضاً
+### النتيجة
+- سيارة `tjeradown4` ستستخدم قواعد `car` كافتراضي (900₪ للطرف الثالث)
+- أي نوع سيارة جديد بدون قواعد خاصة سيستخدم القواعد الموجودة بدل إرجاع 0
+- لا حاجة لإضافة قواعد تسعير لكل نوع سيارة
 
-### 3. تحديث الروابط في باقي الصفحات
-تغيير كل الأماكن التي تستخدم `/clients?open={id}` إلى `/clients/{id}`:
-- `src/components/dashboard/RecentActivity.tsx`
-- `src/components/layout/GlobalPolicySearch.tsx`
-- `src/components/notifications/PaymentDetailsPanel.tsx`
-- `src/components/policies/PolicyWizard.tsx`
-- `src/pages/CompanySettlementDetail.tsx`
-- `src/pages/PolicyReports.tsx`
-
-## النتيجة
-- كل عميل سيكون له رابط مثل: `https://basheer-ab.lovable.app/clients/abc-123`
-- يمكنك نسخ الرابط وإرساله لأي عامل آخر
-- الروابط القديمة (`?open=...`) ستبقى تعمل للتوافق
