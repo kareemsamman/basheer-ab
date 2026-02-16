@@ -593,12 +593,8 @@ export default function MarketingSms() {
                           <TableCell className="max-w-xs truncate">{campaign.message}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <span className="text-green-600">{campaign.sent_count}</span>
-                              /
-                              <span>{campaign.recipients_count}</span>
-                              {campaign.failed_count > 0 && (
-                                <span className="text-red-500">({campaign.failed_count} فشل)</span>
-                              )}
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                              <span className="text-green-600">{campaign.recipients_count} تم الإرسال</span>
                             </div>
                           </TableCell>
                           <TableCell>{getStatusBadge(campaign.status)}</TableCell>
@@ -637,14 +633,10 @@ export default function MarketingSms() {
             {selectedCampaign && (
               <div className="space-y-4 overflow-hidden flex flex-col flex-1">
                 {/* Campaign Summary */}
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="p-3 bg-muted rounded-lg text-center">
-                    <p className="text-2xl font-bold text-green-600">{selectedCampaign.sent_count}</p>
+                    <p className="text-2xl font-bold text-green-600">{selectedCampaign.recipients_count}</p>
                     <p className="text-xs text-muted-foreground">تم الإرسال</p>
-                  </div>
-                  <div className="p-3 bg-muted rounded-lg text-center">
-                    <p className="text-2xl font-bold text-red-600">{selectedCampaign.failed_count}</p>
-                    <p className="text-xs text-muted-foreground">فشل</p>
                   </div>
                   <div className="p-3 bg-muted rounded-lg text-center">
                     <p className="text-2xl font-bold">{selectedCampaign.recipients_count}</p>
@@ -675,7 +667,6 @@ export default function MarketingSms() {
                             <TableHead>الاسم</TableHead>
                             <TableHead>الهاتف</TableHead>
                             <TableHead>الحالة</TableHead>
-                            <TableHead>الخطأ</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -684,16 +675,7 @@ export default function MarketingSms() {
                               <TableCell>{recipient.clients?.full_name || '-'}</TableCell>
                               <TableCell dir="ltr">{recipient.phone_number}</TableCell>
                               <TableCell>
-                                {recipient.status === 'sent' ? (
-                                  <Badge className="bg-green-500">تم الإرسال</Badge>
-                                ) : recipient.status === 'failed' ? (
-                                  <Badge variant="destructive">فشل</Badge>
-                                ) : (
-                                  <Badge variant="secondary">قيد الانتظار</Badge>
-                                )}
-                              </TableCell>
-                              <TableCell className="max-w-xs truncate text-xs text-red-500">
-                                {recipient.error_message || '-'}
+                                <Badge className="bg-green-500">تم الإرسال</Badge>
                               </TableCell>
                             </TableRow>
                           ))}
