@@ -156,7 +156,7 @@ export default function CompanySettlementDetail() {
         const clientName = policy.client?.full_name?.toLowerCase() || '';
         const carNumber = policy.car?.car_number?.toLowerCase() || '';
         const manufacturer = policy.car?.manufacturer_name?.toLowerCase() || '';
-        const insuranceLabel = getInsuranceTypeLabelLocal(policy).toLowerCase();
+        const insuranceLabel = (getInsuranceTypeLabelLocal(policy) || '').toLowerCase();
         const priceStr = String(policy.insurance_price);
         const companyPayStr = String(policy.payed_for_company || 0);
         const profitStr = String(policy.profit || 0);
@@ -348,7 +348,7 @@ export default function CompanySettlementDetail() {
     if (policy.policy_type_parent === 'THIRD_FULL' && policy.policy_type_child) {
       return POLICY_CHILD_LABELS[policy.policy_type_child] || policy.policy_type_child;
     }
-    return POLICY_TYPE_LABELS[policy.policy_type_parent];
+    return POLICY_TYPE_LABELS[policy.policy_type_parent] || policy.policy_type_parent || '';
   };
 
   const getCarTypeLabel = (carType: string | null) => {
