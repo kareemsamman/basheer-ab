@@ -436,7 +436,7 @@ export default function CompanySettlement() {
             {/* Filters */}
             <Card>
               <CardContent className="pt-6">
-                <div className="grid grid-cols-1 md:grid-cols-6 gap-4" dir="rtl">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4" dir="rtl">
                   <div className="space-y-2">
                     <Label>الشهر</Label>
                     <Input
@@ -513,48 +513,54 @@ export default function CompanySettlement() {
                     </Select>
                   </div>
 
-                   <div className="flex items-end gap-2">
-                    <Button variant="outline" onClick={exportToCSV}>
-                      <Download className="h-4 w-4 ml-2" />
-                      CSV
-                    </Button>
-                    <Popover open={showTaxInvoicePopover} onOpenChange={setShowTaxInvoicePopover}>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline">
-                          <Receipt className="h-4 w-4 ml-2" />
-                          فاتورة ضريبية
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-64">
-                        <div className="space-y-3">
-                          <h4 className="font-medium text-sm">فاتورة ضريبية</h4>
-                          <div className="space-y-1">
-                            <Label className="text-xs">نسبة المربح %</Label>
-                            <Input
-                              type="number"
-                              value={profitPercent}
-                              onChange={(e) => setProfitPercent(Number(e.target.value))}
-                              min={0}
-                              max={100}
-                              className="h-8"
-                            />
-                          </div>
-                          <Button
-                            size="sm"
-                            className="w-full"
-                            disabled={generatingTaxInvoice}
-                            onClick={() => handleGenerateTaxInvoice()}
-                          >
-                            {generatingTaxInvoice ? (
-                              <><Loader2 className="h-4 w-4 animate-spin ml-2" />جاري الإنشاء...</>
-                            ) : (
-                              'إنشاء فاتورة'
-                            )}
-                          </Button>
+                </div>
+
+                {/* Action buttons row */}
+                <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-border">
+                  <Button variant="outline" onClick={exportToCSV}>
+                    <Download className="h-4 w-4 ml-2" />
+                    CSV
+                  </Button>
+                  <Popover open={showTaxInvoicePopover} onOpenChange={setShowTaxInvoicePopover}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline">
+                        <Receipt className="h-4 w-4 ml-2" />
+                        فاتورة ضريبية
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64">
+                      <div className="space-y-3">
+                        <h4 className="font-medium text-sm">فاتورة ضريبية</h4>
+                        <div className="space-y-1">
+                          <Label className="text-xs">نسبة المربح %</Label>
+                          <Input
+                            type="number"
+                            value={profitPercent}
+                            onChange={(e) => setProfitPercent(Number(e.target.value))}
+                            min={0}
+                            max={100}
+                            className="h-8"
+                          />
                         </div>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
+                        <Button
+                          size="sm"
+                          className="w-full"
+                          disabled={generatingTaxInvoice}
+                          onClick={() => handleGenerateTaxInvoice()}
+                        >
+                          {generatingTaxInvoice ? (
+                            <><Loader2 className="h-4 w-4 animate-spin ml-2" />جاري الإنشاء...</>
+                          ) : (
+                            'إنشاء فاتورة'
+                          )}
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  <Button variant="ghost" onClick={() => setShowAllTime(true)} disabled={showAllTime}>
+                    <RotateCcw className="h-4 w-4 ml-2" />
+                    كل الفترات
+                  </Button>
                 </div>
               </CardContent>
             </Card>
