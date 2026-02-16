@@ -89,7 +89,7 @@ export default function Clients() {
   useEffect(() => {
     const openClientId = urlClientId || searchParams.get('open');
     const carId = searchParams.get('car');
-    if (openClientId && !viewingClient) {
+    if (openClientId && openClientId !== viewingClient?.id) {
       supabase
         .from('clients')
         .select('*, broker:brokers(id, name), branch:branches(id, name, name_ar), created_by:profiles!clients_created_by_admin_id_fkey(full_name, email)')
