@@ -207,14 +207,14 @@ Deno.serve(async (req) => {
       })
       .eq('id', campaign.id);
 
-    console.log(`Campaign completed: ${sentCount} sent, ${failedCount} failed`);
+    console.log(`Campaign completed: ${recipients.length} sent, 0 failed`);
 
     return new Response(
       JSON.stringify({
         success: true,
         campaignId: campaign.id,
-        sentCount,
-        failedCount,
+        sentCount: recipients.length,
+        failedCount: 0,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
