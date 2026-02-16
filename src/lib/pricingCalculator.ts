@@ -88,17 +88,41 @@ export async function calculatePolicyProfit(params: CalculateProfitParams): Prom
     const getRuleValue = (
       ruleType: Enums<'pricing_rule_type'>,
       matchCarType = true,
-      matchAgeBand = true
+      matchAgeBand = true,
+      filterByCarValue = false
     ): number => {
+      const matchesCarValueRange = (r: any): boolean => {
+        if (!filterByCarValue || !carValue) return true;
+        const minVal = r.min_car_value as number | null;
+        const maxVal = r.max_car_value as number | null;
+        // Rules without range = fallback (match only if no ranged rule matches)
+        if (minVal === null && maxVal === null) return true;
+        if (minVal !== null && carValue < minVal) return false;
+        if (maxVal !== null && carValue > maxVal) return false;
+        return true;
+      };
+
+      const rangedSpecificity = (r: any): number => {
+        // Prefer rules with explicit car value range over generic ones
+        const hasRange = (r.min_car_value !== null || r.max_car_value !== null) ? 1 : 0;
+        return hasRange;
+      };
+
       // 1. Exact match including car_type
       const exactMatch = rules?.filter(r => {
         if (r.rule_type !== ruleType) return false;
         if (matchCarType && r.car_type && r.car_type !== carType) return false;
         if (matchAgeBand && r.age_band && r.age_band !== 'ANY' && r.age_band !== ageBand) return false;
+        if (!matchesCarValueRange(r)) return false;
         return true;
       }) || [];
 
-      exactMatch.sort(sortBySpecificity);
+      exactMatch.sort((a, b) => {
+        // First sort by car value range specificity (ranged > generic)
+        const rangeSort = rangedSpecificity(b) - rangedSpecificity(a);
+        if (rangeSort !== 0) return rangeSort;
+        return sortBySpecificity(a, b);
+      });
       if (exactMatch.length > 0) return exactMatch[0].value ?? 0;
 
       // 2. Fallback: ignore car_type filter (use generic rules as default)
@@ -106,9 +130,14 @@ export async function calculatePolicyProfit(params: CalculateProfitParams): Prom
         const fallback = rules?.filter(r => {
           if (r.rule_type !== ruleType) return false;
           if (matchAgeBand && r.age_band && r.age_band !== 'ANY' && r.age_band !== ageBand) return false;
+          if (!matchesCarValueRange(r)) return false;
           return true;
         }) || [];
-        fallback.sort(sortBySpecificity);
+        fallback.sort((a, b) => {
+          const rangeSort = rangedSpecificity(b) - rangedSpecificity(a);
+          if (rangeSort !== 0) return rangeSort;
+          return sortBySpecificity(a, b);
+        });
         if (fallback.length > 0) return fallback[0].value ?? 0;
       }
 
@@ -191,7 +220,7 @@ export async function calculatePolicyProfit(params: CalculateProfitParams): Prom
       if (policyTypeChild === 'FULL') {
         // Get discount - this is a FIXED ₪ amount that REPLACES third_price, NOT a percentage
         const discount = getRuleValue('DISCOUNT', true, false);
-        const fullPercent = getRuleValue('FULL_PERCENT', true, false);
+        const fullPercent = getRuleValue('FULL_PERCENT', true, false, true);
         const minPrice = getRuleValue('MIN_PRICE', true, false);
         
         // If no full rules exist (no percent, no discount, no min), full profit

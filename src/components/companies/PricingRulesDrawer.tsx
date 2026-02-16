@@ -117,6 +117,8 @@ export function PricingRulesDrawer({ open, onClose, company }: PricingRulesDrawe
     car_type: 'car' as Enums<'car_type'>,
     value: '',
     notes: '',
+    min_car_value: '',
+    max_car_value: '',
   });
 
   const fetchRules = async () => {
@@ -161,6 +163,8 @@ export function PricingRulesDrawer({ open, onClose, company }: PricingRulesDrawe
       car_type: 'car',
       value: '',
       notes: '',
+      min_car_value: '',
+      max_car_value: '',
     });
     setDialogOpen(true);
   };
@@ -174,6 +178,8 @@ export function PricingRulesDrawer({ open, onClose, company }: PricingRulesDrawe
       car_type: rule.car_type || 'car',
       value: rule.value.toString(),
       notes: rule.notes || '',
+      min_car_value: (rule as any).min_car_value?.toString() || '',
+      max_car_value: (rule as any).max_car_value?.toString() || '',
     });
     setDialogOpen(true);
   };
@@ -236,6 +242,8 @@ export function PricingRulesDrawer({ open, onClose, company }: PricingRulesDrawe
         car_type: formData.car_type,
         value,
         notes: formData.notes || null,
+        min_car_value: formData.min_car_value ? parseFloat(formData.min_car_value) : null,
+        max_car_value: formData.max_car_value ? parseFloat(formData.max_car_value) : null,
       };
 
       if (editingRule) {
@@ -339,6 +347,13 @@ export function PricingRulesDrawer({ open, onClose, company }: PricingRulesDrawe
                         </TableCell>
                         <TableCell className="font-mono">
                           {formatRuleValue(rule.rule_type, rule.value)}
+                          {((rule as any).min_car_value || (rule as any).max_car_value) && (
+                            <span className="text-xs text-muted-foreground block">
+                              {(rule as any).min_car_value ? `من ₪${(rule as any).min_car_value.toLocaleString()}` : ''}
+                              {(rule as any).min_car_value && (rule as any).max_car_value ? ' - ' : ''}
+                              {(rule as any).max_car_value ? `حتى ₪${(rule as any).max_car_value.toLocaleString()}` : ''}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-1">
@@ -481,6 +496,30 @@ export function PricingRulesDrawer({ open, onClose, company }: PricingRulesDrawe
                 placeholder="ملاحظات إضافية (اختياري)"
               />
             </div>
+
+            {/* Car Value Range - show for FULL_PERCENT */}
+            {formData.rule_type === 'FULL_PERCENT' && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>من قيمة سيارة (₪)</Label>
+                  <Input
+                    type="number"
+                    value={formData.min_car_value}
+                    onChange={(e) => setFormData({ ...formData, min_car_value: e.target.value })}
+                    placeholder="مثلاً 60000"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>حتى قيمة سيارة (₪)</Label>
+                  <Input
+                    type="number"
+                    value={formData.max_car_value}
+                    onChange={(e) => setFormData({ ...formData, max_car_value: e.target.value })}
+                    placeholder="مثلاً 100000"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <DialogFooter>

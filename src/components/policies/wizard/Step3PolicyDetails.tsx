@@ -829,7 +829,7 @@ export function Step3PolicyDetails({
           <Label>تاريخ البداية *</Label>
           <ArabicDatePicker
             value={policy.start_date}
-            onChange={(date) => setPolicy({ ...policy, start_date: date })}
+            onChange={(date) => setPolicy({ ...policy, start_date: date, issue_date: policy.issue_date === policy.start_date ? date : policy.issue_date })}
             placeholder="اختر تاريخ البداية"
             className={errors.start_date ? "border-destructive" : ""}
           />
@@ -846,6 +846,21 @@ export function Step3PolicyDetails({
           <FieldError error={errors.end_date} />
         </div>
       </div>
+
+      {/* Issue Date - only for THIRD_FULL */}
+      {policy.policy_type_parent === 'THIRD_FULL' && (
+        <div>
+          <Label>تاريخ الإصدار</Label>
+          <ArabicDatePicker
+            value={policy.issue_date}
+            onChange={(date) => setPolicy({ ...policy, issue_date: date })}
+            placeholder="تاريخ الإصدار (افتراضي = تاريخ البداية)"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            التاريخ الذي تحسبه الشركة (افتراضياً = تاريخ البداية)
+          </p>
+        </div>
+      )}
 
       {/* Package Mode - For THIRD_FULL and ELZAMI - BEFORE BROKER */}
       {(policy.policy_type_parent === 'THIRD_FULL' || policy.policy_type_parent === 'ELZAMI') && (() => {

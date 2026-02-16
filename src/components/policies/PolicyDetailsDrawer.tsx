@@ -1164,7 +1164,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                       {/* Period */}
                       <Section title="فترة التأمين" icon={Calendar}>
                         <div className="bg-muted/30 rounded-xl p-4 border">
-                          <div className="grid grid-cols-3 gap-2 text-center">
+                          <div className={cn("grid gap-2 text-center", (policy as any).issue_date && (policy as any).issue_date !== policy.start_date ? "grid-cols-4" : "grid-cols-3")}>
                             <div>
                               <p className="text-xs text-muted-foreground mb-1">من</p>
                               <p className="font-semibold text-sm">{formatDate(policy.start_date)}</p>
@@ -1173,6 +1173,12 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                               <p className="text-xs text-muted-foreground mb-1">إلى</p>
                               <p className="font-semibold text-sm">{formatDate(policy.end_date)}</p>
                             </div>
+                            {(policy as any).issue_date && (policy as any).issue_date !== policy.start_date && (
+                              <div>
+                                <p className="text-xs text-muted-foreground mb-1">تاريخ الإصدار</p>
+                                <p className="font-semibold text-sm text-primary">{formatDate((policy as any).issue_date)}</p>
+                              </div>
+                            )}
                             <div>
                               <p className="text-xs text-muted-foreground mb-1">المتبقي</p>
                               <p className={cn(

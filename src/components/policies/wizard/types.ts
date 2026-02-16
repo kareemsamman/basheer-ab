@@ -144,6 +144,7 @@ export interface PolicyForm {
   company_id: string;
   start_date: string;
   end_date: string;
+  issue_date: string; // تاريخ الإصدار - defaults to start_date
   insurance_price: string;
   broker_buy_price: string; // Price we buy from broker (when company has broker_id)
   full_car_value: string; // Car value for FULL insurance pricing (entered in Step 3)
