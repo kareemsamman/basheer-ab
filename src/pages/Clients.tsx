@@ -217,6 +217,7 @@ export default function Clients() {
     
     return (
       <ClientDetails
+        key={viewingClient.id}
         client={viewingClient}
         initialCarFilter={initialCarFilter}
         returnPath={fromReportPath}

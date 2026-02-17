@@ -315,6 +315,11 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
   const [policyStatusFilter, setPolicyStatusFilter] = useState<string>('all');
   const [policyCarFilter, setPolicyCarFilter] = useState<string>(initialCarFilter || 'all');
 
+  // Sync car filter when initialCarFilter prop changes (e.g. navigating between clients)
+  useEffect(() => {
+    setPolicyCarFilter(initialCarFilter || 'all');
+  }, [initialCarFilter]);
+
   // Payment filters
   const [paymentSearch, setPaymentSearch] = useState('');
   const [paymentTypeFilter, setPaymentTypeFilter] = useState<string>('all');
