@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { X, Download, ChevronLeft, ChevronRight, FileText, ZoomIn, ZoomOut } from "lucide-react";
+import { X, Download, ChevronLeft, ChevronRight, FileText, ZoomIn, ZoomOut, Loader2 } from "lucide-react";
 import { PdfJsViewer } from "./PdfJsViewer";
+import { toast } from "sonner";
 
 interface MediaFile {
   id: string;
@@ -26,6 +27,39 @@ const isPdf = (mimeType: string) => mimeType === 'application/pdf';
 
 export function FilePreviewGallery({ file, allFiles, onClose, onNavigate }: FilePreviewGalleryProps) {
   const [zoom, setZoom] = useState(1);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = useCallback(async () => {
+    if (!file || downloading) return;
+    setDownloading(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/proxy-cdn-file`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`
+          },
+          body: JSON.stringify({ url: file.cdn_url })
+        }
+      );
+      if (!response.ok) throw new Error('Download failed');
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = file.original_name || 'file';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      toast.error('فشل تحميل الملف');
+    } finally {
+      setDownloading(false);
+    }
+  }, [file, downloading]);
   
   // Get viewable files (images and PDFs only)
   const viewableFiles = useMemo(() => 
@@ -128,17 +162,16 @@ export function FilePreviewGallery({ file, allFiles, onClose, onNavigate }: File
                 </Button>
               </>
             )}
-            {/* Download using native anchor to avoid ad blocker issues */}
-            <a
-              href={file.cdn_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              download={file.original_name}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-white hover:bg-white/20 rounded-md transition-colors"
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-white hover:bg-white/20 gap-1"
+              onClick={handleDownload}
+              disabled={downloading}
             >
-              <Download className="h-4 w-4" />
+              {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               تحميل
-            </a>
+            </Button>
           </div>
         </div>
 

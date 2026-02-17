@@ -50,7 +50,11 @@ export function PdfJsViewer({ url, className = "" }: PdfJsViewerProps) {
         const arrayBuffer = await response.arrayBuffer();
         if (cancelled) return;
 
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const loadingTask = pdfjsLib.getDocument({
+          data: arrayBuffer,
+          cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/cmaps/`,
+          cMapPacked: true,
+        });
         const pdf = await loadingTask.promise;
         
         if (cancelled) return;
