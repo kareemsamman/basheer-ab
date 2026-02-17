@@ -1743,14 +1743,15 @@ export function PolicyWizard({
           clientPhone={successPolicyData.clientPhone}
           isPackage={successPolicyData.isPackage}
           onClose={() => {
+            const clientIdToNavigate = successPolicyData.clientId;
             setShowSuccessDialog(false);
             setSuccessPolicyData(null);
             onOpenChange(false);
             resetForm();
             
             // Navigate to client page
-            if (successPolicyData.clientId) {
-              navigate(`/clients/${successPolicyData.clientId}`);
+            if (clientIdToNavigate) {
+              navigate(`/clients/${clientIdToNavigate}`);
             } else {
               onSaved?.();
             }

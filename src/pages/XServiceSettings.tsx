@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -6,12 +6,13 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Save, TestTube, Trash2, RefreshCw, Loader2, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Save, TestTube, Trash2, RefreshCw, Loader2, CheckCircle, XCircle, Clock, Upload } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 
@@ -47,11 +48,27 @@ export default function XServiceSettings() {
   const [settings, setSettings] = useState<XServiceSettingsData | null>(null);
   const [logs, setLogs] = useState<SyncLogEntry[]>([]);
   const [logsLoading, setLogsLoading] = useState(true);
+  const [bulkSyncing, setBulkSyncing] = useState(false);
+  const [bulkTotal, setBulkTotal] = useState(0);
+  const [bulkProcessed, setBulkProcessed] = useState(0);
+  const [bulkSynced, setBulkSynced] = useState(0);
+  const [bulkFailed, setBulkFailed] = useState(0);
+  const [eligibleCount, setEligibleCount] = useState<number | null>(null);
+  const bulkAbortRef = useRef(false);
 
   useEffect(() => {
     fetchSettings();
     fetchLogs();
+    fetchEligibleCount();
   }, []);
+
+  const fetchEligibleCount = async () => {
+    const { count } = await supabase
+      .from("policies")
+      .select("id", { count: "exact", head: true })
+      .in("policy_type_parent", ["ROAD_SERVICE", "ACCIDENT_FEE_EXEMPTION"]);
+    setEligibleCount(count ?? 0);
+  };
 
   const fetchSettings = async () => {
     const { data, error } = await supabase
@@ -103,6 +120,11 @@ export default function XServiceSettings() {
     }
   };
 
+  const buildSyncUrl = (base: string, fn: string) => {
+    const url = base.replace(/\/+$/, "");
+    return url.includes("/functions/v1/") ? url.replace(/\/ab-sync-[a-z]+$/, `/${fn}`) : `${url}/functions/v1/${fn}`;
+  };
+
   const handleTestConnection = async () => {
     if (!settings?.api_url) {
       toast({ title: "أدخل رابط API أولاً", variant: "destructive" });
@@ -110,8 +132,7 @@ export default function XServiceSettings() {
     }
     setTesting(true);
     try {
-      const apiUrl = settings.api_url.replace(/\/+$/, "");
-      const res = await fetch(`${apiUrl}/functions/v1/ab-sync-receive`, {
+      const res = await fetch(buildSyncUrl(settings.api_url, "ab-sync-receive"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ api_key: settings.api_key, test: true }),
@@ -132,8 +153,7 @@ export default function XServiceSettings() {
     if (!settings?.api_url || !settings?.api_key) return;
     setClearing(true);
     try {
-      const apiUrl = settings.api_url.replace(/\/+$/, "");
-      const res = await fetch(`${apiUrl}/functions/v1/ab-sync-clear`, {
+      const res = await fetch(buildSyncUrl(settings.api_url, "ab-sync-clear"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ api_key: settings.api_key }),
@@ -167,6 +187,53 @@ export default function XServiceSettings() {
         .eq("id", logEntry.id);
       fetchLogs();
     }
+  };
+
+  const handleBulkSync = async () => {
+    setBulkSyncing(true);
+    setBulkProcessed(0);
+    setBulkSynced(0);
+    setBulkFailed(0);
+    bulkAbortRef.current = false;
+
+    const batchSize = 20;
+    let offset = 0;
+    let totalSynced = 0;
+    let totalFailed = 0;
+
+    try {
+      // First get total
+      const { count } = await supabase
+        .from("policies")
+        .select("id", { count: "exact", head: true })
+        .in("policy_type_parent", ["ROAD_SERVICE", "ACCIDENT_FEE_EXEMPTION"]);
+      const total = count ?? 0;
+      setBulkTotal(total);
+
+      while (offset < total && !bulkAbortRef.current) {
+        const { data, error } = await supabase.functions.invoke("bulk-sync-to-xservice", {
+          body: { offset, limit: batchSize },
+        });
+        if (error) {
+          toast({ title: "خطأ في المزامنة", description: error.message, variant: "destructive" });
+          break;
+        }
+        const result = data as any;
+        totalSynced += result.synced || 0;
+        totalFailed += result.failed || 0;
+        offset += result.processed || batchSize;
+        setBulkProcessed(offset > total ? total : offset);
+        setBulkSynced(totalSynced);
+        setBulkFailed(totalFailed);
+        if (result.done) break;
+      }
+
+      toast({ title: `✅ اكتملت المزامنة: نجح ${totalSynced}، فشل ${totalFailed}` });
+      fetchLogs();
+    } catch (err: any) {
+      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+    }
+    setBulkSyncing(false);
   };
 
   const statusBadge = (status: string) => {
@@ -263,6 +330,43 @@ export default function XServiceSettings() {
                 {clearing ? <Loader2 className="h-4 w-4 animate-spin ml-2" /> : <Trash2 className="h-4 w-4 ml-2" />}
                 مسح بيانات X-Service
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Bulk Sync */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              مزامنة جماعية
+            </CardTitle>
+            <CardDescription>
+              إرسال جميع وثائق خدمات الطريق وإعفاء الحوادث الموجودة إلى X-Service
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              عدد الوثائق المؤهلة: <strong>{eligibleCount !== null ? eligibleCount : "..."}</strong>
+            </p>
+            {bulkSyncing && (
+              <div className="space-y-2">
+                <Progress value={bulkTotal > 0 ? (bulkProcessed / bulkTotal) * 100 : 0} />
+                <p className="text-xs text-muted-foreground">
+                  تم معالجة {bulkProcessed} من {bulkTotal} — نجح: {bulkSynced} | فشل: {bulkFailed}
+                </p>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button onClick={handleBulkSync} disabled={bulkSyncing || !settings?.is_enabled}>
+                {bulkSyncing ? <Loader2 className="h-4 w-4 animate-spin ml-2" /> : <Upload className="h-4 w-4 ml-2" />}
+                {bulkSyncing ? "جاري المزامنة..." : "بدء المزامنة الجماعية"}
+              </Button>
+              {bulkSyncing && (
+                <Button variant="outline" onClick={() => { bulkAbortRef.current = true; }}>
+                  إيقاف
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>

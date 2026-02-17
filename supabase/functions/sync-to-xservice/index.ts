@@ -132,8 +132,11 @@ Deno.serve(async (req) => {
     };
 
     // 3. Send to X-Service
-    const apiUrl = settings.api_url.replace(/\/+$/, "");
-    const syncUrl = `${apiUrl}/functions/v1/ab-sync-receive`;
+    const rawUrl = settings.api_url.replace(/\/+$/, "");
+    // Smart URL: if it already contains /functions/v1/ use as-is, otherwise append
+    const syncUrl = rawUrl.includes("/functions/v1/")
+      ? rawUrl
+      : `${rawUrl}/functions/v1/ab-sync-receive`;
 
     console.log(`[sync-to-xservice] Sending to ${syncUrl}`);
 
