@@ -1,31 +1,22 @@
 
 
-# إصلاح: النص العربي غير مقروء في عارض PDF
+# إصلاح: الوثائق لا تظهر في تقرير الشركة
 
 ## المشكلة
-رغم إضافة CMap، النص العربي لا يزال غير مقروء. السبب هو أن pdf.js عند الرسم على canvas لا يدعم بشكل كامل تشكيل الحروف العربية (الربط بين الحروف، الاتجاه RTL). هذه مشكلة معروفة في pdf.js canvas rendering.
+عند إنشاء باقة (package policy)، الوثيقة الرئيسية تحصل على `issue_date` بشكل صحيح، لكن الوثائق الإضافية (addons) مثل شامل وخدمات طريق يتم حفظها بدون `issue_date` (NULL). تقرير تسوية الشركة يفلتر حسب `issue_date`، فلا تظهر الوثائق التي `issue_date` فيها NULL.
 
 ## الحل
-استبدال عارض pdf.js (canvas) بعارض المتصفح الأصلي (native PDF viewer) عبر `<iframe>` مع blob URL. المتصفح يعرض العربية بشكل مثالي.
 
-### كيف يعمل:
-1. جلب ملف PDF عبر proxy-cdn-file (كما هو الآن)
-2. تحويله إلى blob URL
-3. عرضه في `<iframe>` بدلاً من canvas
+### 1. ملف `src/components/policies/PolicyWizard.tsx`
+- إضافة `issue_date: policy.issue_date || policy.start_date` في insert الخاص بوثائق الـ addons (السطر ~861-881)
+- نفس الشيء لقسم Visa package addons (السطر ~900+)
+- هذا يضمن أن كل وثيقة جديدة تحصل على تاريخ إصدار
 
-### ملف `src/components/policies/PdfJsViewer.tsx`
-- إزالة كل كود pdf.js (import، canvas، page navigation، zoom)
-- استبداله بـ:
-  - fetch PDF via proxy -> blob -> `URL.createObjectURL`
-  - عرض في `<iframe src={blobUrl} />` بملء الحاوية
-- المتصفح الأصلي يوفر تلقائياً: تكبير/تصغير، تنقل بين الصفحات، بحث في النص
-- النتيجة: كود أبسط بكثير + عرض عربي مثالي
-
+### 2. إصلاح البيانات الحالية (migration)
+- تحديث الوثائق الموجودة التي `issue_date` فيها NULL لتأخذ قيمة `start_date`:
 ```text
-// الشكل الجديد المبسط:
-fetch(proxy-cdn-file) -> blob -> blobUrl
-<iframe src={blobUrl} className="w-full h-full" />
+UPDATE policies SET issue_date = start_date WHERE issue_date IS NULL AND deleted_at IS NULL;
 ```
 
-- يبقى: حالة التحميل (loading spinner) وحالة الخطأ
-- يُحذف: canvas، pdf.js import، أزرار zoom/navigation (المتصفح يوفرها)
+هذا يضمن ظهور جميع الوثائق القديمة والجديدة في تقارير الشركة.
+
