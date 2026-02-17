@@ -77,7 +77,7 @@ export default function Login() {
       
       if (error) {
         if (error.message.includes('provider is not enabled')) {
-          toast.error("مزود Google غير مفعل. يرجى تفعيله من إعدادات Lovable Cloud.");
+          toast.error("مزود Google غير مفعل. يرجى تفعيله من إعدادات النظام.");
         } else {
           toast.error("حدث خطأ في تسجيل الدخول");
         }

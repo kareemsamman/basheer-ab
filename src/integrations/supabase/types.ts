@@ -4006,6 +4006,39 @@ export type Database = {
           },
         ]
       }
+      site_settings: {
+        Row: {
+          favicon_url: string | null
+          id: string
+          logo_url: string | null
+          og_image_url: string | null
+          site_description: string
+          site_title: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          favicon_url?: string | null
+          id?: string
+          logo_url?: string | null
+          og_image_url?: string | null
+          site_description?: string
+          site_title?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          favicon_url?: string | null
+          id?: string
+          logo_url?: string | null
+          og_image_url?: string | null
+          site_description?: string
+          site_title?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       sms_logs: {
         Row: {
           branch_id: string | null
