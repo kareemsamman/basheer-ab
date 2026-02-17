@@ -1,28 +1,68 @@
 
 
-# إصلاح سعر المزامنة — إرسال سعر الخدمة بدل سعر العميل
+# مزامنة حذف/إلغاء/تحويل الوثائق مع X-Service
 
 ## المشكلة
-حالياً المزامنة ترسل `insurance_price` (السعر الذي يدفعه العميل لـ AB) كـ `sell_price` إلى X-Service. لكن المطلوب إرسال **سعر الخدمة** (ما يدفعه AB لمزود الخدمة) — وهو المخزن في `payed_for_company` على الوثيقة.
+حالياً المزامنة تعمل فقط عند **إنشاء** وثيقة جديدة. لكن عندما يقوم المدير بـ:
+- **حذف** وثيقة
+- **إلغاء** وثيقة
+- **تحويل** وثيقة لسيارة أخرى
 
-مثال: إذا العميل يدفع ₪500 لـ AB، و AB يدفع ₪250 لشركة خدمات الطريق، المطلوب إرسال ₪250 وليس ₪500.
+لا يتم إبلاغ X-Service بهذه التغييرات.
 
-## التغييرات المطلوبة
+## الحل
 
-### 1. ملف `supabase/functions/bulk-sync-to-xservice/index.ts`
-- إضافة `payed_for_company` إلى الـ select (سطر 55)
-- تغيير `sell_price: policy.insurance_price` إلى `sell_price: policy.payed_for_company || 0` (سطر 118)
+### 1. إنشاء دالة جديدة `notify-xservice-change`
+دالة واحدة تتعامل مع جميع التغييرات (حذف، إلغاء، تحويل) وترسلها لـ X-Service عبر endpoint مخصص.
 
-### 2. ملف `supabase/functions/sync-to-xservice/index.ts`
-- إضافة `payed_for_company` إلى الـ select (سطر 59-60)
-- تغيير `sell_price: policy.insurance_price` إلى `sell_price: policy.payed_for_company || 0` (سطر 129)
+الدالة ترسل payload بالشكل:
+```text
+{
+  api_key: "...",
+  action: "cancel" | "delete" | "transfer",
+  customer: { id_number, full_name },
+  car: { car_number },
+  policy: { service_type, start_date, end_date },
+  transfer_to_car: { car_number, ... }  // فقط في حالة التحويل
+}
+```
 
-### 3. إعادة نشر الدالتين
+### 2. استدعاء الدالة من 3 أماكن
+
+**عند الحذف** — في `delete-policy/index.ts`:
+- قبل حذف الوثائق، نجلب بيانات الوثائق التي نوعها ROAD_SERVICE أو ACCIDENT_FEE_EXEMPTION
+- نرسل إشعار حذف لكل وثيقة مؤهلة
+
+**عند الإلغاء** — في `CancelPolicyModal.tsx`:
+- بعد نجاح الإلغاء، نستدعي `notify-xservice-change` بـ action = "cancel"
+
+**عند التحويل** — في `TransferPolicyModal.tsx`:
+- بعد نجاح التحويل، نستدعي `notify-xservice-change` بـ action = "transfer" مع بيانات السيارة الجديدة
+
+### 3. مطلوب من X-Service
+يجب إضافة endpoint جديد `ab-sync-update` في X-Service يستقبل هذه الأحداث ويعالجها:
+- **cancel**: يلغي الوثيقة في نظام X
+- **delete**: يحذف الوثيقة من نظام X
+- **transfer**: يحدّث السيارة المرتبطة بالوثيقة (أو يلغي القديمة وينشئ جديدة)
 
 ---
 
 ## القسم التقني
 
-العمود `payed_for_company` في جدول `policies` يحتوي على المبلغ الذي يدفعه AB لمزود الخدمة (شركة خدمات الطريق أو إعفاء رسوم الحادث). هذا هو نفس السعر الذي يضعه مدير X-Service في نظامه لكل خدمة.
+### الملفات الجديدة:
+- `supabase/functions/notify-xservice-change/index.ts` — الدالة الجديدة
 
-التعديل بسيط: إضافة العمود للـ select واستخدامه بدل `insurance_price` في الـ payload.
+### الملفات المعدلة:
+- `supabase/functions/delete-policy/index.ts` — إضافة استدعاء المزامنة قبل الحذف
+- `src/components/policies/CancelPolicyModal.tsx` — إضافة استدعاء المزامنة بعد الإلغاء
+- `src/components/policies/TransferPolicyModal.tsx` — إضافة استدعاء المزامنة بعد التحويل
+
+### المنطق:
+1. الدالة الجديدة تقرأ `xservice_settings` وتتحقق أن المزامنة مفعلة
+2. تجلب بيانات العميل والسيارة من الوثيقة
+3. ترسل الحدث لـ X-Service عبر URL مبني من `api_url` + `/functions/v1/ab-sync-update`
+4. تسجل النتيجة في `xservice_sync_log`
+5. إذا فشل الإرسال، لا يُمنع الحذف/الإلغاء/التحويل — فقط يُسجل الخطأ
+
+### ملاحظة مهمة:
+التحويل في AB يعني نقل الوثيقة من سيارة لأخرى. في X-Service حالياً لا يوجد "تحويل"، لذلك يجب إبلاغ صاحب X-Service بإضافة هذه الوظيفة. كحل مؤقت يمكن إرسال "cancel" للقديمة + "create" للجديدة.
