@@ -1,22 +1,31 @@
 
 
-# إصلاح: الوثائق لا تظهر في تقرير الشركة
+# إصلاح: إخفاء الملحقات عند البحث
 
 ## المشكلة
-عند إنشاء باقة (package policy)، الوثيقة الرئيسية تحصل على `issue_date` بشكل صحيح، لكن الوثائق الإضافية (addons) مثل شامل وخدمات طريق يتم حفظها بدون `issue_date` (NULL). تقرير تسوية الشركة يفلتر حسب `issue_date`، فلا تظهر الوثائق التي `issue_date` فيها NULL.
+عند البحث برقم هاتف أو أي نص في تقرير تسوية الشركة، الوثائق تُفلتر بشكل صحيح لكن الملحقات (settlement supplements) تظهر دائماً لأنها تُعرض بدون أي فلترة بحث.
 
 ## الحل
 
-### 1. ملف `src/components/policies/PolicyWizard.tsx`
-- إضافة `issue_date: policy.issue_date || policy.start_date` في insert الخاص بوثائق الـ addons (السطر ~861-881)
-- نفس الشيء لقسم Visa package addons (السطر ~900+)
-- هذا يضمن أن كل وثيقة جديدة تحصل على تاريخ إصدار
+### ملف `src/pages/CompanySettlementDetail.tsx`
+- فلترة الملحقات حسب نص البحث (searchQuery) تماماً كالوثائق
+- عند وجود بحث نشط، الملحقات التي لا تطابق النص تُخفى
 
-### 2. إصلاح البيانات الحالية (migration)
-- تحديث الوثائق الموجودة التي `issue_date` فيها NULL لتأخذ قيمة `start_date`:
+### التعديل:
+في السطر ~1201 حيث تُعرض الملحقات، إضافة فلترة:
+
 ```text
-UPDATE policies SET issue_date = start_date WHERE issue_date IS NULL AND deleted_at IS NULL;
+// قبل:
+{supplements.map((s) => (
+
+// بعد:
+{supplements.filter(s => {
+  if (!searchQuery.trim()) return true;
+  const q = searchQuery.toLowerCase();
+  return (s.description || '').toLowerCase().includes(q) 
+    || String(s.company_payment).includes(q)
+    || String(s.insurance_price).includes(q);
+}).map((s) => (
 ```
 
-هذا يضمن ظهور جميع الوثائق القديمة والجديدة في تقارير الشركة.
-
+هذا يضمن أن الملحقات تُعامل بنفس طريقة الوثائق عند البحث.
