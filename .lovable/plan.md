@@ -1,72 +1,23 @@
 
+# Fix: Client Not Pre-Selected in Policy Wizard
 
-# إصلاح: العميل لا يُحدد تلقائياً عند فتح معالج الوثيقة من صفحة العميل
+## Root Cause
+In `src/components/layout/BottomToolbar.tsx` line 75, the client profile page detection uses an exact match:
+```
+location.pathname === "/clients"
+```
+But the actual URL when viewing a client is `/clients/:clientId` (e.g., `/clients/51143e89-...`), so the check always returns `false`. This means `preselectedClientId` is passed as `undefined` to the wizard.
 
-## المشكلة
-عند فتح معالج إنشاء وثيقة جديدة من صفحة العميل (`/clients/:id`)، لا يتم تحديد العميل تلقائياً رغم تمرير `preselectedClientId` بشكل صحيح.
+## Fix
 
-## السبب المحتمل
-دالة `useEffect` المسؤولة عن التحديد المسبق للعميل في `usePolicyWizardState.ts` تحتوي على شرط `selectedClient?.id === preselectedClientId` الذي قد يُرجع `true` في حالات معينة (مثل فتح/إغلاق المعالج عدة مرات لنفس العميل بدون `resetForm`). أيضاً، لا يوجد نمط `cancelled` flag لمنع تعارض العمليات المتزامنة.
-
-## الحل
-
-### ملف `src/components/policies/wizard/usePolicyWizardState.ts`
-
-**التعديل 1: تحسين useEffect للتحديد المسبق**
-- إعادة كتابة effect التحديد المسبق للعميل (سطر 79-100)
-- إضافة `cancelled` flag لمنع تعارض الطلبات المتزامنة
-- إزالة guard `selectedClient?.id === preselectedClientId` لأنه يمنع إعادة التحديد بعد إغلاق/فتح المعالج
-- إضافة cleanup function تلغي الطلب إذا تغيرت المعطيات
-
-**التعديل 2: إعادة تعيين العميل عند إغلاق المعالج**
-- إضافة useEffect جديد يُعيد تعيين `selectedClient` عند `!open` (لضمان حالة نظيفة عند إعادة الفتح)
-- هذا يعمل مع effect التحديد المسبق: عند إغلاق يُمسح، عند فتح يُعاد التحديد
-
-### التفاصيل التقنية
-
-```text
-// سطر 79-100 - تعديل effect التحديد المسبق
-useEffect(() => {
-  if (!preselectedClientId || !open) return;
-  let cancelled = false;
-
-  const fetchPreselectedClient = async () => {
-    setLoadingClients(true);
-    const { data, error } = await supabase
-      .from('clients')
-      .select('...')
-      .eq('id', preselectedClientId)
-      .single();
-
-    if (cancelled) return; // لا نُحدّث الحالة إذا تم الإلغاء
-    setLoadingClients(false);
-    if (!error && data) {
-      setSelectedClient(data as Client);
-      setCreateNewClient(false);
-    }
-  };
-
-  // فقط نجلب إذا لم يكن العميل محدداً بالفعل
-  if (selectedClient?.id !== preselectedClientId) {
-    fetchPreselectedClient();
-  }
-
-  return () => { cancelled = true; };
-}, [preselectedClientId, open]);
-
-// إضافة effect لتنظيف الحالة عند الإغلاق
-useEffect(() => {
-  if (!open) {
-    setSelectedClient(null);
-    setCreateNewClient(false);
-    setClientSearch("");
-    setClients([]);
-  }
-}, [open]);
+### File: `src/components/layout/BottomToolbar.tsx`
+Change line 75 from:
+```
+const isOnClientProfilePage = location.pathname === "/clients" && !!recentClient;
+```
+To:
+```
+const isOnClientProfilePage = (location.pathname === "/clients" || location.pathname.startsWith("/clients/")) && !!recentClient;
 ```
 
-هذا يضمن:
-1. عند إغلاق المعالج: يُمسح العميل المحدد
-2. عند فتح المعالج: إذا كان `preselectedClientId` موجوداً، يُجلب ويُحدد تلقائياً
-3. نمط `cancelled` يمنع تعارض الطلبات المتزامنة (مثلاً إذا اختار المستخدم عميلاً يدوياً أثناء التحميل)
-
+This single-line change ensures the wizard correctly detects the user is on a client profile page (whether the URL is `/clients` with query params or `/clients/:clientId`) and passes the `recentClient.id` as `preselectedClientId`.
