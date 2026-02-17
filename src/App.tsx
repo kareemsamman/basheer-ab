@@ -58,6 +58,7 @@ import RepairClaimDetail from "./pages/RepairClaimDetail";
 import CorrespondenceLetters from "./pages/CorrespondenceLetters";
 import Leads from "./pages/Leads";
 import ActivityLog from "./pages/ActivityLog";
+import BrandingSettings from "./pages/BrandingSettings";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -327,6 +328,11 @@ const App = () => (
               <Route path="/payment/fail" element={<PaymentFail />} />
               {/* Public signature page */}
               <Route path="/sign/:token" element={<SignaturePage />} />
+              <Route path="/admin/branding" element={
+                <AdminRoute>
+                  <BrandingSettings />
+                </AdminRoute>
+              } />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

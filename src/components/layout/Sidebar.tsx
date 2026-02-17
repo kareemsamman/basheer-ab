@@ -47,6 +47,8 @@ import { SidebarClaimsBadge } from "./SidebarClaimsBadge";
 import { SidebarAccidentsBadge } from "./SidebarAccidentsBadge";
 import { SidebarRenewalsBadge } from "./SidebarRenewalsBadge";
 import { SidebarSearch } from "./SidebarSearch";
+import { Palette } from "lucide-react";
+import { useSiteSettings } from "@/hooks/useSiteSettings";
 
 interface NavItem {
   name: string;
@@ -145,6 +147,7 @@ export const navigationGroups: NavGroup[] = [
       { name: "سجل الرسائل", href: "/sms-history", icon: History },
       { name: "استيراد WordPress", href: "/admin/wordpress-import", icon: Upload },
       { name: "إعلانات النظام", href: "/admin/announcements", icon: Megaphone, superAdminOnly: true },
+      { name: "العلامة التجارية", href: "/admin/branding", icon: Palette },
     ],
   },
 ];
@@ -159,6 +162,7 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
   const location = useLocation();
   const navigate = useNavigate();
   const { profile, signOut, isAdmin, branchName } = useAuth();
+  const { data: siteSettings } = useSiteSettings();
 
   const isSuperAdmin = profile?.email === SUPER_ADMIN_EMAIL;
 
@@ -234,18 +238,26 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
       <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
         {!collapsed && (
           <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-              <span className="text-sm font-bold text-primary-foreground">AB</span>
-            </div>
+            {siteSettings?.logo_url ? (
+              <img src={siteSettings.logo_url} alt="Logo" className="h-9 w-9 rounded-lg object-contain" />
+            ) : (
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
+                <span className="text-sm font-bold text-primary-foreground">AB</span>
+              </div>
+            )}
             <span className="text-base font-semibold text-sidebar-foreground">
-              AB تأمين
+              {siteSettings?.site_title || 'AB تأمين'}
             </span>
           </div>
         )}
         {collapsed && (
-          <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-            <span className="text-sm font-bold text-primary-foreground">AB</span>
-          </div>
+          siteSettings?.logo_url ? (
+            <img src={siteSettings.logo_url} alt="Logo" className="mx-auto h-9 w-9 rounded-lg object-contain" />
+          ) : (
+            <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
+              <span className="text-sm font-bold text-primary-foreground">AB</span>
+            </div>
+          )
         )}
       </div>
 
