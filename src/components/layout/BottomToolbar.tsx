@@ -72,7 +72,7 @@ export function BottomToolbar({ onPolicyComplete }: BottomToolbarProps) {
   // Check if user is on a client profile page (viewing client details)
   // The ClientDetails component sets recentClient when viewing a client
   // URL params are cleared after opening, so we check if we're on /clients with a recentClient set
-  const isOnClientProfilePage = location.pathname === "/clients" && !!recentClient;
+  const isOnClientProfilePage = (location.pathname === "/clients" || location.pathname.startsWith("/clients/")) && !!recentClient;
   
   const showRecentClient =
     !!recentClient && location.pathname !== "/clients" && location.pathname !== "/login" && location.pathname !== "/no-access";
