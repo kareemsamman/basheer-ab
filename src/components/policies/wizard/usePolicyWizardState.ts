@@ -76,19 +76,30 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
   const [loadingClients, setLoadingClients] = useState(false);
   const [checkingDuplicate, setCheckingDuplicate] = useState(false);
 
+  // Reset state when wizard closes
+  useEffect(() => {
+    if (!open) {
+      setSelectedClient(null);
+      setCreateNewClient(false);
+      setClientSearch("");
+      setClients([]);
+    }
+  }, [open]);
+
   // Auto-select preselected client
   useEffect(() => {
     if (!preselectedClientId || !open) return;
-    if (selectedClient?.id === preselectedClientId) return;
+    let cancelled = false;
 
     const fetchPreselectedClient = async () => {
       setLoadingClients(true);
       const { data, error } = await supabase
         .from('clients')
-        .select('id, full_name, id_number, file_number, phone_number, less_than_24, under24_type, under24_driver_name, under24_driver_id, broker_id')
+        .select('id, full_name, id_number, file_number, phone_number, less_than_24, under24_type, under24_driver_name, under24_driver_id, broker_id, accident_notes')
         .eq('id', preselectedClientId)
         .single();
       
+      if (cancelled) return;
       setLoadingClients(false);
       if (!error && data) {
         setSelectedClient(data as Client);
@@ -97,6 +108,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     };
 
     fetchPreselectedClient();
+    return () => { cancelled = true; };
   }, [preselectedClientId, open]);
 
   // Track if renewal data has been processed (to avoid re-processing)
