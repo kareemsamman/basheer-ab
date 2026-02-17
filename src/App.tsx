@@ -59,6 +59,7 @@ import CorrespondenceLetters from "./pages/CorrespondenceLetters";
 import Leads from "./pages/Leads";
 import ActivityLog from "./pages/ActivityLog";
 import BrandingSettings from "./pages/BrandingSettings";
+import { SiteHelmet } from "@/components/layout/SiteHelmet";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -79,6 +80,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <HelmetProvider>
       <TooltipProvider>
+        <SiteHelmet />
         <Toaster />
         <Sonner />
         <BrowserRouter>
