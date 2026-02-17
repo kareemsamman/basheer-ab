@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Shield, Loader2, ExternalLink, AlertCircle, Mail, Smartphone, ArrowRight } from "lucide-react";
+import { Loader2, ExternalLink, AlertCircle, Mail, Smartphone, ArrowRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
@@ -11,11 +11,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { OtpInput } from "@/components/auth/OtpInput";
+import { useSiteSettings } from "@/hooks/useSiteSettings";
 
 type AuthStep = "method" | "otp";
 type AuthMethod = "google" | "email" | "sms";
 
 export default function Login() {
+  const { data: settings } = useSiteSettings();
   const [loading, setLoading] = useState(false);
   const [isInIframe, setIsInIframe] = useState(false);
   const navigate = useNavigate();
@@ -351,15 +353,19 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md border shadow-lg animate-scale-in">
         <CardHeader className="text-center space-y-4">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary shadow-md">
-            <Shield className="h-8 w-8 text-primary-foreground" />
-          </div>
+          {settings?.logo_url ? (
+            <img src={settings.logo_url} alt={settings.site_title} className="mx-auto h-16 w-16 rounded-2xl object-contain" />
+          ) : (
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary shadow-md">
+              <span className="text-2xl font-bold text-primary-foreground">AB</span>
+            </div>
+          )}
           <div>
             <CardTitle className="text-2xl font-bold text-primary">
-              AB تأمين
+              {settings?.site_title || "AB تأمين"}
             </CardTitle>
             <CardDescription className="text-muted-foreground mt-2">
-              نظام إدارة وكيل التأمين
+              {settings?.site_description || "نظام إدارة وكيل التأمين"}
             </CardDescription>
           </div>
         </CardHeader>
