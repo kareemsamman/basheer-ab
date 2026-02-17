@@ -185,6 +185,15 @@ export function CancelPolicyModal({
         }
       }
 
+      // Notify X-Service about cancellation (fire-and-forget)
+      try {
+        supabase.functions.invoke("notify-xservice-change", {
+          body: { action: "cancel", policy_id: policyId },
+        }).catch(err => console.error("X-Service cancel notification failed:", err));
+      } catch (e) {
+        console.error("X-Service cancel notification error:", e);
+      }
+
       toast({ title: "تم", description: "تم إلغاء الوثيقة بنجاح" });
       onCancelled();
       onOpenChange(false);

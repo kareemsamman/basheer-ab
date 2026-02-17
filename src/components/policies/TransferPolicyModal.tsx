@@ -478,6 +478,29 @@ export function TransferPolicyModal({
         }
       }
 
+      // Notify X-Service about transfer for service-type policies (fire-and-forget)
+      const selectedCar2 = cars.find(c => c.id === selectedCarId);
+      for (const origPolicy of originalPolicies) {
+        if (origPolicy.policy_type_parent === "ROAD_SERVICE" || origPolicy.policy_type_parent === "ACCIDENT_FEE_EXEMPTION") {
+          try {
+            supabase.functions.invoke("notify-xservice-change", {
+              body: {
+                action: "transfer",
+                policy_id: origPolicy.id,
+                transfer_to_car: {
+                  car_number: selectedCar2?.car_number || "",
+                  manufacturer: selectedCar2?.manufacturer_name || "",
+                  model: selectedCar2?.model || "",
+                  year: selectedCar2?.year || null,
+                },
+              },
+            }).catch(err => console.error("X-Service transfer notification failed:", err));
+          } catch (e) {
+            console.error("X-Service transfer notification error:", e);
+          }
+        }
+      }
+
       const transferCount = policiesToTransfer.length;
       toast({ 
         title: "تم التحويل بنجاح", 

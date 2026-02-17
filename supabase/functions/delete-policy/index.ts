@@ -103,6 +103,64 @@ serve(async (req) => {
 
     console.log(`Total policies to delete (including package members): ${allPolicyIds.length}`);
 
+    // ── Notify X-Service about deletions (before we delete data) ──
+    try {
+      // Fetch policy + client + car info for service-type policies
+      const { data: servicePoliciesToNotify } = await supabase
+        .from('policies')
+        .select(`
+          id, policy_type_parent, policy_number, start_date, end_date,
+          payed_for_company, notes, car_id, client_id,
+          clients!inner(full_name, id_number, phone_number),
+          cars(car_number, car_type, manufacturer_name, model, year, color)
+        `)
+        .in('id', allPolicyIds)
+        .in('policy_type_parent', ['ROAD_SERVICE', 'ACCIDENT_FEE_EXEMPTION']);
+
+      if (servicePoliciesToNotify && servicePoliciesToNotify.length > 0) {
+        const batchPayload = servicePoliciesToNotify.map((p: any) => ({
+          policy_id: p.id,
+          action: 'delete',
+          client: {
+            full_name: p.clients?.full_name || '',
+            id_number: p.clients?.id_number || '',
+            phone1: p.clients?.phone_number || '',
+          },
+          car: {
+            car_number: p.cars?.car_number || '',
+            car_type: p.cars?.car_type || null,
+            manufacturer: p.cars?.manufacturer_name || '',
+            model: p.cars?.model || '',
+            year: p.cars?.year || null,
+            color: p.cars?.color || '',
+          },
+          policy_details: {
+            service_type: p.policy_type_parent === 'ROAD_SERVICE' ? 'road_service' : 'accident_fee',
+            policy_number: p.policy_number,
+            start_date: p.start_date,
+            end_date: p.end_date,
+            sell_price: p.payed_for_company || 0,
+            notes: p.notes || '',
+          },
+        }));
+
+        // Fire-and-forget: don't block deletion if X-Service notification fails
+        fetch(`${supabaseUrl}/functions/v1/notify-xservice-change`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({ action: 'delete', policies: batchPayload }),
+        }).catch(err => console.error('X-Service delete notification failed:', err));
+
+        console.log(`Notified X-Service about ${batchPayload.length} service policies being deleted`);
+      }
+    } catch (notifyErr) {
+      console.error('Error preparing X-Service delete notification:', notifyErr);
+      // Don't block deletion
+    }
+
     // Delete related data in correct order to avoid FK constraints
 
     // 1) IMPORTANT: Unlock system-generated payments (ELZAMI) so they can be deleted.
