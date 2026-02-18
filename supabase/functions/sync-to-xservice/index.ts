@@ -102,6 +102,25 @@ Deno.serve(async (req) => {
       car = carData;
     }
 
+    // Fetch service name
+    let serviceName = null;
+    if (policy.road_service_id) {
+      const { data: svc } = await supabase
+        .from("road_services")
+        .select("name_ar, name")
+        .eq("id", policy.road_service_id)
+        .single();
+      serviceName = svc?.name_ar || svc?.name || null;
+    }
+    if (!serviceName && policy.accident_fee_service_id) {
+      const { data: svc } = await supabase
+        .from("accident_fee_services")
+        .select("name_ar, name")
+        .eq("id", policy.accident_fee_service_id)
+        .single();
+      serviceName = svc?.name_ar || svc?.name || null;
+    }
+
     // Map service_type
     const serviceType = policyType === "ROAD_SERVICE" ? "road_service" : "accident_fee";
 
@@ -125,6 +144,7 @@ Deno.serve(async (req) => {
       policy: {
         service_type: serviceType,
         service_id: policy.road_service_id || policy.accident_fee_service_id || null,
+        service_name: serviceName,
         start_date: policy.start_date,
         end_date: policy.end_date,
         sell_price: policy.payed_for_company || 0,
