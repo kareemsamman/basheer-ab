@@ -1,32 +1,38 @@
 
 
-# Fix X-Service Sync — Send service_id in Payload
+# تحسين أداء نموذج الملحقات + إضافة زر نسخ
 
-## The Problem
-When syncing a ROAD_SERVICE policy to X-Service, the system sends `sell_price` (company cost) to identify the service. For "زجاج" (glass only), `payed_for_company = 0`, so X-Service receives `sell_price=0` which doesn't match any of its services [250, 500, 600, 250, 150]. It asks for `policy.service_id` to resolve the ambiguity.
+## المشكلة
+1. **تجمد عند الكتابة**: كل حرف يُعيد رسم الصفحة بالكامل (1465 سطر) بما فيها حسابات `useMemo` الثقيلة
+2. **لا يوجد زر نسخ**: عند إضافة عدة صفوف يدوية متشابهة، يجب ملء النموذج من الصفر كل مرة
 
-## The Fix
-Add `service_id` to the `policy` object in the sync payload. This is a one-line addition.
+## الحل
 
-### File: `supabase/functions/sync-to-xservice/index.ts`
+### 1. فصل نموذج الملحق إلى مكون مستقل
+نقل `AlertDialog` الخاص بنموذج الملحق إلى مكون جديد `SupplementFormDialog.tsx`. هذا يمنع إعادة رسم الجدول الرئيسي عند كل ضغطة مفتاح.
 
-Change the `requestPayload.policy` object (around line 126-132) to include:
+### 2. إضافة زر "نسخ" (Duplicate) بجانب أزرار التعديل والحذف
+على كل صف يدوي (manual supplement)، يُضاف زر نسخ يملأ النموذج بنفس البيانات ويفتحه للإضافة كصف جديد.
 
-```
-policy: {
-  service_type: serviceType,
-  service_id: policy.road_service_id || policy.accident_fee_service_id || null,  // NEW
-  start_date: policy.start_date,
-  end_date: policy.end_date,
-  sell_price: policy.payed_for_company || 0,
-  notes: policy.notes || "",
-},
-```
+---
 
-This sends our internal `road_service_id` (or `accident_fee_service_id`) so X-Service can identify the exact service without relying on price matching.
+## التفاصيل التقنية
 
-### No other changes needed
-- No database changes
-- No frontend changes
-- The policy already fetches `road_service_id` and `accident_fee_service_id` (line 61)
+### ملف جديد: `src/components/reports/SupplementFormDialog.tsx`
+- يستقبل: `open`, `onOpenChange`, `editingSupplement`, `companyId`, `onSaved`
+- يحتوي على كل الـ state الخاص بالنموذج (`supplementForm`, `savingSupplement`)
+- نفس الحقول والمنطق الموجود حالياً، لكن معزول عن الصفحة الرئيسية
+- الكتابة لن تؤثر على أداء الجدول
 
+### تعديل: `src/pages/CompanySettlementDetail.tsx`
+- حذف كل الـ state المتعلق بنموذج الملحق (`supplementForm`, `savingSupplement`)
+- استبدال `AlertDialog` بالمكون الجديد `SupplementFormDialog`
+- إضافة state: `duplicatingSupplement` لتمرير بيانات النسخ
+- إضافة زر Copy بجانب Edit/Delete على صفوف الملحقات:
+  ```
+  [نسخ] [تعديل] [حذف]
+  ```
+- عند الضغط على "نسخ":
+  - يملأ النموذج بنفس بيانات الصف (اسم العميل، رقم السيارة، النوع، التواريخ...)
+  - يفتح النموذج بوضع "إضافة جديد" (وليس تعديل)
+  - المستخدم يغيّر ما يريد ويحفظ
