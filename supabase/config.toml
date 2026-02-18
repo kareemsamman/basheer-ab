@@ -140,3 +140,9 @@ verify_jwt = true
 
 [functions.bulk-sync-to-xservice]
 verify_jwt = true
+
+[functions.notify-xservice-change]
+verify_jwt = false
+
+[functions.get-xservice-invoice]
+verify_jwt = true

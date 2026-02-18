@@ -7,11 +7,11 @@ const corsHeaders = {
 };
 
 /**
- * Notify X-Service about policy lifecycle changes: cancel, delete, transfer.
+ * Notify X-Service about policy lifecycle changes: cancel, delete, transfer, update.
  *
  * Body:
  * {
- *   action: "cancel" | "delete" | "transfer",
+ *   action: "cancel" | "delete" | "transfer" | "update",
  *   policy_id: string,
  *   transfer_to_car?: { car_number: string, manufacturer?: string, model?: string, year?: number, color?: string }
  * }

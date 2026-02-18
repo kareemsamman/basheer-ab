@@ -331,6 +331,17 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
         }
       }
 
+      // Notify X-Service about updates to service-type policies (fire-and-forget)
+      const serviceTypes = ['ROAD_SERVICE', 'ACCIDENT_FEE_EXEMPTION'];
+      if (serviceTypes.includes(formData.policy_type_parent)) {
+        supabase.functions.invoke('notify-xservice-change', {
+          body: { action: 'update', policy_id: policy.id },
+        }).then(({ error: xErr }) => {
+          if (xErr) console.error('[PolicyEditDrawer] X-Service update sync error:', xErr);
+          else console.log('[PolicyEditDrawer] X-Service update sync sent for', policy.id);
+        });
+      }
+
       toast({ title: "تم الحفظ", description: "تم تحديث الوثيقة بنجاح" });
       setPendingSave(null);
       onOpenChange(false);

@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { FileText, RefreshCw, Printer, Eye, Download, Plus, Loader2 } from "lucide-react";
+import { FileText, RefreshCw, Printer, Eye, Download, Plus, Loader2, ExternalLink } from "lucide-react";
 
 interface InvoiceMetadata {
   html_content?: string;
@@ -40,9 +40,10 @@ interface InvoiceTemplate {
 
 interface PolicyInvoicesSectionProps {
   policyId: string;
+  policyTypeParent?: string;
 }
 
-export function PolicyInvoicesSection({ policyId }: PolicyInvoicesSectionProps) {
+export function PolicyInvoicesSection({ policyId, policyTypeParent }: PolicyInvoicesSectionProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -54,6 +55,28 @@ export function PolicyInvoicesSection({ policyId }: PolicyInvoicesSectionProps) 
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<'ar' | 'he'>('ar');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [xInvoiceLoading, setXInvoiceLoading] = useState(false);
+
+  const isServicePolicy = policyTypeParent === 'ROAD_SERVICE' || policyTypeParent === 'ACCIDENT_FEE_EXEMPTION';
+
+  const handleFetchXServiceInvoice = async () => {
+    setXInvoiceLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-xservice-invoice', {
+        body: { policy_id: policyId },
+      });
+      if (error) throw error;
+      if (data?.exists && data?.invoice_url) {
+        window.open(data.invoice_url, '_blank');
+      } else {
+        toast({ title: "تنبيه", description: data?.reason || "لا توجد فاتورة في X-Service", variant: "default" });
+      }
+    } catch (err: any) {
+      toast({ title: "خطأ", description: err.message || "فشل في جلب فاتورة X-Service", variant: "destructive" });
+    } finally {
+      setXInvoiceLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchInvoices();
@@ -209,10 +232,27 @@ const { data, error } = await supabase
     <div className="space-y-4 text-right" dir="rtl">
       {/* Header with Add Button - RTL: title on right, button on left */}
       <div className="flex items-center justify-between">
-        <Button size="sm" onClick={() => setShowGenerateDialog(true)}>
-          <Plus className="h-4 w-4 ml-1" />
-          إنشاء فاتورة
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => setShowGenerateDialog(true)}>
+            <Plus className="h-4 w-4 ml-1" />
+            إنشاء فاتورة
+          </Button>
+          {isServicePolicy && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleFetchXServiceInvoice}
+              disabled={xInvoiceLoading}
+            >
+              {xInvoiceLoading ? (
+                <Loader2 className="h-4 w-4 ml-1 animate-spin" />
+              ) : (
+                <ExternalLink className="h-4 w-4 ml-1" />
+              )}
+              فاتورة X-Service
+            </Button>
+          )}
+        </div>
         <h3 className="font-semibold flex items-center gap-2 text-right">
           <FileText className="h-4 w-4" />
           الفواتير ({invoices.length})
