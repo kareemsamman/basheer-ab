@@ -1,35 +1,54 @@
+# إصلاح: ترتيب المصروفات بالأحدث أولاً + عرض وقت الإنشاء
 
-# إصلاحان: Tooltip للوصف في المصروفات + شريط تمرير مرئي في التسوية
+## المشكلة
 
-## 1. صفحة المصروفات — Tooltip على عمود "الوصف"
+الترتيب الحالي يعتمد على `expense_date` فقط. عندما يكون هناك عدة سندات بنفس التاريخ (مثل 19/02)، لا يوجد ترتيب ثانوي بحسب وقت الإنشاء. كذلك لا يُعرض وقت إنشاء السند في الجدول.
 
-حالياً النص مقطوع بـ `truncate` ولا يمكن رؤية النص الكامل. سيتم لف خلية الوصف بـ `Tooltip` بحيث عند التمرير بالفأرة يظهر النص الكامل.
+## الحل
 
-## 2. صفحة تسوية الشركات — شريط التمرير
+### 1. ترتيب ثانوي بوقت الإنشاء
 
-المشكلة: الشريط الأفقي في أسفل الجدول بعيد جداً ولا يمكن رؤيته. بالإضافة لذلك لونه teal وهو ظاهر أكثر من اللازم.
+تعديل الترتيب في سطر 319 ليشمل `created_at` كمعيار ثانوي:
 
-الحل:
-- تغيير لون الشريط إلى رمادي بدلاً من teal
-- إضافة `max-h-[70vh]` على wrapper الجدول بحيث يكون الجدول بارتفاع محدود والشريط الأفقي يظهر في نفس المنطقة المرئية
-- إضافة `overflow-y-auto` للتمرير العمودي أيضاً داخل المنطقة المحددة
+- عند تساوي `expense_date`، يُرتب بحسب `created_at` تنازلياً (الأحدث أولاً)
+
+### 2. إضافة عمود "وقت الإنشاء" في الجدول
+
+إضافة عمود جديد بعد عمود "التاريخ" يعرض تاريخ ووقت الإنشاء بصيغة `DD/MM/YYYY HH:mm`
 
 ---
 
 ## التفاصيل التقنية
 
-### ملف: `src/pages/Expenses.tsx` (سطر 737)
-- لف محتوى خلية الوصف بـ `Tooltip` من `@/components/ui/tooltip`
-- إضافة `TooltipProvider`, `Tooltip`, `TooltipTrigger`, `TooltipContent`
-- النص المقطوع يبقى كما هو، والـ Tooltip يعرض النص الكامل
+### ملف: `src/pages/Expenses.tsx`
 
-### ملف: `src/pages/CompanySettlementDetail.tsx` (سطر 1025)
-- تغيير wrapper الجدول ليشمل `max-h-[70vh] overflow-y-auto`
-- إضافة class جديد `scrollbar-always-visible-grey` أو تعديل الموجود
+**1. تعديل الترتيب (سطر 319):**
 
-### ملف: `src/index.css`
-- إضافة class جديد `scrollbar-always-visible-grey` بنفس البنية لكن بلون رمادي:
-  - thumb: `hsl(215 16% 75%)`
-  - track: `hsl(210 20% 96%)`
+```js
+allExpenses.sort((a, b) => {
+  const dateDiff = new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime();
+  if (dateDiff !== 0) return dateDiff;
+  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+});
+```
 
-### لا تغييرات في قاعدة البيانات
+**2. إضافة عمود "وقت الإنشاء" في TableHeader (بعد سطر 685 "التاريخ"):**
+
+```jsx
+<TableHead>وقت الإنشاء</TableHead>
+```
+
+**3. إضافة خلية الوقت في TableBody (بعد سطر 736 خلية التاريخ):**
+
+```jsx
+<TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+  {format(new Date(expense.created_at), 'dd/MM/yyyy HH:mm')}
+</TableCell>
+```
+
+**4. ضمان أن `created_at` للسندات المولّدة من بوليصات تأخذ القيمة الفعلية:**
+حالياً السندات المحوّلة من `policy_payments` و`policies` تستخدم `payment_date`/`start_date` كقيمة `created_at`. هذا غير دقيق. لكن بما أن هذه السندات لا تحتوي على `created_at` حقيقي في الاستعلام، سنبقيها كما هي (التاريخ نفسه) لأنها بيانات مولّدة وليست مدخلة يدوياً.
+
+### لا تغييرات في قاعدة البيانات  
+  
+the ab want a way to see who also did that which worker or admin name and  he want to add start date to end date also 
