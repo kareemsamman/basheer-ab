@@ -1,47 +1,35 @@
 
-# إصلاح: إظهار شريط التمرير الأفقي دائماً في جدول التسوية
+# إصلاحان: Tooltip للوصف في المصروفات + شريط تمرير مرئي في التسوية
 
-## المشكلة
-الجدول يدعم التمرير الأفقي (`overflow-x-auto`) لكن شريط التمرير مخفي افتراضياً، والمستخدم لا يعرف أن هناك أعمدة إضافية يمكن الوصول إليها بالتمرير.
+## 1. صفحة المصروفات — Tooltip على عمود "الوصف"
 
-## الحل
-1. **إظهار شريط التمرير دائماً** باستخدام `overflow-x-scroll` بدل `overflow-x-auto` مع CSS مخصص يجعل الشريط مرئياً بشكل دائم.
-2. **إضافة تلميح بصري** (سهم أو تدرج لوني) على حافة الجدول يشير إلى وجود محتوى إضافي.
+حالياً النص مقطوع بـ `truncate` ولا يمكن رؤية النص الكامل. سيتم لف خلية الوصف بـ `Tooltip` بحيث عند التمرير بالفأرة يظهر النص الكامل.
+
+## 2. صفحة تسوية الشركات — شريط التمرير
+
+المشكلة: الشريط الأفقي في أسفل الجدول بعيد جداً ولا يمكن رؤيته. بالإضافة لذلك لونه teal وهو ظاهر أكثر من اللازم.
+
+الحل:
+- تغيير لون الشريط إلى رمادي بدلاً من teal
+- إضافة `max-h-[70vh]` على wrapper الجدول بحيث يكون الجدول بارتفاع محدود والشريط الأفقي يظهر في نفس المنطقة المرئية
+- إضافة `overflow-y-auto` للتمرير العمودي أيضاً داخل المنطقة المحددة
+
+---
 
 ## التفاصيل التقنية
 
-### ملف: `src/pages/CompanySettlementDetail.tsx`
+### ملف: `src/pages/Expenses.tsx` (سطر 737)
+- لف محتوى خلية الوصف بـ `Tooltip` من `@/components/ui/tooltip`
+- إضافة `TooltipProvider`, `Tooltip`, `TooltipTrigger`, `TooltipContent`
+- النص المقطوع يبقى كما هو، والـ Tooltip يعرض النص الكامل
 
-تغيير wrapper الجدول من:
-```
-<div className="rounded-lg border overflow-x-auto">
-```
-إلى:
-```
-<div className="rounded-lg border overflow-x-scroll scrollbar-always-visible">
-```
+### ملف: `src/pages/CompanySettlementDetail.tsx` (سطر 1025)
+- تغيير wrapper الجدول ليشمل `max-h-[70vh] overflow-y-auto`
+- إضافة class جديد `scrollbar-always-visible-grey` أو تعديل الموجود
 
 ### ملف: `src/index.css`
-
-إضافة CSS class يجبر الشريط على الظهور دائماً:
-```css
-.scrollbar-always-visible::-webkit-scrollbar {
-  height: 10px;
-}
-.scrollbar-always-visible::-webkit-scrollbar-track {
-  background: hsl(210 20% 96%);
-  border-radius: 5px;
-}
-.scrollbar-always-visible::-webkit-scrollbar-thumb {
-  background: hsl(174 72% 40%);
-  border-radius: 5px;
-}
-.scrollbar-always-visible {
-  scrollbar-width: thin;
-  scrollbar-color: hsl(174, 72%, 40%) hsl(210, 20%, 96%);
-}
-```
-
-هذا يجعل شريط التمرير مرئياً دائماً بلون يتناسب مع التصميم (teal)، فيعرف المستخدم فوراً أن هناك أعمدة إضافية.
+- إضافة class جديد `scrollbar-always-visible-grey` بنفس البنية لكن بلون رمادي:
+  - thumb: `hsl(215 16% 75%)`
+  - track: `hsl(210 20% 96%)`
 
 ### لا تغييرات في قاعدة البيانات
