@@ -1022,7 +1022,7 @@ export default function CompanySettlementDetail() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="rounded-lg border overflow-x-auto">
+             <div className="rounded-lg border overflow-x-scroll scrollbar-always-visible">
               <Table>
                 <TableHeader>
                     <TableRow>

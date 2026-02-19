@@ -209,6 +209,23 @@
   .stagger-5 {
     animation-delay: 0.25s;
   }
+
+  /* Always-visible horizontal scrollbar */
+  .scrollbar-always-visible::-webkit-scrollbar {
+    height: 10px;
+  }
+  .scrollbar-always-visible::-webkit-scrollbar-track {
+    background: hsl(210 20% 96%);
+    border-radius: 5px;
+  }
+  .scrollbar-always-visible::-webkit-scrollbar-thumb {
+    background: hsl(174 72% 40%);
+    border-radius: 5px;
+  }
+  .scrollbar-always-visible {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(174, 72%, 40%) hsl(210, 20%, 96%);
+  }
 }
 
 /* Print styles for professional reports */
