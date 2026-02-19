@@ -139,8 +139,20 @@ export default function CompanySettlementDetail() {
   
   // Inline edit
   const [editingPolicyId, setEditingPolicyId] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState({ insurance_price: 0, payed_for_company: 0, profit: 0, car_value: 0 });
+  const [editValues, setEditValues] = useState({
+    insurance_price: 0, payed_for_company: 0, profit: 0, car_value: 0,
+    policy_type_parent: '' as string,
+    policy_type_child: '' as string | null,
+    car_type: '' as string,
+    client_name: '',
+    issue_date: '' as string | null,
+    start_date: '',
+    end_date: '',
+    company_id: '' as string | null,
+  });
   const [savingEdit, setSavingEdit] = useState(false);
+  const [allCompanies, setAllCompanies] = useState<CompanyInfo[]>([]);
+  const [showCompanyChangeWarning, setShowCompanyChangeWarning] = useState(false);
   
   // Cheques
   const [companyCheques, setCompanyCheques] = useState<CompanyCheque[]>([]);
@@ -252,6 +264,10 @@ export default function CompanySettlementDetail() {
 
   useEffect(() => {
     window.scrollTo(0, 0);
+    // Fetch all companies for the company select
+    supabase.from('insurance_companies').select('id, name, name_ar').order('name_ar').then(({ data }) => {
+      setAllCompanies(data || []);
+    });
   }, []);
 
   useEffect(() => {
@@ -470,6 +486,14 @@ export default function CompanySettlementDetail() {
       payed_for_company: Number(policy.payed_for_company) || 0,
       profit: Number(policy.profit) || 0,
       car_value: Number(policy.car?.car_value) || 0,
+      policy_type_parent: policy.policy_type_parent || '',
+      policy_type_child: policy.policy_type_child || null,
+      car_type: policy.car?.car_type || '',
+      client_name: policy.client?.full_name || '',
+      issue_date: policy.issue_date || null,
+      start_date: policy.start_date || '',
+      end_date: policy.end_date || '',
+      company_id: companyId || null,
     });
   };
 
@@ -479,54 +503,74 @@ export default function CompanySettlementDetail() {
 
   const handleSaveEdit = async () => {
     if (!editingPolicyId) return;
+
+    // Check if company changed
+    if (editValues.company_id && editValues.company_id !== companyId) {
+      setShowCompanyChangeWarning(true);
+      return;
+    }
+
+    await executeSaveEdit();
+  };
+
+  const executeSaveEdit = async () => {
+    if (!editingPolicyId) return;
     setSavingEdit(true);
+    setShowCompanyChangeWarning(false);
     
     const editedPolicy = policies.find(p => p.id === editingPolicyId);
+    const savedEditingId = editingPolicyId;
     
     try {
-      // Optimistic update
-      setPolicies(prev => prev.map(p => 
-        p.id === editingPolicyId 
-          ? { 
-              ...p, 
-              insurance_price: editValues.insurance_price, 
-              payed_for_company: editValues.payed_for_company, 
-              profit: editValues.profit,
-              car: p.car ? { ...p.car, car_value: editValues.car_value } : p.car,
-            } 
-          : p
-      ));
-      
-      const savedEditingId = editingPolicyId;
       setEditingPolicyId(null);
 
-      // Update policy in background
+      // Update policy
+      const policyUpdate: Record<string, unknown> = {
+        insurance_price: editValues.insurance_price,
+        payed_for_company: editValues.payed_for_company,
+        profit: editValues.profit,
+        policy_type_parent: editValues.policy_type_parent,
+        policy_type_child: editValues.policy_type_parent === 'THIRD_FULL' ? editValues.policy_type_child : null,
+        issue_date: editValues.issue_date || null,
+        start_date: editValues.start_date,
+        end_date: editValues.end_date,
+      };
+      if (editValues.company_id) {
+        policyUpdate.company_id = editValues.company_id;
+      }
+
       const { error } = await supabase
         .from('policies')
-        .update({
-          insurance_price: editValues.insurance_price,
-          payed_for_company: editValues.payed_for_company,
-          profit: editValues.profit,
-        })
+        .update(policyUpdate)
         .eq('id', savedEditingId);
 
       if (error) throw error;
 
-      // Update car_value if car exists
+      // Update car if exists
       if (editedPolicy?.car?.id) {
         const { error: carError } = await supabase
           .from('cars')
-          .update({ car_value: editValues.car_value })
+          .update({ car_value: editValues.car_value, car_type: editValues.car_type as any })
           .eq('id', editedPolicy.car.id);
         
         if (carError) throw carError;
       }
 
+      // Update client name if exists
+      if (editedPolicy?.client?.id && editValues.client_name) {
+        const { error: clientError } = await supabase
+          .from('clients')
+          .update({ full_name: editValues.client_name })
+          .eq('id', editedPolicy.client.id);
+        
+        if (clientError) throw clientError;
+      }
+
       toast.success('تم تحديث البوليصة بنجاح');
+      fetchCompanyAndPolicies();
     } catch (error) {
       console.error('Error saving edit:', error);
       toast.error('فشل في حفظ التعديلات');
-      // Revert on error
       fetchCompanyAndPolicies();
     } finally {
       setSavingEdit(false);
@@ -981,33 +1025,35 @@ export default function CompanySettlementDetail() {
             <div className="rounded-lg border overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-right">العميل</TableHead>
-                    <TableHead className="text-right">السيارة</TableHead>
-                    <TableHead className="text-right">الشركة المصنعة</TableHead>
-                    <TableHead className="text-right">تصنيف السيارة</TableHead>
-                    <TableHead className="text-right">نوع التأمين</TableHead>
-                    <TableHead className="text-right">قيمة السيارة</TableHead>
-                    <TableHead className="text-right">تاريخ البداية</TableHead>
-                    <TableHead className="text-right">تاريخ الإصدار</TableHead>
-                    <TableHead className="text-right">سعر التأمين</TableHead>
-                    <TableHead className="text-right">المستحق للشركة</TableHead>
-                    <TableHead className="text-right">الربح</TableHead>
-                    <TableHead className="text-right print:hidden">إجراءات</TableHead>
-                  </TableRow>
+                    <TableRow>
+                     <TableHead className="text-right">العميل</TableHead>
+                     <TableHead className="text-right">السيارة</TableHead>
+                     <TableHead className="text-right">الشركة المصنعة</TableHead>
+                     <TableHead className="text-right">تصنيف السيارة</TableHead>
+                     <TableHead className="text-right">نوع التأمين</TableHead>
+                     <TableHead className="text-right">الشركة</TableHead>
+                     <TableHead className="text-right">قيمة السيارة</TableHead>
+                     <TableHead className="text-right">تاريخ البداية</TableHead>
+                     <TableHead className="text-right">تاريخ النهاية</TableHead>
+                     <TableHead className="text-right">تاريخ الإصدار</TableHead>
+                     <TableHead className="text-right">سعر التأمين</TableHead>
+                     <TableHead className="text-right">المستحق للشركة</TableHead>
+                     <TableHead className="text-right">الربح</TableHead>
+                     <TableHead className="text-right print:hidden">إجراءات</TableHead>
+                    </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     Array.from({ length: 10 }).map((_, i) => (
                       <TableRow key={i}>
-                        {Array.from({ length: 11 }).map((_, j) => (
+                        {Array.from({ length: 15 }).map((_, j) => (
                           <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
                         ))}
                       </TableRow>
                     ))
                   ) : filteredPolicies.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={15} className="text-center py-8 text-muted-foreground">
                         لا توجد وثائق للفترة المحددة
                       </TableCell>
                     </TableRow>
@@ -1023,39 +1069,117 @@ export default function CompanySettlementDetail() {
                             policy.transferred && "opacity-50 bg-amber-500/5"
                           )}
                         >
+                          {/* Client Name */}
                           <TableCell className="font-medium">
-                            <span 
-                              className="text-primary cursor-pointer hover:underline"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (policy.client?.id) navigate(`/clients?clientId=${policy.client.id}`);
-                              }}
-                            >
-                              {policy.client?.full_name || '-'}
-                            </span>
-                            {policy.cancelled && (
-                              <Badge variant="destructive" className="mr-2 text-xs">ملغية</Badge>
-                            )}
-                            {policy.transferred && (
-                              <Badge variant="warning" className="mr-2 text-xs gap-1">
-                                محولة ← {policy.transferred_to_car_number || ''}
-                              </Badge>
+                            {isEditing ? (
+                              <div>
+                                <Input
+                                  value={editValues.client_name}
+                                  onChange={(e) => setEditValues(v => ({ ...v, client_name: e.target.value }))}
+                                  className="w-32 h-8 text-sm"
+                                />
+                                {policy.cancelled && (
+                                  <Badge variant="destructive" className="mr-2 mt-1 text-xs">ملغية</Badge>
+                                )}
+                              </div>
+                            ) : (
+                              <>
+                                <span 
+                                  className="text-primary cursor-pointer hover:underline"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (policy.client?.id) navigate(`/clients?clientId=${policy.client.id}`);
+                                  }}
+                                >
+                                  {policy.client?.full_name || '-'}
+                                </span>
+                                {policy.cancelled && (
+                                  <Badge variant="destructive" className="mr-2 text-xs">ملغية</Badge>
+                                )}
+                                {policy.transferred && (
+                                  <Badge variant="warning" className="mr-2 text-xs gap-1">
+                                    محولة ← {policy.transferred_to_car_number || ''}
+                                  </Badge>
+                                )}
+                              </>
                             )}
                           </TableCell>
+                          {/* Car Number - not editable */}
                           <TableCell className="font-mono">
                             <bdi>{policy.car?.car_number || '-'}</bdi>
                           </TableCell>
+                          {/* Manufacturer - not editable */}
                           <TableCell>
                             {policy.car?.manufacturer_name || '-'}
                           </TableCell>
+                          {/* Car Type */}
                           <TableCell>
-                            {getCarTypeLabel(policy.car?.car_type || null)}
+                            {isEditing ? (
+                              <Select value={editValues.car_type} onValueChange={(v) => setEditValues(ev => ({ ...ev, car_type: v }))}>
+                                <SelectTrigger className="w-28 h-8 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {Object.entries({ car: 'خصوصي', cargo: 'شحن', small: 'اوتوبس زعير', taxi: 'تاكسي', tjeradown4: 'تجاري < 4 طن', tjeraup4: 'تجاري > 4 طن' }).map(([val, label]) => (
+                                    <SelectItem key={val} value={val}>{label}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              getCarTypeLabel(policy.car?.car_type || null)
+                            )}
                           </TableCell>
+                          {/* Insurance Type */}
                           <TableCell>
-                            <Badge variant="outline" className={getInsuranceTypeBadgeClass(policy.policy_type_parent)}>
-                              {getInsuranceTypeLabelLocal(policy)}
-                            </Badge>
+                            {isEditing ? (
+                              <div className="flex flex-col gap-1">
+                                <Select value={editValues.policy_type_parent} onValueChange={(v) => setEditValues(ev => ({ ...ev, policy_type_parent: v, policy_type_child: v === 'THIRD_FULL' ? (ev.policy_type_child || 'THIRD') : null }))}>
+                                  <SelectTrigger className="w-32 h-8 text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {Object.entries(POLICY_TYPE_LABELS).map(([val, label]) => (
+                                      <SelectItem key={val} value={val}>{label}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                {editValues.policy_type_parent === 'THIRD_FULL' && (
+                                  <Select value={editValues.policy_type_child || 'THIRD'} onValueChange={(v) => setEditValues(ev => ({ ...ev, policy_type_child: v }))}>
+                                    <SelectTrigger className="w-32 h-8 text-xs">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {Object.entries(POLICY_CHILD_LABELS).map(([val, label]) => (
+                                        <SelectItem key={val} value={val}>{label}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                )}
+                              </div>
+                            ) : (
+                              <Badge variant="outline" className={getInsuranceTypeBadgeClass(policy.policy_type_parent)}>
+                                {getInsuranceTypeLabelLocal(policy)}
+                              </Badge>
+                            )}
                           </TableCell>
+                          {/* Company */}
+                          <TableCell>
+                            {isEditing ? (
+                              <Select value={editValues.company_id || ''} onValueChange={(v) => setEditValues(ev => ({ ...ev, company_id: v }))}>
+                                <SelectTrigger className="w-32 h-8 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {allCompanies.map((c) => (
+                                    <SelectItem key={c.id} value={c.id}>{c.name_ar || c.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <span className="text-xs">{company?.name_ar || company?.name || '-'}</span>
+                            )}
+                          </TableCell>
+                          {/* Car Value */}
                           <TableCell className="font-mono">
                             {isEditing ? (
                               <Input
@@ -1068,9 +1192,29 @@ export default function CompanySettlementDetail() {
                               policy.car?.car_value ? `₪${policy.car.car_value.toLocaleString('en-US')}` : '-'
                             )}
                           </TableCell>
-                          <TableCell>{formatDate(policy.start_date)}</TableCell>
-                          <TableCell className={cn(policy.issue_date && policy.issue_date !== policy.start_date && "text-primary font-medium")}>
-                            {policy.issue_date ? formatDate(policy.issue_date) : formatDate(policy.start_date)}
+                          {/* Start Date */}
+                          <TableCell>
+                            {isEditing ? (
+                              <ArabicDatePicker value={editValues.start_date} onChange={(d) => setEditValues(v => ({ ...v, start_date: d }))} compact />
+                            ) : (
+                              formatDate(policy.start_date)
+                            )}
+                          </TableCell>
+                          {/* End Date */}
+                          <TableCell>
+                            {isEditing ? (
+                              <ArabicDatePicker value={editValues.end_date} onChange={(d) => setEditValues(v => ({ ...v, end_date: d }))} compact />
+                            ) : (
+                              formatDate(policy.end_date)
+                            )}
+                          </TableCell>
+                          {/* Issue Date */}
+                          <TableCell className={cn(!isEditing && policy.issue_date && policy.issue_date !== policy.start_date && "text-primary font-medium")}>
+                            {isEditing ? (
+                              <ArabicDatePicker value={editValues.issue_date || ''} onChange={(d) => setEditValues(v => ({ ...v, issue_date: d || null }))} compact />
+                            ) : (
+                              policy.issue_date ? formatDate(policy.issue_date) : formatDate(policy.start_date)
+                            )}
                           </TableCell>
                           
                           {/* Insurance Price */}
@@ -1216,10 +1360,12 @@ export default function CompanySettlementDetail() {
                           <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">ملحق</Badge>
                         )}
                       </TableCell>
+                      <TableCell><span className="text-xs">{company?.name_ar || company?.name || '-'}</span></TableCell>
                       <TableCell className="font-mono">
                         {s.car_value ? `₪${Number(s.car_value).toLocaleString('en-US')}` : '-'}
                       </TableCell>
                       <TableCell>{s.start_date ? formatDate(s.start_date) : formatDate(s.settlement_date)}</TableCell>
+                      <TableCell>{s.end_date ? formatDate(s.end_date) : '-'}</TableCell>
                       <TableCell>{s.end_date ? formatDate(s.end_date) : '-'}</TableCell>
                       <TableCell className="font-mono">₪{Number(s.insurance_price).toLocaleString('en-US')}</TableCell>
                       <TableCell className="font-mono text-destructive">₪{Number(s.company_payment).toLocaleString('en-US')}</TableCell>
@@ -1344,6 +1490,25 @@ export default function CompanySettlementDetail() {
         companyId={companyId || ''}
         onSaved={handleSupplementSaved}
       />
+
+      {/* Company Change Warning */}
+      <AlertDialog open={showCompanyChangeWarning} onOpenChange={setShowCompanyChangeWarning}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>تغيير الشركة</AlertDialogTitle>
+            <AlertDialogDescription>
+              أنت تقوم بنقل هذه البوليصة لشركة أخرى. ستختفي البوليصة من هذا التقرير بعد الحفظ.
+              هل تريد المتابعة؟
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+            <AlertDialogAction onClick={executeSaveEdit}>
+              نعم، نقل الشركة
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </MainLayout>
   );
 }
