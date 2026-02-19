@@ -19,6 +19,11 @@ import {
   Type,
   GripVertical,
   Printer,
+  Bold,
+  Underline,
+  Palette,
+  Copy,
+  ClipboardPaste,
 } from "lucide-react";
 
 // Load PDF.js from CDN
@@ -48,6 +53,11 @@ interface OverlayField {
   y: number;
   text: string;
   fontSize: number;
+  color?: string;
+  bold?: boolean;
+  underline?: boolean;
+  width?: number;
+  height?: number;
 }
 
 export default function FormTemplateEditor() {
@@ -77,6 +87,13 @@ export default function FormTemplateEditor() {
   // Inline editing
   const [inlineEditId, setInlineEditId] = useState<string | null>(null);
   const [inlineEditText, setInlineEditText] = useState("");
+
+  // Clipboard
+  const [clipboardField, setClipboardField] = useState<OverlayField | null>(null);
+
+  // Resize
+  const [resizingField, setResizingField] = useState<string | null>(null);
+  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, w: 0, h: 0 });
 
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
@@ -143,10 +160,8 @@ export default function FormTemplateEditor() {
             setCurrentPage(0);
           }
         } else {
-          // Image file - load to get natural dimensions
           setTotalPages(1);
           setPageImages([file.file_url]);
-          // Get natural size
           const img = new Image();
           img.crossOrigin = "anonymous";
           img.onload = () => {
@@ -168,10 +183,45 @@ export default function FormTemplateEditor() {
     return () => { cancelled = true; };
   }, [file, toast]);
 
-  // Click on canvas to place new text (directly, no dialog)
+  // Keyboard shortcuts: Ctrl+C / Ctrl+V / Delete
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Don't intercept when editing inline
+      if (inlineEditId) return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key === "c" && selectedFieldId) {
+        e.preventDefault();
+        const field = overlayFields.find((f) => f.id === selectedFieldId);
+        if (field) setClipboardField({ ...field });
+        toast({ title: "تم النسخ" });
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key === "v" && clipboardField) {
+        e.preventDefault();
+        const newField: OverlayField = {
+          ...clipboardField,
+          id: `field_${Date.now()}`,
+          page: currentPage,
+          x: clipboardField.x + 20,
+          y: clipboardField.y + 20,
+        };
+        setOverlayFields((prev) => [...prev, newField]);
+        setSelectedFieldId(newField.id);
+        toast({ title: "تم اللصق" });
+      }
+
+      if (e.key === "Delete" && selectedFieldId && !inlineEditId) {
+        removeField(selectedFieldId);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selectedFieldId, clipboardField, currentPage, overlayFields, inlineEditId]);
+
+  // Click on canvas to place new text
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!addingText || draggingField) return;
+      if (!addingText || draggingField || resizingField) return;
 
       const rect = e.currentTarget.getBoundingClientRect();
       const x = (e.clientX - rect.left) / zoom;
@@ -185,21 +235,23 @@ export default function FormTemplateEditor() {
         y: Math.round(y),
         text: "نص جديد",
         fontSize: 14,
+        color: "#000000",
+        bold: false,
+        underline: false,
       };
 
       setOverlayFields((prev) => [...prev, newField]);
       setAddingText(false);
       setSelectedFieldId(newId);
-      // Start inline editing immediately
       setInlineEditId(newId);
       setInlineEditText("نص جديد");
     },
-    [addingText, currentPage, zoom, draggingField]
+    [addingText, currentPage, zoom, draggingField, resizingField]
   );
 
   // Drag start
   const handleDragStart = (e: React.MouseEvent, fieldId: string) => {
-    if (inlineEditId === fieldId) return; // Don't drag while editing
+    if (inlineEditId === fieldId || resizingField) return;
     e.stopPropagation();
     const field = overlayFields.find((f) => f.id === fieldId);
     if (!field) return;
@@ -213,9 +265,21 @@ export default function FormTemplateEditor() {
     });
   };
 
-  // Drag move
+  // Drag move + Resize move
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      if (resizingField) {
+        const dx = (e.clientX - resizeStart.x) / zoom;
+        const dy = (e.clientY - resizeStart.y) / zoom;
+        setOverlayFields((prev) =>
+          prev.map((f) =>
+            f.id === resizingField
+              ? { ...f, width: Math.max(30, Math.round(resizeStart.w + dx)), height: Math.max(16, Math.round(resizeStart.h + dy)) }
+              : f
+          )
+        );
+        return;
+      }
       if (!draggingField) return;
       const rect = e.currentTarget.getBoundingClientRect();
       const x = (e.clientX - rect.left - dragOffset.x) / zoom;
@@ -229,12 +293,26 @@ export default function FormTemplateEditor() {
         )
       );
     },
-    [draggingField, dragOffset, zoom]
+    [draggingField, dragOffset, zoom, resizingField, resizeStart]
   );
 
   const handleMouseUp = useCallback(() => {
     if (draggingField) setDraggingField(null);
-  }, [draggingField]);
+    if (resizingField) setResizingField(null);
+  }, [draggingField, resizingField]);
+
+  // Resize start
+  const handleResizeStart = (e: React.MouseEvent, field: OverlayField) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setResizingField(field.id);
+    setResizeStart({
+      x: e.clientX,
+      y: e.clientY,
+      w: field.width || 100,
+      h: field.height || (field.fontSize + 8),
+    });
+  };
 
   // Inline edit helpers
   const startInlineEdit = (field: OverlayField) => {
@@ -250,7 +328,6 @@ export default function FormTemplateEditor() {
         prev.map((f) => (f.id === inlineEditId ? { ...f, text: trimmed } : f))
       );
     } else {
-      // If empty, remove the field
       setOverlayFields((prev) => prev.filter((f) => f.id !== inlineEditId));
     }
     setInlineEditId(null);
@@ -273,6 +350,23 @@ export default function FormTemplateEditor() {
     );
   };
 
+  // Toggle bold/underline
+  const toggleBold = (fieldId: string) => {
+    setOverlayFields((prev) =>
+      prev.map((f) => (f.id === fieldId ? { ...f, bold: !f.bold } : f))
+    );
+  };
+  const toggleUnderline = (fieldId: string) => {
+    setOverlayFields((prev) =>
+      prev.map((f) => (f.id === fieldId ? { ...f, underline: !f.underline } : f))
+    );
+  };
+  const changeColor = (fieldId: string, color: string) => {
+    setOverlayFields((prev) =>
+      prev.map((f) => (f.id === fieldId ? { ...f, color } : f))
+    );
+  };
+
   // Save overlay fields
   const handleSave = async () => {
     if (!fileId) return;
@@ -291,7 +385,7 @@ export default function FormTemplateEditor() {
     }
   };
 
-  // Print with accurate positioning
+  // Print with percentage-based positioning
   const handlePrint = () => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
@@ -300,18 +394,25 @@ export default function FormTemplateEditor() {
       .map((img, pageIdx) => {
         const fieldsOnPage = overlayFields.filter((f) => f.page === pageIdx);
         const size = pageNaturalSizes[pageIdx];
-        const imgWidth = size ? size.w : 800;
-        const imgHeight = size ? size.h : 1100;
+        const natW = size ? size.w : 800;
+        const natH = size ? size.h : 1100;
 
         const fieldsHtml = fieldsOnPage
-          .map(
-            (f) =>
-              `<div style="position:absolute;left:${f.x}px;top:${f.y}px;font-size:${f.fontSize}px;font-family:Arial,sans-serif;color:#000;white-space:nowrap;direction:rtl;">${f.text}</div>`
-          )
+          .map((f) => {
+            const leftPct = (f.x / natW) * 100;
+            const topPct = (f.y / natH) * 100;
+            const fontSizePct = (f.fontSize / natW) * 100;
+            const fw = f.bold ? "bold" : "normal";
+            const td = f.underline ? "underline" : "none";
+            const color = f.color || "#000";
+            const widthStyle = f.width ? `width:${(f.width / natW) * 100}%;word-wrap:break-word;` : "white-space:nowrap;";
+            const heightStyle = f.height ? `height:${(f.height / natH) * 100}%;overflow:hidden;` : "";
+            return `<div style="position:absolute;left:${leftPct}%;top:${topPct}%;font-size:${fontSizePct}vw;font-family:Arial,sans-serif;color:${color};font-weight:${fw};text-decoration:${td};direction:rtl;${widthStyle}${heightStyle}">${f.text}</div>`;
+          })
           .join("");
 
-        return `<div style="position:relative;width:${imgWidth}px;height:${imgHeight}px;page-break-after:always;overflow:hidden;">
-          <img src="${img}" style="width:${imgWidth}px;height:${imgHeight}px;display:block;" />
+        return `<div style="position:relative;width:100%;page-break-after:always;overflow:hidden;">
+          <img src="${img}" style="width:100%;display:block;" />
           ${fieldsHtml}
         </div>`;
       })
@@ -338,13 +439,11 @@ export default function FormTemplateEditor() {
     setTimeout(() => printWindow.print(), 500);
   };
 
-  // Add text - directly activate placement mode
   const handleStartAddText = () => {
     setAddingText(true);
     toast({ title: "انقر على الموقع المطلوب", description: "انقر على المكان الذي تريد وضع النص فيه" });
   };
 
-  // Back navigation - go to the folder containing this file
   const handleGoBack = () => {
     if (file?.folder_id) {
       navigate(`/form-templates?folder=${file.folder_id}`);
@@ -380,6 +479,7 @@ export default function FormTemplateEditor() {
   }
 
   const currentPageFields = overlayFields.filter((f) => f.page === currentPage);
+  const selectedField = overlayFields.find((f) => f.id === selectedFieldId);
 
   return (
     <MainLayout>
@@ -444,13 +544,93 @@ export default function FormTemplateEditor() {
           )}
 
           {/* Fields Panel */}
-          <div className="w-60 border-l bg-muted/30 flex flex-col">
+          <div className="w-64 border-l bg-muted/30 flex flex-col">
             <div className="p-3 border-b">
               <h3 className="font-medium text-sm">النصوص المضافة</h3>
               <p className="text-xs text-muted-foreground mt-1">
-                {addingText ? "انقر على الصورة لوضع النص" : "انقر مرتين لتعديل النص"}
+                {addingText ? "انقر على الصورة لوضع النص" : "انقر مرتين لتعديل • Ctrl+C/V للنسخ"}
               </p>
             </div>
+
+            {/* Formatting toolbar for selected field */}
+            {selectedField && (
+              <div className="p-3 border-b bg-background space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">تنسيق الحقل المحدد</p>
+                <div className="flex items-center gap-1 flex-wrap">
+                  <Button
+                    variant={selectedField.bold ? "default" : "outline"}
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => toggleBold(selectedField.id)}
+                    title="عريض"
+                  >
+                    <Bold className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant={selectedField.underline ? "default" : "outline"}
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => toggleUnderline(selectedField.id)}
+                    title="تسطير"
+                  >
+                    <Underline className="h-3.5 w-3.5" />
+                  </Button>
+                  <div className="relative">
+                    <input
+                      type="color"
+                      value={selectedField.color || "#000000"}
+                      onChange={(e) => changeColor(selectedField.id, e.target.value)}
+                      className="w-7 h-7 rounded border cursor-pointer"
+                      title="لون النص"
+                    />
+                  </div>
+                  <div className="border-r mx-1 h-5" />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => changeFontSize(selectedField.id, -2)}
+                  >
+                    <span className="text-xs">A-</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => changeFontSize(selectedField.id, 2)}
+                  >
+                    <span className="text-xs">A+</span>
+                  </Button>
+                  <div className="border-r mx-1 h-5" />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => {
+                      setClipboardField({ ...selectedField });
+                      toast({ title: "تم النسخ" });
+                    }}
+                    title="نسخ"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 hover:text-destructive"
+                    onClick={() => removeField(selectedField.id)}
+                    title="حذف"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {selectedField.fontSize}px • ص{selectedField.page + 1}
+                  {selectedField.width ? ` • ${selectedField.width}×${selectedField.height || "auto"}` : ""}
+                </div>
+              </div>
+            )}
+
             <ScrollArea className="flex-1 p-2">
               <div className="space-y-1">
                 {overlayFields.length === 0 ? (
@@ -472,45 +652,14 @@ export default function FormTemplateEditor() {
                       }`}
                     >
                       <div className="flex-1 min-w-0">
-                        <p className="truncate font-medium">{field.text}</p>
+                        <p className="truncate font-medium" style={{
+                          fontWeight: field.bold ? "bold" : "normal",
+                          textDecoration: field.underline ? "underline" : "none",
+                          color: field.color || undefined,
+                        }}>{field.text}</p>
                         <p className="text-xs text-muted-foreground">
                           ص{field.page + 1} • {field.fontSize}px
                         </p>
-                      </div>
-                      <div className="flex items-center gap-1 mr-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            changeFontSize(field.id, -2);
-                          }}
-                        >
-                          <span className="text-xs">A-</span>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            changeFontSize(field.id, 2);
-                          }}
-                        >
-                          <span className="text-xs">A+</span>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 hover:text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeField(field.id);
-                          }}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
                       </div>
                     </div>
                   ))
@@ -564,17 +713,25 @@ export default function FormTemplateEditor() {
                   {currentPageFields.map((field) => (
                     <div
                       key={field.id}
-                      className={`absolute flex items-center gap-1 px-1.5 py-0.5 rounded select-none transition-shadow ${
+                      className={`absolute group select-none transition-shadow ${
                         inlineEditId === field.id
-                          ? "ring-2 ring-primary shadow-md bg-white"
+                          ? "ring-2 ring-primary shadow-md bg-white/90"
                           : selectedFieldId === field.id
-                          ? "ring-2 ring-primary shadow-md bg-primary/90 text-primary-foreground cursor-move"
-                          : "bg-primary/80 text-primary-foreground hover:bg-primary/90 cursor-move"
+                          ? "ring-2 ring-primary shadow-md cursor-move"
+                          : "hover:ring-1 hover:ring-primary/50 cursor-move"
                       } ${draggingField === field.id ? "opacity-60" : ""}`}
                       style={{
                         left: field.x,
                         top: field.y,
                         fontSize: field.fontSize,
+                        color: field.color || "#000",
+                        fontWeight: field.bold ? "bold" : "normal",
+                        textDecoration: field.underline ? "underline" : "none",
+                        width: field.width ? field.width : undefined,
+                        height: field.height ? field.height : undefined,
+                        overflow: field.width ? "hidden" : undefined,
+                        wordWrap: field.width ? "break-word" : undefined,
+                        minWidth: 20,
                       }}
                       onMouseDown={(e) => handleDragStart(e, field.id)}
                       onDoubleClick={(e) => {
@@ -587,24 +744,57 @@ export default function FormTemplateEditor() {
                       }}
                     >
                       {inlineEditId === field.id ? (
-                        <input
-                          className="bg-transparent border-none outline-none text-foreground min-w-[60px]"
-                          style={{ fontSize: field.fontSize }}
-                          value={inlineEditText}
-                          onChange={(e) => setInlineEditText(e.target.value)}
-                          onBlur={saveInlineEdit}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") saveInlineEdit();
-                            if (e.key === "Escape") { setInlineEditId(null); setInlineEditText(""); }
-                          }}
-                          autoFocus
-                          onClick={(e) => e.stopPropagation()}
-                        />
+                        field.width ? (
+                          <textarea
+                            className="bg-transparent border-none outline-none resize-none w-full h-full"
+                            style={{
+                              fontSize: field.fontSize,
+                              color: field.color || "#000",
+                              fontWeight: field.bold ? "bold" : "normal",
+                              textDecoration: field.underline ? "underline" : "none",
+                            }}
+                            value={inlineEditText}
+                            onChange={(e) => setInlineEditText(e.target.value)}
+                            onBlur={saveInlineEdit}
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") { setInlineEditId(null); setInlineEditText(""); }
+                            }}
+                            autoFocus
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          <input
+                            className="bg-transparent border-none outline-none min-w-[60px]"
+                            style={{
+                              fontSize: field.fontSize,
+                              color: field.color || "#000",
+                              fontWeight: field.bold ? "bold" : "normal",
+                              textDecoration: field.underline ? "underline" : "none",
+                            }}
+                            value={inlineEditText}
+                            onChange={(e) => setInlineEditText(e.target.value)}
+                            onBlur={saveInlineEdit}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveInlineEdit();
+                              if (e.key === "Escape") { setInlineEditId(null); setInlineEditText(""); }
+                            }}
+                            autoFocus
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        )
                       ) : (
                         <>
-                          <GripVertical className="h-3 w-3 opacity-60" />
-                          <span>{field.text}</span>
+                          <GripVertical className="h-3 w-3 opacity-0 group-hover:opacity-60 absolute -right-4 top-0" />
+                          <span style={{ whiteSpace: field.width ? "normal" : "nowrap" }}>{field.text}</span>
                         </>
+                      )}
+
+                      {/* Resize handle */}
+                      {selectedFieldId === field.id && !inlineEditId && (
+                        <div
+                          className="absolute -bottom-1 -left-1 w-3 h-3 bg-primary rounded-sm cursor-nwse-resize border border-primary-foreground"
+                          onMouseDown={(e) => handleResizeStart(e, field)}
+                        />
                       )}
                     </div>
                   ))}
