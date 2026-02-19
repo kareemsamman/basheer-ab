@@ -53,6 +53,7 @@ interface Expense {
   payment_method: string;
   reference_number: string | null;
   contact_name: string | null;
+  created_by_name?: string | null;
   is_policy_payment?: boolean;
   is_company_due?: boolean;
   is_elzami_commission?: boolean;
@@ -145,7 +146,7 @@ export default function Expenses() {
       // Query 1: Manual expenses
       let query = supabase
         .from('expenses')
-        .select('*')
+        .select('*, profiles:created_by_admin_id(full_name)')
         .gte('expense_date', monthStart)
         .lte('expense_date', monthEnd)
         .order('expense_date', { ascending: false });
@@ -215,7 +216,10 @@ export default function Expenses() {
       if (companyDuesResult.error) throw companyDuesResult.error;
       if (elzamiResult.error) throw elzamiResult.error;
       
-      let manualExpenses: Expense[] = expensesResult.data || [];
+      let manualExpenses: Expense[] = (expensesResult.data || []).map((e: any) => ({
+        ...e,
+        created_by_name: e.profiles?.full_name || null,
+      }));
       
       // Convert policy payments to Expense shape (receipts)
       const policyExpenses: Expense[] = (policyPaymentsResult.data || [])
@@ -316,7 +320,11 @@ export default function Expenses() {
 
       // Merge and sort
       let allExpenses = [...manualExpenses, ...policyExpenses, ...companyDueExpenses, ...filteredElzamiVouchers];
-      allExpenses.sort((a, b) => new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime());
+      allExpenses.sort((a, b) => {
+        const dateDiff = new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime();
+        if (dateDiff !== 0) return dateDiff;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
       
       // Client-side search filter
       if (searchQuery.trim()) {
@@ -683,6 +691,8 @@ export default function Expenses() {
                     <TableRow>
                       <TableHead>نوع السند</TableHead>
                       <TableHead>التاريخ</TableHead>
+                      <TableHead>وقت الإنشاء</TableHead>
+                      <TableHead>بواسطة</TableHead>
                       <TableHead>التصنيف</TableHead>
                       <TableHead>الوصف</TableHead>
                       <TableHead>الجهة</TableHead>
@@ -734,6 +744,12 @@ export default function Expenses() {
                             </div>
                           </TableCell>
                           <TableCell className="text-sm">{formatDate(expense.expense_date)}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                            {format(new Date(expense.created_at), 'dd/MM/yyyy HH:mm')}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                            {expense.created_by_name || '-'}
+                          </TableCell>
                           <TableCell className="text-sm">{catLabel}</TableCell>
                           <TableCell className="text-sm max-w-[200px]">
                             <TooltipProvider>
