@@ -1,61 +1,68 @@
 
+# إضافة عمود تاريخ النهاية + تعديل بيانات البوليصة من الجدول
 
-# Fix X-Service Sync — Send Service Name for Matching
+## ما سيتغير
 
-## المشكلة
-نظامنا يرسل `service_id` المحلي (UUID خاص بنا) لكن X-Service عنده UUIDs مختلفة لنفس الخدمات. الأسماء متطابقة على الطرفين.
+### 1. إضافة عمود "تاريخ النهاية" في الجدول
+عمود جديد بعد "تاريخ البداية" يعرض `end_date` للبوليصة.
 
-## الحل
-إرسال `service_name` بالإضافة إلى `service_id` في الـ payload حتى يستطيع X-Service المطابقة بالاسم.
+### 2. تعديل الحقول التالية بالضغط عليها مباشرة (inline edit)
+عند الضغط على زر التعديل (القلم) الموجود حالياً، ستصبح هذه الحقول قابلة للتعديل أيضاً:
 
-## التغييرات
+| الحقل | طريقة التعديل | يحفظ في |
+|-------|-------------|---------|
+| **نوع التأمين** | Select (ثالث / شامل / إلزامي...) | `policies.policy_type_parent` + `policy_type_child` |
+| **تصنيف السيارة** | Select (خصوصي / شحن / تاكسي...) | `cars.car_type` |
+| **اسم العميل** | Input نصي | `clients.full_name` |
+| **تاريخ الإصدار** | ArabicDatePicker | `policies.issue_date` |
+| **تاريخ البداية** | ArabicDatePicker | `policies.start_date` |
+| **تاريخ النهاية** | ArabicDatePicker | `policies.end_date` |
+| **الشركة** | Select (قائمة شركات التأمين) | `policies.company_id` |
 
-### 1. `supabase/functions/sync-to-xservice/index.ts`
-- الاستعلام عن اسم الخدمة من `road_services` أو `accident_fee_services`
-- إضافة `service_name` إلى `requestPayload.policy`
+### 3. لا تغيير على رقم السيارة (كما طلبت)
 
-### 2. `supabase/functions/bulk-sync-to-xservice/index.ts`
-- نفس التعديل: جلب اسم الخدمة وإرساله في الـ payload
-
-### 3. `supabase/functions/notify-xservice-change/index.ts`
-- نفس التعديل
+---
 
 ## التفاصيل التقنية
 
-في كل edge function، بعد جلب بيانات البوليصة:
+### ملف: `src/pages/CompanySettlementDetail.tsx`
 
-```
-// Fetch service name
-let serviceName = null;
-if (policy.road_service_id) {
-  const { data: svc } = await supabase
-    .from("road_services")
-    .select("name_ar, name")
-    .eq("id", policy.road_service_id)
-    .single();
-  serviceName = svc?.name_ar || svc?.name || null;
-}
-if (!serviceName && policy.accident_fee_service_id) {
-  const { data: svc } = await supabase
-    .from("accident_fee_services")
-    .select("name_ar, name")
-    .eq("id", policy.accident_fee_service_id)
-    .single();
-  serviceName = svc?.name_ar || svc?.name || null;
-}
+**1. توسيع `editValues` state:**
+```typescript
+const [editValues, setEditValues] = useState({
+  insurance_price: 0,
+  payed_for_company: 0,
+  profit: 0,
+  car_value: 0,
+  // New fields:
+  policy_type_parent: '' as string,
+  policy_type_child: '' as string | null,
+  car_type: '' as string,
+  client_name: '',
+  issue_date: '' as string | null,
+  start_date: '',
+  end_date: '',
+  company_id: '' as string | null,
+});
 ```
 
-ثم في الـ payload:
-```
-policy: {
-  service_type: serviceType,
-  service_id: policy.road_service_id || policy.accident_fee_service_id || null,
-  service_name: serviceName,  // جديد
-  start_date: ...
-}
-```
+**2. جلب قائمة شركات التأمين** عند فتح الصفحة (لاستخدامها في Select الشركة).
 
-هذا يسمح لـ X-Service بمطابقة الخدمة بالاسم إذا لم يتعرف على الـ ID.
+**3. إضافة عمود "تاريخ النهاية"** في TableHeader و TableBody.
 
-- لا تغييرات في قاعدة البيانات
-- لا تغييرات في الواجهة
+**4. تحويل الخلايا إلى مكونات تعديل** عند `isEditing`:
+- نوع التأمين: `Select` مع خيارات من `POLICY_TYPE_LABELS`، وإذا اختار `THIRD_FULL` يظهر select ثاني (ثالث/شامل)
+- تصنيف السيارة: `Select` مع الخيارات (خصوصي، شحن، تاكسي...)
+- اسم العميل: `Input` نصي
+- التواريخ: `ArabicDatePicker` مصغر (`compact`)
+- الشركة: `Select` مع قائمة الشركات
+
+**5. تحديث `handleSaveEdit`** ليحفظ الحقول الجديدة:
+- `policies` table: `policy_type_parent`, `policy_type_child`, `issue_date`, `start_date`, `end_date`, `company_id`
+- `cars` table: `car_type`, `car_value`
+- `clients` table: `full_name`
+
+**6. ملاحظة مهمة**: إذا غيّر المستخدم الشركة، البوليصة ستختفي من هذا التقرير لأنها لم تعد تنتمي لنفس الشركة. سيظهر تنبيه قبل الحفظ.
+
+### لا تغييرات في قاعدة البيانات
+### لا ملفات جديدة
