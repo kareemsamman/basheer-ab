@@ -104,6 +104,8 @@ export default function Expenses() {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
   
   // Form state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -182,7 +184,7 @@ export default function Expenses() {
         shouldFetchPolicyPayments
           ? supabase
               .from('policy_payments')
-              .select('id, amount, payment_date, payment_type, notes, policy_id, refused, locked, policies!inner(policy_number, policy_type_parent, clients!inner(full_name), cars(car_number))')
+              .select('id, amount, payment_date, payment_type, notes, policy_id, refused, locked, created_at, created_by_admin_id, creator:profiles!policy_payments_created_by_admin_id_fkey(full_name), policies!inner(policy_number, policy_type_parent, clients!inner(full_name), cars(car_number))')
               .gte('payment_date', monthStart)
               .lte('payment_date', monthEnd)
               .eq('refused', false)
@@ -191,7 +193,7 @@ export default function Expenses() {
         shouldFetchCompanyDues
           ? supabase
               .from('policies')
-              .select('id, policy_number, policy_type_parent, payed_for_company, start_date, insurance_companies(name), clients!inner(full_name), cars(car_number)')
+              .select('id, policy_number, policy_type_parent, payed_for_company, start_date, created_at, created_by_admin_id, creator:profiles!policies_created_by_admin_id_fkey(full_name), insurance_companies(name), clients!inner(full_name), cars(car_number)')
               .gte('start_date', monthStart)
               .lte('start_date', monthEnd)
               .eq('cancelled', false)
@@ -202,7 +204,7 @@ export default function Expenses() {
         shouldFetchElzami
           ? supabase
               .from('policies')
-              .select('id, policy_number, policy_type_parent, office_commission, start_date, insurance_companies(name, elzami_commission), clients!inner(full_name), cars(car_number)')
+              .select('id, policy_number, policy_type_parent, office_commission, start_date, created_at, created_by_admin_id, creator:profiles!policies_created_by_admin_id_fkey(full_name), insurance_companies(name, elzami_commission), clients!inner(full_name), cars(car_number)')
               .gte('start_date', monthStart)
               .lte('start_date', monthEnd)
               .eq('policy_type_parent', 'ELZAMI')
@@ -242,11 +244,12 @@ export default function Expenses() {
             expense_date: pp.payment_date,
             notes: pp.notes,
             receipt_url: null,
-            created_at: pp.payment_date,
+            created_at: pp.created_at || pp.payment_date,
             voucher_type: 'receipt',
             payment_method: mapPaymentType(pp.payment_type),
             reference_number: null,
             contact_name: clientName,
+            created_by_name: (pp.creator as any)?.full_name || null,
             is_policy_payment: true,
           } as Expense;
         });
@@ -268,11 +271,12 @@ export default function Expenses() {
             expense_date: p.start_date,
             notes: null,
             receipt_url: null,
-            created_at: p.start_date,
+            created_at: p.created_at || p.start_date,
             voucher_type: 'payment',
             payment_method: 'bank_transfer',
             reference_number: null,
             contact_name: companyName,
+            created_by_name: (p.creator as any)?.full_name || null,
             is_policy_payment: true,
             is_company_due: true,
           } as Expense;
@@ -296,11 +300,12 @@ export default function Expenses() {
             expense_date: p.start_date,
             notes: null,
             receipt_url: null,
-            created_at: p.start_date,
+            created_at: p.created_at || p.start_date,
             voucher_type: 'receipt',
             payment_method: 'cash',
             reference_number: null,
             contact_name: clientName,
+            created_by_name: (p.creator as any)?.full_name || null,
             is_policy_payment: true,
             is_elzami_commission: true,
           } as Expense);
@@ -320,11 +325,20 @@ export default function Expenses() {
 
       // Merge and sort
       let allExpenses = [...manualExpenses, ...policyExpenses, ...companyDueExpenses, ...filteredElzamiVouchers];
-      allExpenses.sort((a, b) => {
-        const dateDiff = new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime();
-        if (dateDiff !== 0) return dateDiff;
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      });
+      // Sort by created_at descending (newest first)
+      allExpenses.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      
+      // Client-side date range filter
+      if (dateFrom) {
+        const from = new Date(dateFrom);
+        from.setHours(0, 0, 0, 0);
+        allExpenses = allExpenses.filter(e => new Date(e.created_at) >= from);
+      }
+      if (dateTo) {
+        const to = new Date(dateTo);
+        to.setHours(23, 59, 59, 999);
+        allExpenses = allExpenses.filter(e => new Date(e.created_at) <= to);
+      }
       
       // Client-side search filter
       if (searchQuery.trim()) {
@@ -391,7 +405,7 @@ export default function Expenses() {
     } finally {
       setLoading(false);
     }
-  }, [selectedMonth, voucherFilter, categoryFilter, paymentMethodFilter, searchQuery]);
+  }, [selectedMonth, voucherFilter, categoryFilter, paymentMethodFilter, searchQuery, dateFrom, dateTo]);
 
   useEffect(() => {
     fetchExpenses();
@@ -656,6 +670,24 @@ export default function Expenses() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Date range filter */}
+              <div className="flex flex-wrap items-center gap-3">
+                <Label className="text-sm whitespace-nowrap">فلتر تاريخ الإنشاء:</Label>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">من</span>
+                  <ArabicDatePicker value={dateFrom} onChange={(v) => setDateFrom(v)} placeholder="من تاريخ" compact />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">إلى</span>
+                  <ArabicDatePicker value={dateTo} onChange={(v) => setDateTo(v)} placeholder="إلى تاريخ" compact />
+                </div>
+                {(dateFrom || dateTo) && (
+                  <Button variant="ghost" size="sm" onClick={() => { setDateFrom(''); setDateTo(''); }}>
+                    مسح
+                  </Button>
+                )}
               </div>
             </div>
           </CardContent>
