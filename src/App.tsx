@@ -57,6 +57,8 @@ import RepairClaims from "./pages/RepairClaims";
 import RepairClaimDetail from "./pages/RepairClaimDetail";
 import CorrespondenceLetters from "./pages/CorrespondenceLetters";
 import Leads from "./pages/Leads";
+import FormTemplates from "./pages/FormTemplates";
+import FormTemplateEditor from "./pages/FormTemplateEditor";
 import ActivityLog from "./pages/ActivityLog";
 import BrandingSettings from "./pages/BrandingSettings";
 import XServiceSettings from "./pages/XServiceSettings";
@@ -308,6 +310,17 @@ const App = () => (
                 <AdminRoute>
                   <CorrespondenceLetters />
                 </AdminRoute>
+              } />
+              {/* Form Templates */}
+              <Route path="/form-templates" element={
+                <ProtectedRoute>
+                  <FormTemplates />
+                </ProtectedRoute>
+              } />
+              <Route path="/form-templates/edit/:fileId" element={
+                <ProtectedRoute>
+                  <FormTemplateEditor />
+                </ProtectedRoute>
               } />
               {/* Leads from WhatsApp - accessible to all authenticated users */}
               <Route path="/leads" element={

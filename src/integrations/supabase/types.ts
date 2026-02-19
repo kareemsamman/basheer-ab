@@ -2077,6 +2077,102 @@ export type Database = {
           },
         ]
       }
+      form_template_files: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          file_type: string
+          file_url: string
+          folder_id: string
+          id: string
+          mime_type: string | null
+          name: string
+          overlay_fields: Json | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          file_type: string
+          file_url: string
+          folder_id: string
+          id?: string
+          mime_type?: string | null
+          name: string
+          overlay_fields?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          file_type?: string
+          file_url?: string
+          folder_id?: string
+          id?: string
+          mime_type?: string | null
+          name?: string
+          overlay_fields?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "form_template_files_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "form_template_files_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "form_template_folders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      form_template_folders: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          parent_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          parent_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          parent_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "form_template_folders_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "form_template_folders_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "form_template_folders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       import_progress: {
         Row: {
           created_at: string
