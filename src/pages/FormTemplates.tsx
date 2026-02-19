@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { FileUploader } from "@/components/media/FileUploader";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
@@ -67,6 +67,7 @@ interface FileRow {
 export default function FormTemplates() {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { profile } = useAuth();
 
   const [loading, setLoading] = useState(true);
@@ -76,6 +77,45 @@ export default function FormTemplates() {
   const [breadcrumbs, setBreadcrumbs] = useState<{ id: string | null; name: string }[]>([
     { id: null, name: "نماذج" },
   ]);
+  const [initialFolderLoaded, setInitialFolderLoaded] = useState(false);
+
+  // On mount, read folder query param and build breadcrumbs
+  useEffect(() => {
+    if (initialFolderLoaded) return;
+    const folderId = searchParams.get("folder");
+    if (!folderId) {
+      setInitialFolderLoaded(true);
+      return;
+    }
+
+    (async () => {
+      try {
+        // Build breadcrumb chain by walking up parent_id
+        const chain: { id: string; name: string }[] = [];
+        let currentId: string | null = folderId;
+        while (currentId) {
+          const { data, error } = await supabase
+            .from("form_template_folders")
+            .select("id, name, parent_id")
+            .eq("id", currentId)
+            .single();
+          if (error || !data) break;
+          chain.unshift({ id: data.id, name: data.name });
+          currentId = data.parent_id;
+        }
+        if (chain.length > 0) {
+          setBreadcrumbs([{ id: null, name: "نماذج" }, ...chain.map(c => ({ id: c.id as string | null, name: c.name }))]);
+          setCurrentFolderId(folderId);
+        }
+      } catch (err) {
+        console.error("Failed to load folder path:", err);
+      } finally {
+        setInitialFolderLoaded(true);
+        // Clear the query param
+        setSearchParams({}, { replace: true });
+      }
+    })();
+  }, [searchParams, initialFolderLoaded, setSearchParams]);
 
   // Dialogs
   const [newFolderOpen, setNewFolderOpen] = useState(false);
@@ -128,8 +168,8 @@ export default function FormTemplates() {
   }, [currentFolderId, toast]);
 
   useEffect(() => {
-    fetchContents();
-  }, [fetchContents]);
+    if (initialFolderLoaded) fetchContents();
+  }, [fetchContents, initialFolderLoaded]);
 
   // Navigate into folder
   const openFolder = (folder: FolderRow) => {

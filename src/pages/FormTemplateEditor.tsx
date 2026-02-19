@@ -2,16 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useParams, useNavigate } from "react-router-dom";
@@ -70,6 +62,7 @@ export default function FormTemplateEditor() {
 
   // PDF/Image rendering
   const [pageImages, setPageImages] = useState<string[]>([]);
+  const [pageNaturalSizes, setPageNaturalSizes] = useState<{ w: number; h: number }[]>([]);
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [zoom, setZoom] = useState(1);
@@ -79,14 +72,11 @@ export default function FormTemplateEditor() {
   const [addingText, setAddingText] = useState(false);
   const [draggingField, setDraggingField] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [editingField, setEditingField] = useState<string | null>(null);
-  const [editText, setEditText] = useState("");
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
 
-  // New text dialog
-  const [newTextOpen, setNewTextOpen] = useState(false);
-  const [newTextValue, setNewTextValue] = useState("");
-  const [newTextFontSize, setNewTextFontSize] = useState(14);
+  // Inline editing
+  const [inlineEditId, setInlineEditId] = useState<string | null>(null);
+  const [inlineEditText, setInlineEditText] = useState("");
 
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
@@ -135,6 +125,7 @@ export default function FormTemplateEditor() {
 
           setTotalPages(pdf.numPages);
           const images: string[] = [];
+          const sizes: { w: number; h: number }[] = [];
           for (let i = 1; i <= pdf.numPages; i++) {
             const page = await pdf.getPage(i);
             const viewport = page.getViewport({ scale: 1.5 });
@@ -144,15 +135,26 @@ export default function FormTemplateEditor() {
             canvas.height = viewport.height;
             await page.render({ canvasContext: ctx, viewport }).promise;
             images.push(canvas.toDataURL("image/png"));
+            sizes.push({ w: viewport.width, h: viewport.height });
           }
           if (!cancelled) {
             setPageImages(images);
+            setPageNaturalSizes(sizes);
             setCurrentPage(0);
           }
         } else {
-          // Image file
+          // Image file - load to get natural dimensions
           setTotalPages(1);
           setPageImages([file.file_url]);
+          // Get natural size
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => {
+            if (!cancelled) {
+              setPageNaturalSizes([{ w: img.naturalWidth, h: img.naturalHeight }]);
+            }
+          };
+          img.src = file.file_url;
           setCurrentPage(0);
         }
       } catch (e: any) {
@@ -166,7 +168,7 @@ export default function FormTemplateEditor() {
     return () => { cancelled = true; };
   }, [file, toast]);
 
-  // Click on canvas to place new text
+  // Click on canvas to place new text (directly, no dialog)
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!addingText || draggingField) return;
@@ -175,25 +177,29 @@ export default function FormTemplateEditor() {
       const x = (e.clientX - rect.left) / zoom;
       const y = (e.clientY - rect.top) / zoom;
 
+      const newId = `field_${Date.now()}`;
       const newField: OverlayField = {
-        id: `field_${Date.now()}`,
+        id: newId,
         page: currentPage,
         x: Math.round(x),
         y: Math.round(y),
-        text: newTextValue || "نص جديد",
-        fontSize: newTextFontSize,
+        text: "نص جديد",
+        fontSize: 14,
       };
 
       setOverlayFields((prev) => [...prev, newField]);
       setAddingText(false);
-      setNewTextValue("");
-      toast({ title: "تم إضافة النص" });
+      setSelectedFieldId(newId);
+      // Start inline editing immediately
+      setInlineEditId(newId);
+      setInlineEditText("نص جديد");
     },
-    [addingText, currentPage, zoom, newTextValue, newTextFontSize, draggingField, toast]
+    [addingText, currentPage, zoom, draggingField]
   );
 
   // Drag start
   const handleDragStart = (e: React.MouseEvent, fieldId: string) => {
+    if (inlineEditId === fieldId) return; // Don't drag while editing
     e.stopPropagation();
     const field = overlayFields.find((f) => f.id === fieldId);
     if (!field) return;
@@ -230,26 +236,32 @@ export default function FormTemplateEditor() {
     if (draggingField) setDraggingField(null);
   }, [draggingField]);
 
-  // Double click to edit text
-  const handleDoubleClick = (fieldId: string) => {
-    const field = overlayFields.find((f) => f.id === fieldId);
-    if (!field) return;
-    setEditingField(fieldId);
-    setEditText(field.text);
+  // Inline edit helpers
+  const startInlineEdit = (field: OverlayField) => {
+    setInlineEditId(field.id);
+    setInlineEditText(field.text);
   };
 
-  const handleEditSave = () => {
-    if (!editingField) return;
-    setOverlayFields((prev) =>
-      prev.map((f) => (f.id === editingField ? { ...f, text: editText } : f))
-    );
-    setEditingField(null);
+  const saveInlineEdit = () => {
+    if (!inlineEditId) return;
+    const trimmed = inlineEditText.trim();
+    if (trimmed) {
+      setOverlayFields((prev) =>
+        prev.map((f) => (f.id === inlineEditId ? { ...f, text: trimmed } : f))
+      );
+    } else {
+      // If empty, remove the field
+      setOverlayFields((prev) => prev.filter((f) => f.id !== inlineEditId));
+    }
+    setInlineEditId(null);
+    setInlineEditText("");
   };
 
   // Delete field
   const removeField = (fieldId: string) => {
     setOverlayFields((prev) => prev.filter((f) => f.id !== fieldId));
     if (selectedFieldId === fieldId) setSelectedFieldId(null);
+    if (inlineEditId === fieldId) { setInlineEditId(null); setInlineEditText(""); }
   };
 
   // Change font size
@@ -279,7 +291,7 @@ export default function FormTemplateEditor() {
     }
   };
 
-  // Print
+  // Print with accurate positioning
   const handlePrint = () => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
@@ -287,15 +299,19 @@ export default function FormTemplateEditor() {
     const pagesHtml = pageImages
       .map((img, pageIdx) => {
         const fieldsOnPage = overlayFields.filter((f) => f.page === pageIdx);
+        const size = pageNaturalSizes[pageIdx];
+        const imgWidth = size ? size.w : 800;
+        const imgHeight = size ? size.h : 1100;
+
         const fieldsHtml = fieldsOnPage
           .map(
             (f) =>
-              `<div style="position:absolute;left:${f.x}px;top:${f.y}px;font-size:${f.fontSize}px;font-family:Arial,sans-serif;color:#000;white-space:nowrap;">${f.text}</div>`
+              `<div style="position:absolute;left:${f.x}px;top:${f.y}px;font-size:${f.fontSize}px;font-family:Arial,sans-serif;color:#000;white-space:nowrap;direction:rtl;">${f.text}</div>`
           )
           .join("");
 
-        return `<div style="position:relative;page-break-after:always;display:inline-block;">
-          <img src="${img}" style="max-width:100%;display:block;" />
+        return `<div style="position:relative;width:${imgWidth}px;height:${imgHeight}px;page-break-after:always;overflow:hidden;">
+          <img src="${img}" style="width:${imgWidth}px;height:${imgHeight}px;display:block;" />
           ${fieldsHtml}
         </div>`;
       })
@@ -305,28 +321,36 @@ export default function FormTemplateEditor() {
       <!DOCTYPE html>
       <html dir="rtl">
       <head><title>طباعة - ${file?.name || ""}</title>
-      <style>@media print { body { margin: 0; } }</style>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        @page { margin: 0; size: auto; }
+        body { margin: 0; padding: 0; }
+        @media print {
+          body { margin: 0; }
+          div { page-break-inside: avoid; }
+        }
+      </style>
       </head>
-      <body style="margin:0;padding:0;">${pagesHtml}</body>
+      <body>${pagesHtml}</body>
       </html>
     `);
     printWindow.document.close();
     setTimeout(() => printWindow.print(), 500);
   };
 
-  // Add text flow
+  // Add text - directly activate placement mode
   const handleStartAddText = () => {
-    setNewTextOpen(true);
+    setAddingText(true);
+    toast({ title: "انقر على الموقع المطلوب", description: "انقر على المكان الذي تريد وضع النص فيه" });
   };
 
-  const handleConfirmNewText = () => {
-    if (!newTextValue.trim()) {
-      toast({ title: "أدخل النص أولاً", variant: "destructive" });
-      return;
+  // Back navigation - go to the folder containing this file
+  const handleGoBack = () => {
+    if (file?.folder_id) {
+      navigate(`/form-templates?folder=${file.folder_id}`);
+    } else {
+      navigate("/form-templates");
     }
-    setAddingText(true);
-    setNewTextOpen(false);
-    toast({ title: "انقر على الموقع المطلوب", description: "انقر على المكان الذي تريد وضع النص فيه" });
   };
 
   if (loading) {
@@ -363,7 +387,7 @@ export default function FormTemplateEditor() {
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b flex-wrap gap-2">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+            <Button variant="ghost" size="icon" onClick={handleGoBack}>
               <ArrowRight className="h-5 w-5" />
             </Button>
             <div>
@@ -540,10 +564,12 @@ export default function FormTemplateEditor() {
                   {currentPageFields.map((field) => (
                     <div
                       key={field.id}
-                      className={`absolute flex items-center gap-1 px-1.5 py-0.5 rounded cursor-move select-none transition-shadow ${
-                        selectedFieldId === field.id
-                          ? "ring-2 ring-primary shadow-md bg-primary/90 text-primary-foreground"
-                          : "bg-primary/80 text-primary-foreground hover:bg-primary/90"
+                      className={`absolute flex items-center gap-1 px-1.5 py-0.5 rounded select-none transition-shadow ${
+                        inlineEditId === field.id
+                          ? "ring-2 ring-primary shadow-md bg-white"
+                          : selectedFieldId === field.id
+                          ? "ring-2 ring-primary shadow-md bg-primary/90 text-primary-foreground cursor-move"
+                          : "bg-primary/80 text-primary-foreground hover:bg-primary/90 cursor-move"
                       } ${draggingField === field.id ? "opacity-60" : ""}`}
                       style={{
                         left: field.x,
@@ -551,14 +577,35 @@ export default function FormTemplateEditor() {
                         fontSize: field.fontSize,
                       }}
                       onMouseDown={(e) => handleDragStart(e, field.id)}
-                      onDoubleClick={() => handleDoubleClick(field.id)}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        startInlineEdit(field);
+                      }}
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedFieldId(field.id);
                       }}
                     >
-                      <GripVertical className="h-3 w-3 opacity-60" />
-                      <span>{field.text}</span>
+                      {inlineEditId === field.id ? (
+                        <input
+                          className="bg-transparent border-none outline-none text-foreground min-w-[60px]"
+                          style={{ fontSize: field.fontSize }}
+                          value={inlineEditText}
+                          onChange={(e) => setInlineEditText(e.target.value)}
+                          onBlur={saveInlineEdit}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveInlineEdit();
+                            if (e.key === "Escape") { setInlineEditId(null); setInlineEditText(""); }
+                          }}
+                          autoFocus
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        <>
+                          <GripVertical className="h-3 w-3 opacity-60" />
+                          <span>{field.text}</span>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -574,7 +621,7 @@ export default function FormTemplateEditor() {
             {addingText && (
               <div className="p-3 border-t bg-primary/10 text-sm text-center">
                 <Type className="h-4 w-4 inline ml-2" />
-                انقر على الصورة لوضع النص: <strong>{newTextValue}</strong>
+                انقر على الصورة لوضع النص
                 <Button variant="ghost" size="sm" className="mr-4" onClick={() => setAddingText(false)}>
                   إلغاء
                 </Button>
@@ -582,64 +629,6 @@ export default function FormTemplateEditor() {
             )}
           </div>
         </div>
-
-        {/* New Text Dialog */}
-        <Dialog open={newTextOpen} onOpenChange={setNewTextOpen}>
-          <DialogContent dir="rtl">
-            <DialogHeader>
-              <DialogTitle>إضافة نص جديد</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>النص</Label>
-                <Input
-                  value={newTextValue}
-                  onChange={(e) => setNewTextValue(e.target.value)}
-                  placeholder="أدخل النص..."
-                  autoFocus
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>حجم الخط</Label>
-                <Input
-                  type="number"
-                  value={newTextFontSize}
-                  onChange={(e) => setNewTextFontSize(Number(e.target.value) || 14)}
-                  min={8}
-                  max={72}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setNewTextOpen(false)}>إلغاء</Button>
-              <Button onClick={handleConfirmNewText}>
-                <Plus className="h-4 w-4 ml-2" />
-                إضافة ثم اختر الموقع
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Edit Text Dialog */}
-        <Dialog open={!!editingField} onOpenChange={(open) => !open && setEditingField(null)}>
-          <DialogContent dir="rtl">
-            <DialogHeader>
-              <DialogTitle>تعديل النص</DialogTitle>
-            </DialogHeader>
-            <div className="py-4">
-              <Input
-                value={editText}
-                onChange={(e) => setEditText(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleEditSave()}
-                autoFocus
-              />
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setEditingField(null)}>إلغاء</Button>
-              <Button onClick={handleEditSave}>حفظ</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
     </MainLayout>
   );
