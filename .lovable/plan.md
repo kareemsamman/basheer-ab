@@ -1,40 +1,62 @@
 
 
-# إصلاح خطأ رفع الملفات في صفحة النماذج
+# تحسينات محرر النماذج - 3 إصلاحات
 
-## المشكلة
+## المشاكل
 
-عند رفع ملف PDF، يظهر خطأ:
-`null value in column "file_url" of relation "form_template_files" violates not-null constraint`
+1. **إضافة النص معقدة**: حالياً تفتح Dialog لإدخال النص ثم تختار الموقع. المطلوب: النقر مباشرة على PDF يضع نصاً فارغاً قابلاً للتعديل فوراً (inline edit).
 
-السبب: دالة `upload-media` تُرجع كائن من جدول `media_files` بحقول `cdn_url` و `original_name` و `mime_type`، لكن الكود يستخدم `f.url` و `f.file_name` اللتان لا تُوجدان في النتيجة.
+2. **الطباعة تحرّك الحقول**: الحقول لا تتطابق مع مواقعها الأصلية عند الطباعة لأن أبعاد الصورة في نافذة الطباعة تختلف عن أبعادها في المحرر.
 
-## الحل
+3. **زر الرجوع يعود للجذر**: عند الضغط على السهم من المحرر، يذهب لصفحة النماذج الرئيسية بدل المجلد الذي كان فيه الملف.
 
-تعديل بسيط في `handleUploadComplete` بملف `src/pages/FormTemplates.tsx` لاستخدام أسماء الحقول الصحيحة:
+## الحلول
 
-- `f.url` يصبح `f.cdn_url`
-- `f.file_name` يصبح `f.original_name`
+### 1. إضافة نص مباشرة بالنقر + تعديل inline
+
+- زر "إضافة نص" يفعّل وضع الإضافة مباشرة (بدون Dialog)
+- النقر على PDF يضع حقل نص بقيمة "نص جديد" 
+- الحقل الجديد يدخل فوراً في وضع التعديل inline (input يظهر فوق الحقل)
+- Enter أو النقر خارجاً يحفظ التعديل
+- إزالة Dialog إدخال النص القديم
+
+### 2. إصلاح مواقع الطباعة
+
+- تخزين أبعاد صورة كل صفحة (naturalWidth/naturalHeight)
+- في HTML الطباعة، استخدام نفس الأبعاد بالضبط مع `width` و `height` ثابتة
+- تحويل مواقع الحقول كنسبة مئوية من أبعاد الصورة لضمان التطابق
+
+### 3. الرجوع للمجلد الصحيح
+
+- عند تحميل بيانات الملف، نجلب `folder_id` 
+- نبني مسار breadcrumb من `folder_id` صعوداً عبر `parent_id`
+- زر الرجوع يوجه إلى `/form-templates` مع query param `?folder=FOLDER_ID`
+- صفحة `FormTemplates.tsx` تقرأ query param وتفتح المجلد الصحيح عند التحميل
 
 ## التفاصيل التقنية
 
-### ملف: `src/pages/FormTemplates.tsx` (سطر 234-244)
+### ملف: `src/pages/FormTemplateEditor.tsx`
 
-تغيير الـ mapping داخل `handleUploadComplete`:
+**تعديل 1 - إضافة نص inline:**
+- إزالة `newTextOpen`, `newTextValue`, `newTextFontSize` states والـ Dialog المرتبط
+- تعديل `handleStartAddText` ليفعّل `addingText` مباشرة
+- تعديل `handleCanvasClick` ليضع حقل بنص "نص جديد" ويدخل فوراً في وضع inline edit
+- إضافة حالة `inlineEditId` + `inlineEditText` لعرض input فوق الحقل بدل Dialog
+- تعديل عرض الحقول: إذا الحقل في وضع inline edit يعرض `<input>` بدل `<span>`
 
-```js
-const rows = uploadedFiles.map((f) => {
-  const isPdf = f.mime_type === "application/pdf" || f.original_name?.toLowerCase().endsWith(".pdf");
-  return {
-    folder_id: currentFolderId,
-    name: f.original_name || "ملف",
-    file_url: f.cdn_url,
-    file_type: isPdf ? "pdf" : "image",
-    mime_type: f.mime_type || null,
-    overlay_fields: [],
-    created_by: profile?.id,
-  };
-});
-```
+**تعديل 2 - طباعة دقيقة:**
+- تخزين `pageNaturalSizes` (عرض وارتفاع كل صفحة)
+- في `handlePrint`: تعيين عرض وارتفاع ثابتين للصورة يطابقان الأصل
+- استخدام `position:absolute` مع `left` و `top` بالبكسل المطلق (نفس قيم المحرر)
+- إضافة CSS طباعة: `@page { margin: 0; size: auto; }` والصورة بعرض 100% مع حساب النسبة
 
-### لا تغييرات في قاعدة البيانات
+**تعديل 3 - الرجوع للمجلد:**
+- تعديل زر الرجوع: `navigate(\`/form-templates?folder=\${file.folder_id}\`)` بدل `navigate(-1)`
+
+### ملف: `src/pages/FormTemplates.tsx`
+
+**تعديل - قراءة query param للمجلد:**
+- عند التحميل، قراءة `searchParams.get('folder')`
+- إذا وُجد، جلب المجلد وكل المجلدات الأب لبناء breadcrumbs
+- تعيين `currentFolderId` للمجلد المطلوب
+
