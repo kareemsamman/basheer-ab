@@ -1039,7 +1039,7 @@ export default function CompanySettlementDetail() {
                      <TableHead className="text-right">سعر التأمين</TableHead>
                      <TableHead className="text-right">المستحق للشركة</TableHead>
                      <TableHead className="text-right">الربح</TableHead>
-                     <TableHead className="text-right print:hidden">إجراءات</TableHead>
+                     <TableHead className="text-right print:hidden sticky left-0 bg-background z-10">إجراءات</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1076,7 +1076,7 @@ export default function CompanySettlementDetail() {
                                 <Input
                                   value={editValues.client_name}
                                   onChange={(e) => setEditValues(v => ({ ...v, client_name: e.target.value }))}
-                                  className="w-32 h-8 text-sm"
+                                  className="w-28 h-8 text-sm"
                                 />
                                 {policy.cancelled && (
                                   <Badge variant="destructive" className="mr-2 mt-1 text-xs">ملغية</Badge>
@@ -1116,7 +1116,7 @@ export default function CompanySettlementDetail() {
                           <TableCell>
                             {isEditing ? (
                               <Select value={editValues.car_type} onValueChange={(v) => setEditValues(ev => ({ ...ev, car_type: v }))}>
-                                <SelectTrigger className="w-28 h-8 text-xs">
+                                <SelectTrigger className="w-24 h-8 text-xs">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1134,7 +1134,7 @@ export default function CompanySettlementDetail() {
                             {isEditing ? (
                               <div className="flex flex-col gap-1">
                                 <Select value={editValues.policy_type_parent} onValueChange={(v) => setEditValues(ev => ({ ...ev, policy_type_parent: v, policy_type_child: v === 'THIRD_FULL' ? (ev.policy_type_child || 'THIRD') : null }))}>
-                                  <SelectTrigger className="w-32 h-8 text-xs">
+                                  <SelectTrigger className="w-24 h-8 text-xs">
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -1145,7 +1145,7 @@ export default function CompanySettlementDetail() {
                                 </Select>
                                 {editValues.policy_type_parent === 'THIRD_FULL' && (
                                   <Select value={editValues.policy_type_child || 'THIRD'} onValueChange={(v) => setEditValues(ev => ({ ...ev, policy_type_child: v }))}>
-                                    <SelectTrigger className="w-32 h-8 text-xs">
+                                    <SelectTrigger className="w-24 h-8 text-xs">
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -1166,7 +1166,7 @@ export default function CompanySettlementDetail() {
                           <TableCell>
                             {isEditing ? (
                               <Select value={editValues.company_id || ''} onValueChange={(v) => setEditValues(ev => ({ ...ev, company_id: v }))}>
-                                <SelectTrigger className="w-32 h-8 text-xs">
+                                <SelectTrigger className="w-28 h-8 text-xs">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1264,7 +1264,7 @@ export default function CompanySettlementDetail() {
                           </TableCell>
                           
                           {/* Actions */}
-                          <TableCell className="print:hidden">
+                          <TableCell className="print:hidden sticky left-0 bg-background z-10">
                             <div className="flex items-center gap-1">
                               {isEditing ? (
                                 <>
