@@ -118,7 +118,7 @@ export const navigationGroups: NavGroup[] = [
     icon: AlertTriangle,
     items: [
       { name: "بلاغات الحوادث", href: "/accidents", icon: AlertTriangle, badge: 'accidents' },
-      { name: "المطالبات", href: "/admin/claims", icon: FileWarning, adminOnly: true, badge: 'claims' },
+      { name: "المطالبات", href: "/admin/claims", icon: FileWarning, badge: 'claims' },
     ],
   },
   {

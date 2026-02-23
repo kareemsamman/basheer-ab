@@ -328,16 +328,16 @@ const App = () => (
                   <Leads />
                 </ProtectedRoute>
               } />
-              {/* Admin claims routes */}
+              {/* Claims routes - accessible to all users */}
               <Route path="/admin/claims" element={
-                <AdminRoute>
+                <ProtectedRoute>
                   <RepairClaims />
-                </AdminRoute>
+                </ProtectedRoute>
               } />
               <Route path="/admin/claims/:claimId" element={
-                <AdminRoute>
+                <ProtectedRoute>
                   <RepairClaimDetail />
-                </AdminRoute>
+                </ProtectedRoute>
               } />
               {/* Public payment callback routes (loaded in iframe) */}
               <Route path="/payment/success" element={<PaymentSuccess />} />
