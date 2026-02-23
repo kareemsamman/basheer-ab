@@ -83,6 +83,7 @@ export default function MarketingSms() {
   const [campaignRecipients, setCampaignRecipients] = useState<CampaignRecipient[]>([]);
   const [isLoadingRecipients, setIsLoadingRecipients] = useState(false);
   const [isCheckingDlr, setIsCheckingDlr] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   // Fetch clients
   useEffect(() => {
@@ -216,6 +217,32 @@ export default function MarketingSms() {
       toast.error('فشل فحص التسليم');
     } finally {
       setIsCheckingDlr(false);
+    }
+  }
+
+  async function handleRetryPending(campaignId: string) {
+    setIsRetrying(true);
+    try {
+      const response = await supabase.functions.invoke('send-marketing-sms', {
+        body: { campaign_id: campaignId },
+      });
+
+      if (response.error) throw response.error;
+      const data = response.data;
+      
+      if (data?.error) {
+        toast.error(data.error);
+        return;
+      }
+
+      toast.success(`تم استئناف الإرسال – ${data.batchSent || 0} أُرسلت، ${data.remaining || 0} متبقي`);
+      fetchCampaignRecipients(campaignId);
+      fetchCampaigns();
+    } catch (error) {
+      console.error('Error retrying pending:', error);
+      toast.error('فشل استئناف الإرسال');
+    } finally {
+      setIsRetrying(false);
     }
   }
 
@@ -358,12 +385,16 @@ export default function MarketingSms() {
     }
   }
 
-  function getStatusBadge(status: string) {
-    switch (status) {
+  function getStatusBadge(campaign: Campaign) {
+    switch (campaign.status) {
       case 'completed':
         return <Badge className="bg-emerald-600 text-white">مكتمل</Badge>;
       case 'sending':
-        return <Badge className="bg-blue-500 text-white">جاري الإرسال</Badge>;
+        return (
+          <Badge className="bg-blue-500 text-white">
+            جاري الإرسال ({campaign.sent_count + campaign.failed_count}/{campaign.recipients_count})
+          </Badge>
+        );
       case 'failed':
         return <Badge variant="destructive">فشل</Badge>;
       default:
@@ -730,7 +761,7 @@ export default function MarketingSms() {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell>{getStatusBadge(campaign.status)}</TableCell>
+                          <TableCell>{getStatusBadge(campaign)}</TableCell>
                           <TableCell>
                             {format(new Date(campaign.created_at), 'dd/MM/yyyy HH:mm', { locale: ar })}
                           </TableCell>
@@ -763,20 +794,36 @@ export default function MarketingSms() {
               <div className="flex items-center justify-between">
                 <DialogTitle>تفاصيل الحملة: {selectedCampaign?.title}</DialogTitle>
                 {selectedCampaign && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleCheckDelivery(selectedCampaign.id)}
-                    disabled={isCheckingDlr}
-                    className="mr-4"
-                  >
-                    {isCheckingDlr ? (
-                      <Loader2 className="h-4 w-4 ml-1 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4 ml-1" />
+                  <div className="flex items-center gap-2 mr-4">
+                    {selectedCampaign.status === 'sending' && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => handleRetryPending(selectedCampaign.id)}
+                        disabled={isRetrying}
+                      >
+                        {isRetrying ? (
+                          <Loader2 className="h-4 w-4 ml-1 animate-spin" />
+                        ) : (
+                          <AlertTriangle className="h-4 w-4 ml-1" />
+                        )}
+                        إعادة إرسال المعلقين
+                      </Button>
                     )}
-                    فحص التسليم
-                  </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleCheckDelivery(selectedCampaign.id)}
+                      disabled={isCheckingDlr}
+                    >
+                      {isCheckingDlr ? (
+                        <Loader2 className="h-4 w-4 ml-1 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4 ml-1" />
+                      )}
+                      فحص التسليم
+                    </Button>
+                  </div>
                 )}
               </div>
             </DialogHeader>
