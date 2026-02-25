@@ -151,6 +151,7 @@ interface CreatedPolicy {
   created_by_name: string | null;
   branch_name: string | null;
   total_count: number;
+  package_companies: string[] | null;
 }
 
 // Matches new report_renewals return type - grouped by client
@@ -1087,7 +1088,17 @@ export default function PolicyReports() {
                                 </Badge>
                               )}
                             </TableCell>
-                            <TableCell>{policy.company_name_ar || policy.company_name || '-'}</TableCell>
+                            <TableCell>
+                              {policy.is_package && policy.package_companies?.length > 0 ? (
+                                <div className="flex flex-col gap-0.5">
+                                  {policy.package_companies.filter(Boolean).map((name: string, i: number) => (
+                                    <span key={i} className="text-sm">{name}</span>
+                                  ))}
+                                </div>
+                              ) : (
+                                policy.company_name_ar || policy.company_name || '-'
+                              )}
+                            </TableCell>
                             <TableCell className="text-xs">
                               {formatDate(policy.start_date)} - {formatDate(policy.end_date)}
                             </TableCell>
