@@ -1,40 +1,47 @@
 
 
-# Fix: X-Service Invoice Not Saving to Policy Files
+# Fix: X-Service Invoice Files Should Open in New Tab
 
-## Root Cause
+## Problem
 
-The `media_files` table requires `storage_path` to be NOT NULL, but the edge function inserts `storage_path: null`. The Supabase JS client does not throw on insert errors -- it returns `{ data, error }` -- so the error is silently swallowed by the `try/catch`.
+The sync saves the X-Service invoice URL as `mime_type: "application/pdf"`, but the URL (`https://x-service.lovable.app/invoice/...`) is actually a web page, not a PDF file. When clicked, the `PdfJsViewer` tries to proxy-fetch it as a PDF binary, which fails with "Failed to load PDF".
 
-## Fix
+## Solution
 
-Two changes needed:
+Detect **external links** (files where `storage_path` is null and `size` is 0) and handle them differently:
+- Instead of opening in the PDF viewer, open them directly in a new tab
+- Show a distinct visual indicator (link icon instead of PDF icon) so users know it's an external link
 
-### 1. Database: Make `storage_path` nullable
-Since external links (like X-Service invoices) don't have a storage path, this column should allow NULL.
+## Changes
 
-```sql
-ALTER TABLE media_files ALTER COLUMN storage_path DROP NOT NULL;
+### File: `src/components/policies/PolicyFilesSection.tsx`
+
+In the `renderFileGrid` function, add a check before the PDF case: if the file has no `storage_path` (external link), open it directly in a new tab instead of trying to render it in the viewer.
+
 ```
-
-### 2. Edge function: Properly check for insert errors
-
-Change the insert block to log the actual error instead of only catching thrown exceptions:
-
-```typescript
-const { error: insertErr } = await supabase.from("media_files").insert({...});
-if (insertErr) {
-  console.error("[sync-to-xservice] Failed to save invoice URL:", insertErr.message);
-} else {
-  console.log("[sync-to-xservice] Saved invoice URL:", invoiceUrl);
+// Before the isPdf check, add:
+if (!file.storage_path && file.size === 0) {
+  // External link - open directly
+  window.open(file.cdn_url, '_blank');
+  return;
 }
 ```
 
-### Files to change
-| File | Change |
+Specifically:
+1. In the grid rendering (around line 523), before the `isPdf` branch, check if `storage_path` is null -- if so, render it with a "link" icon and open in new tab on click
+2. In the `FilePreviewGallery` component, external links should also just open in a new tab
+
+### File: `src/components/policies/FilePreviewGallery.tsx`
+
+No changes needed -- external link files won't reach the gallery since they'll open in a new tab directly.
+
+## Technical Details
+
+| What | Detail |
 |---|---|
-| Database migration | `ALTER TABLE media_files ALTER COLUMN storage_path DROP NOT NULL` |
-| `supabase/functions/sync-to-xservice/index.ts` | Fix error handling on insert |
+| Detection | `file.storage_path === null && file.size === 0` = external link |
+| Action on click | `window.open(file.cdn_url, '_blank')` |
+| Visual | Show an external link icon with "X-Service" label instead of "PDF" |
+| Download button | Opens URL in new tab (user can print-to-PDF from the invoice page) |
 
-After this fix, any new X-Service policy sync will automatically save the invoice link to the policy files.
-
+This is a frontend-only change -- no edge function or database changes needed.
