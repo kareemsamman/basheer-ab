@@ -647,6 +647,8 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
     setTimeout(() => {
       fetchPolicyDetails();
     }, 150);
+    // Notify parent to refresh wallet/summary/policies
+    onUpdated?.();
   };
 
   const status = getStatus();
