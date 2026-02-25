@@ -43,19 +43,38 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 3. Get total count
-    const { count: totalCount } = await supabase
+    // 3. Get already-synced policy IDs to skip
+    const { data: alreadySynced } = await supabase
+      .from("xservice_sync_log")
+      .select("policy_id")
+      .eq("status", "success");
+    const syncedIds = [...new Set((alreadySynced || []).map((r: any) => r.policy_id))];
+
+    // 4. Get total count (only syncable: has service_id, not already synced, not deleted)
+    let countQuery = supabase
       .from("policies")
       .select("id", { count: "exact", head: true })
-      .in("policy_type_parent", types);
+      .in("policy_type_parent", types)
+      .is("deleted_at", null)
+      .or("road_service_id.not.is.null,accident_fee_service_id.not.is.null");
+    if (syncedIds.length > 0) {
+      countQuery = countQuery.not("id", "in", `(${syncedIds.join(",")})`);
+    }
+    const { count: totalCount } = await countQuery;
 
-    // 4. Fetch batch
-    const { data: policies, error: pErr } = await supabase
+    // 5. Fetch batch (only syncable policies)
+    let batchQuery = supabase
       .from("policies")
       .select("id, policy_type_parent, policy_number, start_date, end_date, insurance_price, payed_for_company, notes, car_id, client_id, road_service_id, accident_fee_service_id")
       .in("policy_type_parent", types)
+      .is("deleted_at", null)
+      .or("road_service_id.not.is.null,accident_fee_service_id.not.is.null")
       .order("created_at", { ascending: true })
       .range(offset, offset + limit - 1);
+    if (syncedIds.length > 0) {
+      batchQuery = batchQuery.not("id", "in", `(${syncedIds.join(",")})`);
+    }
+    const { data: policies, error: pErr } = await batchQuery;
 
     if (pErr || !policies) {
       return new Response(JSON.stringify({ error: "Failed to fetch policies" }), {

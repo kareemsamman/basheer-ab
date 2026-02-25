@@ -54,6 +54,8 @@ export default function XServiceSettings() {
   const [bulkSynced, setBulkSynced] = useState(0);
   const [bulkFailed, setBulkFailed] = useState(0);
   const [eligibleCount, setEligibleCount] = useState<number | null>(null);
+  const [alreadySyncedCount, setAlreadySyncedCount] = useState<number>(0);
+  const [totalWithServiceCount, setTotalWithServiceCount] = useState<number>(0);
   const bulkAbortRef = useRef(false);
 
   useEffect(() => {
@@ -63,11 +65,26 @@ export default function XServiceSettings() {
   }, []);
 
   const fetchEligibleCount = async () => {
-    const { count } = await supabase
+    // Only count policies that have a service_id (syncable)
+    const { count: totalWithService } = await supabase
       .from("policies")
       .select("id", { count: "exact", head: true })
-      .in("policy_type_parent", ["ROAD_SERVICE", "ACCIDENT_FEE_EXEMPTION"]);
-    setEligibleCount(count ?? 0);
+      .in("policy_type_parent", ["ROAD_SERVICE", "ACCIDENT_FEE_EXEMPTION"])
+      .is("deleted_at", null)
+      .or("road_service_id.not.is.null,accident_fee_service_id.not.is.null");
+
+    // Get already-synced count
+    const { data: alreadySynced } = await supabase
+      .from("xservice_sync_log")
+      .select("policy_id")
+      .eq("status", "success");
+    const syncedSet = new Set((alreadySynced || []).map((r: any) => r.policy_id));
+
+    const withService = totalWithService ?? 0;
+    const synced = syncedSet.size;
+    setTotalWithServiceCount(withService);
+    setAlreadySyncedCount(synced);
+    setEligibleCount(Math.max(0, withService - synced));
   };
 
   const fetchSettings = async () => {
@@ -202,15 +219,12 @@ export default function XServiceSettings() {
     let totalFailed = 0;
 
     try {
-      // First get total
-      const { count } = await supabase
-        .from("policies")
-        .select("id", { count: "exact", head: true })
-        .in("policy_type_parent", ["ROAD_SERVICE", "ACCIDENT_FEE_EXEMPTION"]);
-      const total = count ?? 0;
+      // Use the accurate eligible count (server will also filter)
+      const total = eligibleCount ?? 0;
       setBulkTotal(total);
 
-      while (offset < total && !bulkAbortRef.current) {
+      let done = false;
+      while (!done && !bulkAbortRef.current) {
         const { data, error } = await supabase.functions.invoke("bulk-sync-to-xservice", {
           body: { offset, limit: batchSize },
         });
@@ -222,14 +236,15 @@ export default function XServiceSettings() {
         totalSynced += result.synced || 0;
         totalFailed += result.failed || 0;
         offset += result.processed || batchSize;
-        setBulkProcessed(offset > total ? total : offset);
+        setBulkProcessed(Math.min(offset, total));
         setBulkSynced(totalSynced);
         setBulkFailed(totalFailed);
-        if (result.done) break;
+        done = result.done || result.processed === 0;
       }
 
       toast({ title: `✅ اكتملت المزامنة: نجح ${totalSynced}، فشل ${totalFailed}` });
       fetchLogs();
+      fetchEligibleCount();
     } catch (err: any) {
       toast({ title: "خطأ", description: err.message, variant: "destructive" });
     }
@@ -346,9 +361,12 @@ export default function XServiceSettings() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              عدد الوثائق المؤهلة: <strong>{eligibleCount !== null ? eligibleCount : "..."}</strong>
-            </p>
+            <div className="text-sm text-muted-foreground space-y-1">
+              <p>عدد الوثائق المؤهلة للمزامنة: <strong>{eligibleCount !== null ? eligibleCount : "..."}</strong></p>
+              {alreadySyncedCount > 0 && (
+                <p className="text-xs">✅ تمت مزامنة {alreadySyncedCount} وثيقة مسبقاً</p>
+              )}
+            </div>
             {bulkSyncing && (
               <div className="space-y-2">
                 <Progress value={bulkTotal > 0 ? (bulkProcessed / bulkTotal) * 100 : 0} />
