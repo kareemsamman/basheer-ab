@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
       .select(`
         id, policy_type_parent, policy_number, start_date, end_date,
         insurance_price, payed_for_company, notes, car_id, client_id,
-        road_service_id, accident_fee_service_id
+        road_service_id, accident_fee_service_id, branch_id
       `)
       .eq("id", policy_id)
       .single();
@@ -193,7 +193,7 @@ Deno.serve(async (req) => {
         entity_type: "policy_insurance",
         entity_id: policy_id,
         uploaded_by: null,
-        branch_id: null,
+        branch_id: policy.branch_id || null,
       });
       if (insertErr) {
         console.error("[sync-to-xservice] Failed to save invoice URL:", insertErr.message);
