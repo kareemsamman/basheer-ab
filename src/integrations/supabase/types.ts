@@ -5208,50 +5208,95 @@ export type Database = {
               company_name_ar: string
             }[]
           }
-      report_created_policies: {
-        Args: {
-          p_company_id?: string
-          p_created_by?: string
-          p_end_date: string
-          p_page?: number
-          p_page_size?: number
-          p_policy_type?: string
-          p_search?: string
-          p_start_date: string
-        }
-        Returns: {
-          branch_name: string
-          car_id: string
-          car_number: string
-          client_file_number: string
-          client_id: string
-          client_name: string
-          client_phone: string
-          company_id: string
-          company_name: string
-          company_name_ar: string
-          created_at: string
-          created_by_admin_id: string
-          created_by_name: string
-          end_date: string
-          group_key: string
-          id: string
-          insurance_price: number
-          is_package: boolean
-          package_count: number
-          package_policy_ids: string[]
-          package_types: string[]
-          payment_status: string
-          policy_number: string
-          policy_type_child: string
-          policy_type_parent: string
-          profit: number
-          remaining: number
-          start_date: string
-          total_count: number
-          total_paid: number
-        }[]
-      }
+      report_created_policies:
+        | {
+            Args: {
+              p_company_id?: string
+              p_created_by?: string
+              p_end_date: string
+              p_page?: number
+              p_page_size?: number
+              p_policy_type?: string
+              p_search?: string
+              p_start_date: string
+            }
+            Returns: {
+              branch_name: string
+              car_id: string
+              car_number: string
+              client_file_number: string
+              client_id: string
+              client_name: string
+              client_phone: string
+              company_id: string
+              company_name: string
+              company_name_ar: string
+              created_at: string
+              created_by_admin_id: string
+              created_by_name: string
+              end_date: string
+              group_key: string
+              id: string
+              insurance_price: number
+              is_package: boolean
+              package_count: number
+              package_policy_ids: string[]
+              package_types: string[]
+              payment_status: string
+              policy_number: string
+              policy_type_child: string
+              policy_type_parent: string
+              profit: number
+              remaining: number
+              start_date: string
+              total_count: number
+              total_paid: number
+            }[]
+          }
+        | {
+            Args: {
+              p_company_id?: string
+              p_created_by?: string
+              p_end_date: string
+              p_page?: number
+              p_page_size?: number
+              p_policy_type?: string
+              p_search?: string
+              p_start_date: string
+            }
+            Returns: {
+              branch_name: string
+              car_id: string
+              car_number: string
+              client_file_number: string
+              client_id: string
+              client_name: string
+              client_phone: string
+              company_id: string
+              company_name: string
+              company_name_ar: string
+              created_at: string
+              created_by_admin_id: string
+              created_by_name: string
+              end_date: string
+              group_key: string
+              id: string
+              insurance_price: number
+              is_package: boolean
+              package_count: number
+              package_policy_ids: string[]
+              package_types: string[]
+              payment_status: string
+              policy_number: string
+              policy_type_child: string
+              policy_type_parent: string
+              profit: number
+              remaining: number
+              start_date: string
+              total_count: number
+              total_paid: number
+            }[]
+          }
       report_debt_policies_for_clients: {
         Args: { p_client_ids: string[] }
         Returns: {

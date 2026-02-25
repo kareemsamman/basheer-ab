@@ -68,6 +68,8 @@ import { getInsuranceTypeLabel } from '@/lib/insuranceTypes';
 const policyTypeLabels: Record<string, string> = {
   ELZAMI: 'إلزامي',
   THIRD_FULL: 'ثالث/شامل',
+  FULL: 'شامل',
+  THIRD: 'ثالث',
   ROAD_SERVICE: 'خدمات الطريق',
   ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
   HEALTH: 'تأمين صحي',
@@ -77,6 +79,20 @@ const policyTypeLabels: Record<string, string> = {
   BUSINESS: 'تأمين أعمال',
   OTHER: 'أخرى',
   PACKAGE: 'باقة',
+};
+
+// Labels for filter dropdowns only - excludes child types
+const policyTypeFilterLabels: Record<string, string> = {
+  ELZAMI: 'إلزامي',
+  THIRD_FULL: 'ثالث/شامل',
+  ROAD_SERVICE: 'خدمات الطريق',
+  ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
+  HEALTH: 'تأمين صحي',
+  LIFE: 'تأمين حياة',
+  PROPERTY: 'تأمين ممتلكات',
+  TRAVEL: 'تأمين سفر',
+  BUSINESS: 'تأمين أعمال',
+  OTHER: 'أخرى',
 };
 
 const renewalStatusLabels: Record<string, string> = {
@@ -948,7 +964,7 @@ export default function PolicyReports() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">كل الأنواع</SelectItem>
-                    {Object.entries(policyTypeLabels).map(([k, v]) => (
+                    {Object.entries(policyTypeFilterLabels).map(([k, v]) => (
                       <SelectItem key={k} value={k}>{v}</SelectItem>
                     ))}
                   </SelectContent>
@@ -1321,7 +1337,7 @@ export default function PolicyReports() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">كل الأنواع</SelectItem>
-                    {Object.entries(policyTypeLabels).map(([k, v]) => (
+                    {Object.entries(policyTypeFilterLabels).map(([k, v]) => (
                       <SelectItem key={k} value={k}>{v}</SelectItem>
                     ))}
                   </SelectContent>
@@ -1643,7 +1659,7 @@ export default function PolicyReports() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">كل الأنواع</SelectItem>
-                    {Object.entries(policyTypeLabels).map(([k, v]) => (
+                    {Object.entries(policyTypeFilterLabels).map(([k, v]) => (
                       <SelectItem key={k} value={k}>{v}</SelectItem>
                     ))}
                   </SelectContent>
