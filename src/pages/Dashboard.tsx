@@ -29,6 +29,12 @@ interface CompanyProduction {
   total_amount: number;
 }
 
+interface CompanyDebt {
+  company_id: string;
+  company_name: string;
+  outstanding: number;
+}
+
 // Generate month options for selectors
 function getMonthOptions() {
   const options: { value: string; label: string }[] = [];
@@ -76,6 +82,10 @@ export default function Dashboard() {
   // Production data
   const [production, setProduction] = useState<CompanyProduction[]>([]);
   const [productionLoading, setProductionLoading] = useState(true);
+  
+  // Company debts data
+  const [companyDebts, setCompanyDebts] = useState<CompanyDebt[]>([]);
+  const [companyDebtsLoading, setCompanyDebtsLoading] = useState(true);
 
   // Fetch basic stats
   useEffect(() => {
@@ -135,6 +145,24 @@ export default function Dashboard() {
     fetchProduction();
   }, [fetchProduction]);
 
+  // Fetch company debts
+  const fetchCompanyDebts = useCallback(async () => {
+    setCompanyDebtsLoading(true);
+    try {
+      const { data, error } = await supabase.rpc('dashboard_company_debts');
+      if (error) throw error;
+      setCompanyDebts((data as CompanyDebt[]) || []);
+    } catch (e) {
+      console.error('Error fetching company debts:', e);
+    } finally {
+      setCompanyDebtsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCompanyDebts();
+  }, [fetchCompanyDebts]);
+
   // Get profit value based on selected period
   const getProfitValue = () => {
     if (profitLoading) return '...';
@@ -168,9 +196,13 @@ export default function Dashboard() {
     { third_count: 0, third_amount: 0, full_count: 0, full_amount: 0, total_count: 0, total_amount: 0 }
   );
 
+  // Company debts total
+  const companyDebtsTotal = companyDebts.reduce((sum, d) => sum + Number(d.outstanding), 0);
+
   const handlePolicyComplete = () => {
     refetchProfit();
     fetchProduction();
+    fetchCompanyDebts();
   };
 
   return (
@@ -268,35 +300,39 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* Row 2: Company debt card */}
+        {/* Row 2: Production summary + Company debt total */}
         {isAdmin && (
           <div className="grid gap-4 md:grid-cols-2">
-            <Card className="p-6 border shadow-sm hover:shadow-md transition-shadow">
+            {/* Production summary card */}
+            <Card className="p-6 border shadow-sm hover:shadow-md transition-shadow bg-primary/5 border-primary/20">
+              <div className="flex items-start justify-between">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">إجمالي الإنتاج</p>
+                  <p className="text-2xl font-bold text-primary ltr-nums">
+                    {productionLoading ? '...' : `${productionTotals.total_count} وثيقة`}
+                  </p>
+                  <p className="text-sm text-muted-foreground ltr-nums">
+                    {productionLoading ? '' : `₪${productionTotals.total_amount.toLocaleString('en-US')}`}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-primary/10 p-3">
+                  <FileText className="h-6 w-6 text-primary" />
+                </div>
+              </div>
+            </Card>
+
+            {/* Company debt total card */}
+            <Card className="p-6 border shadow-sm hover:shadow-md transition-shadow bg-destructive/5 border-destructive/20">
               <div className="flex items-start justify-between">
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-muted-foreground">الدين لدى شركات التأمين</p>
                   <p className="text-2xl font-bold text-destructive ltr-nums">
-                    {profitLoading ? '...' : `₪${profitSummary.totalCompanyPaymentDue.toLocaleString('en-US')}`}
+                    {companyDebtsLoading ? '...' : `₪${companyDebtsTotal.toLocaleString('en-US')}`}
                   </p>
                   <p className="text-xs text-muted-foreground">المبالغ المستحقة لشركات التأمين</p>
                 </div>
                 <div className="rounded-xl bg-destructive/10 p-3">
                   <Building2 className="h-6 w-6 text-destructive" />
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-6 border shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">الإصدار خلال الشهر</p>
-                  <p className="text-2xl font-bold text-primary ltr-nums">
-                    {insuredCars.toLocaleString('en-US')}
-                  </p>
-                  <p className="text-xs text-muted-foreground">مركبة تم تأمينها</p>
-                </div>
-                <div className="rounded-xl bg-primary/10 p-3">
-                  <FileText className="h-6 w-6 text-primary" />
                 </div>
               </div>
             </Card>
@@ -372,6 +408,55 @@ export default function Dashboard() {
                       <TableCell className="text-center ltr-nums">₪{productionTotals.full_amount.toLocaleString('en-US')}</TableCell>
                       <TableCell className="text-center">{productionTotals.total_count}</TableCell>
                       <TableCell className="text-center ltr-nums">₪{productionTotals.total_amount.toLocaleString('en-US')}</TableCell>
+                    </TableRow>
+                  </>
+                )}
+              </TableBody>
+            </Table>
+          </Card>
+        )}
+
+        {/* Row 4: Company Debts Table */}
+        {isAdmin && (
+          <Card className="border shadow-sm">
+            <div className="p-4 flex items-center justify-between border-b">
+              <div>
+                <h3 className="text-lg font-bold">ديون شركات التأمين</h3>
+                <p className="text-sm text-muted-foreground">المبالغ المستحقة لكل شركة</p>
+              </div>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-right">الشركة</TableHead>
+                  <TableHead className="text-center">المبلغ المستحق</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {companyDebtsLoading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="h-5 w-full" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-full" /></TableCell>
+                    </TableRow>
+                  ))
+                ) : companyDebts.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={2} className="text-center py-8 text-muted-foreground">
+                      لا توجد ديون مستحقة
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  <>
+                    {companyDebts.map((row) => (
+                      <TableRow key={row.company_id}>
+                        <TableCell className="font-medium">{row.company_name}</TableCell>
+                        <TableCell className="text-center ltr-nums">₪{Number(row.outstanding).toLocaleString('en-US')}</TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow className="bg-muted/50 font-bold">
+                      <TableCell>المجموع الكلي</TableCell>
+                      <TableCell className="text-center ltr-nums">₪{companyDebtsTotal.toLocaleString('en-US')}</TableCell>
                     </TableRow>
                   </>
                 )}

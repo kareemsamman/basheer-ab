@@ -4880,6 +4880,14 @@ export type Database = {
       }
       can_view_financials: { Args: { _user_id: string }; Returns: boolean }
       clear_data_for_import: { Args: never; Returns: Json }
+      dashboard_company_debts: {
+        Args: never
+        Returns: {
+          company_id: string
+          company_name: string
+          outstanding: number
+        }[]
+      }
       dashboard_company_production: {
         Args: { p_end_date: string; p_start_date: string }
         Returns: {
