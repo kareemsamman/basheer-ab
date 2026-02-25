@@ -65,13 +65,12 @@ export default function XServiceSettings() {
   }, []);
 
   const fetchEligibleCount = async () => {
-    // Only count policies that have a service_id (syncable)
-    const { count: totalWithService } = await supabase
+    // Count ALL service policies (no service_id filter)
+    const { count: totalPolicies } = await supabase
       .from("policies")
       .select("id", { count: "exact", head: true })
       .in("policy_type_parent", ["ROAD_SERVICE", "ACCIDENT_FEE_EXEMPTION"])
-      .is("deleted_at", null)
-      .or("road_service_id.not.is.null,accident_fee_service_id.not.is.null");
+      .is("deleted_at", null);
 
     // Get already-synced count
     const { data: alreadySynced } = await supabase
@@ -80,11 +79,11 @@ export default function XServiceSettings() {
       .eq("status", "success");
     const syncedSet = new Set((alreadySynced || []).map((r: any) => r.policy_id));
 
-    const withService = totalWithService ?? 0;
+    const total = totalPolicies ?? 0;
     const synced = syncedSet.size;
-    setTotalWithServiceCount(withService);
+    setTotalWithServiceCount(total);
     setAlreadySyncedCount(synced);
-    setEligibleCount(Math.max(0, withService - synced));
+    setEligibleCount(Math.max(0, total - synced));
   };
 
   const fetchSettings = async () => {
@@ -176,7 +175,11 @@ export default function XServiceSettings() {
         body: JSON.stringify({ api_key: settings.api_key }),
       });
       if (res.ok) {
-        toast({ title: "✅ تم مسح البيانات بنجاح" });
+        // Also clear local sync log so all policies become eligible again
+        await supabase.from("xservice_sync_log").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+        toast({ title: "✅ تم مسح البيانات وسجل المزامنة بنجاح" });
+        fetchLogs();
+        fetchEligibleCount();
       } else {
         const body = await res.json().catch(() => ({}));
         toast({ title: "❌ فشل المسح", description: body?.error || `HTTP ${res.status}`, variant: "destructive" });
@@ -449,7 +452,7 @@ export default function XServiceSettings() {
           onConfirm={handleClearData}
           loading={clearing}
           title="مسح بيانات X-Service"
-          description="سيتم حذف جميع الوثائق والسيارات والعملاء المرتبطين بهذا الوكيل في X-Service. لن يتم حذف الوكيل نفسه أو الخدمات أو الإعدادات. هل أنت متأكد؟"
+          description="سيتم حذف جميع الوثائق والسيارات والعملاء المرتبطين بهذا الوكيل في X-Service، وسيتم مسح سجل المزامنة المحلي بالكامل حتى يمكن إعادة المزامنة من الصفر. هل أنت متأكد؟"
         />
       </div>
     </MainLayout>
