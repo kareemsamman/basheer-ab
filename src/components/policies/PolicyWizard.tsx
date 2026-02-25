@@ -886,6 +886,9 @@ export function PolicyWizard({
         // ✅ PACKAGE HANDLING FOR VISA PAYMENTS (tempPolicyId exists)
         // When user paid with Visa, temp policy was created WITHOUT group_id
         // We need to create the package group and addon policies now
+        // Track package info for X-Service sync (hoisted outside block scope)
+        var _pkgFirstAddonType: string | null = null;
+        var _pkgMainAddonId: string | null = null;
         if (packageMode && packageAddons.some(addon => addon.enabled)) {
           // 1. Fetch temp policy data to get client_id, car_id, and other details
           const { data: tempPolicy, error: tempPolicyError } = await supabase
@@ -944,6 +947,7 @@ export function PolicyWizard({
           const accidentAddon = packageAddons.find(a => a.type === 'accident_fee_exemption' && a.enabled);
           const firstAddon = elzamiAddon || thirdAddon || roadAddon || accidentAddon;
           const firstAddonType = firstAddon?.type || null;
+          _pkgFirstAddonType = firstAddonType;
 
           // 5. Calculate main policy profit (for creating the main policy later)
           const mainInsurancePrice = parseFloat(policy.insurance_price) || 0;
@@ -1062,7 +1066,7 @@ export function PolicyWizard({
             const addonStartDate = addon.start_date || tempStartDate;
             const addonEndDate = addon.end_date || tempEndDate;
 
-            const { error: addonError } = await supabase.from('policies').insert({
+            const { data: addonData, error: addonError } = await supabase.from('policies').insert({
               client_id: tempClientId,
               car_id: tempCarId || null,
               category_id: null,
@@ -1083,12 +1087,14 @@ export function PolicyWizard({
               branch_id: effectiveBranchId || null,
               created_by_admin_id: user?.id || null,
               is_under_24: tempIsUnder24,
-            });
+            }).select('id').single();
 
             if (addonError) {
               console.error('Error creating addon policy:', addonError);
               throw addonError;
             }
+            // Store saved ID for X-Service sync
+            (addon as any)._savedPolicyId = addonData?.id || null;
           }
 
           // 8. Now add the main policy from Step 3 as an addon (if different from temp policy)
@@ -1099,7 +1105,7 @@ export function PolicyWizard({
             const mainAddonStartDate = policy.start_date;
             const mainAddonEndDate = policy.end_date;
 
-            const { error: mainAddonError } = await supabase.from('policies').insert({
+            const { data: mainAddonData, error: mainAddonError } = await supabase.from('policies').insert({
               client_id: tempClientId,
               car_id: tempCarId || null,
               category_id: selectedCategory?.id || null,
@@ -1123,12 +1129,13 @@ export function PolicyWizard({
               is_under_24: tempIsUnder24,
               broker_id: policyBrokerId || null,
               broker_direction: brokerDirection || null,
-            });
+            }).select('id').single();
 
             if (mainAddonError) {
               console.error('Error creating main addon policy:', mainAddonError);
               throw mainAddonError;
             }
+            _pkgMainAddonId = mainAddonData?.id || null;
           }
         }
       }
@@ -1404,21 +1411,35 @@ export function PolicyWizard({
       const mainType = policy.policy_type_parent as string;
       const policyIdsToSync: string[] = [];
       
-      if (xserviceTypes.includes(mainType)) {
-        policyIdsToSync.push(policyIdToUse);
-      }
-      // Also check package addons
       if (packageMode && packageAddons) {
+        // In package mode, the temp policy (policyIdToUse) was converted to firstAddonType
+        // Check if it's an X-Service type
+        const tempTypeMap: Record<string, string> = {
+          'elzami': 'ELZAMI', 'third_full': 'THIRD_FULL',
+          'road_service': 'ROAD_SERVICE', 'accident_fee_exemption': 'ACCIDENT_FEE_EXEMPTION',
+        };
+        const firstAddonTypeParent = _pkgFirstAddonType ? tempTypeMap[_pkgFirstAddonType] : null;
+        if (firstAddonTypeParent && xserviceTypes.includes(firstAddonTypeParent)) {
+          policyIdsToSync.push(policyIdToUse);
+        }
+        // Check additional addon policies
         packageAddons.forEach((addon: any) => {
           if (!addon.enabled) return;
-          const addonTypeMap: Record<string, string> = {
-            'road_service': 'ROAD_SERVICE',
-            'accident_fee_exemption': 'ACCIDENT_FEE_EXEMPTION',
-          };
-          if (addonTypeMap[addon.type] && addon._savedPolicyId) {
+          if (addon.type === _pkgFirstAddonType) return; // already handled via temp policy
+          const addonParent = tempTypeMap[addon.type];
+          if (addonParent && xserviceTypes.includes(addonParent) && addon._savedPolicyId) {
             policyIdsToSync.push(addon._savedPolicyId);
           }
         });
+        // Check main policy from Step 3 (if it was created as a separate addon)
+        if (xserviceTypes.includes(mainType) && _pkgMainAddonId) {
+          policyIdsToSync.push(_pkgMainAddonId);
+        }
+      } else {
+        // Non-package mode: just check the main policy
+        if (xserviceTypes.includes(mainType)) {
+          policyIdsToSync.push(policyIdToUse);
+        }
       }
       
       if (policyIdsToSync.length > 0) {
