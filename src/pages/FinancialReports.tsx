@@ -29,7 +29,7 @@ import { Link } from "react-router-dom";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { cn } from "@/lib/utils";
 
-const CACHE_KEY = "ab_financial_reports_cache";
+const CACHE_KEY = "ab_financial_reports_cache_2026";
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 // Load from localStorage

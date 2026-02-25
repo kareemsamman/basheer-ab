@@ -77,7 +77,7 @@ export function useProfitSummary() {
         `)
         .is('deleted_at', null)
         .eq('cancelled', false)
-        .gte('start_date', yearStart);
+        .gte('start_date', '2026-01-01');
 
       if (error) throw error;
 
@@ -85,7 +85,8 @@ export function useProfitSummary() {
       const { data: brokerSettlements } = await supabase
         .from('broker_settlements')
         .select('direction, total_amount, status')
-        .eq('status', 'completed');
+        .eq('status', 'completed')
+        .gte('created_at', '2026-01-01');
 
       let todayProfit = 0;
       let monthProfit = 0;
