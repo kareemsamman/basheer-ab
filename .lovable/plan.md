@@ -1,75 +1,82 @@
 
+# Dashboard Fixes and Additions
 
-# Fix: "ثالث/شامل" Still Showing + Package Companies Missing
+## Problems Identified
 
-## Problems
+1. **Debt card shows 0**: The `dashboard_total_client_debt` RPC uses its own flawed calculation that doesn't match the debt-tracking page. The debt-tracking page uses `get_client_balance()` (which includes `office_commission` and wallet refunds). The dashboard RPC misses these.
 
-1. **"ثالث/شامل" still appears** in the type column for packages. The previous RPC migration didn't apply — the function still uses `ARRAY_AGG(DISTINCT p.policy_type_parent::text)` which returns `THIRD_FULL` as-is, and the frontend maps it to "ثالث/شامل".
+2. **No production summary card**: The production table exists but there's no summary card above it showing totals.
 
-2. **Company column shows only one company** for packages. The RPC returns only `(ARRAY_AGG(...))[1]` for company — the first one. Packages can have policies from different companies, so all should be listed.
+3. **No company debts table**: Need a table similar to the production table showing how much is owed to each insurance company.
 
 ## Solution
 
-### 1. Fix the RPC `report_created_policies`
+### 1. Fix `dashboard_total_client_debt` RPC
 
-Two changes in the `grouped_policies` CTE:
+Replace the current broken RPC with one that uses `report_client_debts_summary` (the same source as the debt-tracking page):
 
-- **Types**: Replace `ARRAY_AGG(DISTINCT p.policy_type_parent::text)` with child-aware resolution:
 ```sql
-ARRAY_AGG(DISTINCT 
-  CASE 
-    WHEN p.policy_type_parent::text = 'THIRD_FULL' AND p.policy_type_child IS NOT NULL 
-      THEN p.policy_type_child::text
-    ELSE p.policy_type_parent::text
-  END
-)
-```
-This returns `FULL` or `THIRD` instead of `THIRD_FULL`.
-
-- **Companies**: Add a new output column `package_companies text[]` that collects all distinct company names:
-```sql
-ARRAY_AGG(DISTINCT COALESCE(ic.name_ar, ic.name)) as grp_company_names
+CREATE OR REPLACE FUNCTION dashboard_total_client_debt()
+RETURNS numeric AS $$
+DECLARE v_total numeric;
+BEGIN
+  SELECT total_remaining INTO v_total
+  FROM report_client_debts_summary(NULL::text, NULL::integer);
+  RETURN COALESCE(v_total, 0);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public';
 ```
 
-### 2. Update frontend (PolicyReports.tsx)
+This ensures both pages show the same ₪31,540 value.
 
-- **Type column** (line 1079): Already uses `policyTypeLabels[type]` — since we added `FULL: 'شامل'` and `THIRD: 'ثالث'` labels in the previous change, this will work automatically once the RPC returns correct values.
+### 2. Add production summary card
 
-- **Company column** (line 1090): For packages, show all companies from the new `package_companies` array, each on its own line. For single policies, keep as-is.
+Above the production table, add a summary card showing:
+- Total policies count
+- Total amount (₪)
 
-- **Renewals tab** (lines 1474-1478): The `policy_types` array from `report_renewals_service` also returns raw parent types. Fix that RPC too.
+Uses the already-calculated `productionTotals` from the existing code.
 
-- **Renewed tab** (lines 1769-1773): Same issue with `report_renewed_policies`.
+### 3. Add company debts table
 
-### 3. Fix renewal RPCs
+Create a new RPC `dashboard_company_debts` that calls `get_company_wallet_balance()` for each company and returns company name + outstanding amount. Render as a table similar to the production table, with columns: Company | Outstanding Amount.
 
-Update `report_renewals_service` and `report_renewed_policies` to also return child-resolved type labels instead of raw `THIRD_FULL`.
+```sql
+CREATE OR REPLACE FUNCTION dashboard_company_debts()
+RETURNS TABLE(company_id uuid, company_name text, outstanding numeric)
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT ic.id, COALESCE(ic.name_ar, ic.name)::text, w.outstanding
+  FROM insurance_companies ic
+  CROSS JOIN LATERAL get_company_wallet_balance(ic.id) w
+  WHERE w.outstanding > 0
+  ORDER BY w.outstanding DESC;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public';
+```
+
+### 4. Dashboard.tsx UI changes
+
+**Row 2 (admin)**: Replace the current 2-card row with:
+- Production summary card (total count + total amount from production data)
+- Company debt total card (sum of all company outstanding)
+
+**Row 3**: Keep existing production table as-is.
+
+**Row 4 (new)**: Add "ديون شركات التأمين" table:
+
+| الشركة | المبلغ المستحق |
+|--------|---------------|
+| ترست | ₪600,241 |
+| اراضي مقدسة | ₪573,845 |
+| ... | ... |
+| **المجموع** | **₪X** |
 
 ## Files Changed
 
 | File | Change |
 |---|---|
-| Database migration | Re-create `report_created_policies` with child-aware types + `package_companies` column |
-| Database migration | Update `report_renewals_service` type aggregation |
-| `src/pages/PolicyReports.tsx` | Show `package_companies` list in company column for packages |
-
-## Technical Details
-
-### New RPC output column
-- `package_companies text[]` — array of distinct company names (Arabic preferred) for all policies in the package
-
-### Frontend company display for packages
-```tsx
-// Line 1090 area
-<TableCell>
-  {policy.is_package && policy.package_companies?.length > 0 ? (
-    <div className="flex flex-col gap-0.5">
-      {policy.package_companies.filter(Boolean).map((name, i) => (
-        <span key={i} className="text-sm">{name}</span>
-      ))}
-    </div>
-  ) : (
-    policy.company_name_ar || policy.company_name || '-'
-  )}
-</TableCell>
-```
+| Database migration | Fix `dashboard_total_client_debt` to use `report_client_debts_summary` |
+| Database migration | Create `dashboard_company_debts` RPC |
+| `src/pages/Dashboard.tsx` | Add production summary card, add company debts table, wire up new RPC |
