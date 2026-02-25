@@ -825,6 +825,9 @@ export function PolicyWizard({
         policyIdToUse = newPolicy.id;
 
         // Create add-on policies if in package mode
+        // Track package info for X-Service sync (hoisted so both paths can use them)
+        var _pkgFirstAddonType: string | null = null;
+        var _pkgMainAddonId: string | null = null;
         if (packageMode && groupId) {
           for (const addon of packageAddons) {
             if (!addon.enabled) continue;
@@ -858,7 +861,7 @@ export function PolicyWizard({
               accidentFeeServiceId: addon.accident_fee_service_id || null,
             });
 
-            await supabase.from('policies').insert({
+            const { data: addonData, error: addonError } = await supabase.from('policies').insert({
               client_id: clientId,
               car_id: carId || null,
               category_id: null,
@@ -879,16 +882,22 @@ export function PolicyWizard({
               notes: 'إضافة ضمن باقة',
               branch_id: effectiveBranchId || null,
               created_by_admin_id: user?.id || null,
-            });
+            }).select('id').single();
+
+            if (addonError) throw addonError;
+            (addon as any)._savedPolicyId = addonData?.id || null;
+
+            // Track first addon type for X-Service sync
+            if (!_pkgFirstAddonType) {
+              _pkgFirstAddonType = addon.type;
+            }
           }
         }
       } else {
         // ✅ PACKAGE HANDLING FOR VISA PAYMENTS (tempPolicyId exists)
         // When user paid with Visa, temp policy was created WITHOUT group_id
         // We need to create the package group and addon policies now
-        // Track package info for X-Service sync (hoisted outside block scope)
-        var _pkgFirstAddonType: string | null = null;
-        var _pkgMainAddonId: string | null = null;
+        // _pkgFirstAddonType and _pkgMainAddonId are hoisted above (non-Visa path)
         if (packageMode && packageAddons.some(addon => addon.enabled)) {
           // 1. Fetch temp policy data to get client_id, car_id, and other details
           const { data: tempPolicy, error: tempPolicyError } = await supabase
