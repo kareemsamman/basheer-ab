@@ -1,82 +1,78 @@
+# Dashboard & Financial Reports Fixes
 
-# Dashboard Fixes and Additions
+## Issue 1: Company Debts Table - Number Alignment
 
-## Problems Identified
+The amounts in the "ديون شركات التأمين" table are centered (`text-center`) but should be left-aligned under the "المبلغ المستحق" header to match the screenshot style.
 
-1. **Debt card shows 0**: The `dashboard_total_client_debt` RPC uses its own flawed calculation that doesn't match the debt-tracking page. The debt-tracking page uses `get_client_balance()` (which includes `office_commission` and wallet refunds). The dashboard RPC misses these.
+**Fix**: Change `text-center` to `text-left` for the amount column cells and header in the company debts table.
 
-2. **No production summary card**: The production table exists but there's no summary card above it showing totals.
+## Issue 2: Financial Reports - Start from 2026
 
-3. **No company debts table**: Need a table similar to the production table showing how much is owed to each insurance company.
+The admin wants all financial data on `/reports/financial` (wallets, cheques, company debts, everything) to start from January 1, 2026 only. Currently the page fetches ALL historical data with no date filter.
 
-## Solution
+**Changes needed:**
 
-### 1. Fix `dashboard_total_client_debt` RPC
+### Database
 
-Replace the current broken RPC with one that uses `report_client_debts_summary` (the same source as the debt-tracking page):
+- Update `dashboard_company_debts` RPC to accept optional `p_from_date` and `p_to_date` parameters and pass them to `get_company_wallet_balance()`.
 
-```sql
-CREATE OR REPLACE FUNCTION dashboard_total_client_debt()
-RETURNS numeric AS $$
-DECLARE v_total numeric;
-BEGIN
-  SELECT total_remaining INTO v_total
-  FROM report_client_debts_summary(NULL::text, NULL::integer);
-  RETURN COALESCE(v_total, 0);
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public';
+### Financial Reports Page (`src/pages/FinancialReports.tsx`)
+
+- Add `p_from_date: '2026-01-01'` to all `get_company_balance` and `get_company_wallet_balance` RPC calls.
+- Filter `policy_payments` query with `.gte('created_at', '2026-01-01')`.
+- Filter `policies` query with `.gte('created_at', '2026-01-01')`.
+- Filter `company_settlements` with `.gte('created_at', '2026-01-01')`.
+- Filter `broker_settlements` with `.gte('created_at', '2026-01-01')`.
+- Filter `customer_wallet_transactions` with `.gte('created_at', '2026-01-01')`.
+- Filter `expenses` with `.gte('expense_date', '2026-01-01')`.
+- Filter `ab_ledger` with `.gte('transaction_date', '2026-01-01')`.
+
+This means the "AB Wallet" summary, company balances, profit totals, and all ledger entries will reflect from  2026 data only.
+
+### Dashboard Company Debts
+
+- Update the `dashboard_company_debts` RPC to pass `'2026-01-01'` as `p_from_date` to `get_company_wallet_balance`, so dashboard debts also reflect 2026 only.
+
+## Files to Change
+
+
+| File                             | Change                                                                 |
+| -------------------------------- | ---------------------------------------------------------------------- |
+| `src/pages/Dashboard.tsx`        | Fix amount alignment in company debts table (text-center to text-left) |
+| `src/pages/FinancialReports.tsx` | Add `2026-01-01` date filter to all data queries                       |
+| Database migration               | Update `dashboard_company_debts` to pass `p_from_date = '2026-01-01'`  |
+
+
+## Technical Details
+
+### Dashboard alignment fix
+
+```tsx
+// Change from text-center to text-left for amount cells
+<TableHead className="text-left">المبلغ المستحق</TableHead>
+<TableCell className="text-left ltr-nums">...</TableCell>
 ```
 
-This ensures both pages show the same ₪31,540 value.
+### Financial Reports date filter
 
-### 2. Add production summary card
+All queries in `fetchFinancialData` will be filtered to `>= 2026-01-01`:
 
-Above the production table, add a summary card showing:
-- Total policies count
-- Total amount (₪)
+- Payments, policies, settlements, expenses, ledger entries
+- Company balance RPCs called with `p_from_date: '2026-01-01'`  
+`all the data will start from 2026 yeah not only for 2026 got me?`
 
-Uses the already-calculated `productionTotals` from the existing code.
-
-### 3. Add company debts table
-
-Create a new RPC `dashboard_company_debts` that calls `get_company_wallet_balance()` for each company and returns company name + outstanding amount. Render as a table similar to the production table, with columns: Company | Outstanding Amount.
+### Dashboard company debts RPC
 
 ```sql
 CREATE OR REPLACE FUNCTION dashboard_company_debts()
-RETURNS TABLE(company_id uuid, company_name text, outstanding numeric)
-AS $$
+RETURNS TABLE(company_id uuid, company_name text, outstanding numeric) AS $$
 BEGIN
   RETURN QUERY
   SELECT ic.id, COALESCE(ic.name_ar, ic.name)::text, w.outstanding
   FROM insurance_companies ic
-  CROSS JOIN LATERAL get_company_wallet_balance(ic.id) w
+  CROSS JOIN LATERAL get_company_wallet_balance(ic.id, '2026-01-01'::date) w
   WHERE w.outstanding > 0
   ORDER BY w.outstanding DESC;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public';
 ```
-
-### 4. Dashboard.tsx UI changes
-
-**Row 2 (admin)**: Replace the current 2-card row with:
-- Production summary card (total count + total amount from production data)
-- Company debt total card (sum of all company outstanding)
-
-**Row 3**: Keep existing production table as-is.
-
-**Row 4 (new)**: Add "ديون شركات التأمين" table:
-
-| الشركة | المبلغ المستحق |
-|--------|---------------|
-| ترست | ₪600,241 |
-| اراضي مقدسة | ₪573,845 |
-| ... | ... |
-| **المجموع** | **₪X** |
-
-## Files Changed
-
-| File | Change |
-|---|---|
-| Database migration | Fix `dashboard_total_client_debt` to use `report_client_debts_summary` |
-| Database migration | Create `dashboard_company_debts` RPC |
-| `src/pages/Dashboard.tsx` | Add production summary card, add company debts table, wire up new RPC |
