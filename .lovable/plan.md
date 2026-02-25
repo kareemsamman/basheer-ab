@@ -1,41 +1,59 @@
 
-# Fix: Auto-refresh Client Wallet After Payment Changes
+# Fix X-Service Sync for Non-Visa Package Creation
 
 ## Problem
 
-When you add/edit/delete a payment inside the **Policy Details Drawer** (on the customer profile page), the drawer refreshes its own data but does NOT notify the parent `ClientDetails` page. So the wallet summary cards (Total Paid, Total Remaining, Profit) stay stale until you manually refresh the browser.
+There are TWO code paths for creating package policies in `PolicyWizard.tsx`:
 
-## Root Cause
+1. **Non-Visa path** (lines 828-883): Used when paying with cash/cheque/transfer -- this is what you used
+2. **Visa/Tranzila path** (lines 886-1139): Used when paying with credit card
 
-In `src/components/policies/PolicyDetailsDrawer.tsx`, the `handlePaymentsChange` function (line 641) only calls `fetchPolicyDetails()` (its own internal refresh). It does **not** call `onUpdated?.()` which is the callback that tells `ClientDetails` to refresh payment summary, wallet balance, and policies.
+The previous fix only applied to path #2. Path #1 still has the old code:
+- Line 861: `await supabase.from('policies').insert({...})` -- no `.select('id')`, no ID captured
+- `_pkgFirstAddonType` and `_pkgMainAddonId` are declared with `var` inside the `else` block (path #2), so they're `undefined` in path #1
+- The X-Service sync logic at line 1414 checks these variables but they're always `undefined` for non-Visa packages, so NO addon policies get synced
 
-## Fix
+This is why the Road Service addon in your ELZAMI package was never sent to X-Service.
 
-### File: `src/components/policies/PolicyDetailsDrawer.tsx`
+## Solution
 
-**One-line fix** -- Add `onUpdated?.()` to `handlePaymentsChange`:
+### File: `src/components/policies/PolicyWizard.tsx`
 
+**Change 1: Hoist tracking variables above both paths**
+
+Move `_pkgFirstAddonType` and `_pkgMainAddonId` declarations from inside the Visa block (line 890-891) to BEFORE the if/else split, so both paths can use them.
+
+**Change 2: Fix non-Visa addon insert to capture IDs**
+
+At line 861, change:
 ```typescript
-const handlePaymentsChange = () => {
-  if (policyId) {
-    sessionStorage.removeItem(`policy_cache_${policyId}`);
-  }
-  setTimeout(() => {
-    fetchPolicyDetails();
-  }, 150);
-  // NEW: Notify parent to refresh wallet/summary
-  onUpdated?.();
-};
+await supabase.from('policies').insert({ ...fields });
+```
+to:
+```typescript
+const { data: addonData, error: addonError } = await supabase
+  .from('policies')
+  .insert({ ...fields })
+  .select('id')
+  .single();
+
+if (addonError) throw addonError;
+(addon as any)._savedPolicyId = addonData?.id || null;
 ```
 
-This ensures that every time a payment is added, edited, or deleted from within the policy drawer, the parent `ClientDetails` page immediately refreshes:
-- Payment summary (total paid / total remaining)
-- Wallet balance (refunds)
-- Policy list (payment status badges)
-- Payment history tab
+**Change 3: Track first addon type in non-Visa path**
 
-### No other files need changes
+The main policy created at line 793 uses the Step 3 type (e.g., ELZAMI). The addons are the package components. We need to know which addon types exist so the sync logic can find them. Set `_pkgFirstAddonType` to track what the main policy type is (since in non-Visa path, the main policy IS the Step 3 type, not converted).
 
-The `ClientDetails` page already has the correct `onUpdated` callback wired up (line 2082-2086) that calls `fetchPolicies()`, `fetchPaymentSummary()`, and `fetchPayments()`. It just was never being triggered from payment changes.
+In the non-Visa path, the main policy from Step 3 is already `policyIdToUse` (line 825). The addons created in the loop (lines 829-883) are the additional package components. The sync logic just needs `_savedPolicyId` on each addon to work.
 
-The same applies to `DebtPaymentModal`, `SinglePolicyPaymentModal`, and `PackagePaymentModal` -- those already have their own `onSuccess` callbacks that refresh the parent. Only the in-drawer payment section (`PolicyPaymentsSection`) was missing the parent notification.
+## Technical Details
+
+| What | Current (non-Visa path) | Fix |
+|---|---|---|
+| `_pkgFirstAddonType` | `undefined` (declared in else block) | Hoisted; set before both paths |
+| `_pkgMainAddonId` | `undefined` (declared in else block) | Hoisted; not needed for non-Visa |
+| Addon insert (line 861) | No `.select('id')`, no ID captured | `.select('id').single()` + store `_savedPolicyId` |
+| Main policy (line 793) | Already has `.select().single()` | Already correct -- `policyIdToUse` is set |
+
+The sync logic at line 1426-1433 will then find `addon._savedPolicyId` for ROAD_SERVICE/ACCIDENT_FEE addons and trigger `sync-to-xservice` for them.
