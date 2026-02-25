@@ -56,7 +56,9 @@ export default function XServiceSettings() {
   const [eligibleCount, setEligibleCount] = useState<number | null>(null);
   const [alreadySyncedCount, setAlreadySyncedCount] = useState<number>(0);
   const [totalWithServiceCount, setTotalWithServiceCount] = useState<number>(0);
+  const [missingServiceCount, setMissingServiceCount] = useState<number>(0);
   const bulkAbortRef = useRef(false);
+  const [fixingLegacy, setFixingLegacy] = useState(false);
 
   useEffect(() => {
     fetchSettings();
@@ -65,8 +67,16 @@ export default function XServiceSettings() {
   }, []);
 
   const fetchEligibleCount = async () => {
-    // Count ALL service policies (no service_id filter)
-    const { count: totalPolicies } = await supabase
+    // Count policies that have a service_id (syncable)
+    const { count: totalWithService } = await supabase
+      .from("policies")
+      .select("id", { count: "exact", head: true })
+      .in("policy_type_parent", ["ROAD_SERVICE", "ACCIDENT_FEE_EXEMPTION"])
+      .is("deleted_at", null)
+      .or("road_service_id.not.is.null,accident_fee_service_id.not.is.null");
+
+    // Count total service policies (including ones without service_id)
+    const { count: totalAll } = await supabase
       .from("policies")
       .select("id", { count: "exact", head: true })
       .in("policy_type_parent", ["ROAD_SERVICE", "ACCIDENT_FEE_EXEMPTION"])
@@ -79,11 +89,16 @@ export default function XServiceSettings() {
       .eq("status", "success");
     const syncedSet = new Set((alreadySynced || []).map((r: any) => r.policy_id));
 
-    const total = totalPolicies ?? 0;
+    const withService = totalWithService ?? 0;
+    const all = totalAll ?? 0;
     const synced = syncedSet.size;
-    setTotalWithServiceCount(total);
+    const missingServiceId = all - withService;
+    setTotalWithServiceCount(withService);
     setAlreadySyncedCount(synced);
-    setEligibleCount(Math.max(0, total - synced));
+    setEligibleCount(Math.max(0, withService - synced));
+
+    // Store missing count for display
+    setMissingServiceCount(missingServiceId);
   };
 
   const fetchSettings = async () => {
@@ -207,6 +222,66 @@ export default function XServiceSettings() {
         .eq("id", logEntry.id);
       fetchLogs();
     }
+  };
+
+  const handleFixLegacy = async () => {
+    setFixingLegacy(true);
+    try {
+      // Map old service_type from notes to current road_service_id
+      // "زجاج + جرار" → زجاج +ونش ضفة قدس
+      // "زجاج + جرار + سيارة بديلة + ضواو" → زجاج +ونش +سيارة بديلة ضفة قدس
+      const { data: services } = await supabase
+        .from("road_services")
+        .select("id, name");
+      
+      const glassTow = services?.find(s => s.name.includes("ونش ضفة قدس") && !s.name.includes("سيارة") && !s.name.includes("تجاري") && !s.name.includes("اوتبوس"));
+      const glassTowCar = services?.find(s => s.name.includes("سيارة بديلة"));
+      const basicGlass = services?.find(s => s.name === "زجاج");
+
+      if (!glassTow || !glassTowCar) {
+        toast({ title: "خطأ", description: "لم يتم العثور على الخدمات المطلوبة", variant: "destructive" });
+        setFixingLegacy(false);
+        return;
+      }
+
+      // Fix "زجاج + جرار" policies (with or without trailing space)
+      const { data: fixed1Data } = await supabase
+        .from("policies")
+        .update({ road_service_id: glassTow.id })
+        .eq("policy_type_parent", "ROAD_SERVICE")
+        .is("deleted_at", null)
+        .is("road_service_id", null)
+        .like("notes", "%Service Type: زجاج + جرار%")
+        .not("notes", "like", "%سيارة بديلة%")
+        .select("id");
+
+      // Fix "زجاج + جرار + سيارة بديلة" policies
+      const { data: fixed2Data } = await supabase
+        .from("policies")
+        .update({ road_service_id: glassTowCar.id })
+        .eq("policy_type_parent", "ROAD_SERVICE")
+        .is("deleted_at", null)
+        .is("road_service_id", null)
+        .like("notes", "%سيارة بديلة%")
+        .select("id");
+
+      // Fix remaining (no notes) → assign basic glass service
+      if (basicGlass) {
+        await supabase
+          .from("policies")
+          .update({ road_service_id: basicGlass.id })
+          .eq("policy_type_parent", "ROAD_SERVICE")
+          .is("deleted_at", null)
+          .is("road_service_id", null);
+      }
+
+      const totalFixed = (fixed1Data?.length || 0) + (fixed2Data?.length || 0);
+      toast({ title: `✅ تم إصلاح ${totalFixed} وثيقة` });
+      fetchEligibleCount();
+    } catch (err: any) {
+      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+    }
+    setFixingLegacy(false);
   };
 
   const handleBulkSync = async () => {
@@ -364,12 +439,26 @@ export default function XServiceSettings() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="text-sm text-muted-foreground space-y-1">
+             <div className="text-sm text-muted-foreground space-y-1">
               <p>عدد الوثائق المؤهلة للمزامنة: <strong>{eligibleCount !== null ? eligibleCount : "..."}</strong></p>
               {alreadySyncedCount > 0 && (
                 <p className="text-xs">✅ تمت مزامنة {alreadySyncedCount} وثيقة مسبقاً</p>
               )}
+              {missingServiceCount > 0 && (
+                <p className="text-xs text-orange-600">⚠️ {missingServiceCount} وثيقة بدون معرّف خدمة (لن تتم مزامنتها حتى يتم إصلاحها)</p>
+              )}
             </div>
+            {missingServiceCount > 0 && (
+              <Button 
+                variant="outline" 
+                onClick={handleFixLegacy} 
+                disabled={fixingLegacy}
+                className="border-orange-300 text-orange-700 hover:bg-orange-50"
+              >
+                {fixingLegacy ? <Loader2 className="h-4 w-4 animate-spin ml-2" /> : <RefreshCw className="h-4 w-4 ml-2" />}
+                إصلاح الوثائق القديمة ({missingServiceCount})
+              </Button>
+            )}
             {bulkSyncing && (
               <div className="space-y-2">
                 <Progress value={bulkTotal > 0 ? (bulkProcessed / bulkTotal) * 100 : 0} />

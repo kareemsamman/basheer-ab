@@ -50,23 +50,25 @@ Deno.serve(async (req) => {
       .eq("status", "success");
     const syncedIds = [...new Set((alreadySynced || []).map((r: any) => r.policy_id))];
 
-    // 4. Get total count (ALL service policies, not already synced, not deleted)
+    // 4. Get total count (syncable: has service_id, not already synced, not deleted)
     let countQuery = supabase
       .from("policies")
       .select("id", { count: "exact", head: true })
       .in("policy_type_parent", types)
-      .is("deleted_at", null);
+      .is("deleted_at", null)
+      .or("road_service_id.not.is.null,accident_fee_service_id.not.is.null");
     if (syncedIds.length > 0) {
       countQuery = countQuery.not("id", "in", `(${syncedIds.join(",")})`);
     }
     const { count: totalCount } = await countQuery;
 
-    // 5. Fetch batch (ALL service policies not yet synced)
+    // 5. Fetch batch (only policies with service_id, not yet synced)
     let batchQuery = supabase
       .from("policies")
       .select("id, policy_type_parent, policy_number, start_date, end_date, insurance_price, payed_for_company, notes, car_id, client_id, road_service_id, accident_fee_service_id")
       .in("policy_type_parent", types)
       .is("deleted_at", null)
+      .or("road_service_id.not.is.null,accident_fee_service_id.not.is.null")
       .order("created_at", { ascending: true })
       .range(offset, offset + limit - 1);
     if (syncedIds.length > 0) {
