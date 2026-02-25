@@ -22,6 +22,7 @@ interface XServiceSettingsData {
   api_key: string;
   agent_name: string;
   xservice_agent_id: string | null;
+  invoice_base_url: string | null;
   is_enabled: boolean;
   sync_road_service: boolean;
   sync_accident_fee: boolean;
@@ -146,6 +147,7 @@ export default function XServiceSettings() {
         api_url: settings.api_url,
         api_key: settings.api_key,
         agent_name: settings.agent_name,
+        invoice_base_url: settings.invoice_base_url,
         is_enabled: settings.is_enabled,
         sync_road_service: settings.sync_road_service,
         sync_accident_fee: settings.sync_accident_fee,
@@ -391,6 +393,14 @@ export default function XServiceSettings() {
                   placeholder="AB"
                   value={settings?.agent_name || ""}
                   onChange={(e) => setSettings(s => s ? { ...s, agent_name: e.target.value } : s)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>رابط فواتير X-Service</Label>
+                <Input
+                  placeholder="https://preview--x-service.lovable.app"
+                  value={settings?.invoice_base_url || ""}
+                  onChange={(e) => setSettings(s => s ? { ...s, invoice_base_url: e.target.value } : s)}
                 />
               </div>
             </div>

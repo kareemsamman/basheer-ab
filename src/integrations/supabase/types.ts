@@ -4557,6 +4557,7 @@ export type Database = {
           api_key: string
           api_url: string
           id: string
+          invoice_base_url: string | null
           is_enabled: boolean
           sync_accident_fee: boolean
           sync_road_service: boolean
@@ -4568,6 +4569,7 @@ export type Database = {
           api_key?: string
           api_url?: string
           id?: string
+          invoice_base_url?: string | null
           is_enabled?: boolean
           sync_accident_fee?: boolean
           sync_road_service?: boolean
@@ -4579,6 +4581,7 @@ export type Database = {
           api_key?: string
           api_url?: string
           id?: string
+          invoice_base_url?: string | null
           is_enabled?: boolean
           sync_accident_fee?: boolean
           sync_road_service?: boolean

@@ -181,6 +181,27 @@ Deno.serve(async (req) => {
     const xservicePolicyId = responseBody?.policy_id || responseBody?.policy_number || null;
     await logSync(supabase, policy_id, "success", xservicePolicyId, null, requestPayload, responseBody);
 
+    // Auto-save X-Service invoice URL to policy files
+    if (xservicePolicyId && settings.invoice_base_url) {
+      const invoiceUrl = `${settings.invoice_base_url.replace(/\/+$/, "")}/invoice/${xservicePolicyId}`;
+      try {
+        await supabase.from("media_files").insert({
+          original_name: "فاتورة X-Service.pdf",
+          mime_type: "application/pdf",
+          size: 0,
+          cdn_url: invoiceUrl,
+          storage_path: null,
+          entity_type: "policy_insurance",
+          entity_id: policy_id,
+          uploaded_by: null,
+          branch_id: null,
+        });
+        console.log(`[sync-to-xservice] Saved invoice URL: ${invoiceUrl}`);
+      } catch (e) {
+        console.error("[sync-to-xservice] Failed to save invoice URL:", e);
+      }
+    }
+
     return new Response(JSON.stringify({ success: true, xservice_response: responseBody }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
