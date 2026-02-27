@@ -1,91 +1,73 @@
 
 
-# Simplify Accident Report Form - Upload-Based Workflow
+# Add Policy Number and Accident Date to Print View
 
-## Current State
-The accident report form has 8 tabs with many manual fields (accident details, owner/driver info, third party, damages, injuries, attachments, files, signature). The user fills everything digitally.
+## What's Needed
+When printing all accident files, the printed document should include a header on the first page (or every page) showing:
+1. **رقم البوليصة** (Policy Number) - from the policy data
+2. **تاريخ الحادث** (Accident Date) - from the accident report
 
-## New Workflow
-After selecting a customer and policy, the form becomes a simple **file upload and gallery** page:
-1. Select customer + policy (existing wizard - keep as-is)
-2. Land on a simplified page with:
-   - Policy info card (customer, car, company - keep)
-   - Status dropdown + notes/reminders (keep)
-   - **Main area**: File upload zone + gallery of all uploaded files
-   - **Print button**: Opens a print view showing all image/PDF pages (excludes videos)
-3. No more manual form fields (no accident details tab, no driver tab, no damages tab, etc.)
+## Changes
 
-## What Changes
+### 1. AccidentFilesSection.tsx - Accept new props and update print
+- Add new props: `policyNumber`, `accidentDate`, `clientName`, `carNumber`, `companyName`
+- Update `handlePrintAll` to render a header block on the first page before the files, showing the policy number and accident date
+- The header will include report info styled for print
 
-### AccidentReportForm.tsx - Major Rewrite
-Remove all 8 tabs and their form fields. Replace with:
-- Keep: header, policy info card, status dropdown, notes/reminders dialogs
-- Keep: `AccidentFilesSection` component (already handles file uploads)
-- Add: Video upload support (mp4, webm, mov) to the accepted file types
-- Add: "Print All" button that opens a print-friendly view of all uploaded images/PDFs (excluding videos)
-- Remove: All form state variables for accident details, driver info, damages, third parties, etc.
-- Remove: Save/Submit logic for form fields (keep only file management + status + notes)
-
-### AccidentFilesSection.tsx - Enhance
-- Add video file support (mp4, webm, mov)
-- Add a "Print All" button that generates a printable view
-- Show video files with a video icon/thumbnail but mark them as "not printable"
-- In print view: render each image full-page, embed PDFs page-by-page, skip videos
-
-### Database
-- No schema changes needed. The `accident_reports` table and `accident_report_files` table already exist and support this workflow.
-- The form fields in `accident_reports` become optional/unused (they stay in the table but won't be filled from the UI anymore).
-
-## Detailed UI Layout (New AccidentReportForm)
-
-```text
-+------------------------------------------+
-| [Back] Accident Report                   |
-|   Policy: XXX - Client - Car             |
-|   [Status dropdown] [Notes] [Reminders]  |
-+------------------------------------------+
-| Policy Info Card (client, car, company)  |
-+------------------------------------------+
-|                                          |
-| Upload Zone (drag & drop)                |
-| [Choose Files]                           |
-|                                          |
-| Uploaded Files Grid:                     |
-| [img1] [img2] [pdf1] [video1]           |
-| [img3] [pdf2] ...                        |
-|                                          |
-| [Print All Pages]  (excludes videos)     |
-+------------------------------------------+
-```
-
-## Print View Behavior
-- Opens new window / print dialog
-- Each image rendered full-width on its own "page"
-- PDF pages rendered inline (using existing PdfJsViewer or img conversion)
-- Videos are skipped with a note "Video file - not included in print"
-- CSS `@media print` rules handle page breaks
+### 2. AccidentReportForm.tsx - Pass props to AccidentFilesSection
+- Pass `policyNumber`, `accidentDate`, and other report info to `AccidentFilesSection`
 
 ## Files to Change
 
 | File | Change |
 |---|---|
-| `src/pages/AccidentReportForm.tsx` | Remove all form tabs/fields, keep header + policy card + status + notes/reminders. Replace body with file upload section + print button |
-| `src/components/accident-reports/AccidentFilesSection.tsx` | Add video support, add "Print All" button, add print-friendly gallery view |
+| `src/components/accident-reports/AccidentFilesSection.tsx` | Add props for policy/report info, render header in print view |
+| `src/pages/AccidentReportForm.tsx` | Pass policy number + accident date props to AccidentFilesSection |
 
-## What We Keep
-- AccidentReportWizard (customer + policy selection) - unchanged
-- AccidentReports list page - unchanged
-- Notes and reminders dialogs - unchanged
-- Status management - unchanged
-- The `accident_reports` DB row is still created to track status, notes, reminders
+## Technical Details
 
-## What We Remove from UI
-- Accident details tab (date, time, location, description)
-- Owner/driver tab
-- Third party tab
-- Damages tab
-- Old attachments tab (replaced by unified files section)
-- Injured persons tab
-- Signature tab
-- Save draft / Submit buttons for form fields
+### AccidentFilesSection - New Props
+```typescript
+interface AccidentFilesSectionProps {
+  accidentReportId: string;
+  onFilesChange?: (count: number) => void;
+  policyNumber?: string | null;
+  accidentDate?: string | null;
+  clientName?: string | null;
+  carNumber?: string | null;
+  companyName?: string | null;
+  reportNumber?: number | null;
+}
+```
 
+### Print Header (first page of printed document)
+```text
++------------------------------------------+
+|        بلاغ حادث - AB Insurance          |
+|  رقم البوليصة: 12345                      |
+|  تاريخ الحادث: 15/01/2026                |
+|  العميل: أحمد محمد                        |
+|  المركبة: 12-345-67                       |
+|  شركة التأمين: هراءيل                     |
++------------------------------------------+
+| [page break]                              |
+| [file 1 - full page image]               |
+| [page break]                              |
+| [file 2 - full page PDF]                 |
++------------------------------------------+
+```
+
+### AccidentReportForm - Passing props
+```tsx
+<AccidentFilesSection
+  accidentReportId={report.id}
+  policyNumber={policy.policy_number}
+  accidentDate={report.accident_date}
+  clientName={policy.clients.full_name}
+  carNumber={policy.cars?.car_number}
+  companyName={policy.insurance_companies?.name_ar || policy.insurance_companies?.name}
+  reportNumber={report.report_number}
+/>
+```
+
+The header page will use clean, print-friendly styling with proper Arabic RTL layout and will appear as the first page before all uploaded files.
