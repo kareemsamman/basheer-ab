@@ -36,6 +36,12 @@ interface AccidentFile {
 interface AccidentFilesSectionProps {
   accidentReportId: string;
   onFilesChange?: (count: number) => void;
+  policyNumber?: string | null;
+  accidentDate?: string | null;
+  clientName?: string | null;
+  carNumber?: string | null;
+  companyName?: string | null;
+  reportNumber?: number | null;
 }
 
 const isImage = (file: AccidentFile) =>
@@ -47,7 +53,7 @@ const isPdf = (file: AccidentFile) =>
 const isVideo = (file: AccidentFile) =>
   file.file_type?.startsWith("video/") || /\.(mp4|webm|mov|avi)$/i.test(file.file_url);
 
-export function AccidentFilesSection({ accidentReportId, onFilesChange }: AccidentFilesSectionProps) {
+export function AccidentFilesSection({ accidentReportId, onFilesChange, policyNumber, accidentDate, clientName, carNumber, companyName, reportNumber }: AccidentFilesSectionProps) {
   const { toast } = useToast();
   const [files, setFiles] = useState<AccidentFile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -147,6 +153,24 @@ export function AccidentFilesSection({ accidentReportId, onFilesChange }: Accide
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
+    const formattedDate = accidentDate
+      ? new Date(accidentDate).toLocaleDateString("en-GB")
+      : "-";
+
+    const headerHtml = `
+      <div class="header-page">
+        <h1>بلاغ حادث - AB Insurance</h1>
+        <table class="info-table">
+          ${reportNumber ? `<tr><td class="label">رقم البلاغ:</td><td>${reportNumber}</td></tr>` : ""}
+          <tr><td class="label">رقم البوليصة:</td><td>${policyNumber || "-"}</td></tr>
+          <tr><td class="label">تاريخ الحادث:</td><td>${formattedDate}</td></tr>
+          ${clientName ? `<tr><td class="label">العميل:</td><td>${clientName}</td></tr>` : ""}
+          ${carNumber ? `<tr><td class="label">المركبة:</td><td>${carNumber}</td></tr>` : ""}
+          ${companyName ? `<tr><td class="label">شركة التأمين:</td><td>${companyName}</td></tr>` : ""}
+        </table>
+      </div>
+    `;
+
     const imageHtml = printableFiles
       .map((file) => {
         if (isImage(file)) {
@@ -166,7 +190,36 @@ export function AccidentFilesSection({ accidentReportId, onFilesChange }: Accide
         <title>طباعة ملفات الحادث</title>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: Arial, sans-serif; }
+          body { font-family: Arial, sans-serif; direction: rtl; }
+          .header-page {
+            page-break-after: always;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 40px;
+          }
+          .header-page h1 {
+            font-size: 28px;
+            margin-bottom: 32px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 12px;
+          }
+          .info-table {
+            border-collapse: collapse;
+            font-size: 18px;
+            min-width: 400px;
+          }
+          .info-table td {
+            padding: 10px 16px;
+            border-bottom: 1px solid #ddd;
+          }
+          .info-table .label {
+            font-weight: bold;
+            color: #333;
+            white-space: nowrap;
+          }
           .print-page {
             page-break-after: always;
             display: flex;
@@ -199,7 +252,7 @@ export function AccidentFilesSection({ accidentReportId, onFilesChange }: Accide
           }
         </style>
       </head>
-      <body>${imageHtml}</body>
+      <body>${headerHtml}${imageHtml}</body>
       </html>
     `);
     printWindow.document.close();

@@ -507,7 +507,15 @@ export default function AccidentReportForm() {
 
         {/* Files Section - Main Area */}
         {report && (
-          <AccidentFilesSection accidentReportId={report.id} />
+          <AccidentFilesSection
+            accidentReportId={report.id}
+            policyNumber={policy.policy_number}
+            accidentDate={report.accident_date}
+            clientName={policy.clients.full_name}
+            carNumber={policy.cars?.car_number}
+            companyName={policy.insurance_companies?.name_ar || policy.insurance_companies?.name}
+            reportNumber={report.report_number}
+          />
         )}
 
         {/* Notes Dialog */}
