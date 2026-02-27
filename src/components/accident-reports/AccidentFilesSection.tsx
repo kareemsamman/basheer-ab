@@ -157,17 +157,26 @@ export function AccidentFilesSection({ accidentReportId, onFilesChange, policyNu
       ? new Date(accidentDate).toLocaleDateString("en-GB")
       : "-";
 
+    const infoRows = [
+      reportNumber ? { label: "رقم البلاغ", value: String(reportNumber) } : null,
+      { label: "رقم البوليصة", value: policyNumber || "-" },
+      { label: "تاريخ الحادث", value: formattedDate },
+      clientName ? { label: "العميل", value: clientName } : null,
+      carNumber ? { label: "المركبة", value: carNumber } : null,
+      companyName ? { label: "شركة التأمين", value: companyName } : null,
+    ].filter(Boolean) as { label: string; value: string }[];
+
     const headerHtml = `
       <div class="header-page">
-        <h1>بلاغ حادث - AB Insurance</h1>
-        <table class="info-table">
-          ${reportNumber ? `<tr><td class="label">رقم البلاغ:</td><td>${reportNumber}</td></tr>` : ""}
-          <tr><td class="label">رقم البوليصة:</td><td>${policyNumber || "-"}</td></tr>
-          <tr><td class="label">تاريخ الحادث:</td><td>${formattedDate}</td></tr>
-          ${clientName ? `<tr><td class="label">العميل:</td><td>${clientName}</td></tr>` : ""}
-          ${carNumber ? `<tr><td class="label">المركبة:</td><td>${carNumber}</td></tr>` : ""}
-          ${companyName ? `<tr><td class="label">شركة التأمين:</td><td>${companyName}</td></tr>` : ""}
-        </table>
+        <div class="header-card">
+          <div class="header-band">
+            <h1>بلاغ حادث</h1>
+            <span class="brand">AB Insurance</span>
+          </div>
+          <table class="info-table">
+            ${infoRows.map((r, i) => `<tr class="${i % 2 === 0 ? 'even' : 'odd'}"><td class="label">${r.label}</td><td class="value">${r.value}</td></tr>`).join("")}
+          </table>
+        </div>
       </div>
     `;
 
@@ -179,7 +188,6 @@ export function AccidentFilesSection({ accidentReportId, onFilesChange, policyNu
         pagesHtml += `<div class="print-page"><img src="${file.file_url}" alt="${file.file_name || ''}" /></div>`;
       } else if (isPdf(file)) {
         try {
-          // Fetch PDF via proxy
           const response = await fetch(
             `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/proxy-cdn-file`,
             {
@@ -195,15 +203,14 @@ export function AccidentFilesSection({ accidentReportId, onFilesChange, policyNu
           const blob = await response.blob();
           const arrayBuffer = await blob.arrayBuffer();
 
-          // Use pdf.js to render pages
           const pdfjsLib = await import('pdfjs-dist');
           pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
           
-          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
           
           for (let i = 1; i <= pdf.numPages; i++) {
             const page = await pdf.getPage(i);
-            const scale = 2.0; // High quality for print
+            const scale = 2.0;
             const viewport = page.getViewport({ scale });
             const canvas = document.createElement('canvas');
             canvas.width = viewport.width;
@@ -211,13 +218,14 @@ export function AccidentFilesSection({ accidentReportId, onFilesChange, policyNu
             const ctx = canvas.getContext('2d');
             if (!ctx) continue;
             
-            await page.render({ canvasContext: ctx, viewport, canvas } as any).promise;
+            const renderTask = page.render({ canvasContext: ctx, viewport, canvas });
+            await renderTask.promise;
             const imgDataUrl = canvas.toDataURL('image/png');
             pagesHtml += `<div class="print-page"><img src="${imgDataUrl}" alt="${file.file_name || 'PDF'} - صفحة ${i}" /></div>`;
           }
         } catch (err) {
           console.error("Error extracting PDF pages:", err);
-          pagesHtml += `<div class="print-page"><p style="color:red;text-align:center;">فشل في تحميل PDF: ${file.file_name || 'مستند'}</p></div>`;
+          pagesHtml += `<div class="print-page"><p class="pdf-fallback">تعذر استخراج صفحات PDF: ${file.file_name || 'مستند'}<br/><a href="${file.file_url}" target="_blank">فتح الملف الأصلي</a></p></div>`;
         }
       }
     }
@@ -232,35 +240,61 @@ export function AccidentFilesSection({ accidentReportId, onFilesChange, policyNu
         <title>طباعة ملفات الحادث</title>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: Arial, sans-serif; direction: rtl; }
+          body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl; background: #f5f5f5; }
           .header-page {
             page-break-after: always;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
             min-height: 100vh;
             padding: 40px;
           }
-          .header-page h1 {
-            font-size: 28px;
-            margin-bottom: 32px;
-            border-bottom: 2px solid #333;
-            padding-bottom: 12px;
+          .header-card {
+            border: 2px solid #1a365d;
+            border-radius: 12px;
+            overflow: hidden;
+            width: 520px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+            background: #fff;
+          }
+          .header-band {
+            background: linear-gradient(135deg, #1a365d 0%, #2a4a7f 100%);
+            color: #fff;
+            padding: 28px 32px 20px;
+            text-align: center;
+          }
+          .header-band h1 {
+            font-size: 26px;
+            font-weight: 700;
+            margin: 0 0 6px;
+          }
+          .header-band .brand {
+            font-size: 14px;
+            letter-spacing: 2px;
+            opacity: 0.85;
+            text-transform: uppercase;
           }
           .info-table {
+            width: 100%;
             border-collapse: collapse;
-            font-size: 18px;
-            min-width: 400px;
+            font-size: 16px;
           }
+          .info-table tr.even { background: #f8fafc; }
+          .info-table tr.odd { background: #fff; }
           .info-table td {
-            padding: 10px 16px;
-            border-bottom: 1px solid #ddd;
+            padding: 14px 24px;
+            border-bottom: 1px solid #e2e8f0;
           }
+          .info-table tr:last-child td { border-bottom: none; }
           .info-table .label {
-            font-weight: bold;
-            color: #333;
+            font-weight: 600;
+            color: #1a365d;
             white-space: nowrap;
+            width: 40%;
+          }
+          .info-table .value {
+            color: #2d3748;
+            font-weight: 500;
           }
           .print-page {
             page-break-after: always;
@@ -277,7 +311,19 @@ export function AccidentFilesSection({ accidentReportId, onFilesChange, policyNu
             max-height: 90vh;
             object-fit: contain;
           }
+          .pdf-fallback {
+            text-align: center;
+            color: #c53030;
+            font-size: 16px;
+            line-height: 2;
+          }
+          .pdf-fallback a {
+            color: #2b6cb0;
+            text-decoration: underline;
+          }
           @media print {
+            body { background: #fff; }
+            .header-card { box-shadow: none; border: 2px solid #1a365d; }
             .print-page { padding: 0; }
             .print-page img { max-height: 95vh; }
           }
@@ -288,7 +334,6 @@ export function AccidentFilesSection({ accidentReportId, onFilesChange, policyNu
     `);
     printWindow.document.close();
 
-    // Wait for images to load then trigger print
     printWindow.onload = () => {
       setTimeout(() => printWindow.print(), 500);
     };
