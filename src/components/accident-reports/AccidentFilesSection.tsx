@@ -143,15 +143,15 @@ export function AccidentFilesSection({ accidentReportId, onFilesChange, policyNu
     return <FileImage className="h-8 w-8 text-blue-500" />;
   };
 
-  const handlePrintAll = () => {
+  const handlePrintAll = async () => {
     const printableFiles = files.filter((f) => isImage(f) || isPdf(f));
     if (printableFiles.length === 0) {
       toast({ title: "لا توجد ملفات للطباعة", description: "لا توجد صور أو ملفات PDF للطباعة", variant: "destructive" });
       return;
     }
 
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
+    // Show loading toast
+    toast({ title: "جاري التحضير...", description: "يتم تحويل الملفات للطباعة" });
 
     const formattedDate = accidentDate
       ? new Date(accidentDate).toLocaleDateString("en-GB")
@@ -171,17 +171,59 @@ export function AccidentFilesSection({ accidentReportId, onFilesChange, policyNu
       </div>
     `;
 
-    const imageHtml = printableFiles
-      .map((file) => {
-        if (isImage(file)) {
-          return `<div class="print-page"><img src="${file.file_url}" alt="${file.file_name || ''}" /></div>`;
+    // Process files: images stay as-is, PDFs get extracted to page images
+    let pagesHtml = "";
+
+    for (const file of printableFiles) {
+      if (isImage(file)) {
+        pagesHtml += `<div class="print-page"><img src="${file.file_url}" alt="${file.file_name || ''}" /></div>`;
+      } else if (isPdf(file)) {
+        try {
+          // Fetch PDF via proxy
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/proxy-cdn-file`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`
+              },
+              body: JSON.stringify({ url: file.file_url })
+            }
+          );
+          if (!response.ok) throw new Error('Failed to fetch PDF');
+          const blob = await response.blob();
+          const arrayBuffer = await blob.arrayBuffer();
+
+          // Use pdf.js to render pages
+          const pdfjsLib = await import('pdfjs-dist');
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+          
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const scale = 2.0; // High quality for print
+            const viewport = page.getViewport({ scale });
+            const canvas = document.createElement('canvas');
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) continue;
+            
+            await page.render({ canvasContext: ctx, viewport, canvas } as any).promise;
+            const imgDataUrl = canvas.toDataURL('image/png');
+            pagesHtml += `<div class="print-page"><img src="${imgDataUrl}" alt="${file.file_name || 'PDF'} - صفحة ${i}" /></div>`;
+          }
+        } catch (err) {
+          console.error("Error extracting PDF pages:", err);
+          pagesHtml += `<div class="print-page"><p style="color:red;text-align:center;">فشل في تحميل PDF: ${file.file_name || 'مستند'}</p></div>`;
         }
-        if (isPdf(file)) {
-          return `<div class="print-page"><iframe src="${file.file_url}" frameborder="0"></iframe><p class="pdf-note">ملف PDF: ${file.file_name || 'مستند'}</p></div>`;
-        }
-        return "";
-      })
-      .join("");
+      }
+    }
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -235,24 +277,13 @@ export function AccidentFilesSection({ accidentReportId, onFilesChange, policyNu
             max-height: 90vh;
             object-fit: contain;
           }
-          .print-page iframe {
-            width: 100%;
-            height: 90vh;
-            border: none;
-          }
-          .pdf-note {
-            text-align: center;
-            color: #666;
-            margin-top: 8px;
-            font-size: 12px;
-          }
           @media print {
             .print-page { padding: 0; }
             .print-page img { max-height: 95vh; }
           }
         </style>
       </head>
-      <body>${headerHtml}${imageHtml}</body>
+      <body>${headerHtml}${pagesHtml}</body>
       </html>
     `);
     printWindow.document.close();

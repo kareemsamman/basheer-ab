@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +38,8 @@ import {
   CalendarIcon,
   Check,
   FileImage,
+  Pencil,
+  Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AccidentFilesSection } from "@/components/accident-reports/AccidentFilesSection";
@@ -108,6 +111,85 @@ const statusColors: Record<string, string> = {
   submitted: "bg-blue-500/10 text-blue-700 border-blue-500/20",
   closed: "bg-green-500/10 text-green-700 border-green-500/20",
 };
+
+// Inline editable field component
+function EditableField({ label, value, onSave, toast }: { label: string; value: string; onSave: (val: string) => Promise<void>; toast: any }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(draft);
+      setEditing(false);
+      toast({ title: "تم الحفظ" });
+    } catch {
+      toast({ title: "خطأ", description: "فشل في الحفظ", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1">
+      <p className="text-sm text-muted-foreground">{label}</p>
+      {editing ? (
+        <div className="flex gap-2">
+          <Input value={draft} onChange={(e) => setDraft(e.target.value)} className="h-9" />
+          <Button size="sm" onClick={handleSave} disabled={saving} className="h-9">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => { setEditing(false); setDraft(value); }} className="h-9">✕</Button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 cursor-pointer group" onClick={() => setEditing(true)}>
+          <p className="font-medium">{value || "-"}</p>
+          <Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EditableDateField({ label, value, onSave, toast }: { label: string; value: string; onSave: (val: string) => Promise<void>; toast: any }) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleSelect = async (date: Date | undefined) => {
+    if (!date) return;
+    const formatted = format(date, "yyyy-MM-dd");
+    if (formatted === value) { setOpen(false); return; }
+    setSaving(true);
+    try {
+      await onSave(formatted);
+      setOpen(false);
+      toast({ title: "تم الحفظ" });
+    } catch {
+      toast({ title: "خطأ", description: "فشل في الحفظ", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1">
+      <p className="text-sm text-muted-foreground">{label}</p>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button variant="outline" className="h-9 justify-start text-right gap-2">
+            <CalendarIcon className="h-4 w-4" />
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : (value ? new Date(value).toLocaleDateString("en-GB") : "-")}
+            <Pencil className="h-3.5 w-3.5 text-muted-foreground mr-auto" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0">
+          <Calendar mode="single" selected={value ? new Date(value) : undefined} onSelect={handleSelect} />
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
 
 export default function AccidentReportForm() {
   const { policyId, reportId } = useParams<{ policyId?: string; reportId?: string }>();
@@ -455,9 +537,9 @@ export default function AccidentReportForm() {
           </div>
         </div>
 
-        {/* Policy Info Card */}
+        {/* Policy Info Card + Editable Fields */}
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-4 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -502,6 +584,38 @@ export default function AccidentReportForm() {
                 </div>
               )}
             </div>
+
+            {/* Editable Policy Number & Accident Date */}
+            {report && (
+              <div className="border-t pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <EditableField
+                  label="رقم البوليصة"
+                  value={policy.policy_number || ""}
+                  onSave={async (val) => {
+                    const { error } = await supabase
+                      .from("policies")
+                      .update({ policy_number: val || null })
+                      .eq("id", policy.id);
+                    if (error) throw error;
+                    setPolicy({ ...policy, policy_number: val || null });
+                  }}
+                  toast={toast}
+                />
+                <EditableDateField
+                  label="تاريخ الحادث"
+                  value={report.accident_date}
+                  onSave={async (val) => {
+                    const { error } = await supabase
+                      .from("accident_reports")
+                      .update({ accident_date: val })
+                      .eq("id", report.id);
+                    if (error) throw error;
+                    setReport({ ...report, accident_date: val });
+                  }}
+                  toast={toast}
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
 
