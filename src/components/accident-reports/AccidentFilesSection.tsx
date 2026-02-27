@@ -24,6 +24,10 @@ import {
   Printer,
   Video,
 } from "lucide-react";
+import * as pdfjsLib from 'pdfjs-dist';
+import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
 
 interface AccidentFile {
   id: string;
@@ -203,9 +207,6 @@ export function AccidentFilesSection({ accidentReportId, onFilesChange, policyNu
           const blob = await response.blob();
           const arrayBuffer = await blob.arrayBuffer();
 
-          const pdfjsLib = await import('pdfjs-dist');
-          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
-          
           const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
           
           for (let i = 1; i <= pdf.numPages; i++) {
@@ -218,7 +219,7 @@ export function AccidentFilesSection({ accidentReportId, onFilesChange, policyNu
             const ctx = canvas.getContext('2d');
             if (!ctx) continue;
             
-            const renderTask = page.render({ canvasContext: ctx, viewport, canvas });
+            const renderTask = page.render({ canvasContext: ctx, viewport, canvas } as any);
             await renderTask.promise;
             const imgDataUrl = canvas.toDataURL('image/png');
             pagesHtml += `<div class="print-page"><img src="${imgDataUrl}" alt="${file.file_name || 'PDF'} - صفحة ${i}" /></div>`;
@@ -334,6 +335,9 @@ export function AccidentFilesSection({ accidentReportId, onFilesChange, policyNu
     `);
     printWindow.document.close();
 
+    printWindow.onafterprint = () => {
+      printWindow.close();
+    };
     printWindow.onload = () => {
       setTimeout(() => printWindow.print(), 500);
     };
