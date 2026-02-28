@@ -526,13 +526,14 @@ export default function Expenses() {
   const allCategories = { ...paymentCategories, ...receiptCategories };
   const netMonth = totalReceipts - totalPayments - totalCompanyDues;
 
-  const handleExportInvoice = () => {
+  const handleExportInvoice = (type: 'receipt' | 'payment') => {
     const monthLabel = format(selectedMonth, 'MMMM yyyy', { locale: he });
     const logoUrl = siteSettings?.logo_url || null;
     const businessName = siteSettings?.site_title || 'AB Insurance';
+    const filtered = expenses.filter(e => e.voucher_type === type && !e.is_company_due);
     const html = buildExpenseInvoiceHtml(
-      expenses as any,
-      voucherFilter as 'receipt' | 'payment',
+      filtered as any,
+      type,
       monthLabel,
       logoUrl,
       businessName,
@@ -540,7 +541,7 @@ export default function Expenses() {
     openExpenseInvoicePrint(html);
   };
 
-  const showExportButton = voucherFilter === 'receipt' || voucherFilter === 'payment';
+  const showExportButton = voucherFilter === 'receipt' || voucherFilter === 'payment' || voucherFilter === 'all';
   // Access control: only admin or specific email
   const canAccess = isAdmin || user?.email === EXPENSES_ALLOWED_EMAIL;
   if (!canAccess) return <Navigate to="/" replace />;
@@ -654,10 +655,20 @@ export default function Expenses() {
                   </TabsList>
                 </Tabs>
                 {showExportButton && (
-                  <Button variant="outline" size="sm" onClick={handleExportInvoice} className="gap-1.5">
-                    <FileDown className="h-4 w-4" />
-                    {voucherFilter === 'receipt' ? 'ייצוא קבלה' : 'ייצוא חשבונית זיכוי'}
-                  </Button>
+                  <div className="flex gap-2">
+                    {(voucherFilter === 'receipt' || voucherFilter === 'all') && (
+                      <Button variant="outline" size="sm" onClick={() => handleExportInvoice('receipt')} className="gap-1.5">
+                        <FileDown className="h-4 w-4" />
+                        ייצוא קבלה
+                      </Button>
+                    )}
+                    {(voucherFilter === 'payment' || voucherFilter === 'all') && (
+                      <Button variant="outline" size="sm" onClick={() => handleExportInvoice('payment')} className="gap-1.5">
+                        <FileDown className="h-4 w-4" />
+                        ייצוא חשבונית זיכוי
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
               

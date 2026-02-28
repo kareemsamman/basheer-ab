@@ -1,6 +1,6 @@
 /**
  * Builds a Hebrew invoice HTML for expense vouchers (קבלה / חשבונית זיכוי)
- * Styled to match the uploaded Rivhit-style receipt format
+ * Styled to match the Rivhit-style receipt format (RTL)
  */
 
 interface ExpenseRow {
@@ -51,6 +51,8 @@ export function buildExpenseInvoiceHtml(
   const total = filtered.reduce((sum, r) => sum + r.amount, 0);
   const totalFormatted = total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+  const invoiceNumber = '01';
+
   const tableRows = filtered.map((r, i) => {
     const cat = categoryLabelsHe[r.category] || r.category;
     const pm = paymentMethodLabelsHe[r.payment_method] || r.payment_method;
@@ -70,10 +72,10 @@ export function buildExpenseInvoiceHtml(
 
   const logoHtml = logoUrl
     ? `<img src="${logoUrl}" alt="Logo" style="max-height:70px;object-fit:contain;" />`
-    : `<div style="font-size:24px;font-weight:700;color:#1e3a5f;">${businessName}</div>`;
+    : '';
 
   return `<!DOCTYPE html>
-<html dir="ltr" lang="he">
+<html dir="rtl" lang="he">
 <head>
   <meta charset="UTF-8">
   <title>${title}</title>
@@ -82,50 +84,84 @@ export function buildExpenseInvoiceHtml(
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: 'Arial', 'Tahoma', 'Noto Sans Hebrew', sans-serif;
-      direction: ltr;
+      direction: rtl;
       color: #1f2937;
       background: #fff;
       padding: 30px 40px;
       font-size: 13px;
     }
-    .header {
+    .header-box {
+      border: 3px solid #1e3a5f;
+      border-radius: 8px;
+      padding: 16px 24px;
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
-      border-bottom: 3px solid #1e3a5f;
-      padding-bottom: 16px;
-      margin-bottom: 20px;
+      align-items: center;
+      margin-bottom: 16px;
     }
-    .header-right { text-align: right; }
-    .header-right h1 {
-      font-size: 28px;
+    .header-right {
+      text-align: right;
+    }
+    .header-right .biz-name {
+      font-size: 22px;
+      font-weight: 700;
       color: #1e3a5f;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
-    .header-right .meta {
+    .header-right .biz-details {
       font-size: 12px;
       color: #6b7280;
-      line-height: 1.8;
+      line-height: 1.6;
+    }
+    .header-center {
+      text-align: center;
+    }
+    .header-left {
+      text-align: left;
+      font-size: 13px;
+      color: #374151;
+      font-weight: 600;
+    }
+    .title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      padding: 8px 0;
+      border-bottom: 2px solid #1e3a5f;
+    }
+    .title-row .doc-title {
+      font-size: 26px;
+      font-weight: 700;
+      color: #1e3a5f;
+    }
+    .title-row .doc-number {
+      font-size: 14px;
+      color: #374151;
+      font-weight: 600;
+    }
+    .title-row .doc-copy {
+      font-size: 13px;
+      color: #6b7280;
+      font-weight: 600;
     }
     .info-section {
       display: flex;
       justify-content: space-between;
-      margin-bottom: 20px;
-      gap: 20px;
+      margin-bottom: 16px;
+      gap: 16px;
     }
     .info-box {
       flex: 1;
       background: #f8fafc;
       border: 1px solid #e2e8f0;
       border-radius: 8px;
-      padding: 12px 16px;
+      padding: 10px 14px;
     }
     .info-box .label {
       font-size: 11px;
       color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
     .info-box .value {
       font-size: 14px;
@@ -145,12 +181,12 @@ export function buildExpenseInvoiceHtml(
       font-weight: 600;
       text-align: right;
     }
-    thead th:first-child { border-radius: 6px 0 0 0; text-align: center; }
-    thead th:last-child { border-radius: 0 6px 0 0; text-align: left; }
+    thead th:first-child { border-radius: 0 6px 0 0; text-align: center; }
+    thead th:last-child { border-radius: 6px 0 0 0; text-align: left; }
     tbody tr:nth-child(even) { background: #f9fafb; }
     .summary-box {
       display: flex;
-      justify-content: flex-end;
+      justify-content: flex-start;
       margin-top: 10px;
     }
     .summary-inner {
@@ -185,21 +221,34 @@ export function buildExpenseInvoiceHtml(
   </style>
 </head>
 <body>
-  <div class="header">
-    <div>${logoHtml}</div>
+  <!-- Header box matching Rivhit style -->
+  <div class="header-box">
     <div class="header-right">
-      <h1>${title}</h1>
-      <div class="meta">
-        תאריך הפקה: ${today}<br/>
-        תקופה: ${monthLabel}
+      <div class="biz-name">בשיר אבו סנינה</div>
+      <div class="biz-details">
+        בית חנינא חדשה, ירושלים<br/>
+        טלפון: 026307377
       </div>
     </div>
+    <div class="header-center">
+      ${logoHtml}
+    </div>
+    <div class="header-left">
+      עוסק מורשה 212426498
+    </div>
+  </div>
+
+  <!-- Title row -->
+  <div class="title-row">
+    <div class="doc-title">${title}</div>
+    <div class="doc-number">מספר חשבונית: ${invoiceNumber}</div>
+    <div class="doc-copy">העתק</div>
   </div>
 
   <div class="info-section">
     <div class="info-box">
-      <div class="label">סוג מסמך</div>
-      <div class="value">${title}</div>
+      <div class="label">תאריך הפקה</div>
+      <div class="value">${today}</div>
     </div>
     <div class="info-box">
       <div class="label">תקופה</div>

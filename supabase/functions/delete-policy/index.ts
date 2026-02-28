@@ -38,13 +38,22 @@ serve(async (req) => {
       });
     }
 
-    // CRITICAL: Only super admin can delete policies
-    if (user.email !== SUPER_ADMIN_EMAIL) {
-      console.log(`Unauthorized delete attempt by: ${user.email}`);
-      return new Response(JSON.stringify({ error: 'Only super admin can delete policies' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    // CRITICAL: Only super admin or admin-role users can delete policies
+    const isSuper = user.email === SUPER_ADMIN_EMAIL;
+    if (!isSuper) {
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('role', 'admin')
+        .single();
+      if (!roleData) {
+        console.log(`Unauthorized delete attempt by: ${user.email}`);
+        return new Response(JSON.stringify({ error: 'Only admins can delete policies' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     // Get policy ID(s) from request body
