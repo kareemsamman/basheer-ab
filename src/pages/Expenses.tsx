@@ -31,14 +31,18 @@ import {
   Building,
   FileText,
   ShieldCheck,
+  FileDown,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { format, startOfMonth, endOfMonth, subMonths, addMonths } from "date-fns";
 import { ar } from "date-fns/locale";
+import { he } from "date-fns/locale";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { POLICY_TYPE_LABELS } from "@/lib/insuranceTypes";
+import { useSiteSettings } from "@/hooks/useSiteSettings";
+import { buildExpenseInvoiceHtml, openExpenseInvoicePrint } from "@/lib/expenseInvoiceBuilder";
 
 interface Expense {
   id: string;
@@ -90,6 +94,7 @@ const EXPENSES_ALLOWED_EMAIL = 'raghda@basheer-ab.com';
 
 export default function Expenses() {
   const { profile, isAdmin, user } = useAuth();
+  const { data: siteSettings } = useSiteSettings();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
@@ -521,6 +526,21 @@ export default function Expenses() {
   const allCategories = { ...paymentCategories, ...receiptCategories };
   const netMonth = totalReceipts - totalPayments - totalCompanyDues;
 
+  const handleExportInvoice = () => {
+    const monthLabel = format(selectedMonth, 'MMMM yyyy', { locale: he });
+    const logoUrl = siteSettings?.logo_url || null;
+    const businessName = siteSettings?.site_title || 'AB Insurance';
+    const html = buildExpenseInvoiceHtml(
+      expenses as any,
+      voucherFilter as 'receipt' | 'payment',
+      monthLabel,
+      logoUrl,
+      businessName,
+    );
+    openExpenseInvoicePrint(html);
+  };
+
+  const showExportButton = voucherFilter === 'receipt' || voucherFilter === 'payment';
   // Access control: only admin or specific email
   const canAccess = isAdmin || user?.email === EXPENSES_ALLOWED_EMAIL;
   if (!canAccess) return <Navigate to="/" replace />;
@@ -624,14 +644,22 @@ export default function Expenses() {
           <CardContent className="py-4">
             <div className="flex flex-col gap-4">
               {/* Tabs - 4 tabs */}
-              <Tabs value={voucherFilter} onValueChange={setVoucherFilter} dir="rtl">
-                <TabsList className="w-full md:w-auto">
-                  <TabsTrigger value="all">الكل</TabsTrigger>
-                  <TabsTrigger value="receipt">سند قبض</TabsTrigger>
-                  <TabsTrigger value="payment">سند صرف</TabsTrigger>
-                  <TabsTrigger value="company_dues">المستحق للشركات</TabsTrigger>
-                </TabsList>
-              </Tabs>
+              <div className="flex items-center justify-between gap-3">
+                <Tabs value={voucherFilter} onValueChange={setVoucherFilter} dir="rtl">
+                  <TabsList className="w-full md:w-auto">
+                    <TabsTrigger value="all">الكل</TabsTrigger>
+                    <TabsTrigger value="receipt">سند قبض</TabsTrigger>
+                    <TabsTrigger value="payment">سند صرف</TabsTrigger>
+                    <TabsTrigger value="company_dues">المستحق للشركات</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+                {showExportButton && (
+                  <Button variant="outline" size="sm" onClick={handleExportInvoice} className="gap-1.5">
+                    <FileDown className="h-4 w-4" />
+                    {voucherFilter === 'receipt' ? 'ייצוא קבלה' : 'ייצוא חשבונית זיכוי'}
+                  </Button>
+                )}
+              </div>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {/* Search */}
