@@ -17,6 +17,8 @@ import { Users, Car, TrendingUp, CreditCard, Building2, FileText, Calendar } fro
 import { supabase } from "@/integrations/supabase/client";
 import { useProfitSummary } from "@/hooks/useProfitSummary";
 import { useAuth } from "@/hooks/useAuth";
+import { ExpiringPolicies } from "@/components/dashboard/ExpiringPolicies";
+import { RecentActivity } from "@/components/dashboard/RecentActivity";
 
 interface CompanyProduction {
   company_id: string;
@@ -463,6 +465,14 @@ export default function Dashboard() {
               </TableBody>
             </Table>
           </Card>
+        )}
+
+        {/* Row 5: Expiring Policies + Recent Activity */}
+        {isAdmin && (
+          <div className="grid gap-4 md:grid-cols-2">
+            <ExpiringPolicies />
+            <RecentActivity />
+          </div>
         )}
       </div>
     </MainLayout>
