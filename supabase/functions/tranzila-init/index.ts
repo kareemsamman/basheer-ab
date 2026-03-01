@@ -132,31 +132,11 @@ Deno.serve(async (req) => {
       .update({ tranzila_index: tranzilaIndex })
       .eq('id', payment.id)
 
-    // If test mode, return simulated success
-    if (settings.test_mode) {
-      // Update payment to success immediately in test mode
-      await supabase
-        .from('policy_payments')
-        .update({
-          refused: false,
-          tranzila_transaction_id: 'TEST-' + Date.now(),
-          tranzila_approval_code: 'TEST-APPROVED',
-          tranzila_response_code: '000',
-        })
-        .eq('id', payment.id)
+    // Determine terminal: use sandbox terminal in test mode, production terminal otherwise
+    const terminalName = settings.test_mode
+      ? (settings.sandbox_terminal_name || 'demo5964')
+      : settings.terminal_name
 
-      return new Response(JSON.stringify({
-        success: true,
-        test_mode: true,
-        payment_id: payment.id,
-        message: 'Payment simulated successfully (test mode)',
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    // Build Tranzila form data for POST method (official recommended approach)
-    const terminalName = settings.terminal_name
     if (!terminalName) {
       return new Response(JSON.stringify({ error: 'Terminal name not configured' }), {
         status: 400,
@@ -195,7 +175,7 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       success: true,
-      test_mode: false,
+      test_mode: settings.test_mode,
       payment_id: payment.id,
       iframe_url: iframeUrl,
       form_fields: formFields, // Return fields for POST submission

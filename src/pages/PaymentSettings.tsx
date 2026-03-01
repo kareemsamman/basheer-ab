@@ -21,6 +21,7 @@ interface TranzilaSettings {
   notify_url: string | null;
   is_enabled: boolean;
   test_mode: boolean;
+  sandbox_terminal_name: string | null;
 }
 
 export default function PaymentSettings() {
@@ -38,6 +39,7 @@ export default function PaymentSettings() {
     notify_url: "",
     is_enabled: false,
     test_mode: true,
+    sandbox_terminal_name: "demo5964",
   });
 
   // Redirect if not admin
@@ -69,6 +71,7 @@ export default function PaymentSettings() {
             notify_url: data.notify_url || "",
             is_enabled: data.is_enabled,
             test_mode: data.test_mode,
+            sandbox_terminal_name: data.sandbox_terminal_name || "demo5964",
           });
         }
       } catch (error) {
@@ -109,6 +112,7 @@ export default function PaymentSettings() {
           notify_url: formData.notify_url || null,
           is_enabled: formData.is_enabled,
           test_mode: formData.test_mode,
+          sandbox_terminal_name: formData.sandbox_terminal_name || null,
         })
         .eq('provider', 'tranzila');
 
@@ -200,9 +204,9 @@ export default function PaymentSettings() {
               <div className="flex items-center gap-3">
                 <TestTube className="h-5 w-5 text-amber-600" />
                 <div className="space-y-0.5">
-                  <Label className="text-base font-medium">وضع المحاكاة (بدون iframe)</Label>
+                  <Label className="text-base font-medium">وضع Sandbox (تجريبي)</Label>
                   <p className="text-sm text-muted-foreground">
-                    تخطي نافذة الدفع ومحاكاة النجاح مباشرة (للعرض فقط)
+                    استخدام ترمينال تجريبي - لا يتم خصم أموال حقيقية
                   </p>
                 </div>
               </div>
@@ -213,18 +217,36 @@ export default function PaymentSettings() {
             </div>
 
             {formData.test_mode && (
-              <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-700">
-                <AlertCircle className="h-5 w-5 mt-0.5 shrink-0" />
-                <p className="text-sm">
-                  وضع المحاكاة يتخطى نافذة Tranzila تماماً ويعتبر الدفع ناجحاً فوراً.
-                  <br />
-                  للاختبار مع نافذة الدفع الحقيقية، أوقف هذا الوضع واستخدم بطاقة تجريبية.
-                </p>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="sandbox_terminal_name">
+                    اسم الترمينال التجريبي (Sandbox Terminal)
+                  </Label>
+                  <Input
+                    id="sandbox_terminal_name"
+                    value={formData.sandbox_terminal_name}
+                    onChange={(e) => setFormData(f => ({ ...f, sandbox_terminal_name: e.target.value }))}
+                    placeholder="demo5964"
+                    className="ltr-input"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    ترمينال تجريبي من Tranzila - الافتراضي: demo5964
+                  </p>
+                </div>
+
+                <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-700">
+                  <AlertCircle className="h-5 w-5 mt-0.5 shrink-0" />
+                  <p className="text-sm">
+                    وضع Sandbox يفتح نافذة الدفع الحقيقية لكن مع ترمينال تجريبي.
+                    <br />
+                    لا يتم خصم أموال حقيقية. استخدم بطاقات الاختبار أدناه.
+                  </p>
+                </div>
               </div>
             )}
 
-            {/* Test Cards Info */}
-            {!formData.test_mode && (
+            {/* Test Cards Info - show when sandbox mode is on */}
+            {formData.test_mode && (
               <div className="p-4 border rounded-lg bg-blue-500/10 border-blue-500/20">
                 <h4 className="font-medium text-blue-700 mb-2 flex items-center gap-2">
                   <CreditCard className="h-4 w-4" />
@@ -235,9 +257,6 @@ export default function PaymentSettings() {
                   <p>Expiry: Any future date (e.g., 12/29)</p>
                   <p>CVV: <span className="bg-blue-100 px-2 py-0.5 rounded">123</span></p>
                 </div>
-                <p className="text-xs text-blue-500 mt-2">
-                  * بطاقات الاختبار تعمل فقط مع "ترمينال تجريبي" من Tranzila (اطلبه من الدعم).
-                </p>
               </div>
             )}
 

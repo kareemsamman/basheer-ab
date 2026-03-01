@@ -3011,6 +3011,7 @@ export type Database = {
           is_enabled: boolean
           notify_url: string | null
           provider: string
+          sandbox_terminal_name: string | null
           success_url: string | null
           terminal_name: string | null
           test_mode: boolean
@@ -3024,6 +3025,7 @@ export type Database = {
           is_enabled?: boolean
           notify_url?: string | null
           provider?: string
+          sandbox_terminal_name?: string | null
           success_url?: string | null
           terminal_name?: string | null
           test_mode?: boolean
@@ -3037,6 +3039,7 @@ export type Database = {
           is_enabled?: boolean
           notify_url?: string | null
           provider?: string
+          sandbox_terminal_name?: string | null
           success_url?: string | null
           terminal_name?: string | null
           test_mode?: boolean
