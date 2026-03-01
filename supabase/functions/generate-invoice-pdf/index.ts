@@ -466,7 +466,7 @@ function buildAbInvoiceHtml(
   <div class="container">
     <div class="header">
       <h1>بشير للتأمينات</h1>
-      <p>إيصال / فاتورة ضريبية</p>
+      <p>بوليصة تأمين</p>
     </div>
 
     <div class="invoice-meta">

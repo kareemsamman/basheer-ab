@@ -883,7 +883,7 @@ function buildAbInvoiceHtml(
     <div class="header">
       <h1>وكالة بشير للتأمين</h1>
       <p class="english-name">BASHEER INSURANCE</p>
-      <p>فاتورة ضريبية</p>
+      <p>بوليصة تأمين</p>
     </div>
 
     <div class="invoice-meta">
