@@ -324,7 +324,7 @@ export function PolicySuccessDialog({
             تم إنشاء الوثيقة بنجاح
           </DialogTitle>
           <DialogDescription>
-            يمكنك طباعة فاتورة التأمين أو فاتورة الدفع أو إرسالها للعميل عبر SMS
+            يمكنك طباعة بوليصة التأمين أو فاتورة الدفع أو إرسالها للعميل عبر SMS
           </DialogDescription>
         </DialogHeader>
 
@@ -337,7 +337,7 @@ export function PolicySuccessDialog({
 
         <div className="flex flex-col gap-3 mt-4">
           {/* Invoice Section */}
-          <p className="text-xs font-semibold text-muted-foreground">فاتورة التأمين</p>
+          <p className="text-xs font-semibold text-muted-foreground">بوليصة التأمين</p>
           <Button
             variant="outline"
             className="w-full gap-2 h-12"
@@ -349,7 +349,7 @@ export function PolicySuccessDialog({
             ) : (
               <Printer className="h-5 w-5" />
             )}
-            طباعة فاتورة التأمين
+            طباعة بوليصة التأمين
           </Button>
 
           <Button
@@ -365,7 +365,7 @@ export function PolicySuccessDialog({
             ) : (
               <MessageSquare className="h-5 w-5" />
             )}
-            {smsSent ? "تم إرسال فاتورة التأمين SMS" : "إرسال فاتورة التأمين SMS"}
+            {smsSent ? "تم إرسال بوليصة التأمين SMS" : "إرسال بوليصة التأمين SMS"}
           </Button>
 
           {/* Receipt Section - only show if payments exist */}
