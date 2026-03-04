@@ -25,6 +25,7 @@ interface PaymentLine {
   paymentType: 'cash' | 'cheque' | 'transfer' | 'visa';
   paymentDate: string;
   chequeNumber?: string;
+  chequeImageUrl?: string;
   notes?: string;
   tranzilaPaid?: boolean;
   pendingImages?: File[];
@@ -333,10 +334,15 @@ export function PackagePaymentModal({
         paymentType: 'cheque' as const,
         paymentDate: cheque.payment_date || new Date().toISOString().split('T')[0],
         chequeNumber: cheque.cheque_number || '',
+        chequeImageUrl: cheque.image_url || undefined,
       };
       
-      // Convert cropped image to File and add to pendingImages
-      if (cheque.cropped_base64) {
+      // If we have a CDN image_url from the scanner, use it as preview
+      if (cheque.image_url) {
+        newPreviewUrls[paymentId] = [cheque.image_url];
+      }
+      // Fallback: Convert cropped image to File and add to pendingImages
+      else if (cheque.cropped_base64) {
         try {
           const blob = base64ToBlob(cheque.cropped_base64);
           const file = new File([blob], `cheque_${cheque.cheque_number || paymentId}.jpg`, { type: 'image/jpeg' });
@@ -446,38 +452,42 @@ export function PackagePaymentModal({
 
     setSaving(true);
     try {
+      // Use primary policy (first one) for all payments — trigger validates across the whole group
+      const primaryPolicyId = policies[0]?.policyId;
+      if (!primaryPolicyId) throw new Error('No policy found');
+
+      // Generate a batch_id to group all payments in this batch
+      const batchId = crypto.randomUUID();
+
       for (const paymentLine of paymentLines) {
         // Skip already paid visa payments (already recorded via Tranzila)
         if (paymentLine.paymentType === 'visa' && paymentLine.tranzilaPaid) {
           continue;
         }
 
-        // Split the payment proportionally across policies
-        const splits = calculateSplitPayments(paymentLine.amount);
+        const { data, error } = await supabase
+          .from('policy_payments')
+          .insert({
+            policy_id: primaryPolicyId,
+            amount: paymentLine.amount,
+            payment_type: paymentLine.paymentType as Enums<'payment_type'>,
+            payment_date: paymentLine.paymentDate,
+            cheque_number: paymentLine.paymentType === 'cheque' ? paymentLine.chequeNumber : null,
+            cheque_image_url: paymentLine.chequeImageUrl || null,
+            cheque_status: paymentLine.paymentType === 'cheque' ? 'pending' : null,
+            refused: false,
+            notes: paymentLine.notes || `دفعة من باقة (${policies.length} وثائق)`,
+            branch_id: branchId,
+            batch_id: batchId,
+          })
+          .select('id')
+          .single();
 
-        for (const split of splits) {
-          const { data, error } = await supabase
-            .from('policy_payments')
-            .insert({
-              policy_id: split.policyId,
-              amount: split.amount,
-              payment_type: paymentLine.paymentType as Enums<'payment_type'>,
-              payment_date: paymentLine.paymentDate,
-              cheque_number: paymentLine.paymentType === 'cheque' ? paymentLine.chequeNumber : null,
-              cheque_status: paymentLine.paymentType === 'cheque' ? 'pending' : null,
-              refused: false,
-              notes: paymentLine.notes || `دفعة من باقة (${policies.length} وثائق)`,
-              branch_id: branchId,
-            })
-            .select('id')
-            .single();
+        if (error) throw error;
 
-          if (error) throw error;
-
-          // Upload images for first split only (to avoid duplicates)
-          if (paymentLine.pendingImages && paymentLine.pendingImages.length > 0 && data && split === splits[0]) {
-            await uploadPaymentImages(data.id, paymentLine.pendingImages);
-          }
+        // Upload images for this payment
+        if (paymentLine.pendingImages && paymentLine.pendingImages.length > 0 && data) {
+          await uploadPaymentImages(data.id, paymentLine.pendingImages);
         }
       }
 
