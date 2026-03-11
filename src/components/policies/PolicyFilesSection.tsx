@@ -68,8 +68,8 @@ export function PolicyFilesSection({
   const [showSendPopup, setShowSendPopup] = useState(false);
   const [sendingToClient, setSendingToClient] = useState(false);
   const [countdown, setCountdown] = useState(5);
-  const countdownRef = useRef<NodeJS.Timeout | null>(null);
-  const autoSendRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoSendRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Scanner state
   const [scanning, setScanning] = useState<'insurance' | 'crm' | null>(null);

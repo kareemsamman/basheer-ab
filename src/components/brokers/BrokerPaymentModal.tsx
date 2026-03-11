@@ -42,7 +42,7 @@ export function BrokerPaymentModal({
   const [formFields, setFormFields] = useState<Record<string, string> | null>(null);
   const [settlementId, setSettlementId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
   const [formSubmitted, setFormSubmitted] = useState(false);
 
