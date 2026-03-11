@@ -121,7 +121,6 @@ export function PackageBuilderSection({
   const [loadingRoadPrice, setLoadingRoadPrice] = useState(false);
   const [loadingAccidentPrice, setLoadingAccidentPrice] = useState(false);
   const [loadingElzamiCommission, setLoadingElzamiCommission] = useState(false);
-  const [loadingCarPrice, setLoadingCarPrice] = useState(false);
 
   // Find addons by type
   const elzamiAddon = addons.find(a => a.type === 'elzami') || { type: 'elzami' as const, enabled: false, company_id: '', insurance_price: '', elzami_commission: 0 };
