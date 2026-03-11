@@ -589,6 +589,78 @@ export function PackageBuilderSection({
                   </p>
                 )}
               </div>
+              {/* Car Value for FULL insurance */}
+              {thirdFullAddon.policy_type_child === 'FULL' && (
+                <div>
+                  <Label className="text-xs mb-1 block">قيمة السيارة (₪) *</Label>
+                  <div className="flex gap-1.5">
+                    <Input
+                      type="number"
+                      value={thirdFullAddon.car_value || ''}
+                      onChange={(e) => updateAddon('third_full', { car_value: e.target.value })}
+                      placeholder={selectedCar?.car_value?.toString() || 'أدخل قيمة السيارة'}
+                      className={cn("h-8 text-xs font-bold flex-1", errors.addon_thirdfull_car_value && "border-destructive")}
+                      disabled={disabled}
+                    />
+                    {selectedCar && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-2 text-xs shrink-0"
+                        disabled={disabled || loadingCarPrice || !selectedCar.manufacturer_name}
+                        onClick={async () => {
+                          if (!selectedCar.manufacturer_name) return;
+                          setLoadingCarPrice(true);
+                          try {
+                            const { data: { session } } = await supabase.auth.getSession();
+                            if (!session) return;
+                            const res = await fetch(
+                              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-car-price`,
+                              {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  'Authorization': `Bearer ${session.access_token}`,
+                                },
+                                body: JSON.stringify({
+                                  manufacturer: selectedCar.manufacturer_name,
+                                  model: selectedCar.model,
+                                  year: selectedCar.year,
+                                }),
+                              }
+                            );
+                            const result = await res.json();
+                            if (result.success && result.found && result.data?.price) {
+                              updateAddon('third_full', { car_value: result.data.price.toString() });
+                              toast.success(`تم جلب السعر: ₪${result.data.price.toLocaleString()}`);
+                            } else {
+                              toast.error('لم يتم العثور على سعر مطابق');
+                            }
+                          } catch (err) {
+                            console.error('Fetch car price error:', err);
+                            toast.error('فشل في جلب سعر السيارة');
+                          } finally {
+                            setLoadingCarPrice(false);
+                          }
+                        }}
+                      >
+                        {loadingCarPrice ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Search className="h-3 w-3" />
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                  {errors.addon_thirdfull_car_value && (
+                    <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.addon_thirdfull_car_value}
+                    </p>
+                  )}
+                </div>
+              )}
               {/* Date Fields */}
               <div className="grid grid-cols-2 gap-2 pt-2 border-t border-dashed">
                 <div>

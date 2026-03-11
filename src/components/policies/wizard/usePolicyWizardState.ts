@@ -408,7 +408,8 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     const elzamiAddonValid = !packageMode || !elzamiAddon?.enabled || 
       (elzamiAddon.company_id && parseFloat(elzamiAddon.insurance_price) > 0);
     const thirdFullAddonValid = !packageMode || !thirdFullAddon?.enabled ||
-      (thirdFullAddon.company_id && thirdFullAddon.policy_type_child && parseFloat(thirdFullAddon.insurance_price) > 0);
+      (thirdFullAddon.company_id && thirdFullAddon.policy_type_child && parseFloat(thirdFullAddon.insurance_price) > 0 &&
+       (thirdFullAddon.policy_type_child !== 'FULL' || !!(thirdFullAddon.car_value && parseFloat(thirdFullAddon.car_value) > 0) || !!(selectedCar?.car_value && selectedCar.car_value > 0)));
     const roadServiceAddonValid = !packageMode || !roadServiceAddon?.enabled || 
       (roadServiceAddon.road_service_id && roadServiceAddon.company_id && parseFloat(roadServiceAddon.insurance_price) > 0);
     const accidentFeeAddonValid = !packageMode || !accidentFeeAddon?.enabled || 
