@@ -446,7 +446,7 @@ export function PolicyWizard({
       }
 
       let clientId = selectedClient?.id;
-      let carId = selectedCar?.id;
+      let carId = selectedCar?.id || existingCar?.id;
 
       // Create new client if needed
       if (createNewClient && !clientId) {
