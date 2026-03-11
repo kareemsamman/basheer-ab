@@ -1237,9 +1237,15 @@ export function PolicyWizard({
             }
           }
         }
+
+        // Save car_value from FULL addon to cars table (Visa flow)
+        const fullAddonVisa = packageAddons.find(a => a.type === 'third_full' && a.enabled && a.policy_type_child === 'FULL' && a.car_value);
+        const visaCarId = selectedCar?.id || existingCar?.id;
+        if (fullAddonVisa && visaCarId) {
+          await supabase.from('cars').update({ car_value: parseFloat(fullAddonVisa.car_value!) }).eq('id', visaCarId);
+        }
       }
 
-      // Upload files
       await uploadFiles(policyIdToUse);
 
       // Update car value if FULL insurance and value was entered in wizard
