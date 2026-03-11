@@ -110,7 +110,7 @@ export default function BusinessContacts() {
 
   // Debounced search
   const debouncedSearch = useMemo(() => {
-    let timeoutId: NodeJS.Timeout;
+    let timeoutId: ReturnType<typeof setTimeout>;
     return (value: string) => {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {

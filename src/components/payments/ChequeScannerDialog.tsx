@@ -311,7 +311,7 @@ export function ChequeScannerDialog({
     estimatedSeconds: 0,
     elapsedSeconds: 0,
   });
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   // Cleanup timer on unmount or stage change
   useEffect(() => {

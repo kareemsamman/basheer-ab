@@ -40,7 +40,7 @@ export function TranzilaPaymentModal({
   const [formFields, setFormFields] = useState<Record<string, string> | null>(null);
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
   const [formSubmitted, setFormSubmitted] = useState(false);
