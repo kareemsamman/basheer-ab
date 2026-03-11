@@ -446,7 +446,7 @@ export function PolicyWizard({
       }
 
       let clientId = selectedClient?.id;
-      let carId = selectedCar?.id;
+      let carId = selectedCar?.id || existingCar?.id;
 
       // Create new client if needed
       if (createNewClient && !clientId) {
@@ -503,6 +503,9 @@ export function PolicyWizard({
 
         if (carError) throw carError;
         carId = newCarData.id;
+      } else if (!isLightMode && carId && newCar.car_value) {
+        // Update car_value on existing car if user entered a value
+        await supabase.from('cars').update({ car_value: parseFloat(newCar.car_value) }).eq('id', carId);
       }
 
       // Calculate profit
@@ -676,7 +679,7 @@ export function PolicyWizard({
       if (!useTempPolicy) {
         // Create new policy (normal flow without Tranzila)
         let clientId = selectedClient?.id;
-        let carId = selectedCar?.id;
+        let carId = selectedCar?.id || existingCar?.id;
         
         if (createNewClient && !clientId) {
           // Generate file_number for new client
@@ -733,6 +736,9 @@ export function PolicyWizard({
 
           if (carError) throw carError;
           carId = newCarData.id;
+        } else if (!isLightMode && carId && newCar.car_value) {
+          // Update car_value on existing car if user entered a value
+          await supabase.from('cars').update({ car_value: parseFloat(newCar.car_value) }).eq('id', carId);
         }
 
         // Calculate profit based on category
