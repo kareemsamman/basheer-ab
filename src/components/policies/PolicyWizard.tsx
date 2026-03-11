@@ -503,6 +503,9 @@ export function PolicyWizard({
 
         if (carError) throw carError;
         carId = newCarData.id;
+      } else if (!isLightMode && carId && newCar.car_value) {
+        // Update car_value on existing car if user entered a value
+        await supabase.from('cars').update({ car_value: parseFloat(newCar.car_value) }).eq('id', carId);
       }
 
       // Calculate profit
