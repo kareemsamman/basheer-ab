@@ -99,6 +99,7 @@ interface PackageBuilderSectionProps {
   disabled?: boolean;
   errors?: Record<string, string>;
   ageBand?: 'UNDER_24' | 'UP_24' | 'ANY';
+  selectedCar?: CarRecord | null;
 }
 
 export function PackageBuilderSection({
