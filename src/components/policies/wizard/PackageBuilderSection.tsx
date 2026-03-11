@@ -2,12 +2,10 @@ import { useEffect, useState, memo } from "react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Package, Route, Shield, FileCheck, Loader2, Check, AlertCircle, Car, Calendar, Search } from "lucide-react";
+import { Package, Route, Shield, FileCheck, Loader2, Check, AlertCircle, Car, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import type { PackageAddon, Company, RoadService, AccidentFeeService, CarRecord } from "./types";
 
