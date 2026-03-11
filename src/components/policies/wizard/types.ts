@@ -83,6 +83,7 @@ export interface PackageAddon {
   // THIRD_FULL specific fields
   policy_type_child?: '' | 'THIRD' | 'FULL';
   broker_buy_price?: string;
+  car_value?: string; // Car value for FULL insurance pricing
 }
 
 export interface PendingPaymentImages {

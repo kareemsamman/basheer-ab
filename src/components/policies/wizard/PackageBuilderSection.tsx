@@ -118,6 +118,7 @@ export function PackageBuilderSection({
   disabled,
   errors = {},
   ageBand = 'ANY',
+  selectedCar,
 }: PackageBuilderSectionProps) {
   const [loadingRoadPrice, setLoadingRoadPrice] = useState(false);
   const [loadingAccidentPrice, setLoadingAccidentPrice] = useState(false);
