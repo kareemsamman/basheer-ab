@@ -676,7 +676,7 @@ export function PolicyWizard({
       if (!useTempPolicy) {
         // Create new policy (normal flow without Tranzila)
         let clientId = selectedClient?.id;
-        let carId = selectedCar?.id;
+        let carId = selectedCar?.id || existingCar?.id;
         
         if (createNewClient && !clientId) {
           // Generate file_number for new client
