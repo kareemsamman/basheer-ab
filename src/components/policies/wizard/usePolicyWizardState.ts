@@ -617,6 +617,13 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
           if (!thirdFullAddon.insurance_price || parseFloat(thirdFullAddon.insurance_price) <= 0) {
             newErrors.addon_thirdfull_price = "السعر مطلوب";
           }
+          // Validate car value for FULL insurance addon
+          if (thirdFullAddon.policy_type_child === 'FULL') {
+            const addonCarVal = thirdFullAddon.car_value || selectedCar?.car_value?.toString();
+            if (!addonCarVal || parseFloat(addonCarVal) <= 0) {
+              newErrors.addon_thirdfull_car_value = "قيمة السيارة مطلوبة للتأمين الشامل";
+            }
+          }
         }
         if (packageMode && roadAddon?.enabled) {
           if (!roadAddon.road_service_id) newErrors.addon_road_service = "الرجاء اختيار نوع الخدمة";
