@@ -919,6 +919,7 @@ export function Step3PolicyDetails({
                   carType={getCarType() || undefined}
                   errors={errors}
                   ageBand={clientLessThan24 ? 'UNDER_24' : 'UP_24'}
+                  selectedCar={selectedCar}
                 />
               </div>
             )}

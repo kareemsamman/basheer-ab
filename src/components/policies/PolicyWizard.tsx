@@ -849,13 +849,18 @@ export function PolicyWizard({
               : null;
             
             // Calculate profit for addon policies
+            // For FULL insurance addon, use addon's car_value
+            const addonCarValue = addon.type === 'third_full' && addon.policy_type_child === 'FULL' && addon.car_value
+              ? parseFloat(addon.car_value)
+              : (policy.full_car_value ? parseFloat(policy.full_car_value) : (selectedCar?.car_value || (newCar.car_value ? parseFloat(newCar.car_value) : null)));
+
             const addonProfitData = await calculatePolicyProfit({
               policyTypeParent: addonTypeParent,
               policyTypeChild: addonTypeChild,
               companyId: addon.company_id || '',
               carType: (selectedCar?.car_type || newCar.car_type || 'car') as CarType,
               ageBand: isUnder24 ? 'UNDER_24' as const : 'UP_24' as const,
-              carValue: policy.full_car_value ? parseFloat(policy.full_car_value) : (selectedCar?.car_value || (newCar.car_value ? parseFloat(newCar.car_value) : null)),
+              carValue: addonCarValue,
               carYear: selectedCar?.year || (newCar.year ? parseInt(newCar.year) : null),
               insurancePrice: addonInsurancePrice,
               roadServiceId: addon.road_service_id || null,
