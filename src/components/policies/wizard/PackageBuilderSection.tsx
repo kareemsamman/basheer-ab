@@ -379,7 +379,13 @@ export function PackageBuilderSection({
     }
   }, [accidentFeeCompanies, accidentFeeAddon.enabled]);
 
-  // Count enabled addons to show which ones to display
+  // Auto-fill car_value from selectedCar when THIRD_FULL addon child changes to FULL
+  useEffect(() => {
+    if (thirdFullAddon.enabled && thirdFullAddon.policy_type_child === 'FULL' && !thirdFullAddon.car_value && selectedCar?.car_value) {
+      updateAddon('third_full', { car_value: selectedCar.car_value.toString() });
+    }
+  }, [thirdFullAddon.enabled, thirdFullAddon.policy_type_child, selectedCar?.car_value]);
+
   const activeAddonCount = addons.filter(a => a.enabled).length;
   // Always use equal columns: 3 cols when main is THIRD_FULL, 4 cols when main is ELZAMI
   const totalCards = showThirdFullAddon ? 4 : 3;
