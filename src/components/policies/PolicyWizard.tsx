@@ -905,6 +905,12 @@ export function PolicyWizard({
             }
           }
         }
+
+        // Save car_value from FULL addon to cars table
+        const fullAddonNonVisa = packageAddons.find(a => a.type === 'third_full' && a.enabled && a.policy_type_child === 'FULL' && a.car_value);
+        if (fullAddonNonVisa && carId) {
+          await supabase.from('cars').update({ car_value: parseFloat(fullAddonNonVisa.car_value!) }).eq('id', carId);
+        }
       } else {
         // ✅ PACKAGE HANDLING FOR VISA PAYMENTS (tempPolicyId exists)
         // When user paid with Visa, temp policy was created WITHOUT group_id
