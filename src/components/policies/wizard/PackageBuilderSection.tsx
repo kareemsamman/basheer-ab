@@ -2,12 +2,10 @@ import { useEffect, useState, memo } from "react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Package, Route, Shield, FileCheck, Loader2, Check, AlertCircle, Car, Calendar, Search } from "lucide-react";
+import { Package, Route, Shield, FileCheck, Loader2, Check, AlertCircle, Car, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import type { PackageAddon, Company, RoadService, AccidentFeeService, CarRecord } from "./types";
 
@@ -123,7 +121,6 @@ export function PackageBuilderSection({
   const [loadingRoadPrice, setLoadingRoadPrice] = useState(false);
   const [loadingAccidentPrice, setLoadingAccidentPrice] = useState(false);
   const [loadingElzamiCommission, setLoadingElzamiCommission] = useState(false);
-  const [loadingCarPrice, setLoadingCarPrice] = useState(false);
 
   // Find addons by type
   const elzamiAddon = addons.find(a => a.type === 'elzami') || { type: 'elzami' as const, enabled: false, company_id: '', insurance_price: '', elzami_commission: 0 };
@@ -382,7 +379,13 @@ export function PackageBuilderSection({
     }
   }, [accidentFeeCompanies, accidentFeeAddon.enabled]);
 
-  // Count enabled addons to show which ones to display
+  // Auto-fill car_value from selectedCar when THIRD_FULL addon child changes to FULL
+  useEffect(() => {
+    if (thirdFullAddon.enabled && thirdFullAddon.policy_type_child === 'FULL' && !thirdFullAddon.car_value && selectedCar?.car_value) {
+      updateAddon('third_full', { car_value: selectedCar.car_value.toString() });
+    }
+  }, [thirdFullAddon.enabled, thirdFullAddon.policy_type_child, selectedCar?.car_value]);
+
   const activeAddonCount = addons.filter(a => a.enabled).length;
   // Always use equal columns: 3 cols when main is THIRD_FULL, 4 cols when main is ELZAMI
   const totalCards = showThirdFullAddon ? 4 : 3;
@@ -593,66 +596,14 @@ export function PackageBuilderSection({
               {thirdFullAddon.policy_type_child === 'FULL' && (
                 <div>
                   <Label className="text-xs mb-1 block">قيمة السيارة (₪) *</Label>
-                  <div className="flex gap-1.5">
-                    <Input
-                      type="number"
-                      value={thirdFullAddon.car_value || ''}
-                      onChange={(e) => updateAddon('third_full', { car_value: e.target.value })}
-                      placeholder={selectedCar?.car_value?.toString() || 'أدخل قيمة السيارة'}
-                      className={cn("h-8 text-xs font-bold flex-1", errors.addon_thirdfull_car_value && "border-destructive")}
-                      disabled={disabled}
-                    />
-                    {selectedCar && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-8 px-2 text-xs shrink-0"
-                        disabled={disabled || loadingCarPrice || !selectedCar.manufacturer_name}
-                        onClick={async () => {
-                          if (!selectedCar.manufacturer_name) return;
-                          setLoadingCarPrice(true);
-                          try {
-                            const { data: { session } } = await supabase.auth.getSession();
-                            if (!session) return;
-                            const res = await fetch(
-                              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-car-price`,
-                              {
-                                method: 'POST',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                  'Authorization': `Bearer ${session.access_token}`,
-                                },
-                                body: JSON.stringify({
-                                  manufacturer: selectedCar.manufacturer_name,
-                                  model: selectedCar.model,
-                                  year: selectedCar.year,
-                                }),
-                              }
-                            );
-                            const result = await res.json();
-                            if (result.success && result.found && result.data?.price) {
-                              updateAddon('third_full', { car_value: result.data.price.toString() });
-                              toast.success(`تم جلب السعر: ₪${result.data.price.toLocaleString()}`);
-                            } else {
-                              toast.error('لم يتم العثور على سعر مطابق');
-                            }
-                          } catch (err) {
-                            console.error('Fetch car price error:', err);
-                            toast.error('فشل في جلب سعر السيارة');
-                          } finally {
-                            setLoadingCarPrice(false);
-                          }
-                        }}
-                      >
-                        {loadingCarPrice ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <Search className="h-3 w-3" />
-                        )}
-                      </Button>
-                    )}
-                  </div>
+                  <Input
+                    type="number"
+                    value={thirdFullAddon.car_value || ''}
+                    onChange={(e) => updateAddon('third_full', { car_value: e.target.value })}
+                    placeholder="أدخل قيمة السيارة"
+                    className={cn("h-8 text-xs font-bold", errors.addon_thirdfull_car_value && "border-destructive")}
+                    disabled={disabled}
+                  />
                   {errors.addon_thirdfull_car_value && (
                     <p className="text-xs text-destructive flex items-center gap-1 mt-1">
                       <AlertCircle className="h-3 w-3" />
