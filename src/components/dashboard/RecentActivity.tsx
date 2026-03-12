@@ -834,7 +834,7 @@ function GroupedActivityCard({
                     </Badge>
                   )}
                 </div>
-                {policy.price > 0 && <span className="font-medium ltr-nums">₪{policy.price.toLocaleString()}</span>}
+                {policy.price > 0 && <span className="font-medium ltr-nums">₪{policy.price.toLocaleString('en-US')}</span>}
               </div>
               {/* Creator + datetime for policies */}
               <div className="text-[10px] text-muted-foreground">
