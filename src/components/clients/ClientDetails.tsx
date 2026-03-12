@@ -2063,6 +2063,11 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
               }}
             />
           </TabsContent>
+
+          {/* Files Tab */}
+          <TabsContent value="files" className="mt-6">
+            <ClientFilesTab clientId={client.id} />
+          </TabsContent>
         </Tabs>
       </div>
 
