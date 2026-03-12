@@ -246,33 +246,6 @@ export default function Expenses() {
           } as Expense;
         });
       
-      // Convert company dues to Expense shape (payment vouchers)
-      const companyDueExpenses: Expense[] = (companyDuesResult.data || [])
-        .map((p: any) => {
-          const companyName = p.insurance_companies?.name || 'شركة تأمين';
-          const typeLabel = POLICY_TYPE_LABELS[p.policy_type_parent as keyof typeof POLICY_TYPE_LABELS] || '';
-          const carNumber = p.cars?.car_number || '';
-          const clientName = p.clients?.full_name || '';
-          const desc = [typeLabel, carNumber ? `رقم ${carNumber}` : '', clientName, p.policy_number ? `بوليصة ${p.policy_number}` : ''].filter(Boolean).join(' - ');
-          
-          return {
-            id: `cp_${p.id}`,
-            category: 'insurance_company_due',
-            description: desc,
-            amount: Number(p.payed_for_company),
-            expense_date: p.start_date,
-            notes: null,
-            receipt_url: null,
-            created_at: p.created_at || p.start_date,
-            voucher_type: 'payment',
-            payment_method: 'bank_transfer',
-            reference_number: null,
-            contact_name: companyName,
-            created_by_name: (p.creator as any)?.full_name || null,
-            is_policy_payment: true,
-            is_company_due: true,
-          } as Expense;
-        });
       
       // Convert ELZAMI policies to commission vouchers
       const elzamiVouchers: Expense[] = (elzamiResult.data || []).flatMap((p: any) => {
