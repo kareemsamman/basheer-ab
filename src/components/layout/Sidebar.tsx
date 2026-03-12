@@ -140,7 +140,7 @@ export const navigationGroups: NavGroup[] = [
       { name: "أنواع التأمين", href: "/admin/insurance-categories", icon: FileText },
       { name: "خدمات الطريق", href: "/admin/road-services", icon: Truck },
       { name: "إعفاء رسوم الحادث", href: "/admin/accident-fee-services", icon: Shield },
-      { name: "قوالب الفواتير", href: "/admin/invoice-templates", icon: FileText },
+      
       { name: "توقيعات العملاء", href: "/admin/customer-signatures", icon: FileSignature },
       { name: "إعدادات الدفع", href: "/admin/payment-settings", icon: CreditCard },
       { name: "إعدادات SMS", href: "/admin/sms-settings", icon: MessageSquare },
