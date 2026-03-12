@@ -284,7 +284,7 @@ export default function Expenses() {
       const filteredElzamiVouchers = elzamiVouchers.filter(v => {
         if (voucherFilter === 'receipt') return v.voucher_type === 'receipt';
         if (voucherFilter === 'payment') return v.voucher_type === 'payment';
-        if (voucherFilter === 'company_dues') return false;
+        
         return true; // 'all'
       });
 
