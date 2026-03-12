@@ -85,6 +85,7 @@ import { DebtPaymentModal } from '@/components/debt/DebtPaymentModal';
 import { ClientNotesSection } from '@/components/clients/ClientNotesSection';
 import { PaymentEditDialog } from '@/components/clients/PaymentEditDialog';
 import { RefundsTab } from '@/components/clients/RefundsTab';
+import { ClientFilesTab } from '@/components/clients/ClientFilesTab';
 import { AccidentReportWizard } from '@/components/accident-reports/AccidentReportWizard';
 import { ClientAccidentsTab } from '@/components/clients/ClientAccidentsTab';
 import { useClientAccidentInfo } from '@/hooks/useClientAccidentInfo';
