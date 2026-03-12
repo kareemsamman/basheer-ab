@@ -12,7 +12,8 @@ import {
   Users, 
   Car, 
   Filter,
-  ChevronDown
+  ChevronDown,
+  Package
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -28,6 +29,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
+interface PackageComponent {
+  type_label: string;
+  company_name: string;
+  price: number;
+  service_name?: string;
+}
 
 interface ActivityItem {
   id: string;
@@ -47,6 +55,7 @@ interface ActivityItem {
     client_name?: string;
     client_file_number?: string;
     insurance_price?: number;
+    components?: PackageComponent[];
   };
 }
 
@@ -75,7 +84,6 @@ const TYPE_LABELS: Record<string, string> = {
 
 const POLICY_TYPE_LABELS: Record<string, string> = {
   ELZAMI: "إلزامي",
-  THIRD_FULL: "شامل طرف ثالث",
   ROAD_SERVICE: "خدمة طريق",
   ACCIDENT_FEE_EXEMPTION: "إعفاء رسوم حادث",
   HEALTH: "صحي",
@@ -85,6 +93,13 @@ const POLICY_TYPE_LABELS: Record<string, string> = {
   BUSINESS: "أعمال",
   OTHER: "أخرى",
 };
+
+function resolvePolicyLabel(parentType: string | null, childType: string | null): string {
+  if (parentType === "THIRD_FULL") {
+    return childType === "FULL" ? "شامل" : "ثالث";
+  }
+  return POLICY_TYPE_LABELS[parentType || ""] || parentType || "وثيقة";
+}
 
 const typeIcons = {
   policy: FileText,
@@ -116,11 +131,11 @@ export default function ActivityLog() {
       const results: ActivityItem[] = [];
       const branchFilter = branchId ? { branch_id: branchId } : {};
 
-      // Fetch policies with more details
+      // Fetch policies with group_id for package grouping
       const { data: policies } = await supabase
         .from("policies")
         .select(`
-          id, created_at, policy_type_parent, policy_type_child, cancelled, insurance_price,
+          id, created_at, policy_type_parent, policy_type_child, cancelled, insurance_price, group_id,
           clients(id, full_name, file_number, deleted_at),
           cars(car_number),
           insurance_companies(name, name_ar),
@@ -132,11 +147,65 @@ export default function ActivityLog() {
         .limit(100);
 
       if (policies) {
+        // Group by group_id for packages
+        const grouped = new Map<string, typeof policies>();
+        const ungrouped: typeof policies = [];
+
         for (const p of policies) {
           if ((p.clients as any)?.deleted_at) continue;
+          if (p.group_id) {
+            const existing = grouped.get(p.group_id) || [];
+            existing.push(p);
+            grouped.set(p.group_id, existing);
+          } else {
+            ungrouped.push(p);
+          }
+        }
+
+        // Process packages (grouped policies)
+        for (const [groupId, groupPolicies] of grouped) {
+          if (groupPolicies.length === 0) continue;
+          const first = groupPolicies[0];
+          const clientName = (first.clients as any)?.full_name || "عميل";
+          const fileNumber = (first.clients as any)?.file_number || "";
+          const totalPrice = groupPolicies.reduce((sum, p) => sum + (p.insurance_price || 0), 0);
+
+          const components: PackageComponent[] = groupPolicies.map(p => ({
+            type_label: resolvePolicyLabel(p.policy_type_parent, p.policy_type_child),
+            company_name: (p.insurance_companies as any)?.name_ar || (p.insurance_companies as any)?.name || "",
+            price: p.insurance_price || 0,
+            service_name: (p.policy_type_parent === "ROAD_SERVICE" || p.policy_type_parent === "ACCIDENT_FEE_EXEMPTION")
+              ? (p.policy_type_child || undefined)
+              : undefined,
+          }));
+
+          // Use the latest created_at from the group
+          const latestDate = groupPolicies.reduce((latest, p) =>
+            new Date(p.created_at) > new Date(latest) ? p.created_at : latest
+          , groupPolicies[0].created_at);
+
+          results.push({
+            id: `package-${groupId}`,
+            type: "policy",
+            action: "باقة جديدة",
+            created_at: latestDate,
+            createdBy: (first.created_by_profile as any)?.full_name || undefined,
+            details: {
+              client_id: (first.clients as any)?.id,
+              client_name: clientName,
+              client_file_number: fileNumber,
+              car_number: (first.cars as any)?.car_number || "",
+              insurance_price: totalPrice,
+              components,
+            },
+          });
+        }
+
+        // Process ungrouped (single) policies
+        for (const p of ungrouped) {
           const clientName = (p.clients as any)?.full_name || "عميل";
           const fileNumber = (p.clients as any)?.file_number || "";
-          const policyLabel = POLICY_TYPE_LABELS[p.policy_type_parent] || p.policy_type_parent || "وثيقة";
+          const policyLabel = resolvePolicyLabel(p.policy_type_parent, p.policy_type_child);
           const companyName = (p.insurance_companies as any)?.name_ar || (p.insurance_companies as any)?.name || "";
           const carNumber = (p.cars as any)?.car_number || "";
 
@@ -187,7 +256,10 @@ export default function ActivityLog() {
 
           const clientName = (pay.policies as any)?.clients?.full_name || "عميل";
           const fileNumber = (pay.policies as any)?.clients?.file_number || "";
-          const policyType = POLICY_TYPE_LABELS[(pay.policies as any)?.policy_type_parent] || "";
+          const policyType = resolvePolicyLabel(
+            (pay.policies as any)?.policy_type_parent,
+            (pay.policies as any)?.policy_type_child
+          );
           const companyName = (pay.policies as any)?.insurance_companies?.name_ar || 
                              (pay.policies as any)?.insurance_companies?.name || "";
           const carNumber = (pay.policies as any)?.cars?.car_number || "";
@@ -273,23 +345,19 @@ export default function ActivityLog() {
         }
       }
 
-      // Sort all by created_at descending
       results.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       return results;
     },
     staleTime: 60 * 1000,
   });
 
-  // Filter and search
   const filteredActivities = useMemo(() => {
     let filtered = [...activities];
 
-    // Type filter
     if (typeFilter !== "all") {
       filtered = filtered.filter((a) => a.type === typeFilter);
     }
 
-    // Date filter
     if (dateFrom || dateTo) {
       filtered = filtered.filter((a) => {
         const activityDate = parseISO(a.created_at);
@@ -299,7 +367,6 @@ export default function ActivityLog() {
       });
     }
 
-    // Search filter
     if (search.trim()) {
       const searchLower = search.toLowerCase();
       filtered = filtered.filter((a) => {
@@ -322,7 +389,6 @@ export default function ActivityLog() {
     return filtered;
   }, [activities, typeFilter, dateFrom, dateTo, search]);
 
-  // Calculate totals
   const paymentTotal = useMemo(() => {
     return filteredActivities
       .filter((a) => a.type === "payment")
@@ -345,7 +411,6 @@ export default function ActivityLog() {
   return (
     <MainLayout>
       <div className="space-y-6">
-        {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">سجل النشاط</h1>
@@ -359,7 +424,6 @@ export default function ActivityLog() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex flex-wrap gap-4">
-              {/* Search */}
               <div className="relative flex-1 min-w-[200px]">
                 <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -370,7 +434,6 @@ export default function ActivityLog() {
                 />
               </div>
 
-              {/* Date From */}
               <div className="flex items-center gap-1">
                 <span className="text-sm text-muted-foreground whitespace-nowrap">من:</span>
                 <ArabicDatePicker
@@ -381,7 +444,6 @@ export default function ActivityLog() {
                 />
               </div>
 
-              {/* Date To */}
               <div className="flex items-center gap-1">
                 <span className="text-sm text-muted-foreground whitespace-nowrap">إلى:</span>
                 <ArabicDatePicker
@@ -392,7 +454,6 @@ export default function ActivityLog() {
                 />
               </div>
 
-              {/* Type Filter */}
               <Select value={typeFilter} onValueChange={setTypeFilter}>
                 <SelectTrigger className="w-[150px]">
                   <Filter className="h-4 w-4 ml-2" />
@@ -407,7 +468,6 @@ export default function ActivityLog() {
                 </SelectContent>
               </Select>
 
-              {/* Clear Filters */}
               {hasActiveFilters && (
                 <Button variant="ghost" onClick={clearFilters} className="text-muted-foreground">
                   مسح الفلاتر
@@ -415,7 +475,6 @@ export default function ActivityLog() {
               )}
             </div>
 
-            {/* Results Summary */}
             <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
               <span>
                 عرض {displayedActivities.length} من {filteredActivities.length} نتيجة
@@ -454,19 +513,16 @@ export default function ActivityLog() {
             </Card>
           ) : (
             displayedActivities.map((activity) => {
-              const Icon = typeIcons[activity.type];
+              const Icon = activity.details.components ? Package : typeIcons[activity.type];
               return (
                 <Card key={activity.id} className="hover:shadow-md transition-shadow">
                   <CardContent className="py-4">
                     <div className="flex items-start gap-4">
-                      {/* Icon */}
                       <div className={cn("rounded-lg p-2.5", typeColors[activity.type])}>
                         <Icon className="h-5 w-5" />
                       </div>
 
-                      {/* Content */}
                       <div className="flex-1 min-w-0 space-y-1.5">
-                        {/* Header Row */}
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-semibold text-foreground">{activity.action}</span>
@@ -484,7 +540,6 @@ export default function ActivityLog() {
                           </span>
                         </div>
 
-                        {/* Details */}
                         <div className="text-sm space-y-1">
                           {/* Client Info */}
                           {activity.details.client_name && (
@@ -528,22 +583,56 @@ export default function ActivityLog() {
                             </div>
                           )}
 
-                          {/* Policy/Insurance Info */}
-                          {(activity.details.policy_type || activity.details.company_name) && (
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                              <FileText className="h-3.5 w-3.5" />
-                              <span>
-                                {activity.details.policy_type}
-                                {activity.details.company_name && (
-                                  <span className="mr-1">→ {activity.details.company_name}</span>
-                                )}
-                              </span>
-                              {activity.details.insurance_price && activity.type === "policy" && (
-                                <Badge variant="secondary" className="text-xs">
-                                  ₪{activity.details.insurance_price.toLocaleString()}
-                                </Badge>
+                          {/* Package components */}
+                          {activity.details.components && activity.details.components.length > 0 ? (
+                            <div className="space-y-1.5 mt-1">
+                              {activity.details.components.map((comp, idx) => (
+                                <div key={idx} className="flex items-center gap-2 text-muted-foreground text-xs">
+                                  <FileText className="h-3 w-3 shrink-0" />
+                                  <span>
+                                    {comp.type_label}
+                                    {comp.service_name && (
+                                      <span className="text-muted-foreground"> ({comp.service_name})</span>
+                                    )}
+                                  </span>
+                                  {comp.company_name && (
+                                    <span className="text-muted-foreground">← {comp.company_name}</span>
+                                  )}
+                                  {comp.price > 0 && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      ₪{comp.price.toLocaleString()}
+                                    </Badge>
+                                  )}
+                                </div>
+                              ))}
+                              {activity.details.insurance_price != null && activity.details.insurance_price > 0 && (
+                                <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+                                  <span className="text-xs font-semibold text-foreground">
+                                    المجموع: ₪{activity.details.insurance_price.toLocaleString()}
+                                  </span>
+                                </div>
                               )}
                             </div>
+                          ) : (
+                            <>
+                              {/* Single policy/insurance info */}
+                              {(activity.details.policy_type || activity.details.company_name) && (
+                                <div className="flex items-center gap-2 text-muted-foreground">
+                                  <FileText className="h-3.5 w-3.5" />
+                                  <span>
+                                    {activity.details.policy_type}
+                                    {activity.details.company_name && (
+                                      <span className="mr-1">← {activity.details.company_name}</span>
+                                    )}
+                                  </span>
+                                  {activity.details.insurance_price && activity.type === "policy" && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      ₪{activity.details.insurance_price.toLocaleString()}
+                                    </Badge>
+                                  )}
+                                </div>
+                              )}
+                            </>
                           )}
 
                           {/* Car Info */}
@@ -562,7 +651,6 @@ export default function ActivityLog() {
             })
           )}
 
-          {/* Load More */}
           {hasMore && (
             <div className="flex justify-center pt-4">
               <Button
