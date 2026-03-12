@@ -107,6 +107,55 @@ export default function AdminUsers() {
     userName: string;
   } | null>(null);
 
+  // Add user dialog state
+  const [addUserOpen, setAddUserOpen] = useState(false);
+  const [addUserLoading, setAddUserLoading] = useState(false);
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserRole, setNewUserRole] = useState<'admin' | 'worker'>('worker');
+  const [newUserBranch, setNewUserBranch] = useState('');
+
+  const resetAddUserForm = () => {
+    setNewUserEmail('');
+    setNewUserName('');
+    setNewUserRole('worker');
+    setNewUserBranch('');
+  };
+
+  const handleAddUser = async () => {
+    if (!newUserEmail.trim()) {
+      toast({ title: "خطأ", description: "البريد الإلكتروني مطلوب", variant: "destructive" });
+      return;
+    }
+    setAddUserLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-user', {
+        body: {
+          email: newUserEmail.trim(),
+          full_name: newUserName.trim() || null,
+          role: newUserRole,
+          branch_id: newUserBranch || null,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) {
+        toast({ title: "خطأ", description: data.error, variant: "destructive" });
+        return;
+      }
+
+      toast({ title: "تم الإنشاء", description: "تم إنشاء المستخدم بنجاح" });
+      setAddUserOpen(false);
+      resetAddUserForm();
+      fetchUsers();
+    } catch (err) {
+      console.error('Error creating user:', err);
+      toast({ title: "خطأ", description: "فشل في إنشاء المستخدم", variant: "destructive" });
+    } finally {
+      setAddUserLoading(false);
+    }
+  };
+
   const fetchUsers = async () => {
     setLoading(true);
     try {
