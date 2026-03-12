@@ -19,8 +19,12 @@ interface MediaFile {
   size: number;
   created_at: string;
   entity_type: string | null;
-  entity_id: string | null;
   storage_path?: string | null;
+}
+
+interface MediaFileWithEntity extends MediaFile {
+  entity_id: string | null;
+  policyNumber?: string;
 }
 
 interface PolicyInfo {
