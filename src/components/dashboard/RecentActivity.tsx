@@ -666,8 +666,8 @@ export function RecentActivity() {
               <>
                 <span>عرض {dialogGroupedActivities.length} عميل ({dialogFilteredActivities.length} نشاط)</span>
                 {dialogPaymentTotal > 0 && (
-                  <Badge variant="secondary" className="bg-success/10 text-success">
-                    مجموع الدفعات: ₪{dialogPaymentTotal.toLocaleString()}
+                 <Badge variant="secondary" className="bg-success/10 text-success">
+                    مجموع الدفعات: ₪{dialogPaymentTotal.toLocaleString('en-US')}
                   </Badge>
                 )}
               </>
