@@ -3876,6 +3876,7 @@ export type Database = {
           receipt_date: string
           receipt_number: number
           receipt_type: string
+          receipt_url: string | null
           source: string
           updated_at: string
         }
@@ -3896,6 +3897,7 @@ export type Database = {
           receipt_date?: string
           receipt_number?: number
           receipt_type?: string
+          receipt_url?: string | null
           source?: string
           updated_at?: string
         }
@@ -3916,6 +3918,7 @@ export type Database = {
           receipt_date?: string
           receipt_number?: number
           receipt_type?: string
+          receipt_url?: string | null
           source?: string
           updated_at?: string
         }

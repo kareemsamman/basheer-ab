@@ -1,36 +1,55 @@
 
 
-# Redesign Receipts Page Print to Match CDN Receipt + Add Copy Link
+# Fix Package Payment Splitting — Insert 1 Record Per Cheque, Not Split Across Components
 
 ## Problem
-The print template in `Receipts.tsx` uses a simple dark-header design without the logo, contact info, or the professional layout matching the CDN receipt (image-916.png). User also wants a "copy link" option.
+When paying for a package policy (e.g., شامل ₪3,700 + خدمات طريق ₪500 = ₪4,200) with 3 cheques of ₪1,400 each, `PackagePaymentModal` proportionally splits each cheque across the 2 component policies, creating **6 payment records** (₪1,233 + ₪167 per cheque). The user expects **3 records** — one per cheque.
 
-## Changes
+## Root Cause
+`PackagePaymentModal.handleSubmit` calls `calculateSplitPayments()` which distributes each payment proportionally by remaining balance across all package component policies.
 
-### 1. `src/pages/Receipts.tsx` — Rewrite `handlePrint` function
-Replace the simple print HTML (lines 189-245) with the full professional design matching the edge function's `buildReceiptHtml`:
-- Fetch logo URL from `site_settings` and company info from `sms_settings` (use existing hooks/queries)
-- Header: Logo on right + company name "בשיר אבו סנינה לביטוח" / "BASHEER ABU SNEINEH INSURANCE" / tax ID + contact info on left
-- Receipt meta: "קבלה" + padded number (red) + "מקור" badge
-- "לכבוד:" client name + date
-- Blue subject bar: "ביטוח רכב / רכב [number] / [client name]"
-- For `accident_fee` type: show accident details in the table
-- Payment details table with proper columns
-- Total badge (dark blue)
-- Signature section with logo stamp
-- Footer with digital signature note + timestamp
-- Print + share buttons (hidden in print)
+## Solution
 
-### 2. `src/pages/Receipts.tsx` — Add "Copy Link" action
-- Add a `receipt_url` column to the `receipts` table via migration
-- Add a new action button (Link icon) in the table row actions
-- When clicked for auto receipts that have a `payment_id`: call `generate-payment-receipt` edge function to generate CDN URL, store it in `receipt_url`, then copy to clipboard
-- For manual receipts: generate receipt HTML, upload to CDN via a new edge function call, store URL, copy
-- Show toast "הקישור הועתק" on success
+### 1. Update the DB trigger to validate across the entire package group
+**Migration SQL** — Change the existing payment total check in `validate_policy_payment_total()` so that when a policy belongs to a group, `v_existing_total` sums payments across **all** policies in that group (not just `NEW.policy_id`).
 
-### 3. Database migration
-- Add `receipt_url TEXT` column to `receipts` table
+Current trigger (line 42-48) only sums `pp.policy_id = NEW.policy_id`. Updated version:
+```sql
+IF v_group_id IS NOT NULL THEN
+  -- Sum payments across ALL policies in the package
+  SELECT COALESCE(SUM(pp.amount), 0) INTO v_existing_total
+  FROM policy_payments pp
+  JOIN policies pol ON pol.id = pp.policy_id
+  WHERE pol.group_id = v_group_id
+    AND pol.deleted_at IS NULL
+    AND COALESCE(pp.refused, false) = false
+    AND (TG_OP <> 'UPDATE' OR pp.id <> NEW.id);
+ELSE
+  -- Single policy: sum only for that policy
+  SELECT COALESCE(SUM(pp.amount), 0) INTO v_existing_total ...
+END IF;
+```
 
-### 4. Fetch logo + company settings
-- Add queries at page level to fetch `site_settings.logo_url` and `sms_settings` (company_phone_links, company_location, company_email) for the print template
+### 2. Update `PackagePaymentModal.handleSubmit` — Stop splitting, insert 1 record per payment
+**File:** `src/components/clients/PackagePaymentModal.tsx`
+
+Instead of calling `calculateSplitPayments()` and looping over splits, insert each payment line as a **single record** against the primary (first) policy in the package. Add `batch_id` to group them. Include `cheque_image_url` for cheque payments.
+
+Key changes in `handleSubmit` (lines 448-496):
+- Generate a `batch_id` for all payments in this batch
+- Pick the primary policy ID (first policy with remaining, or first overall)
+- Insert one `policy_payments` record per payment line (no split loop)
+- Include `cheque_image_url` from scanned cheques
+- Upload images for each payment
+
+### 3. Update `handleScannedCheques` to preserve `cheque_image_url`
+**File:** `src/components/clients/PackagePaymentModal.tsx`
+
+The scanned cheque handler (line 324-356) doesn't preserve the CDN `image_url` from the scanner. Add `cheque_image_url: cheque.image_url` to the payment line (same pattern as `PolicyPaymentsSection`).
+
+### Files Changed
+| File | Change |
+|---|---|
+| DB migration (SQL) | Update trigger to sum across package group |
+| `src/components/clients/PackagePaymentModal.tsx` | Stop proportional split; insert 1 record per payment against primary policy with batch_id + cheque_image_url |
 

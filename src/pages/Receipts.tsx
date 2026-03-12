@@ -17,9 +17,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Plus, Printer, Pencil, Trash2, Search, Receipt, CalendarIcon, X } from "lucide-react";
+import { Plus, Printer, Pencil, Trash2, Search, Receipt, CalendarIcon, X, Link2, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { buildReceiptPrintHtml, type ReceiptPrintData, type CompanySettings } from "@/lib/receiptPrintBuilder";
 
 interface ReceiptRow {
   id: string;
@@ -37,6 +38,7 @@ interface ReceiptRow {
   payment_id: string | null;
   policy_id: string | null;
   notes: string | null;
+  receipt_url: string | null;
   created_at: string;
 }
 
@@ -78,6 +80,25 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
   });
 }
 
+function useCompanySettings() {
+  return useQuery({
+    queryKey: ["company-settings-for-receipt"],
+    queryFn: async () => {
+      const [siteRes, smsRes] = await Promise.all([
+        supabase.from("site_settings").select("logo_url").limit(1).single(),
+        supabase.from("sms_settings").select("company_email, company_location, company_phone_links").limit(1).single(),
+      ]);
+      return {
+        logoUrl: siteRes.data?.logo_url || "",
+        company_email: (smsRes.data as any)?.company_email || "",
+        company_location: (smsRes.data as any)?.company_location || "",
+        company_phone_links: (smsRes.data as any)?.company_phone_links || [],
+      } as CompanySettings;
+    },
+    staleTime: 1000 * 60 * 30,
+  });
+}
+
 const RECEIPT_TYPE_LABELS: Record<string, string> = {
   payment: "קבלה",
   accident_fee: "קבלת דמי תאונות",
@@ -92,6 +113,7 @@ export default function Receipts() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<ReceiptRow | null>(null);
   const [deleteReceipt, setDeleteReceipt] = useState<ReceiptRow | null>(null);
+  const [copyingId, setCopyingId] = useState<string | null>(null);
 
   // Form state
   const [formType, setFormType] = useState<"payment" | "accident_fee">("payment");
@@ -104,6 +126,7 @@ export default function Receipts() {
   const [formNotes, setFormNotes] = useState("");
 
   const { data: receipts, isLoading } = useReceipts(tab, search, dateFrom, dateTo);
+  const { data: companySettings } = useCompanySettings();
 
   const resetForm = useCallback(() => {
     setFormType("payment");
@@ -187,62 +210,62 @@ export default function Receipts() {
   });
 
   const handlePrint = (r: ReceiptRow) => {
-    const receiptTypeLabel = RECEIPT_TYPE_LABELS[r.receipt_type] || r.receipt_type;
-    const paddedNum = padReceiptNumber(r.receipt_number);
+    const data: ReceiptPrintData = {
+      receiptNumber: padReceiptNumber(r.receipt_number),
+      receiptType: r.receipt_type,
+      receiptTypeLabel: RECEIPT_TYPE_LABELS[r.receipt_type] || r.receipt_type,
+      clientName: r.client_name,
+      carNumber: r.car_number || "",
+      receiptDate: r.receipt_date,
+      amount: r.amount,
+      accidentDate: r.accident_date || "",
+      accidentDetails: r.accident_details || "",
+      notes: r.notes || "",
+      source: r.source,
+    };
+    const html = buildReceiptPrintHtml(data, companySettings || { logoUrl: "", company_email: "", company_location: "", company_phone_links: [] });
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
-
-    const accidentSection = r.receipt_type === "accident_fee" ? `
-      <tr><td style="padding:8px;border:1px solid #ccc;font-weight:bold;">תאריך תאונה</td><td style="padding:8px;border:1px solid #ccc;">${r.accident_date || '-'}</td></tr>
-      <tr><td style="padding:8px;border:1px solid #ccc;font-weight:bold;">פרטי תאונה</td><td style="padding:8px;border:1px solid #ccc;">${r.accident_details || '-'}</td></tr>
-    ` : '';
-
-    printWindow.document.write(`<!DOCTYPE html>
-<html dir="rtl" lang="he">
-<head><meta charset="UTF-8"><title>${receiptTypeLabel} ${paddedNum}</title>
-<style>
-  body{font-family:Arial,Tahoma,sans-serif;padding:30px;direction:rtl;color:#1a1a1a}
-  .container{max-width:700px;margin:0 auto;border:2px solid #1a3a5c;padding:0}
-  .header{background:#1a3a5c;color:white;padding:20px 30px;text-align:center}
-  .header h1{margin:0;font-size:22px}
-  .header .en{margin:4px 0 0;font-size:11px;opacity:0.7;letter-spacing:1px}
-  .header p{margin:4px 0 0;font-size:13px;opacity:0.8}
-  .meta{display:flex;justify-content:space-between;padding:15px 30px;border-bottom:1px solid #ddd}
-  .meta .num{font-size:20px;font-weight:bold;color:#c0392b}
-  .meta .date{color:#666}
-  .subject-bar{background:#d6e4f0;padding:10px 30px;font-weight:bold;font-size:15px;color:#1a3a5c;border-bottom:1px solid #b0c4d8}
-  table{width:100%;border-collapse:collapse;margin:0}
-  td{padding:10px 30px}
-  .total{background:#e8f0fe;padding:15px 30px;text-align:center;font-size:24px;font-weight:bold;color:#1a3a5c}
-  .footer{text-align:center;padding:15px;font-size:11px;color:#888;border-top:1px solid #ddd}
-  @media print{body{padding:10px}}
-</style></head>
-<body>
-<div class="container">
-  <div class="header">
-    <h1>בשיר אבו סנינה לביטוח</h1>
-    <div class="en">BASHEER ABU SNEINEH INSURANCE</div>
-    <p>עוסק מורשה: 212426498</p>
-  </div>
-  <div class="meta">
-    <div><strong>${receiptTypeLabel}</strong> <span class="num">#${paddedNum}</span></div>
-    <div class="date">${r.receipt_date}</div>
-  </div>
-  <div class="subject-bar">
-    ביטוח רכב${r.car_number ? ` / רכב ${r.car_number}` : ''} / ${r.client_name}
-  </div>
-  <table>
-    <tr><td style="padding:8px;border:1px solid #ccc;font-weight:bold;">שם לקוח</td><td style="padding:8px;border:1px solid #ccc;">${r.client_name}</td></tr>
-    <tr><td style="padding:8px;border:1px solid #ccc;font-weight:bold;">מס׳ רכב</td><td style="padding:8px;border:1px solid #ccc;">${r.car_number || '-'}</td></tr>
-    ${accidentSection}
-    ${r.notes ? `<tr><td style="padding:8px;border:1px solid #ccc;font-weight:bold;">הערות</td><td style="padding:8px;border:1px solid #ccc;">${r.notes}</td></tr>` : ''}
-  </table>
-  <div class="total">₪${r.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
-  <div class="footer">🔒 חתימה דיגיטלית מאובטחת | הופק ${new Date().toLocaleDateString('en-GB')}</div>
-</div>
-<script>setTimeout(function(){window.print()},300)</script>
-</body></html>`);
+    printWindow.document.write(html);
     printWindow.document.close();
+  };
+
+  const handleCopyLink = async (r: ReceiptRow) => {
+    // If receipt already has a URL, just copy it
+    if (r.receipt_url) {
+      await navigator.clipboard.writeText(r.receipt_url);
+      toast.success("הקישור הועתק");
+      return;
+    }
+
+    // For auto receipts with payment_id, generate via edge function
+    if (r.source === "auto" && r.payment_id) {
+      setCopyingId(r.id);
+      try {
+        const { data, error } = await supabase.functions.invoke("generate-payment-receipt", {
+          body: { payment_id: r.payment_id },
+        });
+        if (error) throw error;
+        const url = data?.url;
+        if (url) {
+          // Update the receipt row with the URL
+          await supabase.from("receipts").update({ receipt_url: url }).eq("id", r.id);
+          queryClient.invalidateQueries({ queryKey: ["receipts"] });
+          await navigator.clipboard.writeText(url);
+          toast.success("הקישור הועתק");
+        } else {
+          toast.error("לא נוצר קישור");
+        }
+      } catch (err: any) {
+        toast.error("שגיאה: " + err.message);
+      } finally {
+        setCopyingId(null);
+      }
+      return;
+    }
+
+    // For manual receipts, open the print view and let them copy from there
+    toast.info("לקבלות ידניות, השתמש בהדפסה");
   };
 
   const clearDateFilters = () => {
@@ -331,7 +354,7 @@ export default function Receipts() {
                 <TableHead className="text-right">תאריך</TableHead>
                 <TableHead className="text-right">סכום</TableHead>
                 <TableHead className="text-right">מקור</TableHead>
-                <TableHead className="text-right w-28">פעולות</TableHead>
+                <TableHead className="text-right w-32">פעולות</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -363,15 +386,25 @@ export default function Receipts() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrint(r)}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrint(r)} title="הדפסה">
                           <Printer className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => handleCopyLink(r)}
+                          disabled={copyingId === r.id}
+                          title="העתק קישור"
+                        >
+                          {copyingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
                         </Button>
                         {r.source === "manual" && (
                           <>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)} title="עריכה">
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteReceipt(r)}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteReceipt(r)} title="מחיקה">
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           </>
