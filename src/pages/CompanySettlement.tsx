@@ -368,7 +368,7 @@ export default function CompanySettlement() {
       }
 
       if (selectedCategories.length > 0) {
-        query = query.in('policy_type_parent', selectedCategories);
+        query = query.in('policy_type_parent', selectedCategories as Enums<'policy_type_parent'>[]);
       }
 
       if (!includeCancelled) {
