@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Plus, FileText, ChevronUp, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { NotificationsDropdown } from "./NotificationsDropdown";
+
 import { PolicyWizard } from "@/components/policies/PolicyWizard";
 import { cn } from "@/lib/utils";
 import { useRecentClient } from "@/hooks/useRecentClient";
@@ -166,11 +166,6 @@ export function BottomToolbar({ onPolicyComplete }: BottomToolbarProps) {
           {/* Inline search (dropdown above the input) */}
           <BottomToolbarInlineSearch />
 
-          {/* Separator */}
-          <div className="h-6 w-px bg-border/50" />
-
-          {/* Notifications */}
-          <NotificationsDropdown />
         </div>
       </div>
 

@@ -8,7 +8,7 @@ import {
   FileText,
   Building2,
   UserCog,
-  Bell,
+  
   BarChart3,
   Settings,
   ChevronRight,
@@ -40,7 +40,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { SidebarNotificationBadge } from "./SidebarNotificationBadge";
+
 import { SidebarDebtBadge } from "./SidebarDebtBadge";
 import { SidebarTaskBadge } from "./SidebarTaskBadge";
 import { SidebarClaimsBadge } from "./SidebarClaimsBadge";
@@ -79,7 +79,7 @@ export const navigationGroups: NavGroup[] = [
       { name: "لوحة التحكم", href: "/", icon: LayoutDashboard },
       { name: "المهام", href: "/tasks", icon: ListTodo, badge: 'tasks' },
       { name: "سجل النشاط", href: "/activity", icon: Activity },
-      { name: "التنبيهات", href: "/notifications", icon: Bell, badge: 'notifications' },
+      
     ],
   },
   {
@@ -225,7 +225,7 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
 
   const renderBadge = (item: NavItem) => {
     if (!item.badge) return null;
-    if (item.badge === 'notifications') return <SidebarNotificationBadge collapsed={collapsed} />;
+    
     if (item.badge === 'debt') return <SidebarDebtBadge collapsed={collapsed} />;
     if (item.badge === 'tasks') return <SidebarTaskBadge collapsed={collapsed} />;
     if (item.badge === 'claims') return <SidebarClaimsBadge collapsed={collapsed} />;
