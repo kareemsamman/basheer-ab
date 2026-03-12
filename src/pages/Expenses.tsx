@@ -318,7 +318,7 @@ export default function Expenses() {
       setExpenses(allExpenses);
       
       // Calculate totals from ALL data for the month (reuse already-fetched elzami data)
-      const [totalsResult, policyTotalsResult, companyDuesTotalsResult] = await Promise.all([
+      const [totalsResult, policyTotalsResult] = await Promise.all([
         supabase
           .from('expenses')
           .select('amount, voucher_type')
@@ -331,18 +331,9 @@ export default function Expenses() {
           .lte('payment_date', monthEnd)
           .eq('refused', false)
           .neq('policies.policy_type_parent', 'ELZAMI'),
-        supabase
-          .from('policies')
-          .select('payed_for_company')
-          .gte('start_date', monthStart)
-          .lte('start_date', monthEnd)
-          .eq('cancelled', false)
-          .is('deleted_at', null)
-          .gt('payed_for_company', 0)
-          .neq('policy_type_parent', 'ELZAMI'),
       ]);
       
-      let receipts = 0, payments = 0, companyDues = 0;
+      let receipts = 0, payments = 0;
       (totalsResult.data || []).forEach(e => {
         if (e.voucher_type === 'receipt') receipts += Number(e.amount);
         else payments += Number(e.amount);
@@ -355,14 +346,9 @@ export default function Expenses() {
       elzamiVouchers.forEach(v => {
         if (v.voucher_type === 'receipt') receipts += v.amount;
       });
-      // Company dues total
-      (companyDuesTotalsResult.data || []).forEach(p => {
-        companyDues += Number(p.payed_for_company);
-      });
       
       setTotalReceipts(receipts);
       setTotalPayments(payments);
-      setTotalCompanyDues(companyDues);
       
     } catch (error) {
       console.error('Error fetching expenses:', error);
