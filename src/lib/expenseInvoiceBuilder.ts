@@ -61,9 +61,9 @@ export function buildExpenseInvoiceHtml(
     return `
       <tr>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center;">${i + 1}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${r.contact_name || '-'}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${r.description || '-'}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${cat}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${r.contact_name || '-'}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${pm}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center;">${date}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:left;font-weight:600;">₪${amt}</td>
