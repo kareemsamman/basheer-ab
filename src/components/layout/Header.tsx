@@ -1,5 +1,6 @@
 import { useState, ReactNode } from "react";
-import { Search, Plus } from "lucide-react";
+import { Search, Plus, Receipt } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { GlobalPolicySearch } from "./GlobalPolicySearch";
 
