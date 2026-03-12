@@ -363,7 +363,7 @@ function buildReceiptHtml(
     </div>
 
     <div class="subject-bar">
-      ביטוח ${policyTypesText}${car?.car_number ? ` / רכב ${car.car_number}` : ''} / ${client?.full_name || ''}
+      ביטוח רכב${car?.car_number ? ` / רכב ${car.car_number}` : ''} / ${client?.full_name || ''}
     </div>
 
     <div class="table-section">
