@@ -91,7 +91,7 @@ interface GroupedClientActivity {
 const PAYMENT_TYPE_LABELS: Record<string, string> = {
   cash: "نقدًا",
   cheque: "شيك",
-  visa: "فيزا",
+  visa: "بنك/فيزا",
   transfer: "حوالة",
   credit_card: "بطاقة",
 };
@@ -106,7 +106,9 @@ const PAYMENT_TYPE_COLORS: Record<string, string> = {
 
 const POLICY_TYPE_LABELS: Record<string, string> = {
   ELZAMI: "إلزامي",
-  THIRD_FULL: "شامل",
+  THIRD_FULL: "ثالث/شامل",
+  THIRD: "ثالث",
+  FULL: "شامل",
   ROAD_SERVICE: "خدمة طريق",
   ACCIDENT_FEE_EXEMPTION: "إعفاء حوادث",
   HEALTH: "صحي",
@@ -116,6 +118,14 @@ const POLICY_TYPE_LABELS: Record<string, string> = {
   BUSINESS: "أعمال",
   OTHER: "أخرى",
 };
+
+// Get display label for policy type, preferring child type for THIRD_FULL
+function getPolicyTypeLabel(parent: string | null, child?: string | null): string {
+  if (parent === 'THIRD_FULL' && child) {
+    return POLICY_TYPE_LABELS[child] || POLICY_TYPE_LABELS[parent] || parent || '';
+  }
+  return POLICY_TYPE_LABELS[parent || ''] || parent || '';
+}
 
 const typeColors = {
   policy: "text-primary bg-primary/10",
@@ -252,7 +262,7 @@ async function fetchActivities(branchId: string | null, startDate: string, endDa
       if ((p.clients as any)?.deleted_at) continue;
       const clientName = (p.clients as any)?.full_name || "عميل";
       const fileNumber = (p.clients as any)?.file_number || "";
-      const policyLabel = POLICY_TYPE_LABELS[p.policy_type_parent] || p.policy_type_parent || "وثيقة";
+      const policyLabel = getPolicyTypeLabel(p.policy_type_parent, p.policy_type_child);
       const companyName = (p.insurance_companies as any)?.name_ar || (p.insurance_companies as any)?.name || "";
       const carNumber = (p.cars as any)?.car_number || "";
 
@@ -283,7 +293,7 @@ async function fetchActivities(branchId: string | null, startDate: string, endDa
       id, created_at, amount, payment_type, cheque_number,
       policies(
         id, cancelled, 
-        policy_type_parent,
+        policy_type_parent, policy_type_child,
         insurance_companies(name, name_ar),
         cars(car_number),
         clients(id, full_name, file_number, deleted_at)
@@ -305,11 +315,13 @@ async function fetchActivities(branchId: string | null, startDate: string, endDa
     for (const pay of payments) {
       if ((pay.policies as any)?.cancelled) continue;
       if ((pay.policies as any)?.clients?.deleted_at) continue;
-      if ((pay.policies as any)?.policy_type_parent === "ELZAMI") continue;
 
       const clientName = (pay.policies as any)?.clients?.full_name || "عميل";
       const fileNumber = (pay.policies as any)?.clients?.file_number || "";
-      const policyType = POLICY_TYPE_LABELS[(pay.policies as any)?.policy_type_parent] || "";
+      const policyType = getPolicyTypeLabel(
+        (pay.policies as any)?.policy_type_parent,
+        (pay.policies as any)?.policy_type_child
+      );
       const companyName =
         (pay.policies as any)?.insurance_companies?.name_ar ||
         (pay.policies as any)?.insurance_companies?.name ||
@@ -654,8 +666,8 @@ export function RecentActivity() {
               <>
                 <span>عرض {dialogGroupedActivities.length} عميل ({dialogFilteredActivities.length} نشاط)</span>
                 {dialogPaymentTotal > 0 && (
-                  <Badge variant="secondary" className="bg-success/10 text-success">
-                    مجموع الدفعات: ₪{dialogPaymentTotal.toLocaleString()}
+                 <Badge variant="secondary" className="bg-success/10 text-success">
+                    مجموع الدفعات: ₪{dialogPaymentTotal.toLocaleString('en-US')}
                   </Badge>
                 )}
               </>
@@ -747,7 +759,7 @@ function GroupedActivityCard({
       {hasPayments && (
         <div className={cn("bg-muted/50 rounded-lg p-2", compact ? "space-y-1" : "space-y-2")}>
           <div className="flex items-center justify-end">
-            <span className="font-bold text-success ltr-nums">₪{group.payments.total.toLocaleString()}</span>
+            <span className="font-bold text-success ltr-nums">₪{group.payments.total.toLocaleString('en-US')}</span>
           </div>
 
           {/* Payment Type Breakdown */}
@@ -758,7 +770,7 @@ function GroupedActivityCard({
                 variant="outline"
                 className={cn("text-[10px] px-1.5 py-0", PAYMENT_TYPE_COLORS[type])}
               >
-                {PAYMENT_TYPE_LABELS[type] || type}: ₪{amount.toLocaleString()}
+                {PAYMENT_TYPE_LABELS[type] || type}: ₪{amount.toLocaleString('en-US')}
               </Badge>
             ))}
           </div>
@@ -791,7 +803,7 @@ function GroupedActivityCard({
                         {item.companyName && ` + ${item.companyName}`}
                       </span>
                     </div>
-                    <span className="font-medium ltr-nums">₪{item.amount.toLocaleString()}</span>
+                    <span className="font-medium ltr-nums">₪{item.amount.toLocaleString('en-US')}</span>
                   </div>
                   {/* Creator name + datetime */}
                   <div className="text-[10px] text-muted-foreground">
@@ -822,7 +834,7 @@ function GroupedActivityCard({
                     </Badge>
                   )}
                 </div>
-                {policy.price > 0 && <span className="font-medium ltr-nums">₪{policy.price.toLocaleString()}</span>}
+                {policy.price > 0 && <span className="font-medium ltr-nums">₪{policy.price.toLocaleString('en-US')}</span>}
               </div>
               {/* Creator + datetime for policies */}
               <div className="text-[10px] text-muted-foreground">
@@ -865,14 +877,25 @@ function GroupedActivityCard({
             <span>
               {group.policies[0].type}
               {group.policies[0].companyName && ` + ${group.policies[0].companyName}`}
-              {group.policies[0].price > 0 && ` | ₪${group.policies[0].price.toLocaleString()}`}
+              {group.policies[0].price > 0 && ` | ₪${group.policies[0].price.toLocaleString('en-US')}`}
             </span>
           )}
           {hasCars && !hasPolicies && (
             <span>
-              {group.cars[0].action}: {group.cars[0].carNumber}
+              {group.cars[0].action}
+              {group.cars[0].carNumber && `: ${group.cars[0].carNumber}`}
             </span>
           )}
+        </div>
+      )}
+      {/* Compact car info when payments exist */}
+      {compact && hasCars && (hasPayments || hasPolicies) && (
+        <div className="text-xs text-muted-foreground">
+          {group.cars.map((car) => (
+            <span key={car.id}>
+              {car.action}{car.carNumber && `: ${car.carNumber}`}
+            </span>
+          ))}
         </div>
       )}
     </div>
