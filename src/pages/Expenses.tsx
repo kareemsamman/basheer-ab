@@ -61,6 +61,8 @@ interface Expense {
   is_policy_payment?: boolean;
   is_company_due?: boolean;
   is_elzami_commission?: boolean;
+  entity_type?: string | null;
+  entity_id?: string | null;
 }
 
 // Payment categories
