@@ -125,8 +125,27 @@ export default function Expenses() {
     payment_method: 'cash',
     reference_number: '',
     contact_name: '',
+    entity_type: '' as '' | 'broker' | 'company',
+    entity_id: '',
   });
   const [saving, setSaving] = useState(false);
+  const [entitySource, setEntitySource] = useState<'manual' | 'broker' | 'company'>('manual');
+  const [brokersList, setBrokersList] = useState<{id: string; name: string}[]>([]);
+  const [companiesList, setCompaniesList] = useState<{id: string; name: string}[]>([]);
+
+  // Fetch brokers and companies when dialog opens
+  useEffect(() => {
+    if (!isDialogOpen) return;
+    const fetchEntities = async () => {
+      const [brokersRes, companiesRes] = await Promise.all([
+        supabase.from('brokers').select('id, name').order('name'),
+        supabase.from('insurance_companies').select('id, name').order('name'),
+      ]);
+      setBrokersList(brokersRes.data || []);
+      setCompaniesList(companiesRes.data || []);
+    };
+    fetchEntities();
+  }, [isDialogOpen]);
   
   // Delete state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
