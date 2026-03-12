@@ -262,7 +262,7 @@ async function fetchActivities(branchId: string | null, startDate: string, endDa
       if ((p.clients as any)?.deleted_at) continue;
       const clientName = (p.clients as any)?.full_name || "عميل";
       const fileNumber = (p.clients as any)?.file_number || "";
-      const policyLabel = POLICY_TYPE_LABELS[p.policy_type_parent] || p.policy_type_parent || "وثيقة";
+      const policyLabel = getPolicyTypeLabel(p.policy_type_parent, p.policy_type_child);
       const companyName = (p.insurance_companies as any)?.name_ar || (p.insurance_companies as any)?.name || "";
       const carNumber = (p.cars as any)?.car_number || "";
 
