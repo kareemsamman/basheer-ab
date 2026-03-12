@@ -315,11 +315,13 @@ async function fetchActivities(branchId: string | null, startDate: string, endDa
     for (const pay of payments) {
       if ((pay.policies as any)?.cancelled) continue;
       if ((pay.policies as any)?.clients?.deleted_at) continue;
-      if ((pay.policies as any)?.policy_type_parent === "ELZAMI") continue;
 
       const clientName = (pay.policies as any)?.clients?.full_name || "عميل";
       const fileNumber = (pay.policies as any)?.clients?.file_number || "";
-      const policyType = POLICY_TYPE_LABELS[(pay.policies as any)?.policy_type_parent] || "";
+      const policyType = getPolicyTypeLabel(
+        (pay.policies as any)?.policy_type_parent,
+        (pay.policies as any)?.policy_type_child
+      );
       const companyName =
         (pay.policies as any)?.insurance_companies?.name_ar ||
         (pay.policies as any)?.insurance_companies?.name ||
