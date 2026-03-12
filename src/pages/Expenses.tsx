@@ -391,53 +391,166 @@ export default function Expenses() {
     fetchExpenses();
   }, [fetchExpenses]);
 
+  const isMultiLineMode = entitySource === 'broker' || entitySource === 'company';
+
+  const handleCategoryChange = (value: string) => {
+    setFormData(prev => ({ ...prev, category: value }));
+    // Auto-select entity source
+    if (value === 'insurance_company') {
+      setEntitySource('company');
+      setFormData(prev => ({ ...prev, entity_type: 'company', entity_id: '', contact_name: '' }));
+    } else if (value === 'broker_payment') {
+      setEntitySource('broker');
+      setFormData(prev => ({ ...prev, entity_type: 'broker', entity_id: '', contact_name: '' }));
+    }
+  };
+
   const handleSubmit = async () => {
-    if (!formData.category || !formData.amount || !formData.expense_date) {
+    if (!formData.category || !formData.expense_date) {
       toast.error('يرجى ملء جميع الحقول المطلوبة');
       return;
     }
-    
-    setSaving(true);
-    try {
-      const expenseData: any = {
-        category: formData.category,
-        description: formData.description || null,
-        amount: parseFloat(formData.amount),
-        expense_date: formData.expense_date,
-        notes: formData.notes || null,
-        created_by_admin_id: profile?.id,
-        voucher_type: formData.voucher_type,
-        payment_method: formData.payment_method,
-        reference_number: formData.reference_number || null,
-        contact_name: formData.contact_name || null,
-        entity_type: formData.entity_type || null,
-        entity_id: formData.entity_id || null,
-      };
-      
-      if (editingExpense) {
-        const { error } = await supabase
-          .from('expenses')
-          .update(expenseData)
-          .eq('id', editingExpense.id);
-        if (error) throw error;
-        toast.success('تم تحديث السند');
-      } else {
-        const { error } = await supabase
-          .from('expenses')
-          .insert(expenseData);
-        if (error) throw error;
-        toast.success(formData.voucher_type === 'receipt' ? 'تم إضافة سند القبض' : 'تم إضافة سند الصرف');
+
+    if (isMultiLineMode) {
+      // Multi-line mode: validate payment lines
+      const validLines = multiPaymentLines.filter(p => {
+        if (p.payment_type === 'customer_cheque') {
+          return p.selected_cheques && p.selected_cheques.length > 0;
+        }
+        return p.amount > 0;
+      });
+
+      if (validLines.length === 0) {
+        toast.error('يرجى إضافة دفعة واحدة على الأقل');
+        return;
       }
-      
-      setIsDialogOpen(false);
-      setEditingExpense(null);
-      resetForm();
-      fetchExpenses();
-    } catch (error) {
-      console.error('Error saving:', error);
-      toast.error('حدث خطأ في الحفظ');
-    } finally {
-      setSaving(false);
+
+      // Validate cheque numbers
+      const hasInvalidCheque = validLines.some(
+        p => p.payment_type === 'cheque' && (!p.cheque_number || p.cheque_number.length < 1)
+      );
+      if (hasInvalidCheque) {
+        toast.error('رقم الشيك مطلوب لدفعات الشيكات');
+        return;
+      }
+
+      setSaving(true);
+      try {
+        const batchId = crypto.randomUUID();
+
+        for (const payment of validLines) {
+          const amount = payment.payment_type === 'customer_cheque' && payment.selected_cheques
+            ? payment.selected_cheques.reduce((sum, c) => sum + c.amount, 0)
+            : payment.amount;
+
+          const customerChequeIds = payment.payment_type === 'customer_cheque' && payment.selected_cheques
+            ? payment.selected_cheques.map(c => c.id)
+            : [];
+
+          const paymentMethod = payment.payment_type === 'customer_cheque' ? 'cheque' : payment.payment_type;
+
+          const expenseData: any = {
+            category: formData.category,
+            description: formData.description || null,
+            amount,
+            expense_date: payment.payment_date,
+            notes: multiNotes || null,
+            created_by_admin_id: profile?.id,
+            voucher_type: formData.voucher_type,
+            payment_method: paymentMethod,
+            reference_number: payment.payment_type === 'cheque' ? payment.cheque_number : payment.payment_type === 'bank_transfer' ? payment.bank_reference : null,
+            contact_name: formData.contact_name || null,
+            entity_type: formData.entity_type || null,
+            entity_id: formData.entity_id || null,
+            cheque_image_url: payment.cheque_image_url || null,
+            customer_cheque_ids: customerChequeIds,
+            receipt_images: multiReceiptImages,
+            batch_id: batchId,
+          };
+
+          const { error } = await supabase.from('expenses').insert(expenseData);
+          if (error) throw error;
+
+          // If customer cheques were used, update them as transferred
+          if (payment.payment_type === 'customer_cheque' && customerChequeIds.length > 0) {
+            const transferTarget = formData.entity_type === 'broker' ? 'broker' : 'company';
+            const { error: updateError } = await supabase
+              .from('policy_payments')
+              .update({
+                cheque_status: 'transferred_out',
+                transferred_to_type: transferTarget,
+                transferred_to_id: formData.entity_id,
+                transferred_at: new Date().toISOString(),
+                refused: false,
+              })
+              .in('id', customerChequeIds);
+
+            if (updateError) {
+              console.error('Error updating cheque status:', updateError);
+            }
+          }
+        }
+
+        toast.success(`تم إضافة ${validLines.length} دفعة بنجاح`);
+        setIsDialogOpen(false);
+        setEditingExpense(null);
+        resetForm();
+        fetchExpenses();
+      } catch (error) {
+        console.error('Error saving:', error);
+        toast.error('حدث خطأ في الحفظ');
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      // Simple single-line mode (original logic)
+      if (!formData.amount) {
+        toast.error('يرجى ملء جميع الحقول المطلوبة');
+        return;
+      }
+
+      setSaving(true);
+      try {
+        const expenseData: any = {
+          category: formData.category,
+          description: formData.description || null,
+          amount: parseFloat(formData.amount),
+          expense_date: formData.expense_date,
+          notes: formData.notes || null,
+          created_by_admin_id: profile?.id,
+          voucher_type: formData.voucher_type,
+          payment_method: formData.payment_method,
+          reference_number: formData.reference_number || null,
+          contact_name: formData.contact_name || null,
+          entity_type: formData.entity_type || null,
+          entity_id: formData.entity_id || null,
+        };
+
+        if (editingExpense) {
+          const { error } = await supabase
+            .from('expenses')
+            .update(expenseData)
+            .eq('id', editingExpense.id);
+          if (error) throw error;
+          toast.success('تم تحديث السند');
+        } else {
+          const { error } = await supabase
+            .from('expenses')
+            .insert(expenseData);
+          if (error) throw error;
+          toast.success(formData.voucher_type === 'receipt' ? 'تم إضافة سند القبض' : 'تم إضافة سند الصرف');
+        }
+
+        setIsDialogOpen(false);
+        setEditingExpense(null);
+        resetForm();
+        fetchExpenses();
+      } catch (error) {
+        console.error('Error saving:', error);
+        toast.error('حدث خطأ في الحفظ');
+      } finally {
+        setSaving(false);
+      }
     }
   };
 
