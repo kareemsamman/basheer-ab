@@ -125,6 +125,13 @@ const statusLabels: Record<string, { label: string; variant: "default" | "second
   transferred_out: { label: "تم استخدامه", variant: "default" },
 };
 
+const CHEQUES_START_DATE = '2026-01-01';
+
+const isOnOrAfterChequesStartDate = (value: string) => {
+  const normalizedDate = value?.slice(0, 10);
+  return normalizedDate >= CHEQUES_START_DATE;
+};
+
 export default function Cheques() {
   const { toast } = useToast();
   const navigate = useNavigate();
