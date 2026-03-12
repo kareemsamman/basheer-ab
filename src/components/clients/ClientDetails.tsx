@@ -1437,6 +1437,10 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
               <Banknote className="h-4 w-4" />
               المرتجعات
             </TabsTrigger>
+            <TabsTrigger value="files" className="gap-1.5">
+              <FolderOpen className="h-4 w-4" />
+              ملفات
+            </TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
