@@ -85,6 +85,7 @@ serve(async (req) => {
         profit,
         start_date,
         end_date,
+        issue_date,
         cancelled,
         transferred,
         transferred_to_car_number,
@@ -94,12 +95,15 @@ serve(async (req) => {
       .eq("company_id", company_id)
       .is("deleted_at", null);
 
-    // Apply date filters
+    // Apply date filters on issue_date (matches the UI detail page)
+    // Always enforce 2026-01-01 floor for financial fresh-start
     if (start_date) {
-      query = query.gte("start_date", start_date);
+      query = query.gte("issue_date", start_date);
+    } else {
+      query = query.gte("issue_date", "2026-01-01");
     }
     if (end_date) {
-      query = query.lte("start_date", end_date);
+      query = query.lte("issue_date", end_date);
     }
 
     // Apply policy type filter
@@ -112,7 +116,7 @@ serve(async (req) => {
       query = query.eq("cancelled", false);
     }
 
-    const { data: policies, error: policiesError } = await query.order("start_date", { ascending: false });
+    const { data: policies, error: policiesError } = await query.order("issue_date", { ascending: true });
 
     if (policiesError) {
       console.error("[generate-settlement-report] Error fetching policies:", policiesError);
