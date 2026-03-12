@@ -289,7 +289,7 @@ export default function Expenses() {
       });
 
       // Merge and sort
-      let allExpenses = [...manualExpenses, ...policyExpenses, ...companyDueExpenses, ...filteredElzamiVouchers];
+      let allExpenses = [...manualExpenses, ...policyExpenses, ...filteredElzamiVouchers];
       // Sort by created_at descending (newest first)
       allExpenses.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       
