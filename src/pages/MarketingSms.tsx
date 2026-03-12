@@ -84,6 +84,7 @@ export default function MarketingSms() {
   const [isLoadingRecipients, setIsLoadingRecipients] = useState(false);
   const [isCheckingDlr, setIsCheckingDlr] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [recipientSearch, setRecipientSearch] = useState('');
 
   // Fetch clients
   useEffect(() => {
