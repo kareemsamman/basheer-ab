@@ -59,9 +59,13 @@ export function ScannerDialog({
     setIsScanning(true);
     setError(null);
 
+    const savedScanner = localStorage.getItem('preferred_scanner') || 'select';
     const scanRequest = {
-      use_asprise_dialog: true,
+      use_asprise_dialog: false,
       show_scanner_ui: false,
+      source_name: savedScanner,
+      scanner_name: savedScanner,
+      prompt_scan_more: false,
       twain_cap_setting: {
         ICAP_PIXELTYPE: 'TWPT_RGB',
         ICAP_XRESOLUTION: '200',
