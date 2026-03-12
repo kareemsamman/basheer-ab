@@ -62,6 +62,7 @@ import FormTemplateEditor from "./pages/FormTemplateEditor";
 import ActivityLog from "./pages/ActivityLog";
 import BrandingSettings from "./pages/BrandingSettings";
 import XServiceSettings from "./pages/XServiceSettings";
+import Receipts from "./pages/Receipts";
 import { SiteHelmet } from "@/components/layout/SiteHelmet";
 
 const queryClient = new QueryClient({
