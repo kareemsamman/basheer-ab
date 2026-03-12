@@ -241,7 +241,9 @@ export default function CompanySettlementDetail() {
 
   // Summary totals (including supplements)
   const summary = useMemo(() => {
-    const policySums = filteredPolicies.reduce(
+    // Exclude ELZAMI from settlement totals (money goes directly to company)
+    const settlementPolicies = filteredPolicies.filter(p => p.policy_type_parent !== 'ELZAMI');
+    const policySums = settlementPolicies.reduce(
       (acc, policy) => {
         const isTransferred = policy.transferred === true;
         return {

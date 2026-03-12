@@ -5270,75 +5270,42 @@ export type Database = {
               total_remaining: number
             }[]
           }
-      report_company_settlement:
-        | {
-            Args: {
-              p_broker_id?: string
-              p_company_id?: string
-              p_end_date?: string
-              p_include_cancelled?: boolean
-              p_policy_type_parent?: Database["public"]["Enums"]["policy_type_parent"]
-              p_start_date?: string
-            }
-            Returns: {
-              company_id: string
-              company_name: string
-              company_name_ar: string
-              policy_count: number
-              total_company_payment: number
-              total_insurance_price: number
-            }[]
-          }
-        | {
-            Args: {
-              p_broker_id?: string
-              p_broker_ids?: string[]
-              p_company_id?: string
-              p_company_ids?: string[]
-              p_end_date?: string
-              p_include_cancelled?: boolean
-              p_policy_type_parent?: Database["public"]["Enums"]["policy_type_parent"]
-              p_policy_types?: string[]
-              p_start_date?: string
-            }
-            Returns: {
-              company_id: string
-              company_name: string
-              company_name_ar: string
-              policy_count: number
-              total_company_payment: number
-              total_insurance_price: number
-            }[]
-          }
-      report_company_settlement_company_options:
-        | {
-            Args: {
-              p_broker_id?: string
-              p_end_date?: string
-              p_policy_type_parent?: Database["public"]["Enums"]["policy_type_parent"]
-              p_start_date?: string
-            }
-            Returns: {
-              company_id: string
-              company_name: string
-              company_name_ar: string
-            }[]
-          }
-        | {
-            Args: {
-              p_broker_id?: string
-              p_broker_ids?: string[]
-              p_end_date?: string
-              p_policy_type_parent?: Database["public"]["Enums"]["policy_type_parent"]
-              p_policy_types?: string[]
-              p_start_date?: string
-            }
-            Returns: {
-              company_id: string
-              company_name: string
-              company_name_ar: string
-            }[]
-          }
+      report_company_settlement: {
+        Args: {
+          p_broker_id?: string
+          p_broker_ids?: string[]
+          p_company_id?: string
+          p_company_ids?: string[]
+          p_end_date?: string
+          p_include_cancelled?: boolean
+          p_policy_type_parent?: Database["public"]["Enums"]["policy_type_parent"]
+          p_policy_types?: string[]
+          p_start_date?: string
+        }
+        Returns: {
+          company_id: string
+          company_name: string
+          company_name_ar: string
+          policy_count: number
+          total_company_payment: number
+          total_insurance_price: number
+        }[]
+      }
+      report_company_settlement_company_options: {
+        Args: {
+          p_broker_id?: string
+          p_broker_ids?: string[]
+          p_end_date?: string
+          p_policy_type_parent?: Database["public"]["Enums"]["policy_type_parent"]
+          p_policy_types?: string[]
+          p_start_date?: string
+        }
+        Returns: {
+          company_id: string
+          company_name: string
+          company_name_ar: string
+        }[]
+      }
       report_created_policies: {
         Args: {
           p_company_id?: string
