@@ -963,7 +963,7 @@ export default function Expenses() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className={isMultiLineMode && !editingExpense ? "max-w-3xl max-h-[90vh] overflow-y-auto" : "max-w-lg"}>
           <DialogHeader>
             <DialogTitle>
               {editingExpense ? 'تعديل السند' : 'سند جديد'}
