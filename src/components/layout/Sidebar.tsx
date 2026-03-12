@@ -225,7 +225,7 @@ function SidebarContent({ collapsed, onCollapse, onNavigate }: {
 
   const renderBadge = (item: NavItem) => {
     if (!item.badge) return null;
-    if (item.badge === 'notifications') return <SidebarNotificationBadge collapsed={collapsed} />;
+    
     if (item.badge === 'debt') return <SidebarDebtBadge collapsed={collapsed} />;
     if (item.badge === 'tasks') return <SidebarTaskBadge collapsed={collapsed} />;
     if (item.badge === 'claims') return <SidebarClaimsBadge collapsed={collapsed} />;
