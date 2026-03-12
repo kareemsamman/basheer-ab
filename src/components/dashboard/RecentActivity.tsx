@@ -882,9 +882,20 @@ function GroupedActivityCard({
           )}
           {hasCars && !hasPolicies && (
             <span>
-              {group.cars[0].action}: {group.cars[0].carNumber}
+              {group.cars[0].action}
+              {group.cars[0].carNumber && `: ${group.cars[0].carNumber}`}
             </span>
           )}
+        </div>
+      )}
+      {/* Compact car info when payments exist */}
+      {compact && hasCars && (hasPayments || hasPolicies) && (
+        <div className="text-xs text-muted-foreground">
+          {group.cars.map((car) => (
+            <span key={car.id}>
+              {car.action}{car.carNumber && `: ${car.carNumber}`}
+            </span>
+          ))}
         </div>
       )}
     </div>
