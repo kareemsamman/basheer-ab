@@ -65,14 +65,31 @@ export default function CustomerSignatures() {
   const fetchClients = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("clients")
-        .select("id, full_name, id_number, phone_number, signature_url, created_at")
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false });
+      let allClients: ClientSignature[] = [];
+      let from = 0;
+      const batchSize = 1000;
+      let hasMore = true;
 
-      if (error) throw error;
-      setClients(data || []);
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from("clients")
+          .select("id, full_name, id_number, phone_number, signature_url, created_at")
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+          .range(from, from + batchSize - 1);
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          allClients = [...allClients, ...data];
+          from += batchSize;
+          hasMore = data.length === batchSize;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      setClients(allClients);
     } catch (error) {
       console.error("Error fetching clients:", error);
       toast({
