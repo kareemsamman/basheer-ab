@@ -26,7 +26,7 @@ interface MediaFile {
 interface PolicyInfo {
   id: string;
   policy_number: string | null;
-  insurance_type: string | null;
+  policy_type_child: string | null;
 }
 
 interface ClientFilesTabProps {
