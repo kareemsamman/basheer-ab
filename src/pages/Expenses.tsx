@@ -61,6 +61,8 @@ interface Expense {
   is_policy_payment?: boolean;
   is_company_due?: boolean;
   is_elzami_commission?: boolean;
+  entity_type?: string | null;
+  entity_id?: string | null;
 }
 
 // Payment categories
@@ -125,8 +127,27 @@ export default function Expenses() {
     payment_method: 'cash',
     reference_number: '',
     contact_name: '',
+    entity_type: '' as '' | 'broker' | 'company',
+    entity_id: '',
   });
   const [saving, setSaving] = useState(false);
+  const [entitySource, setEntitySource] = useState<'manual' | 'broker' | 'company'>('manual');
+  const [brokersList, setBrokersList] = useState<{id: string; name: string}[]>([]);
+  const [companiesList, setCompaniesList] = useState<{id: string; name: string}[]>([]);
+
+  // Fetch brokers and companies when dialog opens
+  useEffect(() => {
+    if (!isDialogOpen) return;
+    const fetchEntities = async () => {
+      const [brokersRes, companiesRes] = await Promise.all([
+        supabase.from('brokers').select('id, name').order('name'),
+        supabase.from('insurance_companies').select('id, name').order('name'),
+      ]);
+      setBrokersList(brokersRes.data || []);
+      setCompaniesList(companiesRes.data || []);
+    };
+    fetchEntities();
+  }, [isDialogOpen]);
   
   // Delete state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -381,6 +402,8 @@ export default function Expenses() {
         payment_method: formData.payment_method,
         reference_number: formData.reference_number || null,
         contact_name: formData.contact_name || null,
+        entity_type: formData.entity_type || null,
+        entity_id: formData.entity_id || null,
       };
       
       if (editingExpense) {
@@ -421,11 +444,17 @@ export default function Expenses() {
       payment_method: 'cash',
       reference_number: '',
       contact_name: '',
+      entity_type: '',
+      entity_id: '',
     });
+    setEntitySource('manual');
   };
 
   const handleEdit = (expense: Expense) => {
     setEditingExpense(expense);
+    const eType = (expense as any).entity_type || '';
+    const eId = (expense as any).entity_id || '';
+    setEntitySource(eType === 'broker' ? 'broker' : eType === 'company' ? 'company' : 'manual');
     setFormData({
       voucher_type: (expense.voucher_type || 'payment') as 'payment' | 'receipt',
       category: expense.category,
@@ -436,6 +465,8 @@ export default function Expenses() {
       payment_method: expense.payment_method || 'cash',
       reference_number: expense.reference_number || '',
       contact_name: expense.contact_name || '',
+      entity_type: eType,
+      entity_id: eId,
     });
     setIsDialogOpen(true);
   };
@@ -864,14 +895,78 @@ export default function Expenses() {
               </Select>
             </div>
 
-            {/* Contact name */}
+            {/* Entity Source (الجهة) */}
             <div className="space-y-2">
-              <Label>اسم الجهة</Label>
-              <Input
-                value={formData.contact_name}
-                onChange={(e) => setFormData(prev => ({ ...prev, contact_name: e.target.value }))}
-                placeholder={formData.voucher_type === 'receipt' ? 'من دفع؟' : 'لمن دفعت؟'}
-              />
+              <Label>الجهة</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { key: 'manual' as const, label: 'يدوي' },
+                  { key: 'broker' as const, label: 'وسيط' },
+                  { key: 'company' as const, label: 'شركة تأمين' },
+                ].map(opt => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => {
+                      setEntitySource(opt.key);
+                      if (opt.key === 'manual') {
+                        setFormData(prev => ({ ...prev, entity_type: '', entity_id: '', contact_name: '' }));
+                      } else {
+                        setFormData(prev => ({ ...prev, entity_type: opt.key === 'broker' ? 'broker' : 'company', entity_id: '', contact_name: '' }));
+                      }
+                    }}
+                    className={`py-2 px-3 rounded-lg border text-sm font-medium transition-all ${
+                      entitySource === opt.key
+                        ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30'
+                        : 'border-border hover:border-primary/40 text-muted-foreground'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              {entitySource === 'manual' ? (
+                <Input
+                  value={formData.contact_name}
+                  onChange={(e) => setFormData(prev => ({ ...prev, contact_name: e.target.value }))}
+                  placeholder={formData.voucher_type === 'receipt' ? 'من دفع؟' : 'لمن دفعت؟'}
+                />
+              ) : entitySource === 'broker' ? (
+                <Select
+                  value={formData.entity_id}
+                  onValueChange={(val) => {
+                    const broker = brokersList.find(b => b.id === val);
+                    setFormData(prev => ({ ...prev, entity_id: val, contact_name: broker?.name || '' }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختر وسيط..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {brokersList.map(b => (
+                      <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select
+                  value={formData.entity_id}
+                  onValueChange={(val) => {
+                    const company = companiesList.find(c => c.id === val);
+                    setFormData(prev => ({ ...prev, entity_id: val, contact_name: company?.name || '' }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختر شركة تأمين..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {companiesList.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             {/* Description */}

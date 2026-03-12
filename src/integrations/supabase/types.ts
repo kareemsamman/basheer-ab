@@ -2017,6 +2017,8 @@ export type Database = {
           created_at: string
           created_by_admin_id: string | null
           description: string | null
+          entity_id: string | null
+          entity_type: string | null
           expense_date: string
           id: string
           notes: string | null
@@ -2034,6 +2036,8 @@ export type Database = {
           created_at?: string
           created_by_admin_id?: string | null
           description?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
           expense_date?: string
           id?: string
           notes?: string | null
@@ -2051,6 +2055,8 @@ export type Database = {
           created_at?: string
           created_by_admin_id?: string | null
           description?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
           expense_date?: string
           id?: string
           notes?: string | null

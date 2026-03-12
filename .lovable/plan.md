@@ -1,50 +1,55 @@
 
 
-# Add Broker/Company Entity Selection to Expenses Voucher Form
+# Fix Package Payment Splitting — Insert 1 Record Per Cheque, Not Split Across Components
 
 ## Problem
-When creating a new voucher (سند جديد) on /expenses, the user can only type a free-text "اسم الجهة" (contact name). The user wants to be able to select a broker or company from existing records, so the expense is properly linked and the name auto-fills.
+When paying for a package policy (e.g., شامل ₪3,700 + خدمات طريق ₪500 = ₪4,200) with 3 cheques of ₪1,400 each, `PackagePaymentModal` proportionally splits each cheque across the 2 component policies, creating **6 payment records** (₪1,233 + ₪167 per cheque). The user expects **3 records** — one per cheque.
 
-## Approach
-Add an "entity source" selector to the voucher dialog that lets the user pick between: **يدوي** (manual/free text), **وسيط** (broker), or **شركة تأمين** (company). When broker or company is selected, show a dropdown of existing brokers/companies, and auto-fill the `contact_name` field.
+## Root Cause
+`PackagePaymentModal.handleSubmit` calls `calculateSplitPayments()` which distributes each payment proportionally by remaining balance across all package component policies.
 
-No database migration needed — the `expenses` table already has `contact_name` (string) which is sufficient. We'll store the entity name there so it works with existing display/print logic.
+## Solution
 
-## Changes
+### 1. Update the DB trigger to validate across the entire package group
+**Migration SQL** — Change the existing payment total check in `validate_policy_payment_total()` so that when a policy belongs to a group, `v_existing_total` sums payments across **all** policies in that group (not just `NEW.policy_id`).
 
-### 1. Database Migration — Add entity tracking columns
-Add `entity_type` and `entity_id` columns to `expenses` table so we can track which broker/company the voucher is linked to (for future querying/reporting):
+Current trigger (line 42-48) only sums `pp.policy_id = NEW.policy_id`. Updated version:
 ```sql
-ALTER TABLE expenses ADD COLUMN entity_type text; -- 'broker' or 'company'
-ALTER TABLE expenses ADD COLUMN entity_id uuid;
+IF v_group_id IS NOT NULL THEN
+  -- Sum payments across ALL policies in the package
+  SELECT COALESCE(SUM(pp.amount), 0) INTO v_existing_total
+  FROM policy_payments pp
+  JOIN policies pol ON pol.id = pp.policy_id
+  WHERE pol.group_id = v_group_id
+    AND pol.deleted_at IS NULL
+    AND COALESCE(pp.refused, false) = false
+    AND (TG_OP <> 'UPDATE' OR pp.id <> NEW.id);
+ELSE
+  -- Single policy: sum only for that policy
+  SELECT COALESCE(SUM(pp.amount), 0) INTO v_existing_total ...
+END IF;
 ```
 
-### 2. `src/pages/Expenses.tsx` — Update form dialog
-- Add state: `entitySource` ('manual' | 'broker' | 'company'), `brokers[]`, `companies[]`
-- Fetch brokers and companies on dialog open
-- Add a 3-option selector row (manual / broker / company) below the voucher type selector
-- When broker/company is selected, show a `Select` dropdown with their names
-- On selection, auto-fill `contact_name` and store `entity_type` + `entity_id` in form data
-- When manual is selected, show the existing free-text input
-- Save `entity_type` and `entity_id` alongside the expense record
+### 2. Update `PackagePaymentModal.handleSubmit` — Stop splitting, insert 1 record per payment
+**File:** `src/components/clients/PackagePaymentModal.tsx`
 
-### 3. UI Layout in Dialog
-```text
-┌─────────────────────────────────┐
-│  [سند قبض]    [سند صرف]        │  ← existing
-├─────────────────────────────────┤
-│  التصنيف: [dropdown]           │  ← existing
-├─────────────────────────────────┤
-│  الجهة:                        │  ← NEW
-│  [يدوي] [وسيط] [شركة تأمين]   │
-│  [Select broker/company ▼]     │  ← or free text input
-├─────────────────────────────────┤
-│  الوصف: [input]               │  ← existing
-│  المبلغ / التاريخ / طريقة دفع │  ← existing
-│  ...                           │
-└─────────────────────────────────┘
-```
+Instead of calling `calculateSplitPayments()` and looping over splits, insert each payment line as a **single record** against the primary (first) policy in the package. Add `batch_id` to group them. Include `cheque_image_url` for cheque payments.
 
-### 4. Editing
-When editing an existing expense that has `entity_type`/`entity_id`, pre-select the correct entity source and item.
+Key changes in `handleSubmit` (lines 448-496):
+- Generate a `batch_id` for all payments in this batch
+- Pick the primary policy ID (first policy with remaining, or first overall)
+- Insert one `policy_payments` record per payment line (no split loop)
+- Include `cheque_image_url` from scanned cheques
+- Upload images for each payment
+
+### 3. Update `handleScannedCheques` to preserve `cheque_image_url`
+**File:** `src/components/clients/PackagePaymentModal.tsx`
+
+The scanned cheque handler (line 324-356) doesn't preserve the CDN `image_url` from the scanner. Add `cheque_image_url: cheque.image_url` to the payment line (same pattern as `PolicyPaymentsSection`).
+
+### Files Changed
+| File | Change |
+|---|---|
+| DB migration (SQL) | Update trigger to sum across package group |
+| `src/components/clients/PackagePaymentModal.tsx` | Stop proportional split; insert 1 record per payment against primary policy with batch_id + cheque_image_url |
 
