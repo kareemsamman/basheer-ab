@@ -16,6 +16,7 @@ interface HeaderProps {
 
 export function Header({ title, subtitle, action }: HeaderProps) {
   const [searchOpen, setSearchOpen] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <>
