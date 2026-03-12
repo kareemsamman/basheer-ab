@@ -298,6 +298,12 @@ export default function FormTemplates() {
     }
   };
 
+  const openRename = (id: string, name: string, type: "folder" | "file") => {
+    setRenameTarget({ id, name, type });
+    setRenameName(name);
+    setRenameOpen(true);
+  };
+
   // Drag and drop handlers
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
