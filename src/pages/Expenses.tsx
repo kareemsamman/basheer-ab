@@ -450,6 +450,9 @@ export default function Expenses() {
 
   const handleEdit = (expense: Expense) => {
     setEditingExpense(expense);
+    const eType = (expense as any).entity_type || '';
+    const eId = (expense as any).entity_id || '';
+    setEntitySource(eType === 'broker' ? 'broker' : eType === 'company' ? 'company' : 'manual');
     setFormData({
       voucher_type: (expense.voucher_type || 'payment') as 'payment' | 'receipt',
       category: expense.category,
@@ -460,6 +463,8 @@ export default function Expenses() {
       payment_method: expense.payment_method || 'cash',
       reference_number: expense.reference_number || '',
       contact_name: expense.contact_name || '',
+      entity_type: eType,
+      entity_id: eId,
     });
     setIsDialogOpen(true);
   };
