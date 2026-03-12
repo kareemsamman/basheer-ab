@@ -102,7 +102,7 @@ export default function Expenses() {
   // Summary
   const [totalReceipts, setTotalReceipts] = useState(0);
   const [totalPayments, setTotalPayments] = useState(0);
-  const [totalCompanyDues, setTotalCompanyDues] = useState(0);
+  
   
   // Filters
   const [voucherFilter, setVoucherFilter] = useState<string>("all");
@@ -164,8 +164,7 @@ export default function Expenses() {
       } else if (voucherFilter === 'receipt') {
         query = query.eq('voucher_type', 'receipt');
       } else if (voucherFilter === 'company_dues') {
-        // company_dues tab: no manual expenses needed (they don't have this type)
-        query = query.eq('voucher_type', '__none__'); // return nothing
+        query = query.eq('voucher_type', '__none__');
       }
       if (categoryFilter !== 'all' && categoryFilter !== 'insurance_premium' && categoryFilter !== 'insurance_company_due') {
         query = query.eq('category', categoryFilter);
@@ -178,13 +177,12 @@ export default function Expenses() {
       const shouldFetchPolicyPayments = (voucherFilter === 'all' || voucherFilter === 'receipt') && 
         (categoryFilter === 'all' || categoryFilter === 'insurance_premium');
       
-      // Query 3: Company dues (policies with payed_for_company > 0)
-      const shouldFetchCompanyDues = voucherFilter === 'all' || voucherFilter === 'payment' || voucherFilter === 'company_dues';
 
+      // Query 3: No longer needed (company dues removed)
       // Query 4: ELZAMI policies for office_commission (receipt) and elzami_commission (payment)
       const shouldFetchElzami = voucherFilter === 'all' || voucherFilter === 'receipt' || voucherFilter === 'payment';
 
-      const [expensesResult, policyPaymentsResult, companyDuesResult, elzamiResult] = await Promise.all([
+      const [expensesResult, policyPaymentsResult, elzamiResult] = await Promise.all([
         query,
         shouldFetchPolicyPayments
           ? supabase
@@ -194,17 +192,6 @@ export default function Expenses() {
               .lte('payment_date', monthEnd)
               .eq('refused', false)
               .neq('policies.policy_type_parent', 'ELZAMI')
-          : Promise.resolve({ data: [], error: null }),
-        shouldFetchCompanyDues
-          ? supabase
-              .from('policies')
-              .select('id, policy_number, policy_type_parent, payed_for_company, start_date, created_at, created_by_admin_id, creator:profiles!policies_created_by_admin_id_fkey(full_name), insurance_companies(name), clients!inner(full_name), cars(car_number)')
-              .gte('start_date', monthStart)
-              .lte('start_date', monthEnd)
-              .eq('cancelled', false)
-              .is('deleted_at', null)
-              .gt('payed_for_company', 0)
-              .neq('policy_type_parent', 'ELZAMI')
           : Promise.resolve({ data: [], error: null }),
         shouldFetchElzami
           ? supabase
@@ -220,7 +207,7 @@ export default function Expenses() {
       
       if (expensesResult.error) throw expensesResult.error;
       if (policyPaymentsResult.error) throw policyPaymentsResult.error;
-      if (companyDuesResult.error) throw companyDuesResult.error;
+      
       if (elzamiResult.error) throw elzamiResult.error;
       
       let manualExpenses: Expense[] = (expensesResult.data || []).map((e: any) => ({
@@ -259,33 +246,6 @@ export default function Expenses() {
           } as Expense;
         });
       
-      // Convert company dues to Expense shape (payment vouchers)
-      const companyDueExpenses: Expense[] = (companyDuesResult.data || [])
-        .map((p: any) => {
-          const companyName = p.insurance_companies?.name || 'شركة تأمين';
-          const typeLabel = POLICY_TYPE_LABELS[p.policy_type_parent as keyof typeof POLICY_TYPE_LABELS] || '';
-          const carNumber = p.cars?.car_number || '';
-          const clientName = p.clients?.full_name || '';
-          const desc = [typeLabel, carNumber ? `رقم ${carNumber}` : '', clientName, p.policy_number ? `بوليصة ${p.policy_number}` : ''].filter(Boolean).join(' - ');
-          
-          return {
-            id: `cp_${p.id}`,
-            category: 'insurance_company_due',
-            description: desc,
-            amount: Number(p.payed_for_company),
-            expense_date: p.start_date,
-            notes: null,
-            receipt_url: null,
-            created_at: p.created_at || p.start_date,
-            voucher_type: 'payment',
-            payment_method: 'bank_transfer',
-            reference_number: null,
-            contact_name: companyName,
-            created_by_name: (p.creator as any)?.full_name || null,
-            is_policy_payment: true,
-            is_company_due: true,
-          } as Expense;
-        });
       
       // Convert ELZAMI policies to commission vouchers
       const elzamiVouchers: Expense[] = (elzamiResult.data || []).flatMap((p: any) => {
@@ -324,12 +284,12 @@ export default function Expenses() {
       const filteredElzamiVouchers = elzamiVouchers.filter(v => {
         if (voucherFilter === 'receipt') return v.voucher_type === 'receipt';
         if (voucherFilter === 'payment') return v.voucher_type === 'payment';
-        if (voucherFilter === 'company_dues') return false;
+        
         return true; // 'all'
       });
 
       // Merge and sort
-      let allExpenses = [...manualExpenses, ...policyExpenses, ...companyDueExpenses, ...filteredElzamiVouchers];
+      let allExpenses = [...manualExpenses, ...policyExpenses, ...filteredElzamiVouchers];
       // Sort by created_at descending (newest first)
       allExpenses.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       
@@ -358,7 +318,7 @@ export default function Expenses() {
       setExpenses(allExpenses);
       
       // Calculate totals from ALL data for the month (reuse already-fetched elzami data)
-      const [totalsResult, policyTotalsResult, companyDuesTotalsResult] = await Promise.all([
+      const [totalsResult, policyTotalsResult] = await Promise.all([
         supabase
           .from('expenses')
           .select('amount, voucher_type')
@@ -371,18 +331,9 @@ export default function Expenses() {
           .lte('payment_date', monthEnd)
           .eq('refused', false)
           .neq('policies.policy_type_parent', 'ELZAMI'),
-        supabase
-          .from('policies')
-          .select('payed_for_company')
-          .gte('start_date', monthStart)
-          .lte('start_date', monthEnd)
-          .eq('cancelled', false)
-          .is('deleted_at', null)
-          .gt('payed_for_company', 0)
-          .neq('policy_type_parent', 'ELZAMI'),
       ]);
       
-      let receipts = 0, payments = 0, companyDues = 0;
+      let receipts = 0, payments = 0;
       (totalsResult.data || []).forEach(e => {
         if (e.voucher_type === 'receipt') receipts += Number(e.amount);
         else payments += Number(e.amount);
@@ -395,14 +346,9 @@ export default function Expenses() {
       elzamiVouchers.forEach(v => {
         if (v.voucher_type === 'receipt') receipts += v.amount;
       });
-      // Company dues total
-      (companyDuesTotalsResult.data || []).forEach(p => {
-        companyDues += Number(p.payed_for_company);
-      });
       
       setTotalReceipts(receipts);
       setTotalPayments(payments);
-      setTotalCompanyDues(companyDues);
       
     } catch (error) {
       console.error('Error fetching expenses:', error);
@@ -524,7 +470,7 @@ export default function Expenses() {
 
   const currentCategories = formData.voucher_type === 'receipt' ? receiptCategories : paymentCategories;
   const allCategories = { ...paymentCategories, ...receiptCategories };
-  const netMonth = totalReceipts - totalPayments - totalCompanyDues;
+  const netMonth = totalReceipts - totalPayments;
 
   const handleExportInvoice = (type: 'receipt' | 'payment') => {
     const monthLabel = format(selectedMonth, 'MMMM yyyy', { locale: he });
@@ -579,8 +525,7 @@ export default function Expenses() {
           </CardContent>
         </Card>
 
-        {/* Summary Cards - 4 cards */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-3">
           <Card className="border-l-4 border-l-success">
             <CardContent className="py-5">
               <div className="flex items-center gap-3">
@@ -609,19 +554,6 @@ export default function Expenses() {
             </CardContent>
           </Card>
 
-          <Card className="border-l-4 border-l-warning">
-            <CardContent className="py-5">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-warning/10">
-                  <Building className="h-5 w-5 text-warning" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">المستحق للشركات</p>
-                  <p className="text-2xl font-bold text-warning">{formatCurrency(totalCompanyDues)}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
           
           <Card className="border-l-4 border-l-primary">
             <CardContent className="py-5">
@@ -651,7 +583,7 @@ export default function Expenses() {
                     <TabsTrigger value="all">الكل</TabsTrigger>
                     <TabsTrigger value="receipt">سند قبض</TabsTrigger>
                     <TabsTrigger value="payment">سند صرف</TabsTrigger>
-                    <TabsTrigger value="company_dues">المستحق للشركات</TabsTrigger>
+                    
                   </TabsList>
                 </Tabs>
                 {showExportButton && (
