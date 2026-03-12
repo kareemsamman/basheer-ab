@@ -337,7 +337,7 @@ function buildReceiptHtml(
       <div class="header-right">
         ${logoImg}
         <div class="company-info">
-          <div class="company-name">בשיר אבו סנינה לביטוח ושיווק</div>
+          <div class="company-name">בשיר אבו סנינה לביטוח</div>
           <div class="company-name-en">BASHEER ABU SNEINEH INSURANCE</div>
           <div class="company-detail">עוסק מורשה: 212426498</div>
         </div>
@@ -363,7 +363,7 @@ function buildReceiptHtml(
     </div>
 
     <div class="subject-bar">
-      ביטוח ${policyTypesText}${car?.car_number ? ` / רכב ${car.car_number}` : ''} / ${client?.full_name || ''}
+      ביטוח רכב${car?.car_number ? ` / רכב ${car.car_number}` : ''} / ${client?.full_name || ''}
     </div>
 
     <div class="table-section">
@@ -517,7 +517,15 @@ serve(async (req) => {
     }
     const policyTypesText = POLICY_TYPE_LABELS[policyTypeKey] || policyTypeKey;
 
-    const receiptId = payment.id.slice(0, 8).toUpperCase();
+    // Look up receipt_number from receipts table
+    const { data: receiptRow } = await supabase
+      .from("receipts")
+      .select("receipt_number")
+      .eq("payment_id", payment_id)
+      .maybeSingle();
+    const receiptId = receiptRow?.receipt_number 
+      ? String(receiptRow.receipt_number).padStart(2, '0')
+      : payment.id.slice(0, 8).toUpperCase();
 
     const receiptHtml = buildReceiptHtml(
       [payment as any],

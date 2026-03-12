@@ -305,7 +305,7 @@ function buildBulkReceiptHtml(
       <div class="header-right">
         ${logoImg}
         <div class="company-info">
-          <div class="company-name">בשיר אבו סנינה לביטוח ושיווק</div>
+          <div class="company-name">בשיר אבו סנינה לביטוח</div>
           <div class="company-name-en">BASHEER ABU SNEINEH INSURANCE</div>
           <div class="company-detail">עוסק מורשה: 212426498</div>
         </div>
@@ -331,7 +331,7 @@ function buildBulkReceiptHtml(
     </div>
 
     <div class="subject-bar">
-      ביטוח ${policyTypesText}${car?.car_number ? ` / רכב ${car.car_number}` : ''} / ${client?.full_name || ''}
+      ביטוח רכב${car?.car_number ? ` / רכב ${car.car_number}` : ''} / ${client?.full_name || ''}
     </div>
 
     <div class="table-section">
@@ -494,7 +494,15 @@ serve(async (req) => {
     const uniqueLabels = [...new Set(policyTypeKeys)].map(k => POLICY_TYPE_LABELS[k] || k);
     const policyTypesText = uniqueLabels.join(' + ');
 
-    const receiptId = payments[0]?.id?.slice(0, 8).toUpperCase() || crypto.randomUUID().slice(0, 8);
+    // Look up receipt_number from receipts table for first payment
+    const { data: receiptRow } = await supabase
+      .from("receipts")
+      .select("receipt_number")
+      .eq("payment_id", payments[0]?.id)
+      .maybeSingle();
+    const receiptId = receiptRow?.receipt_number
+      ? String(receiptRow.receipt_number).padStart(2, '0')
+      : payments[0]?.id?.slice(0, 8).toUpperCase() || crypto.randomUUID().slice(0, 8);
 
     console.log(`[generate-bulk-payment-receipt] Total: ${finalTotal}, Types: ${policyTypesText}`);
 
