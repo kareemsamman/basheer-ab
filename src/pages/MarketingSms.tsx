@@ -917,7 +917,7 @@ export default function MarketingSms() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {campaignRecipients.map((recipient, index) => (
+                          {filtered.map((recipient, index) => (
                             <TableRow key={recipient.id}>
                               <TableCell className="text-muted-foreground text-xs">{index + 1}</TableCell>
                               <TableCell>
@@ -944,6 +944,9 @@ export default function MarketingSms() {
                       </Table>
                     )}
                   </ScrollArea>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}
