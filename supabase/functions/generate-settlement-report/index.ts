@@ -85,6 +85,7 @@ serve(async (req) => {
         profit,
         start_date,
         end_date,
+        issue_date,
         cancelled,
         transferred,
         transferred_to_car_number,
