@@ -1,39 +1,55 @@
 
 
-# Auto File Number + Client Files Tab
+# Fix Package Payment Splitting — Insert 1 Record Per Cheque, Not Split Across Components
 
-## Two Features
+## Problem
+When paying for a package policy (e.g., شامل ₪3,700 + خدمات طريق ₪500 = ₪4,200) with 3 cheques of ₪1,400 each, `PackagePaymentModal` proportionally splits each cheque across the 2 component policies, creating **6 payment records** (₪1,233 + ₪167 per cheque). The user expects **3 records** — one per cheque.
 
-### 1. Auto-fetch next file number in ClientDrawer
-When creating a new client (not editing), query the latest `file_number` from `clients` table and auto-populate the field with the next number.
+## Root Cause
+`PackagePaymentModal.handleSubmit` calls `calculateSplitPayments()` which distributes each payment proportionally by remaining balance across all package component policies.
 
-**File**: `src/components/clients/ClientDrawer.tsx`
-- In the `useEffect` that resets the form when `open` changes (line ~163), when `!isEditing`:
-  - Query `clients` table: `SELECT file_number FROM clients WHERE file_number IS NOT NULL ORDER BY file_number DESC LIMIT 1`
-  - Parse the number, increment by 1, and set as default `file_number`
-  - Handle both numeric strings and edge cases
+## Solution
 
-### 2. New "ملفات" (Files) tab in ClientDetails
-Add a tab after "المرتجعات" that shows ALL files from all of the client's policies (both `policy_insurance` and `policy_crm` entity types), plus client-level uploaded files.
+### 1. Update the DB trigger to validate across the entire package group
+**Migration SQL** — Change the existing payment total check in `validate_policy_payment_total()` so that when a policy belongs to a group, `v_existing_total` sums payments across **all** policies in that group (not just `NEW.policy_id`).
 
-**New file**: `src/components/clients/ClientFilesTab.tsx`
-- Props: `clientId: string`
-- On mount, fetch all policy IDs for this client from `policies` table
-- Then fetch all `media_files` where `entity_id IN policyIds` and `entity_type IN ('policy', 'policy_insurance', 'policy_crm')` and `deleted_at IS NULL`
-- Also support uploading files directly to the client (`entity_type: 'client'`, `entity_id: clientId`) using the existing `FileUploader` component
-- Display files in a grid with:
-  - Policy number badge on each file
-  - Filter by policy number / file type
-  - Image preview, PDF preview via `FilePreviewGallery`
-  - Download action
+Current trigger (line 42-48) only sums `pp.policy_id = NEW.policy_id`. Updated version:
+```sql
+IF v_group_id IS NOT NULL THEN
+  -- Sum payments across ALL policies in the package
+  SELECT COALESCE(SUM(pp.amount), 0) INTO v_existing_total
+  FROM policy_payments pp
+  JOIN policies pol ON pol.id = pp.policy_id
+  WHERE pol.group_id = v_group_id
+    AND pol.deleted_at IS NULL
+    AND COALESCE(pp.refused, false) = false
+    AND (TG_OP <> 'UPDATE' OR pp.id <> NEW.id);
+ELSE
+  -- Single policy: sum only for that policy
+  SELECT COALESCE(SUM(pp.amount), 0) INTO v_existing_total ...
+END IF;
+```
 
-**File**: `src/components/clients/ClientDetails.tsx`
-- Add new tab trigger after refunds: `<TabsTrigger value="files">ملفات</TabsTrigger>`
-- Add `<TabsContent value="files">` rendering `<ClientFilesTab clientId={client.id} />`
-- Import `ClientFilesTab`
+### 2. Update `PackagePaymentModal.handleSubmit` — Stop splitting, insert 1 record per payment
+**File:** `src/components/clients/PackagePaymentModal.tsx`
 
-### Technical Details
-- File number auto-increment: query `MAX(CAST(file_number AS integer))` or sort descending and parse first result
-- Client files tab reuses existing `FilePreviewGallery` and `FileUploader` components
-- No database migration needed — uses existing `media_files` table with `entity_type: 'client'` for client-level uploads
+Instead of calling `calculateSplitPayments()` and looping over splits, insert each payment line as a **single record** against the primary (first) policy in the package. Add `batch_id` to group them. Include `cheque_image_url` for cheque payments.
+
+Key changes in `handleSubmit` (lines 448-496):
+- Generate a `batch_id` for all payments in this batch
+- Pick the primary policy ID (first policy with remaining, or first overall)
+- Insert one `policy_payments` record per payment line (no split loop)
+- Include `cheque_image_url` from scanned cheques
+- Upload images for each payment
+
+### 3. Update `handleScannedCheques` to preserve `cheque_image_url`
+**File:** `src/components/clients/PackagePaymentModal.tsx`
+
+The scanned cheque handler (line 324-356) doesn't preserve the CDN `image_url` from the scanner. Add `cheque_image_url: cheque.image_url` to the payment line (same pattern as `PolicyPaymentsSection`).
+
+### Files Changed
+| File | Change |
+|---|---|
+| DB migration (SQL) | Update trigger to sum across package group |
+| `src/components/clients/PackagePaymentModal.tsx` | Stop proportional split; insert 1 record per payment against primary policy with batch_id + cheque_image_url |
 

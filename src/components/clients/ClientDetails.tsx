@@ -65,6 +65,7 @@ import {
   Receipt,
   Send,
   AlertTriangle,
+  FolderOpen,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -85,6 +86,7 @@ import { DebtPaymentModal } from '@/components/debt/DebtPaymentModal';
 import { ClientNotesSection } from '@/components/clients/ClientNotesSection';
 import { PaymentEditDialog } from '@/components/clients/PaymentEditDialog';
 import { RefundsTab } from '@/components/clients/RefundsTab';
+import { ClientFilesTab } from '@/components/clients/ClientFilesTab';
 import { AccidentReportWizard } from '@/components/accident-reports/AccidentReportWizard';
 import { ClientAccidentsTab } from '@/components/clients/ClientAccidentsTab';
 import { useClientAccidentInfo } from '@/hooks/useClientAccidentInfo';
@@ -1437,6 +1439,10 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
               <Banknote className="h-4 w-4" />
               المرتجعات
             </TabsTrigger>
+            <TabsTrigger value="files" className="gap-1.5">
+              <FolderOpen className="h-4 w-4" />
+              ملفات
+            </TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -2058,6 +2064,11 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                 fetchWalletBalance();
               }}
             />
+          </TabsContent>
+
+          {/* Files Tab */}
+          <TabsContent value="files" className="mt-6">
+            <ClientFilesTab clientId={client.id} />
           </TabsContent>
         </Tabs>
       </div>

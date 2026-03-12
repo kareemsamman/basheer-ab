@@ -178,6 +178,34 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved }: ClientDraw
         under24_type: client?.under24_type || (client?.less_than_24 ? 'client' : 'none'),
         branch_id: defaultBranch,
       });
+
+      // Auto-fetch next file number for new clients
+      if (!isEditing) {
+        (async () => {
+          try {
+            const { data } = await supabase
+              .from('clients')
+              .select('file_number')
+              .not('file_number', 'is', null)
+              .neq('file_number', '')
+              .order('file_number', { ascending: false })
+              .limit(100);
+            
+            if (data && data.length > 0) {
+              let maxNum = 0;
+              for (const row of data) {
+                const parsed = parseInt(row.file_number || '', 10);
+                if (!isNaN(parsed) && parsed > maxNum) maxNum = parsed;
+              }
+              if (maxNum > 0) {
+                form.setValue('file_number', String(maxNum + 1));
+              }
+            }
+          } catch (err) {
+            console.error('Failed to fetch next file number:', err);
+          }
+        })();
+      }
     }
   }, [open, client, form, isEditing, userBranchId, branches]);
 
