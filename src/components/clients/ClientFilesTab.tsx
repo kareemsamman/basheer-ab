@@ -131,7 +131,7 @@ export function ClientFilesTab({ clientId }: ClientFilesTabProps) {
     return result;
   }, [files, filterPolicy, filterType, searchTerm]);
 
-  const allPreviewable = useMemo(
+  const allPreviewable: MediaFile[] = useMemo(
     () => filteredFiles.filter(f => isPreviewable(f.mime_type)),
     [filteredFiles]
   );
