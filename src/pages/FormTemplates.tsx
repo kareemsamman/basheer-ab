@@ -78,6 +78,9 @@ export default function FormTemplates() {
     { id: null, name: "نماذج" },
   ]);
   const [initialFolderLoaded, setInitialFolderLoaded] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const dragCounter = useRef(0);
 
   // On mount, read folder query param and build breadcrumbs
   useEffect(() => {
