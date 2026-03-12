@@ -395,8 +395,76 @@ export default function ActivityLog() {
       .reduce((sum, a) => sum + (a.details.amount || 0), 0);
   }, [filteredActivities]);
 
-  const displayedActivities = filteredActivities.slice(0, displayLimit);
-  const hasMore = filteredActivities.length > displayLimit;
+  // Group activities by client
+  interface GroupedClientActivity {
+    clientId: string;
+    clientName: string;
+    clientFileNumber: string;
+    latestDate: string;
+    items: ActivityItem[]; // sorted oldest→newest
+  }
+
+  const groupedActivities = useMemo(() => {
+    const clientMap = new Map<string, GroupedClientActivity>();
+    const standalone: ActivityItem[] = [];
+
+    for (const activity of filteredActivities) {
+      const clientId = activity.details.client_id;
+      if (!clientId) {
+        standalone.push(activity);
+        continue;
+      }
+
+      if (!clientMap.has(clientId)) {
+        clientMap.set(clientId, {
+          clientId,
+          clientName: activity.details.client_name || "عميل",
+          clientFileNumber: activity.details.client_file_number || "",
+          latestDate: activity.created_at,
+          items: [],
+        });
+      }
+
+      const group = clientMap.get(clientId)!;
+      group.items.push(activity);
+      if (new Date(activity.created_at) > new Date(group.latestDate)) {
+        group.latestDate = activity.created_at;
+      }
+      // Keep best client name
+      if (activity.details.client_name && activity.details.client_name !== "عميل") {
+        group.clientName = activity.details.client_name;
+      }
+      if (activity.details.client_file_number) {
+        group.clientFileNumber = activity.details.client_file_number;
+      }
+    }
+
+    // Sort items within each group chronologically (oldest first)
+    for (const group of clientMap.values()) {
+      group.items.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    }
+
+    // Build final list: groups + standalone, sorted by latest date desc
+    const result: Array<{ type: "group"; data: GroupedClientActivity } | { type: "standalone"; data: ActivityItem }> = [];
+
+    for (const group of clientMap.values()) {
+      result.push({ type: "group", data: group });
+    }
+    for (const item of standalone) {
+      result.push({ type: "standalone", data: item });
+    }
+
+    result.sort((a, b) => {
+      const dateA = a.type === "group" ? a.data.latestDate : a.data.created_at;
+      const dateB = b.type === "group" ? b.data.latestDate : b.data.created_at;
+      return new Date(dateB).getTime() - new Date(dateA).getTime();
+    });
+
+    return result;
+  }, [filteredActivities]);
+
+  const displayedGroups = groupedActivities.slice(0, displayLimit);
+  const hasMore = groupedActivities.length > displayLimit;
 
   const clearFilters = () => {
     setSearch("");
