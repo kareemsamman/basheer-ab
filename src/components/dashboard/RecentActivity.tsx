@@ -759,7 +759,7 @@ function GroupedActivityCard({
       {hasPayments && (
         <div className={cn("bg-muted/50 rounded-lg p-2", compact ? "space-y-1" : "space-y-2")}>
           <div className="flex items-center justify-end">
-            <span className="font-bold text-success ltr-nums">₪{group.payments.total.toLocaleString()}</span>
+            <span className="font-bold text-success ltr-nums">₪{group.payments.total.toLocaleString('en-US')}</span>
           </div>
 
           {/* Payment Type Breakdown */}
