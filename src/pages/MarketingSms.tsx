@@ -84,6 +84,7 @@ export default function MarketingSms() {
   const [isLoadingRecipients, setIsLoadingRecipients] = useState(false);
   const [isCheckingDlr, setIsCheckingDlr] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [recipientSearch, setRecipientSearch] = useState('');
 
   // Fetch clients
   useEffect(() => {
@@ -248,6 +249,7 @@ export default function MarketingSms() {
 
   function handleViewCampaign(campaign: Campaign) {
     setSelectedCampaign(campaign);
+    setRecipientSearch('');
     fetchCampaignRecipients(campaign.id);
   }
 
@@ -873,7 +875,29 @@ export default function MarketingSms() {
 
                 {/* Recipients List */}
                 <div className="flex-1 overflow-hidden">
-                  <p className="text-sm font-medium mb-2">المستلمين ({campaignRecipients.length}):</p>
+                  {(() => {
+                    const query = recipientSearch.trim().toLowerCase();
+                    const filtered = query
+                      ? campaignRecipients.filter(
+                          r =>
+                            r.clients?.full_name?.toLowerCase().includes(query) ||
+                            r.phone_number?.includes(query)
+                        )
+                      : campaignRecipients;
+                    return (
+                      <>
+                        <div className="flex items-center justify-between mb-2 gap-3">
+                          <p className="text-sm font-medium shrink-0">المستلمين ({filtered.length}{query ? ` / ${campaignRecipients.length}` : ''}):</p>
+                          <div className="relative max-w-xs w-full">
+                            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                            <Input
+                              placeholder="بحث بالاسم أو الهاتف..."
+                              value={recipientSearch}
+                              onChange={(e) => setRecipientSearch(e.target.value)}
+                              className="pr-9 h-8 text-sm"
+                            />
+                          </div>
+                        </div>
                   <ScrollArea className="h-[300px] border rounded-lg">
                     {isLoadingRecipients ? (
                       <div className="p-4 space-y-2">
@@ -893,7 +917,7 @@ export default function MarketingSms() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {campaignRecipients.map((recipient, index) => (
+                          {filtered.map((recipient, index) => (
                             <TableRow key={recipient.id}>
                               <TableCell className="text-muted-foreground text-xs">{index + 1}</TableCell>
                               <TableCell>
@@ -920,6 +944,9 @@ export default function MarketingSms() {
                       </Table>
                     )}
                   </ScrollArea>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}
