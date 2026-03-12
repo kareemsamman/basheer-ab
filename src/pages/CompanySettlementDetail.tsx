@@ -364,11 +364,13 @@ export default function CompanySettlementDetail() {
         .eq('company_id', companyId)
         .is('deleted_at', null);
 
+      // Always enforce 2026-01-01 floor for financial fresh-start
       if (!showAllTime) {
-        // Use issue_date for filtering (falls back to start_date via COALESCE in backfill)
         query = query
           .gte('issue_date', startDate)
           .lte('issue_date', endDate);
+      } else {
+        query = query.gte('issue_date', '2026-01-01');
       }
 
       const { data: policiesData, error: policiesError } = await query.order('created_at', { ascending: true });
