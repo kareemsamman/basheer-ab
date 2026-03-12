@@ -196,7 +196,7 @@ export function ClientFilesTab({ clientId }: ClientFilesTabProps) {
             <SelectItem value="client">ملفات العميل</SelectItem>
             {policies.map(p => (
               <SelectItem key={p.id} value={p.id}>
-                {p.policy_number || 'بدون رقم'} - {p.insurance_type || ''}
+                {p.policy_number || 'بدون رقم'} - {p.policy_type_child || ''}
               </SelectItem>
             ))}
           </SelectContent>
