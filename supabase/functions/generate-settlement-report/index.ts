@@ -116,7 +116,7 @@ serve(async (req) => {
       query = query.eq("cancelled", false);
     }
 
-    const { data: policies, error: policiesError } = await query.order("start_date", { ascending: false });
+    const { data: policies, error: policiesError } = await query.order("issue_date", { ascending: true });
 
     if (policiesError) {
       console.error("[generate-settlement-report] Error fetching policies:", policiesError);
