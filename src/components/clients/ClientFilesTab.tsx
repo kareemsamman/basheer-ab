@@ -47,7 +47,7 @@ const isPreviewable = (mimeType: string) =>
   mimeType?.startsWith('image/') || mimeType === 'application/pdf';
 
 export function ClientFilesTab({ clientId }: ClientFilesTabProps) {
-  const [files, setFiles] = useState<(MediaFile & { policyNumber?: string })[]>([]);
+  const [files, setFiles] = useState<MediaFileWithEntity[]>([]);
   const [policies, setPolicies] = useState<PolicyInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [previewFile, setPreviewFile] = useState<MediaFile | null>(null);
