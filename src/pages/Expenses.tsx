@@ -470,7 +470,7 @@ export default function Expenses() {
 
   const currentCategories = formData.voucher_type === 'receipt' ? receiptCategories : paymentCategories;
   const allCategories = { ...paymentCategories, ...receiptCategories };
-  const netMonth = totalReceipts - totalPayments - totalCompanyDues;
+  const netMonth = totalReceipts - totalPayments;
 
   const handleExportInvoice = (type: 'receipt' | 'payment') => {
     const monthLabel = format(selectedMonth, 'MMMM yyyy', { locale: he });
