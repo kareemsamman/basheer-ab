@@ -35,6 +35,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
   UserCheck,
   UserX,
   Shield,
@@ -47,6 +56,7 @@ import {
   Building2,
   Phone,
   History,
+  UserPlus,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -96,6 +106,55 @@ export default function AdminUsers() {
     action: 'approve' | 'block' | 'unblock';
     userName: string;
   } | null>(null);
+
+  // Add user dialog state
+  const [addUserOpen, setAddUserOpen] = useState(false);
+  const [addUserLoading, setAddUserLoading] = useState(false);
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserRole, setNewUserRole] = useState<'admin' | 'worker'>('worker');
+  const [newUserBranch, setNewUserBranch] = useState('');
+
+  const resetAddUserForm = () => {
+    setNewUserEmail('');
+    setNewUserName('');
+    setNewUserRole('worker');
+    setNewUserBranch('');
+  };
+
+  const handleAddUser = async () => {
+    if (!newUserEmail.trim()) {
+      toast({ title: "خطأ", description: "البريد الإلكتروني مطلوب", variant: "destructive" });
+      return;
+    }
+    setAddUserLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-user', {
+        body: {
+          email: newUserEmail.trim(),
+          full_name: newUserName.trim() || null,
+          role: newUserRole,
+          branch_id: newUserBranch || null,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) {
+        toast({ title: "خطأ", description: data.error, variant: "destructive" });
+        return;
+      }
+
+      toast({ title: "تم الإنشاء", description: "تم إنشاء المستخدم بنجاح" });
+      setAddUserOpen(false);
+      resetAddUserForm();
+      fetchUsers();
+    } catch (err) {
+      console.error('Error creating user:', err);
+      toast({ title: "خطأ", description: "فشل في إنشاء المستخدم", variant: "destructive" });
+    } finally {
+      setAddUserLoading(false);
+    }
+  };
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -412,16 +471,90 @@ export default function AdminUsers() {
             <h1 className="text-2xl font-bold text-foreground">المستخدمون</h1>
             <p className="text-muted-foreground">إدارة المستخدمين والصلاحيات</p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchUsers}
-            disabled={loading}
-          >
-            <RefreshCw className={`h-4 w-4 ml-2 ${loading ? 'animate-spin' : ''}`} />
-            تحديث
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => setAddUserOpen(true)}
+            >
+              <UserPlus className="h-4 w-4 ml-2" />
+              إضافة مستخدم
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchUsers}
+              disabled={loading}
+            >
+              <RefreshCw className={`h-4 w-4 ml-2 ${loading ? 'animate-spin' : ''}`} />
+              تحديث
+            </Button>
+          </div>
         </div>
+
+        {/* Add User Dialog */}
+        <Dialog open={addUserOpen} onOpenChange={(open) => { setAddUserOpen(open); if (!open) resetAddUserForm(); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>إضافة مستخدم جديد</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>البريد الإلكتروني *</Label>
+                <Input
+                  type="email"
+                  placeholder="user@example.com"
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  dir="ltr"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>الاسم الكامل</Label>
+                <Input
+                  placeholder="اسم المستخدم"
+                  value={newUserName}
+                  onChange={(e) => setNewUserName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>الدور</Label>
+                <Select value={newUserRole} onValueChange={(v) => setNewUserRole(v as 'admin' | 'worker')}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="worker">موظف</SelectItem>
+                    <SelectItem value="admin">مدير</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>الفرع</Label>
+                <Select value={newUserBranch} onValueChange={setNewUserBranch}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختر فرع" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name_ar || b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setAddUserOpen(false); resetAddUserForm(); }}>
+                إلغاء
+              </Button>
+              <Button onClick={handleAddUser} disabled={addUserLoading}>
+                {addUserLoading && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
+                إنشاء
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

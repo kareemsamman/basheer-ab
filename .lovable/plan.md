@@ -1,29 +1,55 @@
 
 
-# Add New User from Admin Panel
+# Fix Package Payment Splitting — Insert 1 Record Per Cheque, Not Split Across Components
 
 ## Problem
-Currently, users can only be added by signing up themselves via `/login`. The admin has no way to directly create a new admin or worker from `/admin/users`.
+When paying for a package policy (e.g., شامل ₪3,700 + خدمات طريق ₪500 = ₪4,200) with 3 cheques of ₪1,400 each, `PackagePaymentModal` proportionally splits each cheque across the 2 component policies, creating **6 payment records** (₪1,233 + ₪167 per cheque). The user expects **3 records** — one per cheque.
+
+## Root Cause
+`PackagePaymentModal.handleSubmit` calls `calculateSplitPayments()` which distributes each payment proportionally by remaining balance across all package component policies.
 
 ## Solution
-Add an "إضافة مستخدم" (Add User) button in the header of the AdminUsers page that opens a dialog. The admin enters email, full name, selects a role (admin/worker) and branch, then submits. A new edge function `create-user` will use `supabase.auth.admin.createUser` to create the auth user, set up their profile as `active`, and assign the role.
 
-## Changes
+### 1. Update the DB trigger to validate across the entire package group
+**Migration SQL** — Change the existing payment total check in `validate_policy_payment_total()` so that when a policy belongs to a group, `v_existing_total` sums payments across **all** policies in that group (not just `NEW.policy_id`).
 
-### 1. New Edge Function: `supabase/functions/create-user/index.ts`
-- Accepts: `email`, `full_name`, `role` (admin|worker), `branch_id`
-- Validates the caller is an admin (check `user_roles` for the authenticated user)
-- Creates auth user via `supabase.auth.admin.createUser({ email, email_confirm: true })`
-- Updates the auto-created profile: sets `status = 'active'`, `full_name`, `branch_id`
-- Inserts into `user_roles` with the chosen role
-- Returns success with the new user ID
+Current trigger (line 42-48) only sums `pp.policy_id = NEW.policy_id`. Updated version:
+```sql
+IF v_group_id IS NOT NULL THEN
+  -- Sum payments across ALL policies in the package
+  SELECT COALESCE(SUM(pp.amount), 0) INTO v_existing_total
+  FROM policy_payments pp
+  JOIN policies pol ON pol.id = pp.policy_id
+  WHERE pol.group_id = v_group_id
+    AND pol.deleted_at IS NULL
+    AND COALESCE(pp.refused, false) = false
+    AND (TG_OP <> 'UPDATE' OR pp.id <> NEW.id);
+ELSE
+  -- Single policy: sum only for that policy
+  SELECT COALESCE(SUM(pp.amount), 0) INTO v_existing_total ...
+END IF;
+```
 
-### 2. Update `src/pages/AdminUsers.tsx`
-- Add "إضافة مستخدم" button next to the refresh button in the header
-- Add a Dialog with form fields: email (required), full name, role select (admin/worker), branch select
-- On submit, invoke the `create-user` edge function
-- On success, refresh the users list and show success toast
-- Uses existing UI components (Dialog, Input, Select, Button)
+### 2. Update `PackagePaymentModal.handleSubmit` — Stop splitting, insert 1 record per payment
+**File:** `src/components/clients/PackagePaymentModal.tsx`
 
-No database migrations needed — uses existing `profiles` and `user_roles` tables.
+Instead of calling `calculateSplitPayments()` and looping over splits, insert each payment line as a **single record** against the primary (first) policy in the package. Add `batch_id` to group them. Include `cheque_image_url` for cheque payments.
+
+Key changes in `handleSubmit` (lines 448-496):
+- Generate a `batch_id` for all payments in this batch
+- Pick the primary policy ID (first policy with remaining, or first overall)
+- Insert one `policy_payments` record per payment line (no split loop)
+- Include `cheque_image_url` from scanned cheques
+- Upload images for each payment
+
+### 3. Update `handleScannedCheques` to preserve `cheque_image_url`
+**File:** `src/components/clients/PackagePaymentModal.tsx`
+
+The scanned cheque handler (line 324-356) doesn't preserve the CDN `image_url` from the scanner. Add `cheque_image_url: cheque.image_url` to the payment line (same pattern as `PolicyPaymentsSection`).
+
+### Files Changed
+| File | Change |
+|---|---|
+| DB migration (SQL) | Update trigger to sum across package group |
+| `src/components/clients/PackagePaymentModal.tsx` | Stop proportional split; insert 1 record per payment against primary policy with batch_id + cheque_image_url |
 
