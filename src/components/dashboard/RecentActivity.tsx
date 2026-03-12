@@ -293,7 +293,7 @@ async function fetchActivities(branchId: string | null, startDate: string, endDa
       id, created_at, amount, payment_type, cheque_number,
       policies(
         id, cancelled, 
-        policy_type_parent,
+        policy_type_parent, policy_type_child,
         insurance_companies(name, name_ar),
         cars(car_number),
         clients(id, full_name, file_number, deleted_at)
