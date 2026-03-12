@@ -595,7 +595,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
   }, [open, policyId]);
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("ar-EG");
+    return new Date(dateStr).toLocaleDateString("en-GB");
   };
 
   const formatCurrency = (amount: number | null) => {
