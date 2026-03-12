@@ -176,7 +176,7 @@ export default function CompanySettlement() {
   // Get date range based on current filter mode
   const getDateRange = () => {
     if (showAllTime) {
-      return { startDate: null, endDate: null };
+      return { startDate: '2026-01-01', endDate: null };
     }
     const [year, month] = selectedMonth.split('-').map(Number);
     const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
