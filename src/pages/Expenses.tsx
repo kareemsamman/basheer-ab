@@ -102,7 +102,7 @@ export default function Expenses() {
   // Summary
   const [totalReceipts, setTotalReceipts] = useState(0);
   const [totalPayments, setTotalPayments] = useState(0);
-  const [totalCompanyDues, setTotalCompanyDues] = useState(0);
+  
   
   // Filters
   const [voucherFilter, setVoucherFilter] = useState<string>("all");

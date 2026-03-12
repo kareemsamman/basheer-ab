@@ -264,9 +264,9 @@ export function buildExpenseInvoiceHtml(
     <thead>
       <tr>
         <th style="text-align:center;">שורה</th>
+        <th>גורם</th>
         <th>פרטים</th>
         <th>קטגוריה</th>
-        <th>גורם</th>
         <th>אמצעי תשלום</th>
         <th style="text-align:center;">תאריך</th>
         <th style="text-align:left;">סכום ₪</th>
