@@ -2011,11 +2011,14 @@ export type Database = {
       expenses: {
         Row: {
           amount: number
+          batch_id: string | null
           branch_id: string | null
           category: string
+          cheque_image_url: string | null
           contact_name: string | null
           created_at: string
           created_by_admin_id: string | null
+          customer_cheque_ids: Json | null
           description: string | null
           entity_id: string | null
           entity_type: string | null
@@ -2023,6 +2026,7 @@ export type Database = {
           id: string
           notes: string | null
           payment_method: string
+          receipt_images: Json | null
           receipt_url: string | null
           reference_number: string | null
           updated_at: string
@@ -2030,11 +2034,14 @@ export type Database = {
         }
         Insert: {
           amount: number
+          batch_id?: string | null
           branch_id?: string | null
           category: string
+          cheque_image_url?: string | null
           contact_name?: string | null
           created_at?: string
           created_by_admin_id?: string | null
+          customer_cheque_ids?: Json | null
           description?: string | null
           entity_id?: string | null
           entity_type?: string | null
@@ -2042,6 +2049,7 @@ export type Database = {
           id?: string
           notes?: string | null
           payment_method?: string
+          receipt_images?: Json | null
           receipt_url?: string | null
           reference_number?: string | null
           updated_at?: string
@@ -2049,11 +2057,14 @@ export type Database = {
         }
         Update: {
           amount?: number
+          batch_id?: string | null
           branch_id?: string | null
           category?: string
+          cheque_image_url?: string | null
           contact_name?: string | null
           created_at?: string
           created_by_admin_id?: string | null
+          customer_cheque_ids?: Json | null
           description?: string | null
           entity_id?: string | null
           entity_type?: string | null
@@ -2061,6 +2072,7 @@ export type Database = {
           id?: string
           notes?: string | null
           payment_method?: string
+          receipt_images?: Json | null
           receipt_url?: string | null
           reference_number?: string | null
           updated_at?: string

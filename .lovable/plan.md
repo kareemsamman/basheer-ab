@@ -1,40 +1,55 @@
 
 
-# Upgrade Expenses Dialog: Auto-detect Entity & Multi-line Payment Form
+# Fix Package Payment Splitting — Insert 1 Record Per Cheque, Not Split Across Components
 
-## What Changes
+## Problem
+When paying for a package policy (e.g., شامل ₪3,700 + خدمات طريق ₪500 = ₪4,200) with 3 cheques of ₪1,400 each, `PackagePaymentModal` proportionally splits each cheque across the 2 component policies, creating **6 payment records** (₪1,233 + ₪167 per cheque). The user expects **3 records** — one per cheque.
 
-### 1. Auto-select entity source from category
-When user picks a category in the form:
-- **"دفع لشركة تأمين"** (`insurance_company`) → auto-set entity source to **شركة تأمين**
-- Add a new payment category **"دفع لوسيط"** (`broker_payment`) → auto-set entity source to **وسيط**
-- Other categories → keep entity source as-is (default manual)
+## Root Cause
+`PackagePaymentModal.handleSubmit` calls `calculateSplitPayments()` which distributes each payment proportionally by remaining balance across all package component policies.
 
-### 2. Multi-line payment form for broker/company entities
-When entity source is **broker** or **company**, replace the current single amount/date/payment-method fields with the full multi-line payment system (same as BrokerWallet):
-- **Payment lines** with type selector (cash, cheque, customer cheque, bank transfer, visa)
-- **Split/installment** button
-- **Cheque scanner** integration
-- **Customer cheque selector** (for selecting waiting cheques from clients)
-- **Cheque image upload** per cheque line
-- **Receipt/voucher image upload** section
-- Per-line date, amount, cheque number, bank reference fields
-- **Total** display at bottom
+## Solution
 
-When entity source is **manual**, keep the current simple single-payment form.
+### 1. Update the DB trigger to validate across the entire package group
+**Migration SQL** — Change the existing payment total check in `validate_policy_payment_total()` so that when a policy belongs to a group, `v_existing_total` sums payments across **all** policies in that group (not just `NEW.policy_id`).
 
-### 3. Save logic update
-When saving with multi-line payments (broker/company), create one `expenses` row per payment line, all sharing the same `entity_type`, `entity_id`, `contact_name`, `category`, and `voucher_type`. Each row gets its own `amount`, `payment_method`, `expense_date`, and `reference_number`.
+Current trigger (line 42-48) only sums `pp.policy_id = NEW.policy_id`. Updated version:
+```sql
+IF v_group_id IS NOT NULL THEN
+  -- Sum payments across ALL policies in the package
+  SELECT COALESCE(SUM(pp.amount), 0) INTO v_existing_total
+  FROM policy_payments pp
+  JOIN policies pol ON pol.id = pp.policy_id
+  WHERE pol.group_id = v_group_id
+    AND pol.deleted_at IS NULL
+    AND COALESCE(pp.refused, false) = false
+    AND (TG_OP <> 'UPDATE' OR pp.id <> NEW.id);
+ELSE
+  -- Single policy: sum only for that policy
+  SELECT COALESCE(SUM(pp.amount), 0) INTO v_existing_total ...
+END IF;
+```
 
-## Files to Change
+### 2. Update `PackagePaymentModal.handleSubmit` — Stop splitting, insert 1 record per payment
+**File:** `src/components/clients/PackagePaymentModal.tsx`
 
-### `src/pages/Expenses.tsx`
-- Add `broker_payment` to `paymentCategories`
-- Add category `onValueChange` handler to auto-set `entitySource` when `insurance_company` or `broker_payment` selected
-- Add multi-line payment state: `paymentLines[]`, `splitPopoverOpen`, `splitCount`, `splitAmount`, `chequeScannerOpen`, `mainReceiptImages`
-- Import `CustomerChequeSelector`, `ChequeScannerDialog`, `FileUploader`, `Popover`
-- Conditionally render multi-line form (when entitySource is broker/company) vs simple form (manual)
-- Add payment line CRUD helpers: `addPaymentLine`, `removePaymentLine`, `updatePaymentLine`, `handleSplitPayments`, `handleScannedCheques`
-- Update `handleSubmit` to insert multiple expense rows for multi-line mode
-- Reset multi-line state in `resetForm`
+Instead of calling `calculateSplitPayments()` and looping over splits, insert each payment line as a **single record** against the primary (first) policy in the package. Add `batch_id` to group them. Include `cheque_image_url` for cheque payments.
+
+Key changes in `handleSubmit` (lines 448-496):
+- Generate a `batch_id` for all payments in this batch
+- Pick the primary policy ID (first policy with remaining, or first overall)
+- Insert one `policy_payments` record per payment line (no split loop)
+- Include `cheque_image_url` from scanned cheques
+- Upload images for each payment
+
+### 3. Update `handleScannedCheques` to preserve `cheque_image_url`
+**File:** `src/components/clients/PackagePaymentModal.tsx`
+
+The scanned cheque handler (line 324-356) doesn't preserve the CDN `image_url` from the scanner. Add `cheque_image_url: cheque.image_url` to the payment line (same pattern as `PolicyPaymentsSection`).
+
+### Files Changed
+| File | Change |
+|---|---|
+| DB migration (SQL) | Update trigger to sum across package group |
+| `src/components/clients/PackagePaymentModal.tsx` | Stop proportional split; insert 1 record per payment against primary policy with batch_id + cheque_image_url |
 

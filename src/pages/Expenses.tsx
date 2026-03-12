@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
+import { ExpensePaymentLines, PaymentLine } from "@/components/expenses/ExpensePaymentLines";
 import { 
   Plus, 
   Receipt,
@@ -32,6 +33,7 @@ import {
   FileText,
   ShieldCheck,
   FileDown,
+  Loader2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -72,6 +74,7 @@ const paymentCategories: Record<string, string> = {
   food: 'طعام المكتب',
   utilities: 'فواتير (كهرباء/ماء/إنترنت)',
   insurance_company: 'دفع لشركة تأمين',
+  broker_payment: 'دفع لوسيط',
   insurance_company_due: 'مستحق لشركة تأمين',
   other: 'مصاريف أخرى',
 };
@@ -134,6 +137,11 @@ export default function Expenses() {
   const [entitySource, setEntitySource] = useState<'manual' | 'broker' | 'company'>('manual');
   const [brokersList, setBrokersList] = useState<{id: string; name: string}[]>([]);
   const [companiesList, setCompaniesList] = useState<{id: string; name: string}[]>([]);
+
+  // Multi-line payment state (for broker/company)
+  const [multiPaymentLines, setMultiPaymentLines] = useState<PaymentLine[]>([]);
+  const [multiReceiptImages, setMultiReceiptImages] = useState<string[]>([]);
+  const [multiNotes, setMultiNotes] = useState('');
 
   // Fetch brokers and companies when dialog opens
   useEffect(() => {
@@ -383,53 +391,166 @@ export default function Expenses() {
     fetchExpenses();
   }, [fetchExpenses]);
 
+  const isMultiLineMode = entitySource === 'broker' || entitySource === 'company';
+
+  const handleCategoryChange = (value: string) => {
+    setFormData(prev => ({ ...prev, category: value }));
+    // Auto-select entity source
+    if (value === 'insurance_company') {
+      setEntitySource('company');
+      setFormData(prev => ({ ...prev, entity_type: 'company', entity_id: '', contact_name: '' }));
+    } else if (value === 'broker_payment') {
+      setEntitySource('broker');
+      setFormData(prev => ({ ...prev, entity_type: 'broker', entity_id: '', contact_name: '' }));
+    }
+  };
+
   const handleSubmit = async () => {
-    if (!formData.category || !formData.amount || !formData.expense_date) {
+    if (!formData.category || !formData.expense_date) {
       toast.error('يرجى ملء جميع الحقول المطلوبة');
       return;
     }
-    
-    setSaving(true);
-    try {
-      const expenseData: any = {
-        category: formData.category,
-        description: formData.description || null,
-        amount: parseFloat(formData.amount),
-        expense_date: formData.expense_date,
-        notes: formData.notes || null,
-        created_by_admin_id: profile?.id,
-        voucher_type: formData.voucher_type,
-        payment_method: formData.payment_method,
-        reference_number: formData.reference_number || null,
-        contact_name: formData.contact_name || null,
-        entity_type: formData.entity_type || null,
-        entity_id: formData.entity_id || null,
-      };
-      
-      if (editingExpense) {
-        const { error } = await supabase
-          .from('expenses')
-          .update(expenseData)
-          .eq('id', editingExpense.id);
-        if (error) throw error;
-        toast.success('تم تحديث السند');
-      } else {
-        const { error } = await supabase
-          .from('expenses')
-          .insert(expenseData);
-        if (error) throw error;
-        toast.success(formData.voucher_type === 'receipt' ? 'تم إضافة سند القبض' : 'تم إضافة سند الصرف');
+
+    if (isMultiLineMode) {
+      // Multi-line mode: validate payment lines
+      const validLines = multiPaymentLines.filter(p => {
+        if (p.payment_type === 'customer_cheque') {
+          return p.selected_cheques && p.selected_cheques.length > 0;
+        }
+        return p.amount > 0;
+      });
+
+      if (validLines.length === 0) {
+        toast.error('يرجى إضافة دفعة واحدة على الأقل');
+        return;
       }
-      
-      setIsDialogOpen(false);
-      setEditingExpense(null);
-      resetForm();
-      fetchExpenses();
-    } catch (error) {
-      console.error('Error saving:', error);
-      toast.error('حدث خطأ في الحفظ');
-    } finally {
-      setSaving(false);
+
+      // Validate cheque numbers
+      const hasInvalidCheque = validLines.some(
+        p => p.payment_type === 'cheque' && (!p.cheque_number || p.cheque_number.length < 1)
+      );
+      if (hasInvalidCheque) {
+        toast.error('رقم الشيك مطلوب لدفعات الشيكات');
+        return;
+      }
+
+      setSaving(true);
+      try {
+        const batchId = crypto.randomUUID();
+
+        for (const payment of validLines) {
+          const amount = payment.payment_type === 'customer_cheque' && payment.selected_cheques
+            ? payment.selected_cheques.reduce((sum, c) => sum + c.amount, 0)
+            : payment.amount;
+
+          const customerChequeIds = payment.payment_type === 'customer_cheque' && payment.selected_cheques
+            ? payment.selected_cheques.map(c => c.id)
+            : [];
+
+          const paymentMethod = payment.payment_type === 'customer_cheque' ? 'cheque' : payment.payment_type;
+
+          const expenseData: any = {
+            category: formData.category,
+            description: formData.description || null,
+            amount,
+            expense_date: payment.payment_date,
+            notes: multiNotes || null,
+            created_by_admin_id: profile?.id,
+            voucher_type: formData.voucher_type,
+            payment_method: paymentMethod,
+            reference_number: payment.payment_type === 'cheque' ? payment.cheque_number : payment.payment_type === 'bank_transfer' ? payment.bank_reference : null,
+            contact_name: formData.contact_name || null,
+            entity_type: formData.entity_type || null,
+            entity_id: formData.entity_id || null,
+            cheque_image_url: payment.cheque_image_url || null,
+            customer_cheque_ids: customerChequeIds,
+            receipt_images: multiReceiptImages,
+            batch_id: batchId,
+          };
+
+          const { error } = await supabase.from('expenses').insert(expenseData);
+          if (error) throw error;
+
+          // If customer cheques were used, update them as transferred
+          if (payment.payment_type === 'customer_cheque' && customerChequeIds.length > 0) {
+            const transferTarget = formData.entity_type === 'broker' ? 'broker' : 'company';
+            const { error: updateError } = await supabase
+              .from('policy_payments')
+              .update({
+                cheque_status: 'transferred_out',
+                transferred_to_type: transferTarget,
+                transferred_to_id: formData.entity_id,
+                transferred_at: new Date().toISOString(),
+                refused: false,
+              })
+              .in('id', customerChequeIds);
+
+            if (updateError) {
+              console.error('Error updating cheque status:', updateError);
+            }
+          }
+        }
+
+        toast.success(`تم إضافة ${validLines.length} دفعة بنجاح`);
+        setIsDialogOpen(false);
+        setEditingExpense(null);
+        resetForm();
+        fetchExpenses();
+      } catch (error) {
+        console.error('Error saving:', error);
+        toast.error('حدث خطأ في الحفظ');
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      // Simple single-line mode (original logic)
+      if (!formData.amount) {
+        toast.error('يرجى ملء جميع الحقول المطلوبة');
+        return;
+      }
+
+      setSaving(true);
+      try {
+        const expenseData: any = {
+          category: formData.category,
+          description: formData.description || null,
+          amount: parseFloat(formData.amount),
+          expense_date: formData.expense_date,
+          notes: formData.notes || null,
+          created_by_admin_id: profile?.id,
+          voucher_type: formData.voucher_type,
+          payment_method: formData.payment_method,
+          reference_number: formData.reference_number || null,
+          contact_name: formData.contact_name || null,
+          entity_type: formData.entity_type || null,
+          entity_id: formData.entity_id || null,
+        };
+
+        if (editingExpense) {
+          const { error } = await supabase
+            .from('expenses')
+            .update(expenseData)
+            .eq('id', editingExpense.id);
+          if (error) throw error;
+          toast.success('تم تحديث السند');
+        } else {
+          const { error } = await supabase
+            .from('expenses')
+            .insert(expenseData);
+          if (error) throw error;
+          toast.success(formData.voucher_type === 'receipt' ? 'تم إضافة سند القبض' : 'تم إضافة سند الصرف');
+        }
+
+        setIsDialogOpen(false);
+        setEditingExpense(null);
+        resetForm();
+        fetchExpenses();
+      } catch (error) {
+        console.error('Error saving:', error);
+        toast.error('حدث خطأ في الحفظ');
+      } finally {
+        setSaving(false);
+      }
     }
   };
 
@@ -448,6 +569,9 @@ export default function Expenses() {
       entity_id: '',
     });
     setEntitySource('manual');
+    setMultiPaymentLines([]);
+    setMultiReceiptImages([]);
+    setMultiNotes('');
   };
 
   const handleEdit = (expense: Expense) => {
@@ -839,7 +963,7 @@ export default function Expenses() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className={isMultiLineMode && !editingExpense ? "max-w-3xl max-h-[90vh] overflow-y-auto" : "max-w-lg"}>
           <DialogHeader>
             <DialogTitle>
               {editingExpense ? 'تعديل السند' : 'سند جديد'}
@@ -882,7 +1006,7 @@ export default function Expenses() {
               <Label>التصنيف *</Label>
               <Select
                 value={formData.category}
-                onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
+                onValueChange={handleCategoryChange}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -979,70 +1103,87 @@ export default function Expenses() {
               />
             </div>
 
-            {/* Amount + Date + Payment Method */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-2">
-                <Label>المبلغ *</Label>
-                <Input
-                  type="number"
-                  value={formData.amount}
-                  onChange={(e) => setFormData(prev => ({ ...prev, amount: e.target.value }))}
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>التاريخ *</Label>
-                <ArabicDatePicker
-                  value={formData.expense_date}
-                  onChange={(date) => setFormData(prev => ({ ...prev, expense_date: date }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>طريقة الدفع</Label>
-                <Select
-                  value={formData.payment_method}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, payment_method: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(paymentMethodLabels).map(([key, { label }]) => (
-                      <SelectItem key={key} value={key}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Reference number */}
-            <div className="space-y-2">
-              <Label>رقم مرجعي (اختياري)</Label>
-              <Input
-                value={formData.reference_number}
-                onChange={(e) => setFormData(prev => ({ ...prev, reference_number: e.target.value }))}
-                placeholder="رقم الشيك أو الحوالة..."
+            {/* Multi-line payment form for broker/company */}
+            {isMultiLineMode && !editingExpense ? (
+              <ExpensePaymentLines
+                paymentLines={multiPaymentLines}
+                setPaymentLines={setMultiPaymentLines}
+                mainReceiptImages={multiReceiptImages}
+                setMainReceiptImages={setMultiReceiptImages}
+                mainNotes={multiNotes}
+                setMainNotes={setMultiNotes}
+                entityId={formData.entity_id}
+                entityType={entitySource as 'broker' | 'company'}
               />
-            </div>
+            ) : (
+              <>
+                {/* Amount + Date + Payment Method */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-2">
+                    <Label>المبلغ *</Label>
+                    <Input
+                      type="number"
+                      value={formData.amount}
+                      onChange={(e) => setFormData(prev => ({ ...prev, amount: e.target.value }))}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>التاريخ *</Label>
+                    <ArabicDatePicker
+                      value={formData.expense_date}
+                      onChange={(date) => setFormData(prev => ({ ...prev, expense_date: date }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>طريقة الدفع</Label>
+                    <Select
+                      value={formData.payment_method}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, payment_method: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(paymentMethodLabels).map(([key, { label }]) => (
+                          <SelectItem key={key} value={key}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
 
-            {/* Notes */}
-            <div className="space-y-2">
-              <Label>ملاحظات</Label>
-              <Textarea
-                value={formData.notes}
-                onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                placeholder="ملاحظات إضافية..."
-                rows={2}
-              />
-            </div>
+                {/* Reference number */}
+                <div className="space-y-2">
+                  <Label>رقم مرجعي (اختياري)</Label>
+                  <Input
+                    value={formData.reference_number}
+                    onChange={(e) => setFormData(prev => ({ ...prev, reference_number: e.target.value }))}
+                    placeholder="رقم الشيك أو الحوالة..."
+                  />
+                </div>
+
+                {/* Notes */}
+                <div className="space-y-2">
+                  <Label>ملاحظات</Label>
+                  <Textarea
+                    value={formData.notes}
+                    onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                    placeholder="ملاحظات إضافية..."
+                    rows={2}
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline">إلغاء</Button>
             </DialogClose>
-            <Button onClick={handleSubmit} disabled={saving}>
-              {saving ? 'جاري الحفظ...' : editingExpense ? 'تحديث' : 'إضافة'}
+            <Button onClick={handleSubmit} disabled={saving} className="gap-2">
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              {saving ? 'جاري الحفظ...' : editingExpense ? 'تحديث' : isMultiLineMode ? `حفظ الدفعات (${multiPaymentLines.length})` : 'إضافة'}
             </Button>
           </DialogFooter>
         </DialogContent>
