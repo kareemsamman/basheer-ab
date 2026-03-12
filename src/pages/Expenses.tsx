@@ -525,8 +525,7 @@ export default function Expenses() {
           </CardContent>
         </Card>
 
-        {/* Summary Cards - 4 cards */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-3">
           <Card className="border-l-4 border-l-success">
             <CardContent className="py-5">
               <div className="flex items-center gap-3">
