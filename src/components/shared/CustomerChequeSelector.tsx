@@ -58,6 +58,7 @@ export function CustomerChequeSelector({
         .from('policy_payments')
         .select('id, amount, payment_date, cheque_number, cheque_image_url, policy_id')
         .eq('payment_type', 'cheque')
+        .gte('payment_date', '2026-01-01')
         .is('transferred_to_type', null)
         .or('cheque_status.is.null,cheque_status.eq.pending')
         .or('refused.is.null,refused.eq.false')
