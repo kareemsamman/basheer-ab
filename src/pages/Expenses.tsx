@@ -177,9 +177,8 @@ export default function Expenses() {
       const shouldFetchPolicyPayments = (voucherFilter === 'all' || voucherFilter === 'receipt') && 
         (categoryFilter === 'all' || categoryFilter === 'insurance_premium');
       
-      // Query 3: Company dues (policies with payed_for_company > 0)
-      const shouldFetchCompanyDues = voucherFilter === 'all' || voucherFilter === 'payment' || voucherFilter === 'company_dues';
 
+      // Query 3: No longer needed (company dues removed)
       // Query 4: ELZAMI policies for office_commission (receipt) and elzami_commission (payment)
       const shouldFetchElzami = voucherFilter === 'all' || voucherFilter === 'receipt' || voucherFilter === 'payment';
 
