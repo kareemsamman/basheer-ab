@@ -3858,6 +3858,105 @@ export type Database = {
           },
         ]
       }
+      receipts: {
+        Row: {
+          accident_date: string | null
+          accident_details: string | null
+          amount: number
+          car_id: string | null
+          car_number: string | null
+          client_id: string | null
+          client_name: string
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          payment_id: string | null
+          policy_id: string | null
+          receipt_date: string
+          receipt_number: number
+          receipt_type: string
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          accident_date?: string | null
+          accident_details?: string | null
+          amount?: number
+          car_id?: string | null
+          car_number?: string | null
+          client_id?: string | null
+          client_name: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          payment_id?: string | null
+          policy_id?: string | null
+          receipt_date?: string
+          receipt_number?: number
+          receipt_type?: string
+          source?: string
+          updated_at?: string
+        }
+        Update: {
+          accident_date?: string | null
+          accident_details?: string | null
+          amount?: number
+          car_id?: string | null
+          car_number?: string | null
+          client_id?: string | null
+          client_name?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          payment_id?: string | null
+          policy_id?: string | null
+          receipt_date?: string
+          receipt_number?: number
+          receipt_type?: string
+          source?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipts_car_id_fkey"
+            columns: ["car_id"]
+            isOneToOne: false
+            referencedRelation: "cars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipts_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipts_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: true
+            referencedRelation: "policy_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipts_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "policies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipts_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "v_worker_policies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       repair_claim_notes: {
         Row: {
           claim_id: string

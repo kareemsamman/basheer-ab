@@ -1,5 +1,6 @@
 import { useState, ReactNode } from "react";
-import { Search, Plus } from "lucide-react";
+import { Search, Plus, Receipt } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { GlobalPolicySearch } from "./GlobalPolicySearch";
 
@@ -15,6 +16,7 @@ interface HeaderProps {
 
 export function Header({ title, subtitle, action }: HeaderProps) {
   const [searchOpen, setSearchOpen] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <>
@@ -39,6 +41,17 @@ export function Header({ title, subtitle, action }: HeaderProps) {
             <kbd className="pointer-events-none hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
               ⌘K
             </kbd>
+          </Button>
+
+          {/* Receipts button */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="hidden lg:flex gap-2"
+            onClick={() => navigate("/receipts")}
+          >
+            <Receipt className="h-4 w-4 text-muted-foreground" />
+            <span className="text-muted-foreground">קבלות</span>
           </Button>
           
           {/* Mobile search button */}
