@@ -126,7 +126,7 @@ export const navigationGroups: NavGroup[] = [
     icon: Image,
     items: [
       { name: "الوسائط", href: "/media", icon: Image },
-      { name: "نماذج", href: "/form-templates", icon: FileText },
+      { name: "ملفات", href: "/form-templates", icon: FileText },
     ],
   },
   {
