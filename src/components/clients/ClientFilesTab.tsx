@@ -345,7 +345,7 @@ export function ClientFilesTab({ clientId }: ClientFilesTabProps) {
         file={previewFile}
         allFiles={allPreviewable}
         onClose={() => setPreviewFile(null)}
-        onNavigate={setPreviewFile}
+        onNavigate={(f) => setPreviewFile(f)}
       />
     </div>
   );
