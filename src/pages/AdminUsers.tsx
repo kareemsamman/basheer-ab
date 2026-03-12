@@ -35,6 +35,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
   UserCheck,
   UserX,
   Shield,
@@ -47,6 +56,7 @@ import {
   Building2,
   Phone,
   History,
+  UserPlus,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
