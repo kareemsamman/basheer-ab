@@ -877,7 +877,7 @@ function GroupedActivityCard({
             <span>
               {group.policies[0].type}
               {group.policies[0].companyName && ` + ${group.policies[0].companyName}`}
-              {group.policies[0].price > 0 && ` | ₪${group.policies[0].price.toLocaleString()}`}
+              {group.policies[0].price > 0 && ` | ₪${group.policies[0].price.toLocaleString('en-US')}`}
             </span>
           )}
           {hasCars && !hasPolicies && (
