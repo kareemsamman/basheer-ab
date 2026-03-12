@@ -109,7 +109,7 @@ export const navigationGroups: NavGroup[] = [
     icon: BarChart3,
     items: [
       { name: "تقارير الوثائق", href: "/reports/policies", icon: BarChart3, badge: 'renewals' },
-      { name: "تقرير الشركات", href: "/reports/company-settlement", icon: BarChart3, adminOnly: true },
+      { name: "كشوفات انتاج", href: "/reports/company-settlement", icon: BarChart3, adminOnly: true },
       
     ],
   },
