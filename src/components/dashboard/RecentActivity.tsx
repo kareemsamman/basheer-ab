@@ -803,7 +803,7 @@ function GroupedActivityCard({
                         {item.companyName && ` + ${item.companyName}`}
                       </span>
                     </div>
-                    <span className="font-medium ltr-nums">₪{item.amount.toLocaleString()}</span>
+                    <span className="font-medium ltr-nums">₪{item.amount.toLocaleString('en-US')}</span>
                   </div>
                   {/* Creator name + datetime */}
                   <div className="text-[10px] text-muted-foreground">
