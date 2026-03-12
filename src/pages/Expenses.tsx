@@ -182,7 +182,7 @@ export default function Expenses() {
       // Query 4: ELZAMI policies for office_commission (receipt) and elzami_commission (payment)
       const shouldFetchElzami = voucherFilter === 'all' || voucherFilter === 'receipt' || voucherFilter === 'payment';
 
-      const [expensesResult, policyPaymentsResult, companyDuesResult, elzamiResult] = await Promise.all([
+      const [expensesResult, policyPaymentsResult, elzamiResult] = await Promise.all([
         query,
         shouldFetchPolicyPayments
           ? supabase
@@ -192,17 +192,6 @@ export default function Expenses() {
               .lte('payment_date', monthEnd)
               .eq('refused', false)
               .neq('policies.policy_type_parent', 'ELZAMI')
-          : Promise.resolve({ data: [], error: null }),
-        shouldFetchCompanyDues
-          ? supabase
-              .from('policies')
-              .select('id, policy_number, policy_type_parent, payed_for_company, start_date, created_at, created_by_admin_id, creator:profiles!policies_created_by_admin_id_fkey(full_name), insurance_companies(name), clients!inner(full_name), cars(car_number)')
-              .gte('start_date', monthStart)
-              .lte('start_date', monthEnd)
-              .eq('cancelled', false)
-              .is('deleted_at', null)
-              .gt('payed_for_company', 0)
-              .neq('policy_type_parent', 'ELZAMI')
           : Promise.resolve({ data: [], error: null }),
         shouldFetchElzami
           ? supabase
