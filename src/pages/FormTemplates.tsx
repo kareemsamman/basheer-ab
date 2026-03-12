@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,6 +78,9 @@ export default function FormTemplates() {
     { id: null, name: "نماذج" },
   ]);
   const [initialFolderLoaded, setInitialFolderLoaded] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const dragCounter = useRef(0);
 
   // On mount, read folder query param and build breadcrumbs
   useEffect(() => {
@@ -301,9 +304,136 @@ export default function FormTemplates() {
     setRenameOpen(true);
   };
 
+  // Drag and drop handlers
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current++;
+    if (e.dataTransfer.types.includes("Files")) {
+      setIsDraggingOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current--;
+    if (dragCounter.current === 0) {
+      setIsDraggingOver(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current = 0;
+    setIsDraggingOver(false);
+
+    if (!currentFolderId) {
+      toast({ title: "خطأ", description: "يجب أن تكون داخل مجلد لرفع الملفات", variant: "destructive" });
+      return;
+    }
+
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    if (droppedFiles.length === 0) return;
+
+    // Filter valid files
+    const validFiles = droppedFiles.filter(f => {
+      const isValid = f.type.startsWith("image/") || f.type === "application/pdf";
+      if (!isValid) {
+        toast({ title: "تم تجاهل ملف", description: `${f.name} - نوع غير مدعوم`, variant: "destructive" });
+      }
+      return isValid;
+    });
+
+    if (validFiles.length === 0) return;
+
+    setIsUploading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast({ title: "خطأ", description: "يجب تسجيل الدخول", variant: "destructive" });
+        return;
+      }
+
+      const uploadedRows: { folder_id: string; name: string; file_url: string; file_type: string; mime_type: string; overlay_fields: any[]; created_by: string | undefined }[] = [];
+
+      for (const file of validFiles) {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("entity_type", "form_template");
+
+        const res = await supabase.functions.invoke("upload-media", {
+          body: formData,
+        });
+
+        if (res.error || !res.data?.file) {
+          toast({ title: "خطأ في الرفع", description: `فشل رفع ${file.name}`, variant: "destructive" });
+          continue;
+        }
+
+        const isPdf = file.type === "application/pdf";
+        uploadedRows.push({
+          folder_id: currentFolderId,
+          name: file.name,
+          file_url: res.data.file.cdn_url,
+          file_type: isPdf ? "pdf" : "image",
+          mime_type: file.type,
+          overlay_fields: [],
+          created_by: profile?.id,
+        });
+      }
+
+      if (uploadedRows.length > 0) {
+        const { error } = await supabase.from("form_template_files").insert(uploadedRows);
+        if (error) throw error;
+        toast({ title: `تم رفع ${uploadedRows.length} ملف بنجاح` });
+        fetchContents();
+      }
+    } catch (err: any) {
+      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+    } finally {
+      setIsUploading(false);
+    }
+  }, [currentFolderId, profile?.id, toast, fetchContents]);
+
   return (
     <MainLayout>
-      <div className="p-4 md:p-6 space-y-4" dir="rtl">
+      <div
+        className="p-4 md:p-6 space-y-4 relative min-h-[calc(100vh-4rem)]"
+        dir="rtl"
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
+        {/* Drag overlay */}
+        {isDraggingOver && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-primary/10 border-2 border-dashed border-primary rounded-lg pointer-events-none">
+            <div className="flex flex-col items-center gap-3 text-primary">
+              <Upload className="h-16 w-16 animate-bounce" />
+              <p className="text-xl font-bold">أسقط الملفات هنا للرفع</p>
+              {!currentFolderId && (
+                <p className="text-sm text-destructive">يجب الدخول إلى مجلد أولاً</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Uploading indicator */}
+        {isUploading && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-3 bg-card p-8 rounded-xl shadow-lg border">
+              <Loader2 className="h-10 w-10 animate-spin text-primary" />
+              <p className="text-lg font-medium">جارٍ رفع الملفات...</p>
+            </div>
+          </div>
+        )}
         {/* Breadcrumbs */}
         <div className="flex items-center gap-2 flex-wrap">
           {breadcrumbs.map((bc, idx) => (
