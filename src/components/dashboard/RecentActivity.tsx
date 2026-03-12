@@ -106,7 +106,9 @@ const PAYMENT_TYPE_COLORS: Record<string, string> = {
 
 const POLICY_TYPE_LABELS: Record<string, string> = {
   ELZAMI: "إلزامي",
-  THIRD_FULL: "شامل",
+  THIRD_FULL: "ثالث/شامل",
+  THIRD: "ثالث",
+  FULL: "شامل",
   ROAD_SERVICE: "خدمة طريق",
   ACCIDENT_FEE_EXEMPTION: "إعفاء حوادث",
   HEALTH: "صحي",
@@ -116,6 +118,14 @@ const POLICY_TYPE_LABELS: Record<string, string> = {
   BUSINESS: "أعمال",
   OTHER: "أخرى",
 };
+
+// Get display label for policy type, preferring child type for THIRD_FULL
+function getPolicyTypeLabel(parent: string | null, child?: string | null): string {
+  if (parent === 'THIRD_FULL' && child) {
+    return POLICY_TYPE_LABELS[child] || POLICY_TYPE_LABELS[parent] || parent || '';
+  }
+  return POLICY_TYPE_LABELS[parent || ''] || parent || '';
+}
 
 const typeColors = {
   policy: "text-primary bg-primary/10",
