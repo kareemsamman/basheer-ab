@@ -770,7 +770,7 @@ function GroupedActivityCard({
                 variant="outline"
                 className={cn("text-[10px] px-1.5 py-0", PAYMENT_TYPE_COLORS[type])}
               >
-                {PAYMENT_TYPE_LABELS[type] || type}: ₪{amount.toLocaleString()}
+                {PAYMENT_TYPE_LABELS[type] || type}: ₪{amount.toLocaleString('en-US')}
               </Badge>
             ))}
           </div>
