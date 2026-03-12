@@ -319,7 +319,7 @@ export default function Cheques() {
           )
         `, { count: 'exact' })
         .eq('payment_type', 'cheque')
-        .gte('payment_date', '2026-01-01') // Only show 2026+ cheques
+        .gte('payment_date', CHEQUES_START_DATE)
         .order('payment_date', { ascending: false })
         .range((currentPage - 1) * pageSize, currentPage * pageSize - 1);
 
