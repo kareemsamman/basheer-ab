@@ -8,44 +8,59 @@ const corsHeaders = {
 
 interface BulkReceiptRequest {
   payment_ids: string[];
-  total_amount?: number; // optional verification
+  total_amount?: number;
 }
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = {
-  cash: 'نقدي',
-  cheque: 'شيك',
-  visa: 'بطاقة ائتمان',
-  transfer: 'تحويل بنكي',
+  cash: 'מזומן',
+  cheque: 'שיק',
+  visa: 'כרטיס אשראי',
+  transfer: 'העברה בנקאית',
 };
 
 const POLICY_TYPE_LABELS: Record<string, string> = {
-  ELZAMI: 'إلزامي',
-  THIRD_FULL: 'ثالث/شامل',
-  ROAD_SERVICE: 'خدمات الطريق',
-  ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
-  THIRD: 'ثالث',
-  FULL: 'شامل',
-  HEALTH: 'تأمين صحي',
-  LIFE: 'تأمين حياة',
-  PROPERTY: 'تأمين ممتلكات',
-  TRAVEL: 'تأمين سفر',
-  BUSINESS: 'تأمين أعمال',
-  OTHER: 'أخرى',
+  ELZAMI: 'חובה',
+  THIRD_FULL: 'צד ג׳/מקיף',
+  ROAD_SERVICE: 'שירותי דרך',
+  ACCIDENT_FEE_EXEMPTION: 'פטור דמי תאונה',
+  THIRD: 'צד ג׳',
+  FULL: 'מקיף',
+  HEALTH: 'בריאות',
+  LIFE: 'חיים',
+  PROPERTY: 'רכוש',
+  TRAVEL: 'נסיעות',
+  BUSINESS: 'עסקי',
+  OTHER: 'אחר',
 };
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
   const date = new Date(dateStr);
-  return date.toLocaleDateString('en-GB', { 
-    year: 'numeric', 
-    month: '2-digit', 
-    day: '2-digit',
-  });
+  return date.toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
-interface PhoneLink {
-  phone: string;
-  href: string;
+function formatDateTime(dateStr: string): string {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' }) +
+    ' ' + date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
+interface PhoneLink { phone: string; href: string; }
+
+function buildPaymentDetail(payment: any): string {
+  if (payment.payment_type === 'visa') {
+    const card = payment.card_last_four ? `**** ${payment.card_last_four}` : '';
+    const inst = payment.installments_count && payment.installments_count > 1 ? ` / ${payment.installments_count} תשלומים` : ' / רגיל';
+    return `ויזה ${card}${inst}`;
+  }
+  if (payment.payment_type === 'cheque') {
+    return payment.cheque_number ? `שיק מס׳ ${payment.cheque_number}` : 'שיק';
+  }
+  if (payment.payment_type === 'transfer') {
+    return 'העברה בנקאית';
+  }
+  return 'מזומן';
 }
 
 function buildBulkReceiptHtml(
@@ -53,352 +68,326 @@ function buildBulkReceiptHtml(
   totalAmount: number,
   client: any,
   car: any,
-  policyTypes: string[],
-  paymentDate: string,
-  paymentType: string,
+  policyTypesText: string,
+  receiptId: string,
+  logoUrl: string,
   companySettings: { company_email?: string; company_phone_links?: PhoneLink[]; company_location?: string }
 ): string {
-  const paymentTypeLabel = PAYMENT_TYPE_LABELS[paymentType] || paymentType;
-  
-  // Get unique policy type labels
-  const uniquePolicyLabels = [...new Set(policyTypes)].map(type => 
-    POLICY_TYPE_LABELS[type] || type
-  );
-  
-  const policyTypesText = uniquePolicyLabels.join(' + ');
-  
-  // Build phone links section
+  const paymentDate = payments[0]?.payment_date || new Date().toISOString();
+
+  const paymentRows = payments.map((p, i) => {
+    const typeLabel = PAYMENT_TYPE_LABELS[p.payment_type] || p.payment_type;
+    const detail = buildPaymentDetail(p);
+    return `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${typeLabel}</td>
+        <td>${detail}</td>
+        <td>${formatDate(p.payment_date)}</td>
+        <td class="amount-cell">₪${(p.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+      </tr>`;
+  }).join('');
+
   const phoneLinksHtml = (companySettings.company_phone_links || []).map(
-    (link: PhoneLink) => `<a href="${link.href}">${link.phone}</a>`
+    (link: PhoneLink) => `<span>${link.phone}</span>`
   ).join(' | ');
 
-  // Receipt ID from first payment
-  const receiptId = payments[0]?.id?.slice(0, 8).toUpperCase() || crypto.randomUUID().slice(0, 8);
+  const logoImg = logoUrl 
+    ? `<img src="${logoUrl}" alt="Logo" class="logo" />`
+    : `<div class="logo-placeholder">AB</div>`;
 
-  return `
-<!DOCTYPE html>
-<html dir="rtl" lang="ar">
+  return `<!DOCTYPE html>
+<html dir="rtl" lang="he">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
-  <title>إيصال دفع - ${client?.full_name || 'عميل'}</title>
+  <title>קבלה ${receiptId} - ${client?.full_name || ''}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    @page { size: A5; margin: 10mm; }
+    @page { size: A4; margin: 15mm; }
     @media print {
-      body { padding: 0; }
+      body { padding: 0; background: white; }
       .no-print { display: none !important; }
+      .container { box-shadow: none; border: none; }
     }
     body {
-      font-family: 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif;
+      font-family: Arial, Tahoma, 'Segoe UI', sans-serif;
       font-size: 14px;
-      line-height: 1.6;
-      color: #2d3748;
-      background: #f7fafc;
+      line-height: 1.5;
+      color: #1a1a1a;
+      background: #f0f2f5;
       padding: 20px;
       direction: rtl;
     }
-    .container { 
-      max-width: 500px; 
-      margin: 0 auto; 
+    .container {
+      max-width: 794px;
+      margin: 0 auto;
       background: white;
-      border-radius: 16px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-      overflow: hidden;
+      border: 2px solid #1a3a5c;
+      min-height: 600px;
     }
     .header {
-      text-align: center;
-      padding: 25px 20px;
-      background: linear-gradient(135deg, #1e3a5f 0%, #2d5a8a 100%);
-      color: white;
-    }
-    .header h1 { 
-      font-size: 24px; 
-      font-weight: 800;
-      margin-bottom: 5px;
-    }
-    .header .english-name {
-      font-size: 12px;
-      letter-spacing: 2px;
-      opacity: 0.8;
-      margin-bottom: 10px;
-    }
-    .header .receipt-title {
-      font-size: 18px;
-      font-weight: 700;
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px solid rgba(255,255,255,0.3);
-    }
-    .receipt-number {
-      background: rgba(255,255,255,0.15);
-      padding: 8px 16px;
-      border-radius: 20px;
-      font-size: 12px;
-      display: inline-block;
-      margin-top: 10px;
-    }
-    .amount-section {
-      text-align: center;
-      padding: 30px 20px;
-      background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
-    }
-    .amount-label {
-      font-size: 14px;
-      color: #065f46;
-      font-weight: 500;
-      margin-bottom: 8px;
-    }
-    .amount-value {
-      font-size: 42px;
-      font-weight: 800;
-      color: #047857;
-    }
-    .amount-currency {
-      font-size: 24px;
-    }
-    .section {
-      padding: 20px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .section:last-child {
-      border-bottom: none;
-    }
-    .section-title {
-      font-size: 14px;
-      font-weight: 700;
-      color: #1e3a5f;
-      margin-bottom: 12px;
       display: flex;
       align-items: center;
-      gap: 8px;
+      justify-content: space-between;
+      padding: 20px 30px;
+      border-bottom: 3px solid #1a3a5c;
     }
-    .section-icon {
-      font-size: 16px;
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 15px;
     }
-    .info-item {
+    .logo { height: 70px; width: auto; object-fit: contain; }
+    .logo-placeholder {
+      width: 70px; height: 70px; background: #1a3a5c; color: white;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; font-weight: bold; border-radius: 8px;
+    }
+    .company-info { text-align: right; }
+    .company-name { font-size: 22px; font-weight: bold; color: #1a3a5c; }
+    .company-name-en { font-size: 11px; color: #666; letter-spacing: 1px; }
+    .company-detail { font-size: 12px; color: #444; margin-top: 2px; }
+    .header-left { text-align: left; font-size: 12px; color: #444; }
+    .header-left div { margin-bottom: 2px; }
+    .receipt-meta {
       display: flex;
       justify-content: space-between;
-      padding: 8px 0;
-      border-bottom: 1px dashed #e2e8f0;
+      align-items: center;
+      padding: 15px 30px;
+      border-bottom: 1px solid #ddd;
     }
-    .info-item:last-child {
-      border-bottom: none;
+    .receipt-title-block {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
     }
-    .info-label {
-      color: #718096;
-      font-weight: 500;
+    .receipt-label { font-size: 22px; font-weight: bold; color: #1a3a5c; }
+    .receipt-num { font-size: 18px; font-weight: bold; color: #c0392b; }
+    .receipt-origin {
+      background: #e8f0fe;
+      padding: 4px 14px;
+      border-radius: 4px;
       font-size: 13px;
+      font-weight: bold;
+      color: #1a3a5c;
     }
-    .info-value {
-      color: #1e3a5f;
-      font-weight: 700;
-      font-size: 13px;
+    .client-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 30px;
+      border-bottom: 1px solid #ddd;
+      font-size: 14px;
     }
-    .payment-badge {
-      display: inline-block;
-      padding: 4px 12px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 700;
+    .client-name { font-weight: bold; }
+    .subject-bar {
+      background: #d6e4f0;
+      padding: 10px 30px;
+      font-weight: bold;
+      font-size: 15px;
+      color: #1a3a5c;
+      border-bottom: 1px solid #b0c4d8;
     }
-    .badge-cash { background: #d1fae5; color: #065f46; }
-    .badge-visa { background: #dbeafe; color: #1e40af; }
-    .badge-cheque { background: #fef3c7; color: #92400e; }
-    .badge-transfer { background: #e9d5ff; color: #6b21a8; }
-    .package-badge {
-      display: inline-block;
-      padding: 8px 16px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    .table-section { padding: 20px 30px; }
+    .table-header-label {
+      background: #1a3a5c;
       color: white;
-      border-radius: 20px;
+      padding: 8px 16px;
+      font-size: 14px;
+      font-weight: bold;
+      display: inline-block;
+      border-radius: 4px 4px 0 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid #ccc;
+    }
+    th {
+      background: #e8eef4;
+      color: #1a3a5c;
+      font-weight: bold;
+      padding: 10px 12px;
       font-size: 13px;
-      font-weight: 700;
-      margin-top: 10px;
+      border: 1px solid #ccc;
+      text-align: center;
+    }
+    td {
+      padding: 10px 12px;
+      border: 1px solid #ccc;
+      text-align: center;
+      font-size: 13px;
+    }
+    .amount-cell { font-weight: bold; }
+    .total-row {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      padding: 15px 30px;
+      gap: 15px;
+    }
+    .total-label { font-size: 16px; font-weight: bold; color: #1a3a5c; }
+    .total-value {
+      background: #1a3a5c;
+      color: white;
+      padding: 8px 24px;
+      border-radius: 6px;
+      font-size: 20px;
+      font-weight: bold;
+    }
+    .signature-section {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding: 30px 30px 20px;
+      margin-top: 20px;
+    }
+    .signature-stamp { text-align: center; }
+    .stamp-img { height: 60px; width: auto; opacity: 0.7; }
+    .signature-line {
+      width: 200px;
+      border-top: 1px solid #999;
+      padding-top: 5px;
+      text-align: center;
+      font-size: 12px;
+      color: #666;
     }
     .footer {
-      text-align: center;
-      padding: 20px;
-      background: #f8fafc;
-      color: #718096;
-      font-size: 12px;
+      border-top: 2px solid #1a3a5c;
+      padding: 12px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: #888;
+      background: #fafafa;
     }
-    .thank-you {
-      font-size: 16px;
-      font-weight: 700;
-      color: #1e3a5f;
-      margin-bottom: 12px;
-    }
-    .contact-info {
-      margin: 15px 0;
-      padding: 12px;
-      background: #f1f5f9;
-      border-radius: 8px;
-      display: inline-block;
-      text-align: center;
-    }
-    .contact-row {
+    .footer-badge {
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 4px 0;
-      color: #1e3a5f;
-      font-size: 12px;
-    }
-    .contact-row a {
-      color: #2563eb;
-      text-decoration: none;
+      gap: 6px;
+      color: #1a3a5c;
+      font-weight: bold;
+      font-size: 11px;
     }
     .action-buttons {
       display: flex;
       gap: 10px;
       justify-content: center;
-      flex-wrap: wrap;
-      margin-top: 15px;
+      padding: 20px;
     }
-    .print-button {
-      display: inline-block;
-      padding: 12px 25px;
-      background: linear-gradient(135deg, #1e3a5f 0%, #2d5a8a 100%);
-      color: white;
+    .btn {
+      padding: 10px 24px;
       border: none;
-      border-radius: 8px;
-      font-size: 16px;
-      font-weight: 700;
+      border-radius: 6px;
+      font-size: 15px;
+      font-weight: bold;
       cursor: pointer;
-      font-family: 'Tajawal', sans-serif;
+      font-family: Arial, Tahoma, sans-serif;
     }
-    .share-button {
-      display: inline-block;
-      padding: 12px 25px;
-      background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 16px;
-      font-weight: 700;
-      cursor: pointer;
-      font-family: 'Tajawal', sans-serif;
-    }
-    .print-button:hover, .share-button:hover {
-      opacity: 0.9;
-    }
-    @media (max-width: 500px) {
-      body { padding: 10px; }
-      .container { border-radius: 12px; }
-      .amount-value { font-size: 36px; }
+    .btn-print { background: #1a3a5c; color: white; }
+    .btn-share { background: #25D366; color: white; }
+    .btn:hover { opacity: 0.9; }
+    @media (max-width: 600px) {
+      .header { flex-direction: column; text-align: center; gap: 10px; }
+      .header-right { flex-direction: column; }
+      .header-left { text-align: center; }
+      .receipt-meta { flex-direction: column; gap: 8px; text-align: center; }
+      .client-row { flex-direction: column; gap: 4px; }
+      .total-row { justify-content: center; }
+      .signature-section { flex-direction: column; align-items: center; gap: 20px; }
     }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h1>بشير للتأمينات</h1>
-      <p class="english-name">BASHEER INSURANCE</p>
-      <p class="receipt-title">إيصال دفع</p>
-      <div class="receipt-number">رقم: ${receiptId}</div>
-    </div>
-
-    <div class="amount-section">
-      <p class="amount-label">المبلغ المدفوع</p>
-      <p class="amount-value">
-        <span class="amount-currency">₪</span>${totalAmount.toLocaleString()}
-      </p>
-    </div>
-
-    <div class="section">
-      <div class="section-title">
-        <span class="section-icon">💳</span>
-        تفاصيل الدفع
+      <div class="header-right">
+        ${logoImg}
+        <div class="company-info">
+          <div class="company-name">בשיר אבו סנינה לביטוח ושיווק</div>
+          <div class="company-name-en">BASHEER ABU SNEINEH INSURANCE</div>
+          <div class="company-detail">עוסק מורשה: 212426498</div>
+        </div>
       </div>
-      <div class="info-item">
-        <span class="info-label">تاريخ الدفع:</span>
-        <span class="info-value">${formatDate(paymentDate)}</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">طريقة الدفع:</span>
-        <span class="info-value">
-          <span class="payment-badge badge-${paymentType}">${paymentTypeLabel}</span>
-        </span>
+      <div class="header-left">
+        ${companySettings.company_location ? `<div>📍 ${companySettings.company_location}</div>` : ''}
+        ${phoneLinksHtml ? `<div>📞 ${phoneLinksHtml}</div>` : ''}
+        ${companySettings.company_email ? `<div>📧 ${companySettings.company_email}</div>` : ''}
       </div>
     </div>
 
-    <div class="section">
-      <div class="section-title">
-        <span class="section-icon">👤</span>
-        بيانات العميل
+    <div class="receipt-meta">
+      <div class="receipt-title-block">
+        <span class="receipt-label">קבלה</span>
+        <span class="receipt-num">${receiptId}</span>
       </div>
-      <div class="info-item">
-        <span class="info-label">الاسم:</span>
-        <span class="info-value">${client?.full_name || '-'}</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">رقم الهوية:</span>
-        <span class="info-value">${client?.id_number || '-'}</span>
-      </div>
-      ${car?.car_number ? `
-      <div class="info-item">
-        <span class="info-label">رقم السيارة:</span>
-        <span class="info-value">${car.car_number}</span>
-      </div>
-      ` : ''}
+      <span class="receipt-origin">מקור</span>
     </div>
 
-    <div class="section">
-      <div class="section-title">
-        <span class="section-icon">📦</span>
-        باقة التأمين
+    <div class="client-row">
+      <div><span>לכבוד: </span><span class="client-name">${client?.full_name || '-'}</span>${client?.id_number ? ` (ת.ז. ${client.id_number})` : ''}</div>
+      <div>תאריך: ${formatDate(paymentDate)}</div>
+    </div>
+
+    <div class="subject-bar">
+      ביטוח ${policyTypesText}${car?.car_number ? ` / רכב ${car.car_number}` : ''} / ${client?.full_name || ''}
+    </div>
+
+    <div class="table-section">
+      <div class="table-header-label">פרטי תשלומים</div>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>אמצעי תשלום</th>
+            <th>פירוט</th>
+            <th>תאריך</th>
+            <th>סכום</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${paymentRows}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="total-row">
+      <span class="total-label">סה"כ</span>
+      <span class="total-value">₪${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+    </div>
+
+    <div class="signature-section">
+      <div class="signature-stamp">
+        ${logoUrl ? `<img src="${logoUrl}" alt="Stamp" class="stamp-img" />` : ''}
       </div>
-      <div style="text-align: center;">
-        <span class="package-badge">📋 ${policyTypesText}</span>
-      </div>
+      <div class="signature-line">:חתימה</div>
     </div>
 
     <div class="footer">
-      <p class="thank-you">شكراً لتعاملكم معنا 🙏</p>
-      <div class="contact-info">
-        ${companySettings.company_email ? `
-        <div class="contact-row">
-          <span>📧</span>
-          <a href="mailto:${companySettings.company_email}">${companySettings.company_email}</a>
-        </div>
-        ` : ''}
-        ${companySettings.company_phone_links && companySettings.company_phone_links.length > 0 ? `
-        <div class="contact-row">
-          <span>📞</span>
-          ${phoneLinksHtml}
-        </div>
-        ` : ''}
-        ${companySettings.company_location ? `
-        <div class="contact-row">
-          <span>📍</span>
-          <span>${companySettings.company_location}</span>
-        </div>
-        ` : ''}
-      </div>
-      <p>تم إصدار هذا الإيصال بتاريخ ${formatDate(new Date().toISOString())}</p>
-      <div class="action-buttons no-print">
-        <button class="print-button" onclick="window.print()">🖨️ طباعة الإيصال</button>
-        <button class="share-button" onclick="shareInvoice()">📲 مشاركة</button>
-      </div>
+      <div class="footer-badge">🔒 חתימה דיגיטלית מאובטחת</div>
+      <div>הופק ב ${formatDateTime(new Date().toISOString())} | קבלה ${receiptId}</div>
     </div>
   </div>
+
+  <div class="action-buttons no-print">
+    <button class="btn btn-print" onclick="window.print()">🖨️ הדפסה</button>
+    <button class="btn btn-share" onclick="shareReceipt()">📲 שיתוף</button>
+  </div>
+
   <script>
-    function shareInvoice() {
-      const currentUrl = window.location.href;
-      const shareText = 'إيصال دفع التأمين: ' + currentUrl;
+    function shareReceipt() {
+      var url = window.location.href;
+      var text = 'קבלה: ' + url;
       if (navigator.share) {
-        navigator.share({ title: 'إيصال دفع', text: 'إيصال دفع التأمين الخاص بك', url: currentUrl }).catch(console.error);
+        navigator.share({ title: 'קבלה', text: 'קבלת תשלום ביטוח', url: url }).catch(function(){});
       } else {
-        window.open('https://wa.me/?text=' + encodeURIComponent(shareText), '_blank');
+        window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
       }
     }
   </script>
 </body>
-</html>
-  `;
+</html>`;
 }
 
 serve(async (req) => {
@@ -445,12 +434,14 @@ serve(async (req) => {
 
     console.log(`[generate-bulk-payment-receipt] Processing ${payment_ids.length} payments`);
 
-    // Fetch company settings for contact info
-    const { data: smsSettings } = await supabase
-      .from("sms_settings")
-      .select("company_email, company_phone_links, company_location")
-      .limit(1)
-      .maybeSingle();
+    // Fetch company settings + logo in parallel
+    const [smsSettingsResult, siteSettingsResult] = await Promise.all([
+      supabase.from("sms_settings").select("company_email, company_phone_links, company_location").limit(1).maybeSingle(),
+      supabase.from("site_settings").select("logo_url").limit(1).maybeSingle(),
+    ]);
+
+    const smsSettings = smsSettingsResult.data;
+    const logoUrl = siteSettingsResult.data?.logo_url || '';
 
     const companySettings = {
       company_email: smsSettings?.company_email || '',
@@ -462,14 +453,11 @@ serve(async (req) => {
     const { data: payments, error: paymentsError } = await supabase
       .from("policy_payments")
       .select(`
-        id,
-        amount,
-        payment_type,
-        payment_date,
+        id, amount, payment_type, payment_date,
+        cheque_number, cheque_date, card_last_four, card_expiry,
+        installments_count, tranzila_approval_code,
         policy:policies(
-          id,
-          policy_type_parent,
-          policy_type_child,
+          id, policy_type_parent, policy_type_child,
           client:clients(id, full_name, id_number, phone_number),
           car:cars(car_number, manufacturer_name, model, year)
         )
@@ -484,49 +472,44 @@ serve(async (req) => {
       );
     }
 
-    // Calculate total from payments
     const calculatedTotal = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
     const finalTotal = total_amount || calculatedTotal;
 
-    // Get client and car info from first payment
     const firstPolicy = (payments[0] as any).policy;
     const client = firstPolicy?.client?.[0] || firstPolicy?.client || {};
     const car = firstPolicy?.car?.[0] || firstPolicy?.car || {};
 
-    // Collect all policy types
-    const policyTypes: string[] = [];
+    // Collect unique policy types
+    const policyTypeKeys: string[] = [];
     for (const payment of payments) {
       const policy = (payment as any).policy;
       if (policy?.policy_type_parent) {
-        // Use child type for THIRD_FULL
         if (policy.policy_type_parent === 'THIRD_FULL' && policy.policy_type_child) {
-          policyTypes.push(policy.policy_type_child);
+          policyTypeKeys.push(policy.policy_type_child);
         } else {
-          policyTypes.push(policy.policy_type_parent);
+          policyTypeKeys.push(policy.policy_type_parent);
         }
       }
     }
+    const uniqueLabels = [...new Set(policyTypeKeys)].map(k => POLICY_TYPE_LABELS[k] || k);
+    const policyTypesText = uniqueLabels.join(' + ');
 
-    // Get payment date and type from first payment
-    const paymentDate = payments[0].payment_date || new Date().toISOString();
-    const paymentType = payments[0].payment_type || 'cash';
+    const receiptId = payments[0]?.id?.slice(0, 8).toUpperCase() || crypto.randomUUID().slice(0, 8);
 
-    console.log(`[generate-bulk-payment-receipt] Total: ${finalTotal}, Policy types: ${policyTypes.join(', ')}`);
+    console.log(`[generate-bulk-payment-receipt] Total: ${finalTotal}, Types: ${policyTypesText}`);
 
-    // Generate receipt HTML
     const receiptHtml = buildBulkReceiptHtml(
       payments,
       finalTotal,
       client,
       car,
-      policyTypes,
-      paymentDate,
-      paymentType,
+      policyTypesText,
+      receiptId,
+      logoUrl,
       companySettings
     );
 
     if (!bunnyApiKey || !bunnyStorageZone) {
-      // Return HTML directly without storing
       return new Response(receiptHtml, {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" }
@@ -539,7 +522,7 @@ serve(async (req) => {
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const timestamp = Date.now();
     const randomId = crypto.randomUUID().slice(0, 8);
-    const clientNameSafe = client?.full_name?.replace(/[^a-zA-Z0-9\u0600-\u06FF]/g, '_') || 'customer';
+    const clientNameSafe = client?.full_name?.replace(/[^a-zA-Z0-9\u0600-\u06FF\u0590-\u05FF]/g, '_') || 'customer';
     const storagePath = `receipts/${year}/${month}/bulk_receipt_${clientNameSafe}_${timestamp}_${randomId}.html`;
 
     const bunnyUploadUrl = `https://storage.bunnycdn.com/${bunnyStorageZone}/${storagePath}`;
@@ -557,7 +540,6 @@ serve(async (req) => {
 
     if (!uploadResponse.ok) {
       console.error('[generate-bulk-payment-receipt] Bunny upload failed');
-      // Return HTML directly as fallback
       return new Response(receiptHtml, {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" }
