@@ -583,7 +583,7 @@ export default function Expenses() {
                     <TabsTrigger value="all">الكل</TabsTrigger>
                     <TabsTrigger value="receipt">سند قبض</TabsTrigger>
                     <TabsTrigger value="payment">سند صرف</TabsTrigger>
-                    <TabsTrigger value="company_dues">المستحق للشركات</TabsTrigger>
+                    
                   </TabsList>
                 </Tabs>
                 {showExportButton && (
