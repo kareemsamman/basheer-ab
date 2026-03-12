@@ -305,7 +305,7 @@ function buildBulkReceiptHtml(
       <div class="header-right">
         ${logoImg}
         <div class="company-info">
-          <div class="company-name">בשיר אבו סנינה לביטוח ושיווק</div>
+          <div class="company-name">בשיר אבו סנינה לביטוח</div>
           <div class="company-name-en">BASHEER ABU SNEINEH INSURANCE</div>
           <div class="company-detail">עוסק מורשה: 212426498</div>
         </div>
