@@ -164,8 +164,7 @@ export default function Expenses() {
       } else if (voucherFilter === 'receipt') {
         query = query.eq('voucher_type', 'receipt');
       } else if (voucherFilter === 'company_dues') {
-        // company_dues tab: no manual expenses needed (they don't have this type)
-        query = query.eq('voucher_type', '__none__'); // return nothing
+        query = query.eq('voucher_type', '__none__');
       }
       if (categoryFilter !== 'all' && categoryFilter !== 'insurance_premium' && categoryFilter !== 'insurance_company_due') {
         query = query.eq('category', categoryFilter);
