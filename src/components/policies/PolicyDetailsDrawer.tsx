@@ -602,7 +602,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
     if (amount === null || amount === undefined) return "₪0";
     const isNegative = amount < 0;
     const absAmount = Math.abs(amount);
-    return `${isNegative ? '-' : ''}₪${absAmount.toLocaleString("ar-EG", { maximumFractionDigits: 0 })}`;
+    return `${isNegative ? '-' : ''}₪${absAmount.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
   };
 
   const getStatus = () => {
