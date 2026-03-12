@@ -40,7 +40,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { SidebarNotificationBadge } from "./SidebarNotificationBadge";
+
 import { SidebarDebtBadge } from "./SidebarDebtBadge";
 import { SidebarTaskBadge } from "./SidebarTaskBadge";
 import { SidebarClaimsBadge } from "./SidebarClaimsBadge";
