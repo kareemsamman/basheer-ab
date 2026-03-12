@@ -494,7 +494,15 @@ serve(async (req) => {
     const uniqueLabels = [...new Set(policyTypeKeys)].map(k => POLICY_TYPE_LABELS[k] || k);
     const policyTypesText = uniqueLabels.join(' + ');
 
-    const receiptId = payments[0]?.id?.slice(0, 8).toUpperCase() || crypto.randomUUID().slice(0, 8);
+    // Look up receipt_number from receipts table for first payment
+    const { data: receiptRow } = await supabase
+      .from("receipts")
+      .select("receipt_number")
+      .eq("payment_id", payments[0]?.id)
+      .maybeSingle();
+    const receiptId = receiptRow?.receipt_number
+      ? String(receiptRow.receipt_number).padStart(2, '0')
+      : payments[0]?.id?.slice(0, 8).toUpperCase() || crypto.randomUUID().slice(0, 8);
 
     console.log(`[generate-bulk-payment-receipt] Total: ${finalTotal}, Types: ${policyTypesText}`);
 

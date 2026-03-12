@@ -10,13 +10,16 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Plus, Printer, Pencil, Trash2, Search, Receipt } from "lucide-react";
+import { Plus, Printer, Pencil, Trash2, Search, Receipt, CalendarIcon, X } from "lucide-react";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface ReceiptRow {
   id: string;
@@ -37,9 +40,13 @@ interface ReceiptRow {
   created_at: string;
 }
 
-function useReceipts(tab: string, search: string) {
+function padReceiptNumber(num: number): string {
+  return String(num).padStart(2, '0');
+}
+
+function useReceipts(tab: string, search: string, dateFrom: Date | undefined, dateTo: Date | undefined) {
   return useQuery({
-    queryKey: ["receipts", tab, search],
+    queryKey: ["receipts", tab, search, dateFrom?.toISOString(), dateTo?.toISOString()],
     queryFn: async () => {
       let query = supabase
         .from("receipts")
@@ -55,6 +62,13 @@ function useReceipts(tab: string, search: string) {
 
       if (search.trim()) {
         query = query.or(`client_name.ilike.%${search}%,car_number.ilike.%${search}%`);
+      }
+
+      if (dateFrom) {
+        query = query.gte("receipt_date", format(dateFrom, "yyyy-MM-dd"));
+      }
+      if (dateTo) {
+        query = query.lte("receipt_date", format(dateTo, "yyyy-MM-dd"));
       }
 
       const { data, error } = await query;
@@ -73,6 +87,8 @@ export default function Receipts() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("all");
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState<Date | undefined>();
+  const [dateTo, setDateTo] = useState<Date | undefined>();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<ReceiptRow | null>(null);
   const [deleteReceipt, setDeleteReceipt] = useState<ReceiptRow | null>(null);
@@ -87,7 +103,7 @@ export default function Receipts() {
   const [formAccidentDetails, setFormAccidentDetails] = useState("");
   const [formNotes, setFormNotes] = useState("");
 
-  const { data: receipts, isLoading } = useReceipts(tab, search);
+  const { data: receipts, isLoading } = useReceipts(tab, search, dateFrom, dateTo);
 
   const resetForm = useCallback(() => {
     setFormType("payment");
@@ -145,13 +161,13 @@ export default function Receipts() {
       }
     },
     onSuccess: () => {
-      toast.success(editingReceipt ? "تم تحديث القبض" : "تم إنشاء القبض");
+      toast.success(editingReceipt ? "הקבלה עודכנה בהצלחה" : "הקבלה נוצרה בהצלחה");
       queryClient.invalidateQueries({ queryKey: ["receipts"] });
       setDrawerOpen(false);
       resetForm();
     },
     onError: (err: any) => {
-      toast.error("خطأ: " + err.message);
+      toast.error("שגיאה: " + err.message);
     },
   });
 
@@ -161,17 +177,18 @@ export default function Receipts() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("تم حذف القبض");
+      toast.success("הקבלה נמחקה בהצלחה");
       queryClient.invalidateQueries({ queryKey: ["receipts"] });
       setDeleteReceipt(null);
     },
     onError: (err: any) => {
-      toast.error("خطأ: " + err.message);
+      toast.error("שגיאה: " + err.message);
     },
   });
 
   const handlePrint = (r: ReceiptRow) => {
     const receiptTypeLabel = RECEIPT_TYPE_LABELS[r.receipt_type] || r.receipt_type;
+    const paddedNum = padReceiptNumber(r.receipt_number);
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
@@ -182,16 +199,18 @@ export default function Receipts() {
 
     printWindow.document.write(`<!DOCTYPE html>
 <html dir="rtl" lang="he">
-<head><meta charset="UTF-8"><title>${receiptTypeLabel} ${r.receipt_number}</title>
+<head><meta charset="UTF-8"><title>${receiptTypeLabel} ${paddedNum}</title>
 <style>
   body{font-family:Arial,Tahoma,sans-serif;padding:30px;direction:rtl;color:#1a1a1a}
   .container{max-width:700px;margin:0 auto;border:2px solid #1a3a5c;padding:0}
   .header{background:#1a3a5c;color:white;padding:20px 30px;text-align:center}
   .header h1{margin:0;font-size:22px}
+  .header .en{margin:4px 0 0;font-size:11px;opacity:0.7;letter-spacing:1px}
   .header p{margin:4px 0 0;font-size:13px;opacity:0.8}
   .meta{display:flex;justify-content:space-between;padding:15px 30px;border-bottom:1px solid #ddd}
   .meta .num{font-size:20px;font-weight:bold;color:#c0392b}
   .meta .date{color:#666}
+  .subject-bar{background:#d6e4f0;padding:10px 30px;font-weight:bold;font-size:15px;color:#1a3a5c;border-bottom:1px solid #b0c4d8}
   table{width:100%;border-collapse:collapse;margin:0}
   td{padding:10px 30px}
   .total{background:#e8f0fe;padding:15px 30px;text-align:center;font-size:24px;font-weight:bold;color:#1a3a5c}
@@ -201,12 +220,16 @@ export default function Receipts() {
 <body>
 <div class="container">
   <div class="header">
-    <h1>בשיר אבו סנינה לביטוח ושיווק</h1>
+    <h1>בשיר אבו סנינה לביטוח</h1>
+    <div class="en">BASHEER ABU SNEINEH INSURANCE</div>
     <p>עוסק מורשה: 212426498</p>
   </div>
   <div class="meta">
-    <div><strong>${receiptTypeLabel}</strong> <span class="num">#${r.receipt_number}</span></div>
+    <div><strong>${receiptTypeLabel}</strong> <span class="num">#${paddedNum}</span></div>
     <div class="date">${r.receipt_date}</div>
+  </div>
+  <div class="subject-bar">
+    ביטוח רכב${r.car_number ? ` / רכב ${r.car_number}` : ''} / ${r.client_name}
   </div>
   <table>
     <tr><td style="padding:8px;border:1px solid #ccc;font-weight:bold;">שם לקוח</td><td style="padding:8px;border:1px solid #ccc;">${r.client_name}</td></tr>
@@ -222,6 +245,11 @@ export default function Receipts() {
     printWindow.document.close();
   };
 
+  const clearDateFilters = () => {
+    setDateFrom(undefined);
+    setDateTo(undefined);
+  };
+
   return (
     <MainLayout>
       <Header
@@ -231,24 +259,63 @@ export default function Receipts() {
       />
 
       <div className="p-4 md:p-6 space-y-4">
-        {/* Search + Tabs */}
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-          <Tabs value={tab} onValueChange={setTab} className="w-full sm:w-auto">
-            <TabsList>
-              <TabsTrigger value="all">הכל</TabsTrigger>
-              <TabsTrigger value="payment">קבלה</TabsTrigger>
-              <TabsTrigger value="accident_fee">דמי תאונות</TabsTrigger>
-            </TabsList>
-          </Tabs>
+        {/* Search + Tabs + Date Filters */}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+            <Tabs value={tab} onValueChange={setTab} className="w-full sm:w-auto">
+              <TabsList>
+                <TabsTrigger value="all">הכל</TabsTrigger>
+                <TabsTrigger value="payment">קבלה</TabsTrigger>
+                <TabsTrigger value="accident_fee">דמי תאונות</TabsTrigger>
+              </TabsList>
+            </Tabs>
 
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="חיפוש לפי שם / מס׳ רכב..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pr-9"
-            />
+            <div className="relative w-full sm:w-72">
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="חיפוש לפי שם / מס׳ רכב..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pr-9"
+              />
+            </div>
+          </div>
+
+          {/* Date range filter */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-sm text-muted-foreground">סינון לפי תאריך:</span>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className={cn("gap-2 text-sm", !dateFrom && "text-muted-foreground")}>
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "מתאריך"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar mode="single" selected={dateFrom} onSelect={setDateFrom} initialFocus className="p-3 pointer-events-auto" />
+              </PopoverContent>
+            </Popover>
+
+            <span className="text-sm text-muted-foreground">עד</span>
+
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className={cn("gap-2 text-sm", !dateTo && "text-muted-foreground")}>
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  {dateTo ? format(dateTo, "dd/MM/yyyy") : "עד תאריך"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar mode="single" selected={dateTo} onSelect={setDateTo} initialFocus className="p-3 pointer-events-auto" />
+              </PopoverContent>
+            </Popover>
+
+            {(dateFrom || dateTo) && (
+              <Button variant="ghost" size="sm" onClick={clearDateFilters} className="gap-1 text-xs">
+                <X className="h-3 w-3" />
+                נקה
+              </Button>
+            )}
           </div>
         </div>
 
@@ -279,7 +346,7 @@ export default function Receipts() {
               ) : receipts && receipts.length > 0 ? (
                 receipts.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="font-mono text-xs">{r.receipt_number}</TableCell>
+                    <TableCell className="font-mono text-xs">{padReceiptNumber(r.receipt_number)}</TableCell>
                     <TableCell>
                       <Badge variant={r.receipt_type === "accident_fee" ? "destructive" : "default"} className="text-xs">
                         {RECEIPT_TYPE_LABELS[r.receipt_type] || r.receipt_type}
@@ -317,7 +384,7 @@ export default function Receipts() {
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
                     <Receipt className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                    <p>لا توجد قبوضات</p>
+                    <p>אין קבלות</p>
                   </TableCell>
                 </TableRow>
               )}
@@ -400,7 +467,7 @@ export default function Receipts() {
         onOpenChange={(open) => !open && setDeleteReceipt(null)}
         onConfirm={() => deleteReceipt && deleteMutation.mutate(deleteReceipt.id)}
         title="מחיקת קבלה"
-        description={`האם אתה בטוח שברצונך למחוק קבלה #${deleteReceipt?.receipt_number}?`}
+        description={`האם אתה בטוח שברצונך למחוק קבלה #${deleteReceipt ? padReceiptNumber(deleteReceipt.receipt_number) : ''}?`}
       />
     </MainLayout>
   );

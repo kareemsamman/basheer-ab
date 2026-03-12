@@ -517,7 +517,15 @@ serve(async (req) => {
     }
     const policyTypesText = POLICY_TYPE_LABELS[policyTypeKey] || policyTypeKey;
 
-    const receiptId = payment.id.slice(0, 8).toUpperCase();
+    // Look up receipt_number from receipts table
+    const { data: receiptRow } = await supabase
+      .from("receipts")
+      .select("receipt_number")
+      .eq("payment_id", payment_id)
+      .maybeSingle();
+    const receiptId = receiptRow?.receipt_number 
+      ? String(receiptRow.receipt_number).padStart(2, '0')
+      : payment.id.slice(0, 8).toUpperCase();
 
     const receiptHtml = buildReceiptHtml(
       [payment as any],
