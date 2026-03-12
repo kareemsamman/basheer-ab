@@ -249,6 +249,7 @@ export default function MarketingSms() {
 
   function handleViewCampaign(campaign: Campaign) {
     setSelectedCampaign(campaign);
+    setRecipientSearch('');
     fetchCampaignRecipients(campaign.id);
   }
 
