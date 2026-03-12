@@ -74,6 +74,7 @@ const paymentCategories: Record<string, string> = {
   food: 'طعام المكتب',
   utilities: 'فواتير (كهرباء/ماء/إنترنت)',
   insurance_company: 'دفع لشركة تأمين',
+  broker_payment: 'دفع لوسيط',
   insurance_company_due: 'مستحق لشركة تأمين',
   other: 'مصاريف أخرى',
 };
