@@ -1006,7 +1006,7 @@ export default function Expenses() {
               <Label>التصنيف *</Label>
               <Select
                 value={formData.category}
-                onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
+                onValueChange={handleCategoryChange}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -1103,70 +1103,87 @@ export default function Expenses() {
               />
             </div>
 
-            {/* Amount + Date + Payment Method */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-2">
-                <Label>المبلغ *</Label>
-                <Input
-                  type="number"
-                  value={formData.amount}
-                  onChange={(e) => setFormData(prev => ({ ...prev, amount: e.target.value }))}
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>التاريخ *</Label>
-                <ArabicDatePicker
-                  value={formData.expense_date}
-                  onChange={(date) => setFormData(prev => ({ ...prev, expense_date: date }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>طريقة الدفع</Label>
-                <Select
-                  value={formData.payment_method}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, payment_method: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(paymentMethodLabels).map(([key, { label }]) => (
-                      <SelectItem key={key} value={key}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Reference number */}
-            <div className="space-y-2">
-              <Label>رقم مرجعي (اختياري)</Label>
-              <Input
-                value={formData.reference_number}
-                onChange={(e) => setFormData(prev => ({ ...prev, reference_number: e.target.value }))}
-                placeholder="رقم الشيك أو الحوالة..."
+            {/* Multi-line payment form for broker/company */}
+            {isMultiLineMode && !editingExpense ? (
+              <ExpensePaymentLines
+                paymentLines={multiPaymentLines}
+                setPaymentLines={setMultiPaymentLines}
+                mainReceiptImages={multiReceiptImages}
+                setMainReceiptImages={setMultiReceiptImages}
+                mainNotes={multiNotes}
+                setMainNotes={setMultiNotes}
+                entityId={formData.entity_id}
+                entityType={entitySource as 'broker' | 'company'}
               />
-            </div>
+            ) : (
+              <>
+                {/* Amount + Date + Payment Method */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-2">
+                    <Label>المبلغ *</Label>
+                    <Input
+                      type="number"
+                      value={formData.amount}
+                      onChange={(e) => setFormData(prev => ({ ...prev, amount: e.target.value }))}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>التاريخ *</Label>
+                    <ArabicDatePicker
+                      value={formData.expense_date}
+                      onChange={(date) => setFormData(prev => ({ ...prev, expense_date: date }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>طريقة الدفع</Label>
+                    <Select
+                      value={formData.payment_method}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, payment_method: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(paymentMethodLabels).map(([key, { label }]) => (
+                          <SelectItem key={key} value={key}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
 
-            {/* Notes */}
-            <div className="space-y-2">
-              <Label>ملاحظات</Label>
-              <Textarea
-                value={formData.notes}
-                onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                placeholder="ملاحظات إضافية..."
-                rows={2}
-              />
-            </div>
+                {/* Reference number */}
+                <div className="space-y-2">
+                  <Label>رقم مرجعي (اختياري)</Label>
+                  <Input
+                    value={formData.reference_number}
+                    onChange={(e) => setFormData(prev => ({ ...prev, reference_number: e.target.value }))}
+                    placeholder="رقم الشيك أو الحوالة..."
+                  />
+                </div>
+
+                {/* Notes */}
+                <div className="space-y-2">
+                  <Label>ملاحظات</Label>
+                  <Textarea
+                    value={formData.notes}
+                    onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                    placeholder="ملاحظات إضافية..."
+                    rows={2}
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline">إلغاء</Button>
             </DialogClose>
-            <Button onClick={handleSubmit} disabled={saving}>
-              {saving ? 'جاري الحفظ...' : editingExpense ? 'تحديث' : 'إضافة'}
+            <Button onClick={handleSubmit} disabled={saving} className="gap-2">
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              {saving ? 'جاري الحفظ...' : editingExpense ? 'تحديث' : isMultiLineMode ? `حفظ الدفعات (${multiPaymentLines.length})` : 'إضافة'}
             </Button>
           </DialogFooter>
         </DialogContent>
