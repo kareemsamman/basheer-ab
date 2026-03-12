@@ -138,6 +138,11 @@ export default function Expenses() {
   const [brokersList, setBrokersList] = useState<{id: string; name: string}[]>([]);
   const [companiesList, setCompaniesList] = useState<{id: string; name: string}[]>([]);
 
+  // Multi-line payment state (for broker/company)
+  const [multiPaymentLines, setMultiPaymentLines] = useState<PaymentLine[]>([]);
+  const [multiReceiptImages, setMultiReceiptImages] = useState<string[]>([]);
+  const [multiNotes, setMultiNotes] = useState('');
+
   // Fetch brokers and companies when dialog opens
   useEffect(() => {
     if (!isDialogOpen) return;
