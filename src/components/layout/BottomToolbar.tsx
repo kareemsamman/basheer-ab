@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Plus, FileText, ChevronUp, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { NotificationsDropdown } from "./NotificationsDropdown";
+
 import { PolicyWizard } from "@/components/policies/PolicyWizard";
 import { cn } from "@/lib/utils";
 import { useRecentClient } from "@/hooks/useRecentClient";
