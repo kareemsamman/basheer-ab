@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
+import { ExpensePaymentLines, PaymentLine } from "@/components/expenses/ExpensePaymentLines";
 import { 
   Plus, 
   Receipt,
@@ -32,6 +33,7 @@ import {
   FileText,
   ShieldCheck,
   FileDown,
+  Loader2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
