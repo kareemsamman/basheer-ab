@@ -442,7 +442,10 @@ export default function Expenses() {
       payment_method: 'cash',
       reference_number: '',
       contact_name: '',
+      entity_type: '',
+      entity_id: '',
     });
+    setEntitySource('manual');
   };
 
   const handleEdit = (expense: Expense) => {
