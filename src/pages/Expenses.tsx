@@ -400,6 +400,8 @@ export default function Expenses() {
         payment_method: formData.payment_method,
         reference_number: formData.reference_number || null,
         contact_name: formData.contact_name || null,
+        entity_type: formData.entity_type || null,
+        entity_id: formData.entity_id || null,
       };
       
       if (editingExpense) {
