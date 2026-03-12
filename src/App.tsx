@@ -355,6 +355,11 @@ const App = () => (
                   <XServiceSettings />
                 </AdminRoute>
               } />
+              <Route path="/receipts" element={
+                <ProtectedRoute>
+                  <Receipts />
+                </ProtectedRoute>
+              } />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

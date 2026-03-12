@@ -42,6 +42,17 @@ export function Header({ title, subtitle, action }: HeaderProps) {
               ⌘K
             </kbd>
           </Button>
+
+          {/* Receipts button */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="hidden lg:flex gap-2"
+            onClick={() => navigate("/receipts")}
+          >
+            <Receipt className="h-4 w-4 text-muted-foreground" />
+            <span className="text-muted-foreground">קבלות</span>
+          </Button>
           
           {/* Mobile search button */}
           <Button 
