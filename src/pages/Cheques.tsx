@@ -236,7 +236,8 @@ export default function Cheques() {
       const { data: allCheques } = await supabase
         .from('policy_payments')
         .select('amount, cheque_status, payment_date')
-        .eq('payment_type', 'cheque');
+        .eq('payment_type', 'cheque')
+        .gte('payment_date', '2026-01-01');
 
       if (allCheques) {
         const returnedCheques = allCheques.filter(c => c.cheque_status === 'returned');
