@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Header } from '@/components/layout/Header';
@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils';
 import { POLICY_TYPE_LABELS, getInsuranceTypeBadgeClass, POLICY_CHILD_LABELS } from '@/lib/insuranceTypes';
 import { PolicyDetailsDrawer } from '@/components/policies/PolicyDetailsDrawer';
 import { MultiSelectFilter } from '@/components/shared/MultiSelectFilter';
+import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import type { Tables, Enums } from '@/integrations/supabase/types';
 
 type Broker = Tables<'brokers'>;
@@ -63,6 +64,24 @@ interface PolicyWithoutCompany {
   car_number: string | null;
 }
 
+interface BrokerPolicyDetail {
+  id: string;
+  policy_type_parent: Enums<'policy_type_parent'>;
+  policy_type_child: Enums<'policy_type_child'> | null;
+  insurance_price: number;
+  payed_for_company: number | null;
+  profit: number | null;
+  start_date: string;
+  end_date: string;
+  issue_date: string | null;
+  cancelled: boolean | null;
+  transferred: boolean | null;
+  client_name: string | null;
+  car_number: string | null;
+  company_name: string | null;
+  company_name_ar: string | null;
+}
+
 export default function CompanySettlement() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -87,16 +106,20 @@ export default function CompanySettlement() {
   const [generatingTaxInvoice, setGeneratingTaxInvoice] = useState(false);
   const [showTaxInvoicePopover, setShowTaxInvoicePopover] = useState(false);
   
-  // Filters - default to all time
+  // Filters - date range instead of month
   const [showAllTime, setShowAllTime] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  });
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedBrokers, setSelectedBrokers] = useState<string[]>([]);
   const [includeCancelled, setIncludeCancelled] = useState(false);
+
+  // Broker detail view
+  const [brokerPolicies, setBrokerPolicies] = useState<BrokerPolicyDetail[]>([]);
+  const [loadingBrokerPolicies, setLoadingBrokerPolicies] = useState(false);
+
+  const isBrokerFiltered = selectedBrokers.length > 0;
 
   // Summary totals
   const [summary, setSummary] = useState({
@@ -105,6 +128,27 @@ export default function CompanySettlement() {
     totalCompanyPayment: 0,
   });
 
+  // Broker detail summary
+  const brokerSummary = useMemo(() => {
+    if (!isBrokerFiltered) return null;
+    const filtered = brokerPolicies.filter(p => {
+      if (!includeCancelled && p.cancelled) return false;
+      if (selectedCompanies.length > 0 && !selectedCompanies.some(c => p.company_name === c || p.company_name_ar === c)) return false;
+      return true;
+    });
+    // Exclude ELZAMI from totals
+    const settlement = filtered.filter(p => p.policy_type_parent !== 'ELZAMI');
+    return settlement.reduce((acc, p) => {
+      const isTransferred = p.transferred === true;
+      return {
+        totalPolicies: acc.totalPolicies + 1,
+        totalInsurancePrice: acc.totalInsurancePrice + (Number(p.insurance_price) || 0),
+        totalCompanyPayment: acc.totalCompanyPayment + (isTransferred ? 0 : (Number(p.payed_for_company) || 0)),
+        totalProfit: acc.totalProfit + (isTransferred ? 0 : (Number(p.profit) || 0)),
+      };
+    }, { totalPolicies: 0, totalInsurancePrice: 0, totalCompanyPayment: 0, totalProfit: 0 });
+  }, [brokerPolicies, includeCancelled, selectedCompanies, isBrokerFiltered]);
+
   useEffect(() => {
     fetchBrokers();
     fetchPoliciesWithoutCompany();
@@ -112,11 +156,16 @@ export default function CompanySettlement() {
 
   useEffect(() => {
     fetchFilteredCompanies();
-  }, [selectedMonth, selectedCategories, selectedBrokers, showAllTime]);
+  }, [dateFrom, dateTo, selectedCategories, selectedBrokers, showAllTime]);
 
   useEffect(() => {
-    fetchSettlementData();
-  }, [selectedMonth, selectedCompanies, selectedCategories, selectedBrokers, includeCancelled, showAllTime]);
+    if (isBrokerFiltered) {
+      fetchBrokerPolicies();
+    } else {
+      setBrokerPolicies([]);
+      fetchSettlementData();
+    }
+  }, [dateFrom, dateTo, selectedCompanies, selectedCategories, selectedBrokers, includeCancelled, showAllTime]);
 
   const fetchBrokers = async () => {
     try {
@@ -178,10 +227,10 @@ export default function CompanySettlement() {
     if (showAllTime) {
       return { startDate: '2026-01-01', endDate: null };
     }
-    const [year, month] = selectedMonth.split('-').map(Number);
-    const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
-    const endDate = new Date(year, month, 0).toISOString().split('T')[0];
-    return { startDate, endDate };
+    return { 
+      startDate: dateFrom || '2026-01-01', 
+      endDate: dateTo || null 
+    };
   };
 
   // Fetch companies that have policies matching current filters (using RPC)
@@ -275,9 +324,111 @@ export default function CompanySettlement() {
     }
   };
 
+  // Fetch detailed policies when broker is filtered
+  const fetchBrokerPolicies = async () => {
+    setLoadingBrokerPolicies(true);
+    setLoading(true);
+    try {
+      const { startDate, endDate } = getDateRange();
+
+      let query = supabase
+        .from('policies')
+        .select(`
+          id,
+          policy_type_parent,
+          policy_type_child,
+          insurance_price,
+          payed_for_company,
+          profit,
+          start_date,
+          end_date,
+          issue_date,
+          cancelled,
+          transferred,
+          clients (full_name),
+          cars (car_number),
+          insurance_companies (name, name_ar)
+        `)
+        .is('deleted_at', null)
+        .gte('issue_date', startDate);
+
+      if (endDate) {
+        query = query.lte('issue_date', endDate);
+      }
+
+      // Filter by broker - need to filter via clients.broker_id
+      if (selectedBrokers.length === 1) {
+        query = query.eq('broker_id', selectedBrokers[0]);
+      } else if (selectedBrokers.length > 1) {
+        query = query.in('broker_id', selectedBrokers);
+      }
+
+      if (selectedCompanies.length > 0) {
+        query = query.in('company_id', selectedCompanies);
+      }
+
+      if (selectedCategories.length > 0) {
+        query = query.in('policy_type_parent', selectedCategories);
+      }
+
+      if (!includeCancelled) {
+        query = query.or('cancelled.is.null,cancelled.eq.false');
+      }
+
+      const { data: policiesData, error } = await query.order('issue_date', { ascending: true });
+
+      if (error) throw error;
+
+      const mapped: BrokerPolicyDetail[] = (policiesData || []).map((p: any) => ({
+        id: p.id,
+        policy_type_parent: p.policy_type_parent,
+        policy_type_child: p.policy_type_child,
+        insurance_price: p.insurance_price,
+        payed_for_company: p.payed_for_company,
+        profit: p.profit,
+        start_date: p.start_date,
+        end_date: p.end_date,
+        issue_date: p.issue_date,
+        cancelled: p.cancelled,
+        transferred: p.transferred,
+        client_name: p.clients?.full_name || null,
+        car_number: p.cars?.car_number || null,
+        company_name: p.insurance_companies?.name || null,
+        company_name_ar: p.insurance_companies?.name_ar || null,
+      }));
+
+      setBrokerPolicies(mapped);
+
+      // Update summary from broker policies (excluding ELZAMI)
+      const settlement = mapped.filter(p => p.policy_type_parent !== 'ELZAMI');
+      const totals = settlement.reduce(
+        (acc, p) => {
+          const isTransferred = p.transferred === true;
+          return {
+            totalPolicies: acc.totalPolicies + 1,
+            totalInsurancePrice: acc.totalInsurancePrice + (Number(p.insurance_price) || 0),
+            totalCompanyPayment: acc.totalCompanyPayment + (isTransferred ? 0 : (Number(p.payed_for_company) || 0)),
+          };
+        },
+        { totalPolicies: 0, totalInsurancePrice: 0, totalCompanyPayment: 0 }
+      );
+      setSummary(totals);
+    } catch (error) {
+      console.error('Error fetching broker policies:', error);
+      toast({
+        title: 'خطأ',
+        description: 'فشل في جلب بيانات الوسيط',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingBrokerPolicies(false);
+      setLoading(false);
+    }
+  };
+
   const handleResetFilters = () => {
-    const now = new Date();
-    setSelectedMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+    setDateFrom('');
+    setDateTo('');
     setSelectedCompanies([]);
     setSelectedCategories([]);
     setSelectedBrokers([]);
@@ -286,22 +437,45 @@ export default function CompanySettlement() {
   };
 
   const exportToCSV = () => {
-    const headers = ['الشركة', 'عدد الوثائق', 'إجمالي المحصل', 'المستحق للشركة'];
-    const rows = data.map(item => [
-      item.company_name_ar || item.company_name,
-      item.policy_count,
-      item.total_insurance_price,
-      item.total_company_payment,
-    ]);
-
-    const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `company-settlement-${showAllTime ? 'all-time' : selectedMonth}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    if (isBrokerFiltered) {
+      // Detailed export
+      const headers = ['العميل', 'رقم السيارة', 'نوع التأمين', 'الشركة', 'تاريخ البداية', 'تاريخ النهاية', 'المحصل', 'المستحق للشركة', 'الربح'];
+      const rows = brokerPolicies.map(p => [
+        p.client_name || '',
+        p.car_number || '',
+        getInsuranceTypeLabelBroker(p),
+        p.company_name_ar || p.company_name || '',
+        p.start_date,
+        p.end_date,
+        p.insurance_price,
+        p.payed_for_company || 0,
+        p.profit || 0,
+      ]);
+      const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `broker-settlement-detail.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } else {
+      const headers = ['الشركة', 'عدد الوثائق', 'إجمالي المحصل', 'المستحق للشركة'];
+      const rows = data.map(item => [
+        item.company_name_ar || item.company_name,
+        item.policy_count,
+        item.total_insurance_price,
+        item.total_company_payment,
+      ]);
+      const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `company-settlement${showAllTime ? '-all-time' : ''}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
   };
 
   const handlePrint = () => {
@@ -319,13 +493,24 @@ export default function CompanySettlement() {
     return POLICY_TYPE_LABELS[policy.policy_type_parent];
   };
 
+  const getInsuranceTypeLabelBroker = (policy: BrokerPolicyDetail) => {
+    if (policy.policy_type_parent === 'THIRD_FULL' && policy.policy_type_child) {
+      return POLICY_CHILD_LABELS[policy.policy_type_child] || policy.policy_type_child;
+    }
+    return POLICY_TYPE_LABELS[policy.policy_type_parent] || policy.policy_type_parent || '';
+  };
+
   const handleViewPolicy = (policyId: string) => {
     setSelectedPolicyId(policyId);
     setDetailsDrawerOpen(true);
   };
 
   const handlePolicyUpdated = () => {
-    fetchSettlementData();
+    if (isBrokerFiltered) {
+      fetchBrokerPolicies();
+    } else {
+      fetchSettlementData();
+    }
     fetchPoliciesWithoutCompany();
   };
 
@@ -370,9 +555,13 @@ export default function CompanySettlement() {
     if (showAllTime) {
       parts.push('كل الفترات');
     } else {
-      const [year, month] = selectedMonth.split('-');
-      const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-      parts.push(`${monthNames[parseInt(month) - 1]} ${year}`);
+      if (dateFrom && dateTo) {
+        parts.push(`من ${formatDate(dateFrom)} إلى ${formatDate(dateTo)}`);
+      } else if (dateFrom) {
+        parts.push(`من ${formatDate(dateFrom)}`);
+      } else if (dateTo) {
+        parts.push(`حتى ${formatDate(dateTo)}`);
+      }
     }
 
     if (!includeCancelled) {
@@ -381,6 +570,8 @@ export default function CompanySettlement() {
 
     return parts.join(' • ');
   };
+
+  const activeSummary = isBrokerFiltered && brokerSummary ? brokerSummary : summary;
 
   if (!isAdmin) {
     return (
@@ -399,7 +590,7 @@ export default function CompanySettlement() {
   return (
     <MainLayout>
       <Header
-        title="تقرير تسوية الشركات"
+        title="كشوفات انتاج"
         subtitle="ملخص المبالغ المستحقة للشركات والأرباح"
       />
 
@@ -409,7 +600,7 @@ export default function CompanySettlement() {
           <TabsList>
             <TabsTrigger value="with-company" className="gap-2">
               <Building2 className="h-4 w-4" />
-              الوثائق مع شركات ({summary.totalPolicies.toLocaleString('en-US')})
+              الوثائق مع شركات ({activeSummary.totalPolicies.toLocaleString('en-US')})
             </TabsTrigger>
             <TabsTrigger value="no-company" className="gap-2">
               <AlertTriangle className="h-4 w-4" />
@@ -424,6 +615,9 @@ export default function CompanySettlement() {
                 <AlertCircle className="h-4 w-4 text-muted-foreground" />
                 <span className="text-muted-foreground">النتائج المعروضة:</span>
                 <Badge variant="secondary">{getFilterDescription()}</Badge>
+                {isBrokerFiltered && (
+                  <Badge variant="default" className="bg-primary/20 text-primary">عرض تفصيلي (وسيط)</Badge>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={handleResetFilters}>
@@ -436,24 +630,43 @@ export default function CompanySettlement() {
             {/* Filters */}
             <Card>
               <CardContent className="pt-6">
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4" dir="rtl">
+                <div className="grid grid-cols-1 md:grid-cols-6 gap-4" dir="rtl">
+                  {/* Date From */}
                   <div className="space-y-2">
-                    <Label>الشهر</Label>
-                    <Input
-                      type="month"
-                      value={selectedMonth}
-                      onChange={(e) => {
-                        setSelectedMonth(e.target.value);
-                        setShowAllTime(false);
+                    <Label>من تاريخ</Label>
+                    <ArabicDatePicker
+                      value={dateFrom}
+                      onChange={(v) => {
+                        setDateFrom(v);
+                        if (v) setShowAllTime(false);
                       }}
-                      className="text-left"
+                      placeholder="من"
+                      compact
+                    />
+                  </div>
+
+                  {/* Date To */}
+                  <div className="space-y-2">
+                    <Label>إلى تاريخ</Label>
+                    <ArabicDatePicker
+                      value={dateTo}
+                      onChange={(v) => {
+                        setDateTo(v);
+                        if (v) setShowAllTime(false);
+                      }}
+                      placeholder="إلى"
+                      compact
                     />
                     {!showAllTime && (
                       <Button 
                         variant="link" 
                         size="sm" 
                         className="p-0 h-auto text-xs"
-                        onClick={() => setShowAllTime(true)}
+                        onClick={() => {
+                          setShowAllTime(true);
+                          setDateFrom('');
+                          setDateTo('');
+                        }}
                       >
                         <Calendar className="h-3 w-3 ml-1" />
                         عرض كل الفترات
@@ -557,7 +770,7 @@ export default function CompanySettlement() {
                       </div>
                     </PopoverContent>
                   </Popover>
-                  <Button variant="ghost" onClick={() => setShowAllTime(true)} disabled={showAllTime}>
+                  <Button variant="ghost" onClick={() => { setShowAllTime(true); setDateFrom(''); setDateTo(''); }} disabled={showAllTime}>
                     <RotateCcw className="h-4 w-4 ml-2" />
                     كل الفترات
                   </Button>
@@ -566,13 +779,13 @@ export default function CompanySettlement() {
             </Card>
 
             {/* Summary Cards */}
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className={cn("grid gap-4", isBrokerFiltered ? "md:grid-cols-4" : "md:grid-cols-3")}>
               <Card>
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-muted-foreground">عدد الوثائق</p>
-                      <p className="text-2xl font-bold">{summary.totalPolicies.toLocaleString('en-US')}</p>
+                      <p className="text-2xl font-bold">{activeSummary.totalPolicies.toLocaleString('en-US')}</p>
                     </div>
                     <div className="rounded-xl bg-primary/10 p-3">
                       <FileText className="h-6 w-6 text-primary" />
@@ -586,7 +799,7 @@ export default function CompanySettlement() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-muted-foreground">إجمالي المحصل</p>
-                      <p className="text-2xl font-bold">₪{summary.totalInsurancePrice.toLocaleString('en-US')}</p>
+                      <p className="text-2xl font-bold">₪{activeSummary.totalInsurancePrice.toLocaleString('en-US')}</p>
                     </div>
                     <div className="rounded-xl bg-blue-500/10 p-3">
                       <Wallet className="h-6 w-6 text-blue-500" />
@@ -600,7 +813,7 @@ export default function CompanySettlement() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-muted-foreground">المستحق للشركات</p>
-                      <p className="text-2xl font-bold text-destructive">₪{summary.totalCompanyPayment.toLocaleString('en-US')}</p>
+                      <p className="text-2xl font-bold text-destructive">₪{activeSummary.totalCompanyPayment.toLocaleString('en-US')}</p>
                     </div>
                     <div className="rounded-xl bg-destructive/10 p-3">
                       <Building2 className="h-6 w-6 text-destructive" />
@@ -608,96 +821,182 @@ export default function CompanySettlement() {
                   </div>
                 </CardContent>
               </Card>
+
+              {isBrokerFiltered && brokerSummary && (
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">الربح</p>
+                        <p className="text-2xl font-bold text-green-600">₪{brokerSummary.totalProfit.toLocaleString('en-US')}</p>
+                      </div>
+                      <div className="rounded-xl bg-green-500/10 p-3">
+                        <Wallet className="h-6 w-6 text-green-600" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
 
             {/* Data Table */}
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between gap-4">
-                  <CardTitle>تفاصيل التسوية حسب الشركة</CardTitle>
+                  <CardTitle>
+                    {isBrokerFiltered ? 'تفاصيل وثائق الوسيط' : 'تفاصيل التسوية حسب الشركة'}
+                  </CardTitle>
                   <div className="flex items-center gap-2">
                     <div className="relative w-64">
                       <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
-                        placeholder="بحث باسم الشركة..."
+                        placeholder={isBrokerFiltered ? "بحث بالاسم أو رقم السيارة..." : "بحث باسم الشركة..."}
                         value={companySearch}
                         onChange={(e) => setCompanySearch(e.target.value)}
                         className="pr-10"
                         onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                       />
                     </div>
-                    <Button variant="default" size="sm" onClick={() => {/* search already reactive */}}>
-                      <Search className="h-4 w-4 ml-1" />
-                      بحث
-                    </Button>
                   </div>
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="rounded-lg border">
-                  <Table>
-                    <TableHeader>
+                <div className="rounded-lg border overflow-auto" style={{ maxHeight: '70vh' }}>
+                  {isBrokerFiltered ? (
+                    /* Broker detail table */
+                    <Table>
+                      <TableHeader>
                         <TableRow>
+                          <TableHead className="text-right">العميل</TableHead>
+                          <TableHead className="text-right">رقم السيارة</TableHead>
+                          <TableHead className="text-right">نوع التأمين</TableHead>
                           <TableHead className="text-right">الشركة</TableHead>
-                          <TableHead className="text-right">عدد الوثائق</TableHead>
-                          <TableHead className="text-right">إجمالي المحصل</TableHead>
-                          <TableHead className="text-right">المستحق للشركة</TableHead>
+                          <TableHead className="text-right">تاريخ البداية</TableHead>
+                          <TableHead className="text-right">تاريخ النهاية</TableHead>
+                          <TableHead className="text-right">المحصل</TableHead>
+                          <TableHead className="text-right">للشركة</TableHead>
+                          <TableHead className="text-right">الربح</TableHead>
                         </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {loading ? (
-                          Array.from({ length: 5 }).map((_, i) => (
-                             <TableRow key={i}>
-                              <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                              <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                              <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                              <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                             </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {loading || loadingBrokerPolicies ? (
+                          Array.from({ length: 8 }).map((_, i) => (
+                            <TableRow key={i}>
+                              {Array.from({ length: 9 }).map((_, j) => (
+                                <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
+                              ))}
+                            </TableRow>
                           ))
-                      ) : data.length === 0 ? (
-                        <TableRow>
-                           <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                            لا توجد بيانات للفترة المحددة
-                          </TableCell>
-                        </TableRow>
-                      ) : (() => {
-                        const filtered = companySearch.trim()
-                          ? data.filter(item => 
-                              (item.company_name_ar || '').includes(companySearch) || 
-                              item.company_name.toLowerCase().includes(companySearch.toLowerCase())
-                            )
-                          : data;
-                        return filtered.length === 0 ? (
+                        ) : (() => {
+                          const q = companySearch.toLowerCase().trim();
+                          const filtered = q
+                            ? brokerPolicies.filter(p =>
+                                (p.client_name || '').toLowerCase().includes(q) ||
+                                (p.car_number || '').includes(q) ||
+                                (p.company_name_ar || '').includes(q) ||
+                                (p.company_name || '').toLowerCase().includes(q)
+                              )
+                            : brokerPolicies;
+                          
+                          return filtered.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                                لا توجد بيانات
+                              </TableCell>
+                            </TableRow>
+                          ) : filtered.map((policy) => (
+                            <TableRow
+                              key={policy.id}
+                              onClick={() => handleViewPolicy(policy.id)}
+                              className={cn(
+                                "cursor-pointer transition-colors hover:bg-secondary/50",
+                                policy.cancelled && "opacity-50 line-through"
+                              )}
+                            >
+                              <TableCell className="font-medium">{policy.client_name || '-'}</TableCell>
+                              <TableCell className="font-mono"><bdi>{policy.car_number || '-'}</bdi></TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={getInsuranceTypeBadgeClass(policy.policy_type_parent)}>
+                                  {getInsuranceTypeLabelBroker(policy)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>{policy.company_name_ar || policy.company_name || '-'}</TableCell>
+                              <TableCell>{formatDate(policy.start_date)}</TableCell>
+                              <TableCell>{formatDate(policy.end_date)}</TableCell>
+                              <TableCell className="font-mono">₪{Number(policy.insurance_price).toLocaleString('en-US')}</TableCell>
+                              <TableCell className="font-mono text-destructive">₪{Number(policy.payed_for_company || 0).toLocaleString('en-US')}</TableCell>
+                              <TableCell className="font-mono text-green-600">₪{Number(policy.profit || 0).toLocaleString('en-US')}</TableCell>
+                            </TableRow>
+                          ));
+                        })()}
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    /* Summary table (default) */
+                    <Table>
+                      <TableHeader>
                           <TableRow>
-                            <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                              لا توجد نتائج للبحث
+                            <TableHead className="text-right">الشركة</TableHead>
+                            <TableHead className="text-right">عدد الوثائق</TableHead>
+                            <TableHead className="text-right">إجمالي المحصل</TableHead>
+                            <TableHead className="text-right">المستحق للشركة</TableHead>
+                          </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {loading ? (
+                            Array.from({ length: 5 }).map((_, i) => (
+                               <TableRow key={i}>
+                                <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                                <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                                <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                                <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                               </TableRow>
+                            ))
+                        ) : data.length === 0 ? (
+                          <TableRow>
+                             <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                              لا توجد بيانات للفترة المحددة
                             </TableCell>
                           </TableRow>
-                        ) : filtered.map((item, index) => (
-                          <TableRow 
-                            key={index}
-                            onClick={() => navigate(`/reports/company-settlement/${item.company_id}`)}
-                            className={cn(
-                              "cursor-pointer transition-colors",
-                              "hover:bg-secondary/50"
-                            )}
-                          >
-                            <TableCell className="font-medium">
-                              <div className="flex items-center gap-2">
-                                {item.company_name_ar || item.company_name}
-                                <ChevronLeft className="h-4 w-4 text-muted-foreground" />
-                              </div>
-                            </TableCell>
-                            <TableCell>{item.policy_count.toLocaleString('en-US')}</TableCell>
-                            <TableCell>₪{item.total_insurance_price.toLocaleString('en-US')}</TableCell>
-                            <TableCell className="text-destructive font-medium">
-                              ₪{item.total_company_payment.toLocaleString('en-US')}
-                            </TableCell>
-                           </TableRow>
-                        ));
-                      })()}
-                    </TableBody>
-                  </Table>
+                        ) : (() => {
+                          const filtered = companySearch.trim()
+                            ? data.filter(item => 
+                                (item.company_name_ar || '').includes(companySearch) || 
+                                item.company_name.toLowerCase().includes(companySearch.toLowerCase())
+                              )
+                            : data;
+                          return filtered.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                                لا توجد نتائج للبحث
+                              </TableCell>
+                            </TableRow>
+                          ) : filtered.map((item, index) => (
+                            <TableRow 
+                              key={index}
+                              onClick={() => navigate(`/reports/company-settlement/${item.company_id}`)}
+                              className={cn(
+                                "cursor-pointer transition-colors",
+                                "hover:bg-secondary/50"
+                              )}
+                            >
+                              <TableCell className="font-medium">
+                                <div className="flex items-center gap-2">
+                                  {item.company_name_ar || item.company_name}
+                                  <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+                                </div>
+                              </TableCell>
+                              <TableCell>{item.policy_count.toLocaleString('en-US')}</TableCell>
+                              <TableCell>₪{item.total_insurance_price.toLocaleString('en-US')}</TableCell>
+                              <TableCell className="text-destructive font-medium">
+                                ₪{item.total_company_payment.toLocaleString('en-US')}
+                              </TableCell>
+                             </TableRow>
+                          ));
+                        })()}
+                      </TableBody>
+                    </Table>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -803,7 +1102,7 @@ export default function CompanySettlement() {
         {/* Print-only content */}
         <div className="hidden print:block">
           <div className="text-center mb-6">
-            <h1 className="text-2xl font-bold">تقرير تسوية الشركات</h1>
+            <h1 className="text-2xl font-bold">كشوفات انتاج</h1>
             <p className="text-muted-foreground">{getFilterDescription()}</p>
           </div>
 
@@ -811,15 +1110,15 @@ export default function CompanySettlement() {
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="border p-4 text-center">
               <p className="text-sm text-muted-foreground">عدد الوثائق</p>
-              <p className="text-xl font-bold">{summary.totalPolicies.toLocaleString('en-US')}</p>
+              <p className="text-xl font-bold">{activeSummary.totalPolicies.toLocaleString('en-US')}</p>
             </div>
             <div className="border p-4 text-center">
               <p className="text-sm text-muted-foreground">إجمالي المحصل</p>
-              <p className="text-xl font-bold">₪{summary.totalInsurancePrice.toLocaleString('en-US')}</p>
+              <p className="text-xl font-bold">₪{activeSummary.totalInsurancePrice.toLocaleString('en-US')}</p>
             </div>
             <div className="border p-4 text-center">
               <p className="text-sm text-muted-foreground">المستحق للشركات</p>
-              <p className="text-xl font-bold">₪{summary.totalCompanyPayment.toLocaleString('en-US')}</p>
+              <p className="text-xl font-bold">₪{activeSummary.totalCompanyPayment.toLocaleString('en-US')}</p>
             </div>
           </div>
 
