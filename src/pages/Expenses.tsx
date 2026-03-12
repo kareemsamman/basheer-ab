@@ -207,7 +207,7 @@ export default function Expenses() {
       
       if (expensesResult.error) throw expensesResult.error;
       if (policyPaymentsResult.error) throw policyPaymentsResult.error;
-      if (companyDuesResult.error) throw companyDuesResult.error;
+      
       if (elzamiResult.error) throw elzamiResult.error;
       
       let manualExpenses: Expense[] = (expensesResult.data || []).map((e: any) => ({
