@@ -91,7 +91,7 @@ interface GroupedClientActivity {
 const PAYMENT_TYPE_LABELS: Record<string, string> = {
   cash: "نقدًا",
   cheque: "شيك",
-  visa: "فيزا",
+  visa: "بنك/فيزا",
   transfer: "حوالة",
   credit_card: "بطاقة",
 };
