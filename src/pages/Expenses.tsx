@@ -569,6 +569,9 @@ export default function Expenses() {
       entity_id: '',
     });
     setEntitySource('manual');
+    setMultiPaymentLines([]);
+    setMultiReceiptImages([]);
+    setMultiNotes('');
   };
 
   const handleEdit = (expense: Expense) => {
