@@ -58,7 +58,7 @@ export function ClientFilesTab({ clientId }: ClientFilesTabProps) {
       // 1. Get all policy IDs for this client
       const { data: policyData } = await supabase
         .from('policies')
-        .select('id, policy_number, insurance_type')
+        .select('id, policy_number, policy_type_child')
         .eq('client_id', clientId);
 
       const pols: PolicyInfo[] = policyData || [];
