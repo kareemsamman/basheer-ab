@@ -1,40 +1,55 @@
 
 
-# Fix Activity Log: Policy Labels, Arrow Direction, and Package Grouping
+# Fix Package Payment Splitting — Insert 1 Record Per Cheque, Not Split Across Components
 
-## Issues
-1. **THIRD_FULL shows "شامل طرف ثالث"** — should show the child type ("شامل" or "ثالث") per system standard
-2. **Arrow direction wrong** — shows `→` (right) but should be `←` (left) per system convention
-3. **Package policies shown as separate items** — should be grouped by `group_id` into a single card showing total price, all components with their companies/prices
+## Problem
+When paying for a package policy (e.g., شامل ₪3,700 + خدمات طريق ₪500 = ₪4,200) with 3 cheques of ₪1,400 each, `PackagePaymentModal` proportionally splits each cheque across the 2 component policies, creating **6 payment records** (₪1,233 + ₪167 per cheque). The user expects **3 records** — one per cheque.
 
-## Changes
+## Root Cause
+`PackagePaymentModal.handleSubmit` calls `calculateSplitPayments()` which distributes each payment proportionally by remaining balance across all package component policies.
 
-### `src/pages/ActivityLog.tsx`
+## Solution
 
-**1. Fix POLICY_TYPE_LABELS** (line 78): For `THIRD_FULL`, use child type resolution instead of the generic label.
+### 1. Update the DB trigger to validate across the entire package group
+**Migration SQL** — Change the existing payment total check in `validate_policy_payment_total()` so that when a policy belongs to a group, `v_existing_total` sums payments across **all** policies in that group (not just `NEW.policy_id`).
 
-**2. Fix policy label logic** (line 139): When `policy_type_parent === 'THIRD_FULL'`, use child label: `policy_type_child === 'FULL' ? 'شامل' : 'ثالث'` instead of the parent label.
-
-**3. Fix arrow direction** (line 538): Change `→` to `←`.
-
-**4. Add `group_id` to policy query** (line 122): Include `group_id` in the select.
-
-**5. Group policies by `group_id`**: After fetching policies, group them by `group_id`. For grouped policies, create a single `ActivityItem` with type `"policy"` and action `"باقة جديدة"` that includes:
-- New `details` fields: `components` array (each with type label, company, price, service name)
-- `insurance_price` = sum of all component prices
-- Single card per package instead of N separate cards
-
-**6. Update `ActivityItem` interface**: Add optional `components` array field:
-```typescript
-components?: Array<{
-  type_label: string;
-  company_name: string;
-  price: number;
-  service_name?: string;
-}>;
+Current trigger (line 42-48) only sums `pp.policy_id = NEW.policy_id`. Updated version:
+```sql
+IF v_group_id IS NOT NULL THEN
+  -- Sum payments across ALL policies in the package
+  SELECT COALESCE(SUM(pp.amount), 0) INTO v_existing_total
+  FROM policy_payments pp
+  JOIN policies pol ON pol.id = pp.policy_id
+  WHERE pol.group_id = v_group_id
+    AND pol.deleted_at IS NULL
+    AND COALESCE(pp.refused, false) = false
+    AND (TG_OP <> 'UPDATE' OR pp.id <> NEW.id);
+ELSE
+  -- Single policy: sum only for that policy
+  SELECT COALESCE(SUM(pp.amount), 0) INTO v_existing_total ...
+END IF;
 ```
 
-**7. Update rendering**: For activities with `components`, render a multi-line list showing each component with its company and price, plus a total.
+### 2. Update `PackagePaymentModal.handleSubmit` — Stop splitting, insert 1 record per payment
+**File:** `src/components/clients/PackagePaymentModal.tsx`
 
-**8. Fix payment label too**: Same child type resolution for payments (line ~193).
+Instead of calling `calculateSplitPayments()` and looping over splits, insert each payment line as a **single record** against the primary (first) policy in the package. Add `batch_id` to group them. Include `cheque_image_url` for cheque payments.
+
+Key changes in `handleSubmit` (lines 448-496):
+- Generate a `batch_id` for all payments in this batch
+- Pick the primary policy ID (first policy with remaining, or first overall)
+- Insert one `policy_payments` record per payment line (no split loop)
+- Include `cheque_image_url` from scanned cheques
+- Upload images for each payment
+
+### 3. Update `handleScannedCheques` to preserve `cheque_image_url`
+**File:** `src/components/clients/PackagePaymentModal.tsx`
+
+The scanned cheque handler (line 324-356) doesn't preserve the CDN `image_url` from the scanner. Add `cheque_image_url: cheque.image_url` to the payment line (same pattern as `PolicyPaymentsSection`).
+
+### Files Changed
+| File | Change |
+|---|---|
+| DB migration (SQL) | Update trigger to sum across package group |
+| `src/components/clients/PackagePaymentModal.tsx` | Stop proportional split; insert 1 record per payment against primary policy with batch_id + cheque_image_url |
 
