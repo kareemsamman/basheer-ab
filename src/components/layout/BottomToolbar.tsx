@@ -166,11 +166,6 @@ export function BottomToolbar({ onPolicyComplete }: BottomToolbarProps) {
           {/* Inline search (dropdown above the input) */}
           <BottomToolbarInlineSearch />
 
-          {/* Separator */}
-          <div className="h-6 w-px bg-border/50" />
-
-          {/* Notifications */}
-          <NotificationsDropdown />
         </div>
       </div>
 
