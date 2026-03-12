@@ -12,7 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
-import { MessageSquare, Search, Filter, CheckCircle, XCircle, Clock, RefreshCw } from "lucide-react";
+import { MessageSquare, Search, Filter, CheckCircle, XCircle, Clock, RefreshCw, Megaphone } from "lucide-react";
 
 interface SmsLog {
   id: string;
@@ -25,8 +25,9 @@ interface SmsLog {
   created_at: string;
   client_id: string | null;
   policy_id: string | null;
-  clients?: { full_name: string } | null;
-  policies?: { policy_number: string | null } | null;
+  client_name: string | null;
+  policy_number: string | null;
+  source: "sms_logs" | "marketing";
 }
 
 const SMS_TYPE_LABELS: Record<string, string> = {
@@ -36,10 +37,12 @@ const SMS_TYPE_LABELS: Record<string, string> = {
   reminder_1week: "تذكير أسبوع",
   manual: "يدوي",
   payment_request: "طلب دفع",
+  marketing: "تسويقي",
 };
 
 const STATUS_CONFIG: Record<string, { label: string; icon: typeof CheckCircle; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   sent: { label: "تم الإرسال", icon: CheckCircle, variant: "default" },
+  delivered: { label: "تم الإرسال", icon: CheckCircle, variant: "default" },
   pending: { label: "قيد الانتظار", icon: Clock, variant: "secondary" },
   failed: { label: "فشل", icon: XCircle, variant: "destructive" },
 };
@@ -53,38 +56,145 @@ export default function SmsHistory() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
   const pageSize = 50;
 
   useEffect(() => {
     fetchLogs();
-  }, [typeFilter, statusFilter, page]);
+  }, [typeFilter, statusFilter, page, search]);
 
   const fetchLogs = async () => {
     setLoading(true);
     try {
-      let query = supabase
-        .from("sms_logs")
-        .select(`
-          *,
-          clients(full_name),
-          policies(policy_number)
-        `)
-        .order("created_at", { ascending: false })
-        .range(page * pageSize, (page + 1) * pageSize - 1);
+      const isMarketingFilter = typeFilter === "marketing";
+      const isAllOrMarketing = typeFilter === "all" || isMarketingFilter;
 
-      if (typeFilter !== "all") {
-        query = query.eq("sms_type", typeFilter as any);
+      let smsLogsData: SmsLog[] = [];
+      let marketingData: SmsLog[] = [];
+
+      // Fetch from sms_logs (unless filtering for marketing only)
+      if (!isMarketingFilter) {
+        let query = supabase
+          .from("sms_logs")
+          .select(`
+            *,
+            clients(full_name),
+            policies(policy_number)
+          `)
+          .order("created_at", { ascending: false });
+
+        if (typeFilter !== "all") {
+          query = query.eq("sms_type", typeFilter as any);
+        }
+        if (statusFilter !== "all") {
+          query = query.eq("status", statusFilter);
+        }
+
+        // Server-side search by phone number (client name search done client-side after join)
+        if (search && /^\d+$/.test(search.trim())) {
+          query = query.ilike("phone_number", `%${search.trim()}%`);
+        }
+
+        const from = isAllOrMarketing ? 0 : page * pageSize;
+        const to = isAllOrMarketing ? 999 : (page + 1) * pageSize - 1;
+        query = query.range(from, to);
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        smsLogsData = (data || []).map((log: any) => ({
+          id: log.id,
+          phone_number: log.phone_number,
+          message: log.message,
+          sms_type: log.sms_type,
+          status: log.status,
+          error_message: log.error_message,
+          sent_at: log.sent_at,
+          created_at: log.created_at,
+          client_id: log.client_id,
+          policy_id: log.policy_id,
+          client_name: log.clients?.full_name || null,
+          policy_number: log.policies?.policy_number || null,
+          source: "sms_logs" as const,
+        }));
       }
-      if (statusFilter !== "all") {
-        query = query.eq("status", statusFilter);
+
+      // Fetch from marketing_sms_recipients (if all or marketing filter)
+      if (isAllOrMarketing) {
+        let mQuery = supabase
+          .from("marketing_sms_recipients")
+          .select(`
+            id,
+            phone_number,
+            status,
+            error_message,
+            sent_at,
+            created_at,
+            client_id,
+            clients(full_name),
+            marketing_sms_campaigns(title, message)
+          `)
+          .order("created_at", { ascending: false });
+
+        if (statusFilter !== "all") {
+          mQuery = mQuery.eq("status", statusFilter);
+        }
+
+        if (search && /^\d+$/.test(search.trim())) {
+          mQuery = mQuery.ilike("phone_number", `%${search.trim()}%`);
+        }
+
+        const from = isMarketingFilter ? page * pageSize : 0;
+        const to = isMarketingFilter ? (page + 1) * pageSize - 1 : 999;
+        mQuery = mQuery.range(from, to);
+
+        const { data: mData, error: mError } = await mQuery;
+        if (mError) throw mError;
+
+        marketingData = (mData || []).map((r: any) => ({
+          id: r.id,
+          phone_number: r.phone_number,
+          message: r.marketing_sms_campaigns?.message || "",
+          sms_type: "marketing",
+          status: r.status === "delivered" ? "sent" : r.status,
+          error_message: r.error_message,
+          sent_at: r.sent_at,
+          created_at: r.created_at,
+          client_id: r.client_id,
+          policy_id: null,
+          client_name: r.clients?.full_name || null,
+          policy_number: null,
+          source: "marketing" as const,
+        }));
       }
 
-      const { data, error } = await query;
+      // Merge and sort
+      let merged = [...smsLogsData, ...marketingData];
+      merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-      if (error) throw error;
+      // Client-side name search (for non-digit searches)
+      if (search && !/^\d+$/.test(search.trim())) {
+        const q = search.trim().toLowerCase();
+        merged = merged.filter(
+          (log) =>
+            log.client_name?.toLowerCase().includes(q) ||
+            log.phone_number.includes(search.trim()) ||
+            log.message.toLowerCase().includes(q)
+        );
+      }
 
-      setLogs(data || []);
-      setHasMore((data?.length || 0) === pageSize);
+      // Paginate merged results when showing "all"
+      if (isAllOrMarketing && !isMarketingFilter) {
+        const start = page * pageSize;
+        const paged = merged.slice(start, start + pageSize);
+        setHasMore(merged.length > start + pageSize);
+        setTotalCount(merged.length);
+        setLogs(paged);
+      } else {
+        setHasMore(merged.length === pageSize);
+        setTotalCount(merged.length);
+        setLogs(merged);
+      }
     } catch (error: any) {
       console.error("Error fetching SMS logs:", error);
       toast({
@@ -96,17 +206,6 @@ export default function SmsHistory() {
       setLoading(false);
     }
   };
-
-  const filteredLogs = logs.filter((log) => {
-    if (!search) return true;
-    const searchLower = search.toLowerCase();
-    return (
-      log.phone_number.includes(search) ||
-      log.message.toLowerCase().includes(searchLower) ||
-      log.clients?.full_name?.toLowerCase().includes(searchLower) ||
-      log.policies?.policy_number?.toLowerCase().includes(searchLower)
-    );
-  });
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "-";
@@ -134,7 +233,7 @@ export default function SmsHistory() {
                   <Input
                     placeholder="بحث بالاسم أو الهاتف..."
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    onChange={(e) => { setSearch(e.target.value); setPage(0); }}
                     className="pr-10"
                   />
                 </div>
@@ -178,7 +277,7 @@ export default function SmsHistory() {
             <CardTitle className="flex items-center gap-2">
               <MessageSquare className="h-5 w-5 text-primary" />
               سجل الرسائل
-              <Badge variant="secondary" className="mr-2">{filteredLogs.length}</Badge>
+              <Badge variant="secondary" className="mr-2">{logs.length}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -203,32 +302,33 @@ export default function SmsHistory() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredLogs.length === 0 ? (
+                    {logs.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                           لا توجد رسائل
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredLogs.map((log) => {
+                      logs.map((log) => {
                         const statusConfig = STATUS_CONFIG[log.status] || STATUS_CONFIG.pending;
                         const StatusIcon = statusConfig.icon;
                         
                         return (
-                          <TableRow key={log.id}>
+                          <TableRow key={`${log.source}-${log.id}`}>
                             <TableCell className="font-medium">
-                              {log.clients?.full_name || "-"}
+                              {log.client_name || "-"}
                             </TableCell>
                             <TableCell className="text-left">
                               <bdi>{log.phone_number}</bdi>
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline">
+                              <Badge variant="outline" className={log.sms_type === "marketing" ? "border-primary/30 text-primary" : ""}>
+                                {log.sms_type === "marketing" && <Megaphone className="h-3 w-3 ml-1 inline" />}
                                 {SMS_TYPE_LABELS[log.sms_type] || log.sms_type}
                               </Badge>
                             </TableCell>
                             <TableCell>
-                              {log.policies?.policy_number || "-"}
+                              {log.policy_number || "-"}
                             </TableCell>
                             <TableCell>
                               <Badge variant={statusConfig.variant} className="gap-1">
