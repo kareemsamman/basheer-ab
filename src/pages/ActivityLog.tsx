@@ -395,8 +395,76 @@ export default function ActivityLog() {
       .reduce((sum, a) => sum + (a.details.amount || 0), 0);
   }, [filteredActivities]);
 
-  const displayedActivities = filteredActivities.slice(0, displayLimit);
-  const hasMore = filteredActivities.length > displayLimit;
+  // Group activities by client
+  interface GroupedClientActivity {
+    clientId: string;
+    clientName: string;
+    clientFileNumber: string;
+    latestDate: string;
+    items: ActivityItem[]; // sorted oldest→newest
+  }
+
+  const groupedActivities = useMemo(() => {
+    const clientMap = new Map<string, GroupedClientActivity>();
+    const standalone: ActivityItem[] = [];
+
+    for (const activity of filteredActivities) {
+      const clientId = activity.details.client_id;
+      if (!clientId) {
+        standalone.push(activity);
+        continue;
+      }
+
+      if (!clientMap.has(clientId)) {
+        clientMap.set(clientId, {
+          clientId,
+          clientName: activity.details.client_name || "عميل",
+          clientFileNumber: activity.details.client_file_number || "",
+          latestDate: activity.created_at,
+          items: [],
+        });
+      }
+
+      const group = clientMap.get(clientId)!;
+      group.items.push(activity);
+      if (new Date(activity.created_at) > new Date(group.latestDate)) {
+        group.latestDate = activity.created_at;
+      }
+      // Keep best client name
+      if (activity.details.client_name && activity.details.client_name !== "عميل") {
+        group.clientName = activity.details.client_name;
+      }
+      if (activity.details.client_file_number) {
+        group.clientFileNumber = activity.details.client_file_number;
+      }
+    }
+
+    // Sort items within each group chronologically (oldest first)
+    for (const group of clientMap.values()) {
+      group.items.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    }
+
+    // Build final list: groups + standalone, sorted by latest date desc
+    const result: Array<{ type: "group"; data: GroupedClientActivity } | { type: "standalone"; data: ActivityItem }> = [];
+
+    for (const group of clientMap.values()) {
+      result.push({ type: "group", data: group });
+    }
+    for (const item of standalone) {
+      result.push({ type: "standalone", data: item });
+    }
+
+    result.sort((a, b) => {
+      const dateA = a.type === "group" ? a.data.latestDate : a.data.created_at;
+      const dateB = b.type === "group" ? b.data.latestDate : b.data.created_at;
+      return new Date(dateB).getTime() - new Date(dateA).getTime();
+    });
+
+    return result;
+  }, [filteredActivities]);
+
+  const displayedGroups = groupedActivities.slice(0, displayLimit);
+  const hasMore = groupedActivities.length > displayLimit;
 
   const clearFilters = () => {
     setSearch("");
@@ -477,7 +545,7 @@ export default function ActivityLog() {
 
             <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
               <span>
-                عرض {displayedActivities.length} من {filteredActivities.length} نتيجة
+                عرض {displayedGroups.length} من {groupedActivities.length} نتيجة
               </span>
               {(typeFilter === "payment" || typeFilter === "all") && paymentTotal > 0 && (
                 <Badge variant="secondary" className="bg-success/10 text-success">
@@ -505,145 +573,161 @@ export default function ActivityLog() {
                 </CardContent>
               </Card>
             ))
-          ) : displayedActivities.length === 0 ? (
+          ) : displayedGroups.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center text-muted-foreground">
                 لا توجد نتائج مطابقة للبحث
               </CardContent>
             </Card>
           ) : (
-            displayedActivities.map((activity) => {
-              const Icon = activity.details.components ? Package : typeIcons[activity.type];
-              return (
-                <Card key={activity.id} className="hover:shadow-md transition-shadow">
-                  <CardContent className="py-4">
-                    <div className="flex items-start gap-4">
-                      <div className={cn("rounded-lg p-2.5", typeColors[activity.type])}>
-                        <Icon className="h-5 w-5" />
-                      </div>
-
-                      <div className="flex-1 min-w-0 space-y-1.5">
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <div className="flex items-center gap-2 flex-wrap">
+            displayedGroups.map((entry, entryIdx) => {
+              if (entry.type === "standalone") {
+                const activity = entry.data;
+                const Icon = activity.details.components ? Package : typeIcons[activity.type];
+                return (
+                  <Card key={activity.id} className="hover:shadow-md transition-shadow">
+                    <CardContent className="py-4">
+                      <div className="flex items-start gap-4">
+                        <div className={cn("rounded-lg p-2.5", typeColors[activity.type])}>
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex items-center justify-between gap-2">
                             <span className="font-semibold text-foreground">{activity.action}</span>
-                            {activity.createdBy && (
-                              <Badge variant="outline" className="text-xs">
-                                بواسطة {activity.createdBy}
-                              </Badge>
-                            )}
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">
+                              {new Date(activity.created_at).toLocaleString("ar-EG", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                            </span>
                           </div>
-                          <span className="text-xs text-muted-foreground whitespace-nowrap">
-                            {formatDistanceToNow(new Date(activity.created_at), {
-                              addSuffix: true,
-                              locale: ar,
-                            })}
-                          </span>
-                        </div>
-
-                        <div className="text-sm space-y-1">
-                          {/* Client Info */}
-                          {activity.details.client_name && (
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                              <Users className="h-3.5 w-3.5" />
-                              <span>
-                                {activity.details.client_name}
-                                {activity.details.client_file_number && (
-                                  <span className="text-xs mr-1">
-                                    ({activity.details.client_file_number})
-                                  </span>
-                                )}
-                              </span>
-                            </div>
-                          )}
-
-                          {/* Payment specific */}
-                          {activity.type === "payment" && (
-                            <div className="flex items-center gap-3 flex-wrap">
-                              <span className="font-semibold text-success">
-                                ₪{(activity.details.amount || 0).toLocaleString()}
-                              </span>
-                              {activity.details.payment_type && (
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "text-xs",
-                                    PAYMENT_TYPE_COLORS[activity.details.payment_type] ||
-                                      PAYMENT_TYPE_COLORS.cash
-                                  )}
-                                >
-                                  {PAYMENT_TYPE_LABELS[activity.details.payment_type] ||
-                                    activity.details.payment_type}
-                                </Badge>
-                              )}
-                              {activity.details.cheque_number && (
-                                <span className="text-xs text-muted-foreground">
-                                  شيك #{activity.details.cheque_number}
-                                </span>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Package components */}
-                          {activity.details.components && activity.details.components.length > 0 ? (
-                            <div className="space-y-1.5 mt-1">
-                              {activity.details.components.map((comp, idx) => (
-                                <div key={idx} className="flex items-center gap-2 text-muted-foreground text-xs">
-                                  <FileText className="h-3 w-3 shrink-0" />
-                                  <span>
-                                    {comp.type_label}
-                                    {comp.service_name && (
-                                      <span className="text-muted-foreground"> ({comp.service_name})</span>
-                                    )}
-                                  </span>
-                                  {comp.company_name && (
-                                    <span className="text-muted-foreground">← {comp.company_name}</span>
-                                  )}
-                                  {comp.price > 0 && (
-                                    <Badge variant="secondary" className="text-xs">
-                                      ₪{comp.price.toLocaleString()}
-                                    </Badge>
-                                  )}
-                                </div>
-                              ))}
-                              {activity.details.insurance_price != null && activity.details.insurance_price > 0 && (
-                                <div className="flex items-center gap-2 pt-1 border-t border-border/50">
-                                  <span className="text-xs font-semibold text-foreground">
-                                    المجموع: ₪{activity.details.insurance_price.toLocaleString()}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <>
-                              {/* Single policy/insurance info */}
-                              {(activity.details.policy_type || activity.details.company_name) && (
-                                <div className="flex items-center gap-2 text-muted-foreground">
-                                  <FileText className="h-3.5 w-3.5" />
-                                  <span>
-                                    {activity.details.policy_type}
-                                    {activity.details.company_name && (
-                                      <span className="mr-1">← {activity.details.company_name}</span>
-                                    )}
-                                  </span>
-                                  {activity.details.insurance_price && activity.type === "policy" && (
-                                    <Badge variant="secondary" className="text-xs">
-                                      ₪{activity.details.insurance_price.toLocaleString()}
-                                    </Badge>
-                                  )}
-                                </div>
-                              )}
-                            </>
-                          )}
-
-                          {/* Car Info */}
-                          {activity.details.car_number && (
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                              <Car className="h-3.5 w-3.5" />
-                              <span>{activity.details.car_number}</span>
-                            </div>
-                          )}
                         </div>
                       </div>
+                    </CardContent>
+                  </Card>
+                );
+              }
+
+              // Grouped client card
+              const group = entry.data;
+              // Collect unique createdBy names
+              const creators = [...new Set(group.items.map(i => i.createdBy).filter(Boolean))];
+
+              return (
+                <Card key={`group-${group.clientId}`} className="hover:shadow-md transition-shadow">
+                  <CardContent className="py-4">
+                    {/* Card Header: Client Name + File # + Time */}
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className={cn("rounded-lg p-2", typeColors.client)}>
+                          <Users className="h-4 w-4" />
+                        </div>
+                        <span className="font-bold text-foreground text-base">{group.clientName}</span>
+                        {group.clientFileNumber && (
+                          <span className="text-xs text-muted-foreground">({group.clientFileNumber})</span>
+                        )}
+                        {creators.length > 0 && (
+                          <Badge variant="outline" className="text-xs">
+                            بواسطة {creators.join("، ")}
+                          </Badge>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                        {formatDistanceToNow(new Date(group.latestDate), { addSuffix: true, locale: ar })}
+                      </span>
+                    </div>
+
+                    {/* Timeline items */}
+                    <div className="relative mr-5 border-r-2 border-border/50 pr-4 space-y-2.5">
+                      {group.items.map((activity) => {
+                        const Icon = activity.details.components ? Package : typeIcons[activity.type];
+                        return (
+                          <div key={activity.id} className="relative">
+                            {/* Timeline dot */}
+                            <div className={cn(
+                              "absolute -right-[1.35rem] top-0.5 w-3 h-3 rounded-full border-2 border-background",
+                              activity.type === "payment" ? "bg-emerald-500" :
+                              activity.type === "policy" ? "bg-primary" :
+                              activity.type === "car" ? "bg-amber-500" :
+                              "bg-accent"
+                            )} />
+
+                            <div className="flex items-start gap-2">
+                              <div className={cn("rounded p-1.5 shrink-0", typeColors[activity.type])}>
+                                <Icon className="h-3.5 w-3.5" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <span className="text-sm font-medium text-foreground">{activity.action}</span>
+                                  <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                                    {new Date(activity.created_at).toLocaleString("ar-EG", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                  </span>
+                                </div>
+
+                                <div className="text-xs text-muted-foreground space-y-0.5 mt-0.5">
+                                  {/* Payment details */}
+                                  {activity.type === "payment" && (
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-semibold text-emerald-600">
+                                        ₪{(activity.details.amount || 0).toLocaleString()}
+                                      </span>
+                                      {activity.details.payment_type && (
+                                        <Badge variant="outline" className={cn("text-[10px] py-0", PAYMENT_TYPE_COLORS[activity.details.payment_type] || PAYMENT_TYPE_COLORS.cash)}>
+                                          {PAYMENT_TYPE_LABELS[activity.details.payment_type] || activity.details.payment_type}
+                                        </Badge>
+                                      )}
+                                      {activity.details.cheque_number && (
+                                        <span>شيك #{activity.details.cheque_number}</span>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Package components */}
+                                  {activity.details.components && activity.details.components.length > 0 ? (
+                                    <div className="space-y-0.5 mt-0.5">
+                                      {activity.details.components.map((comp, idx) => (
+                                        <div key={idx} className="flex items-center gap-1.5">
+                                          <FileText className="h-2.5 w-2.5 shrink-0" />
+                                          <span>{comp.type_label}{comp.service_name ? ` (${comp.service_name})` : ""}</span>
+                                          {comp.company_name && <span>← {comp.company_name}</span>}
+                                          {comp.price > 0 && (
+                                            <Badge variant="secondary" className="text-[10px] py-0">₪{comp.price.toLocaleString()}</Badge>
+                                          )}
+                                        </div>
+                                      ))}
+                                      {activity.details.insurance_price != null && activity.details.insurance_price > 0 && (
+                                        <div className="flex items-center gap-1.5 pt-0.5 border-t border-border/30">
+                                          <span className="text-[11px] font-semibold text-foreground">المجموع: ₪{activity.details.insurance_price.toLocaleString()}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <>
+                                      {(activity.details.policy_type || activity.details.company_name) && (
+                                        <div className="flex items-center gap-1.5">
+                                          <FileText className="h-2.5 w-2.5 shrink-0" />
+                                          <span>
+                                            {activity.details.policy_type}
+                                            {activity.details.company_name && <span className="mr-1">← {activity.details.company_name}</span>}
+                                          </span>
+                                          {activity.details.insurance_price && activity.type === "policy" && (
+                                            <Badge variant="secondary" className="text-[10px] py-0">₪{activity.details.insurance_price.toLocaleString()}</Badge>
+                                          )}
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+
+                                  {/* Car info */}
+                                  {activity.details.car_number && (
+                                    <div className="flex items-center gap-1.5">
+                                      <Car className="h-2.5 w-2.5 shrink-0" />
+                                      <span>{activity.details.car_number}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </CardContent>
                 </Card>
@@ -659,7 +743,7 @@ export default function ActivityLog() {
                 className="gap-2"
               >
                 <ChevronDown className="h-4 w-4" />
-                تحميل المزيد ({filteredActivities.length - displayLimit} متبقي)
+                تحميل المزيد ({groupedActivities.length - displayLimit} متبقي)
               </Button>
             </div>
           )}
