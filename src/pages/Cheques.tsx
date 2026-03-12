@@ -244,12 +244,16 @@ export default function Cheques() {
         .from('policy_payments')
         .select('amount, cheque_status, payment_date')
         .eq('payment_type', 'cheque')
-        .gte('payment_date', '2026-01-01');
+        .gte('payment_date', CHEQUES_START_DATE);
 
       if (allCheques) {
-        const returnedCheques = allCheques.filter(c => c.cheque_status === 'returned');
-        const pendingCheques = allCheques.filter(c => c.cheque_status === 'pending' || !c.cheque_status);
-        const overdueCheques = allCheques.filter(c => isChequeOverdue(c.payment_date, c.cheque_status));
+        const chequesFromStartDate = allCheques.filter(
+          (cheque) => cheque.payment_date && isOnOrAfterChequesStartDate(cheque.payment_date)
+        );
+
+        const returnedCheques = chequesFromStartDate.filter(c => c.cheque_status === 'returned');
+        const pendingCheques = chequesFromStartDate.filter(c => c.cheque_status === 'pending' || !c.cheque_status);
+        const overdueCheques = chequesFromStartDate.filter(c => isChequeOverdue(c.payment_date, c.cheque_status));
         
         setSummaryStats({
           returnedCount: returnedCheques.length,
@@ -262,7 +266,7 @@ export default function Cheques() {
 
         // Calculate monthly stats
         const monthlyMap: Record<string, MonthlyStats> = {};
-        allCheques.forEach(c => {
+        chequesFromStartDate.forEach(c => {
           const date = new Date(c.payment_date);
           const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
           
