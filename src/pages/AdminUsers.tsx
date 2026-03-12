@@ -471,16 +471,90 @@ export default function AdminUsers() {
             <h1 className="text-2xl font-bold text-foreground">المستخدمون</h1>
             <p className="text-muted-foreground">إدارة المستخدمين والصلاحيات</p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchUsers}
-            disabled={loading}
-          >
-            <RefreshCw className={`h-4 w-4 ml-2 ${loading ? 'animate-spin' : ''}`} />
-            تحديث
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => setAddUserOpen(true)}
+            >
+              <UserPlus className="h-4 w-4 ml-2" />
+              إضافة مستخدم
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchUsers}
+              disabled={loading}
+            >
+              <RefreshCw className={`h-4 w-4 ml-2 ${loading ? 'animate-spin' : ''}`} />
+              تحديث
+            </Button>
+          </div>
         </div>
+
+        {/* Add User Dialog */}
+        <Dialog open={addUserOpen} onOpenChange={(open) => { setAddUserOpen(open); if (!open) resetAddUserForm(); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>إضافة مستخدم جديد</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>البريد الإلكتروني *</Label>
+                <Input
+                  type="email"
+                  placeholder="user@example.com"
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  dir="ltr"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>الاسم الكامل</Label>
+                <Input
+                  placeholder="اسم المستخدم"
+                  value={newUserName}
+                  onChange={(e) => setNewUserName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>الدور</Label>
+                <Select value={newUserRole} onValueChange={(v) => setNewUserRole(v as 'admin' | 'worker')}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="worker">موظف</SelectItem>
+                    <SelectItem value="admin">مدير</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>الفرع</Label>
+                <Select value={newUserBranch} onValueChange={setNewUserBranch}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختر فرع" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name_ar || b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setAddUserOpen(false); resetAddUserForm(); }}>
+                إلغاء
+              </Button>
+              <Button onClick={handleAddUser} disabled={addUserLoading}>
+                {addUserLoading && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
+                إنشاء
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
