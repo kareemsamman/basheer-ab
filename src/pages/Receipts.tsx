@@ -132,6 +132,7 @@ export default function Receipts() {
   const [editingReceipt, setEditingReceipt] = useState<ReceiptRow | null>(null);
   const [deleteReceipt, setDeleteReceipt] = useState<ReceiptRow | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState("all");
 
   // Form state
   const [formType, setFormType] = useState<"payment" | "accident_fee">("payment");
