@@ -60,9 +60,9 @@ function padReceiptNumber(num: number): string {
   return String(num).padStart(2, '0');
 }
 
-function useReceipts(tab: string, search: string, dateFrom: Date | undefined, dateTo: Date | undefined) {
+function useReceipts(tab: string, search: string, dateFrom: Date | undefined, dateTo: Date | undefined, paymentMethodFilter: string) {
   return useQuery({
-    queryKey: ["receipts", tab, search, dateFrom?.toISOString(), dateTo?.toISOString()],
+    queryKey: ["receipts", tab, search, dateFrom?.toISOString(), dateTo?.toISOString(), paymentMethodFilter],
     queryFn: async () => {
       let query = supabase
         .from("receipts")
@@ -85,6 +85,10 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
       }
       if (dateTo) {
         query = query.lte("receipt_date", format(dateTo, "yyyy-MM-dd"));
+      }
+
+      if (paymentMethodFilter && paymentMethodFilter !== "all") {
+        query = query.eq("payment_method", paymentMethodFilter);
       }
 
       const { data, error } = await query;
