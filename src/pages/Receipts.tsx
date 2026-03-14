@@ -492,64 +492,151 @@ export default function Receipts() {
                     ))}
                   </TableRow>
                 ))
-              ) : receipts && receipts.length > 0 ? (
-                receipts.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="font-mono text-xs">{padReceiptNumber(r.receipt_number)}</TableCell>
-                    <TableCell>
-                      <Badge variant={r.receipt_type === "accident_fee" ? "destructive" : "default"} className="text-xs">
-                        {RECEIPT_TYPE_LABELS[r.receipt_type] || r.receipt_type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-medium">{r.client_name}</TableCell>
-                    <TableCell className="font-mono text-sm">{r.car_number || "-"}</TableCell>
-                    <TableCell>{r.receipt_date}</TableCell>
-                    <TableCell className="font-bold">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <span className="text-sm">{PAYMENT_METHOD_LABELS[r.payment_method || ''] || '-'}</span>
-                        {r.payment_method === 'visa' && r.card_last_four && (
-                          <Badge variant="secondary" className="text-xs font-mono">****{r.card_last_four}</Badge>
-                        )}
-                        {r.payment_method === 'cheque' && r.cheque_number && (
-                          <Badge variant="outline" className="text-xs font-mono">{r.cheque_number}</Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={r.source === "auto" ? "secondary" : "outline"} className="text-xs">
-                        {r.source === "auto" ? "אוטומטי" : "ידני"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrint(r)} title="הדפסה">
-                          <Printer className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => handleCopyLink(r)}
-                          disabled={copyingId === r.id}
-                          title="העתק קישור"
-                        >
-                          {copyingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
-                        </Button>
-                        {r.source === "manual" && (
-                          <>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)} title="עריכה">
-                              <Pencil className="h-3.5 w-3.5" />
+              ) : groupedReceipts.length > 0 ? (
+                groupedReceipts.map((group) => {
+                  const isMulti = group.receipts.length > 1;
+                  const isExpanded = expandedGroups.has(group.key);
+                  const primary = group.receipts[0];
+                  
+                  // For single receipts, show normally
+                  if (!isMulti) {
+                    const r = primary;
+                    return (
+                      <TableRow key={r.id}>
+                        <TableCell className="font-mono text-xs">{padReceiptNumber(r.receipt_number)}</TableCell>
+                        <TableCell>
+                          <Badge variant={r.receipt_type === "accident_fee" ? "destructive" : "default"} className="text-xs">
+                            {RECEIPT_TYPE_LABELS[r.receipt_type] || r.receipt_type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-medium">{r.client_name}</TableCell>
+                        <TableCell className="font-mono text-sm">{r.car_number || "-"}</TableCell>
+                        <TableCell>{r.receipt_date}</TableCell>
+                        <TableCell className="font-bold">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <span className="text-sm">{PAYMENT_METHOD_LABELS[r.payment_method || ''] || '-'}</span>
+                            {r.payment_method === 'visa' && r.card_last_four && (
+                              <Badge variant="secondary" className="text-xs font-mono">****{r.card_last_four}</Badge>
+                            )}
+                            {r.payment_method === 'cheque' && r.cheque_number && (
+                              <Badge variant="outline" className="text-xs font-mono">{r.cheque_number}</Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={r.source === "auto" ? "secondary" : "outline"} className="text-xs">
+                            {r.source === "auto" ? "אוטומטי" : "ידני"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrint(r)} title="הדפסה">
+                              <Printer className="h-3.5 w-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteReceipt(r)} title="מחיקה">
-                              <Trash2 className="h-3.5 w-3.5" />
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleCopyLink(r)} disabled={copyingId === r.id} title="העתק קישור">
+                              {copyingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
                             </Button>
-                          </>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                            {r.source === "manual" && (
+                              <>
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)} title="עריכה">
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteReceipt(r)} title="מחיקה">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  }
+
+                  // For multi-receipt groups
+                  const receiptRange = `${padReceiptNumber(group.firstReceiptNumber)}-${padReceiptNumber(group.lastReceiptNumber)}`;
+                  // Collect unique payment methods
+                  const methods = [...new Set(group.receipts.map(r => r.payment_method).filter(Boolean))];
+                  
+                  return (
+                    <React.Fragment key={group.key}>
+                      <TableRow 
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => toggleGroup(group.key)}
+                      >
+                        <TableCell className="font-mono text-xs">
+                          <div className="flex items-center gap-1">
+                            {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                            {receiptRange}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={group.receipt_type === "accident_fee" ? "destructive" : "default"} className="text-xs">
+                            {RECEIPT_TYPE_LABELS[group.receipt_type] || group.receipt_type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-medium">{group.client_name}</TableCell>
+                        <TableCell className="font-mono text-sm">{group.car_number || "-"}</TableCell>
+                        <TableCell>{group.receipt_date}</TableCell>
+                        <TableCell className="font-bold">
+                          ₪{group.totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                          <Badge variant="secondary" className="text-xs mr-1">{group.receipts.length} תשלומים</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {methods.map(m => (
+                              <span key={m} className="text-sm">{PAYMENT_METHOD_LABELS[m || ''] || m}</span>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={group.source === "auto" ? "secondary" : "outline"} className="text-xs">
+                            {group.source === "auto" ? "אוטומטי" : "ידני"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handlePrint(primary); }} title="הדפסה">
+                              <Printer className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      {isExpanded && group.receipts.map((r) => (
+                        <TableRow key={r.id} className="bg-muted/30">
+                          <TableCell className="font-mono text-xs pr-8">{padReceiptNumber(r.receipt_number)}</TableCell>
+                          <TableCell></TableCell>
+                          <TableCell></TableCell>
+                          <TableCell></TableCell>
+                          <TableCell></TableCell>
+                          <TableCell className="font-bold text-sm">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <span className="text-sm">{PAYMENT_METHOD_LABELS[r.payment_method || ''] || '-'}</span>
+                              {r.payment_method === 'visa' && r.card_last_four && (
+                                <Badge variant="secondary" className="text-xs font-mono">****{r.card_last_four}</Badge>
+                              )}
+                              {r.payment_method === 'cheque' && r.cheque_number && (
+                                <Badge variant="outline" className="text-xs font-mono">{r.cheque_number}</Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell></TableCell>
+                          <TableCell>
+                            <div className="flex gap-1">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrint(r)} title="הדפסה">
+                                <Printer className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleCopyLink(r)} disabled={copyingId === r.id} title="העתק קישור">
+                                {copyingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </React.Fragment>
+                  );
+                })
               ) : (
                 <TableRow>
                   <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
