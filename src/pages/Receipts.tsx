@@ -166,6 +166,162 @@ const RECEIPT_TYPE_LABELS: Record<string, string> = {
   accident_fee: "קבלת דמי תאונות",
 };
 
+function formatPrintDate(dateStr: string): string {
+  if (!dateStr) return "-";
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return dateStr;
+  return date.toLocaleDateString("en-GB", { year: "numeric", month: "2-digit", day: "2-digit" });
+}
+
+function getReceiptPaymentDetails(r: ReceiptRow): string {
+  if (r.payment_method === "cheque") {
+    if (!r.cheque_number) return "שיק";
+    return `שיק מס׳ ${r.cheque_number}${r.cheque_date ? ` - ${formatPrintDate(r.cheque_date)}` : ""}`;
+  }
+  if ((r.payment_method === "visa" || r.payment_method === "credit_card") && r.card_last_four) {
+    return `כרטיס ****${r.card_last_four}`;
+  }
+  return r.notes || "-";
+}
+
+function buildGroupedReceiptPrintHtml(group: GroupedReceipt, settings: CompanySettings): string {
+  const phoneLinksHtml = (settings.company_phone_links || []).map((link) => `<span>${link.phone}</span>`).join(" | ");
+  const logoImg = settings.logoUrl
+    ? `<img src="${settings.logoUrl}" alt="Logo" class="logo" />`
+    : `<div class="logo-placeholder">AB</div>`;
+
+  const paymentRows = group.receipts
+    .map(
+      (r, index) => `
+      <tr>
+        <td>${index + 1}</td>
+        <td>${PAYMENT_METHOD_LABELS[r.payment_method || ""] || "תשלום"}</td>
+        <td>${getReceiptPaymentDetails(r)}</td>
+        <td>${formatPrintDate(r.receipt_date)}</td>
+        <td class="amount-cell">₪${r.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+      </tr>`
+    )
+    .join("");
+
+  return `<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${RECEIPT_TYPE_LABELS[group.receipt_type] || group.receipt_type} ${group.client_name}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    @page { size: A4; margin: 15mm; }
+    @media print {
+      body { padding: 0; background: white; }
+      .no-print { display: none !important; }
+      .container { box-shadow: none; border: none; }
+    }
+    body { font-family: Arial, Tahoma, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.5; color: #1a1a1a; background: #f0f2f5; padding: 20px; direction: rtl; }
+    .container { max-width: 794px; margin: 0 auto; background: white; border: 2px solid #1a3a5c; min-height: 600px; }
+    .header { display: flex; align-items: center; justify-content: space-between; padding: 20px 30px; border-bottom: 3px solid #1a3a5c; }
+    .header-right { display: flex; align-items: center; gap: 15px; }
+    .logo { height: 70px; width: auto; object-fit: contain; }
+    .logo-placeholder { width: 70px; height: 70px; background: #1a3a5c; color: white; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; border-radius: 8px; }
+    .company-info { text-align: right; }
+    .company-name { font-size: 22px; font-weight: bold; color: #1a3a5c; }
+    .company-name-en { font-size: 11px; color: #666; letter-spacing: 1px; }
+    .company-detail { font-size: 12px; color: #444; margin-top: 2px; }
+    .header-left { text-align: left; font-size: 12px; color: #444; }
+    .header-left div { margin-bottom: 2px; }
+    .receipt-meta { display: flex; justify-content: space-between; align-items: center; padding: 15px 30px; border-bottom: 1px solid #ddd; }
+    .receipt-label { font-size: 22px; font-weight: bold; color: #1a3a5c; }
+    .receipt-num { font-size: 16px; font-weight: bold; color: #c0392b; }
+    .client-row { display: flex; justify-content: space-between; padding: 12px 30px; border-bottom: 1px solid #ddd; font-size: 14px; }
+    .client-name { font-weight: bold; }
+    .subject-bar { background: #d6e4f0; padding: 10px 30px; font-weight: bold; font-size: 15px; color: #1a3a5c; border-bottom: 1px solid #b0c4d8; }
+    .table-section { padding: 20px 30px; }
+    .table-header-label { background: #1a3a5c; color: white; padding: 8px 16px; font-size: 14px; font-weight: bold; display: inline-block; border-radius: 4px 4px 0 0; }
+    table { width: 100%; border-collapse: collapse; border: 1px solid #ccc; }
+    th { background: #e8eef4; color: #1a3a5c; font-weight: bold; padding: 10px 12px; font-size: 13px; border: 1px solid #ccc; text-align: center; }
+    td { padding: 10px 12px; border: 1px solid #ccc; text-align: center; font-size: 13px; }
+    .amount-cell { font-weight: bold; }
+    .total-row { display: flex; justify-content: flex-end; align-items: center; padding: 15px 30px; gap: 15px; }
+    .total-label { font-size: 16px; font-weight: bold; color: #1a3a5c; }
+    .total-value { background: #1a3a5c; color: white; padding: 8px 24px; border-radius: 6px; font-size: 20px; font-weight: bold; }
+    .footer { border-top: 2px solid #1a3a5c; padding: 12px 30px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #888; background: #fafafa; }
+    .footer-badge { color: #1a3a5c; font-weight: bold; }
+    .action-buttons { display: flex; gap: 10px; justify-content: center; padding: 20px; }
+    .btn { padding: 10px 24px; border: none; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer; font-family: Arial, Tahoma, sans-serif; background: #1a3a5c; color: white; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-right">
+        ${logoImg}
+        <div class="company-info">
+          <div class="company-name">בשיר אבו סנינה לביטוח</div>
+          <div class="company-name-en">BASHEER ABU SNEINEH INSURANCE</div>
+          <div class="company-detail">עוסק מורשה: 212426498</div>
+        </div>
+      </div>
+      <div class="header-left">
+        ${settings.company_location ? `<div>📍 ${settings.company_location}</div>` : ""}
+        ${phoneLinksHtml ? `<div>📞 ${phoneLinksHtml}</div>` : ""}
+        ${settings.company_email ? `<div>📧 ${settings.company_email}</div>` : ""}
+      </div>
+    </div>
+
+    <div class="receipt-meta">
+      <span class="receipt-label">${RECEIPT_TYPE_LABELS[group.receipt_type] || group.receipt_type}</span>
+      <span class="receipt-num">#${padReceiptNumber(group.firstReceiptNumber)}-${padReceiptNumber(group.lastReceiptNumber)}</span>
+    </div>
+
+    <div class="client-row">
+      <div><span>לכבוד: </span><span class="client-name">${group.client_name}</span></div>
+      <div>תאריך: ${formatPrintDate(group.receipt_date)}</div>
+    </div>
+
+    <div class="subject-bar">
+      ביטוח רכב${group.car_number ? ` / רכב ${group.car_number}` : ""} / ${group.client_name}
+    </div>
+
+    <div class="table-section">
+      <div class="table-header-label">פרטי תשלומים</div>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>אמצעי תשלום</th>
+            <th>פירוט</th>
+            <th>תאריך</th>
+            <th>סכום</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${paymentRows}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="total-row">
+      <span class="total-label">סה"כ</span>
+      <span class="total-value">₪${group.totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+    </div>
+
+    <div class="footer">
+      <div class="footer-badge">🔒 חתימה דיגיטלית מאובטחת</div>
+      <div>הופק ב ${formatPrintDate(new Date().toISOString())} | ${group.receipts.length} תשלומים</div>
+    </div>
+  </div>
+
+  <div class="action-buttons no-print">
+    <button class="btn" onclick="window.print()">🖨️ הדפסה</button>
+  </div>
+
+  <script>
+    setTimeout(function(){ window.print(); }, 500);
+  </script>
+</body>
+</html>`;
+}
+
 export default function Receipts() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("all");
