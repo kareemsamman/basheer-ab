@@ -448,6 +448,17 @@ export default function Receipts() {
                     <TableCell>{r.receipt_date}</TableCell>
                     <TableCell className="font-bold">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
                     <TableCell>
+                      <div className="flex items-center gap-1">
+                        <span className="text-sm">{PAYMENT_METHOD_LABELS[r.payment_method || ''] || '-'}</span>
+                        {r.payment_method === 'visa' && r.card_last_four && (
+                          <Badge variant="secondary" className="text-xs font-mono">****{r.card_last_four}</Badge>
+                        )}
+                        {r.payment_method === 'cheque' && r.cheque_number && (
+                          <Badge variant="outline" className="text-xs font-mono">{r.cheque_number}</Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
                       <Badge variant={r.source === "auto" ? "secondary" : "outline"} className="text-xs">
                         {r.source === "auto" ? "אוטומטי" : "ידני"}
                       </Badge>
