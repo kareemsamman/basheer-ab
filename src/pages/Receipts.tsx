@@ -127,7 +127,9 @@ export default function Receipts() {
   const [formAccidentDate, setFormAccidentDate] = useState("");
   const [formAccidentDetails, setFormAccidentDetails] = useState("");
   const [formNotes, setFormNotes] = useState("");
-
+  const [formPaymentMethod, setFormPaymentMethod] = useState("cash");
+  const [formChequeNumber, setFormChequeNumber] = useState("");
+  const [formChequeDate, setFormChequeDate] = useState("");
   const { data: receipts, isLoading } = useReceipts(tab, search, dateFrom, dateTo);
   const { data: companySettings } = useCompanySettings();
 
