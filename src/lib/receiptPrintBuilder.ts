@@ -325,7 +325,7 @@ export function buildReceiptPrintHtml(data: ReceiptPrintData, settings: CompanyS
 
     <div class="client-row">
       <div><span>לכבוד: </span><span class="client-name">${data.clientName}</span></div>
-      <div>תאריך: ${formatDateHe(data.receiptDate)}</div>
+      <div>תאריך: ${formatDateHe(new Date().toISOString())}</div>
     </div>
 
     <div class="subject-bar">
