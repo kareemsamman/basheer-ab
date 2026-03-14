@@ -142,6 +142,9 @@ export default function Receipts() {
     setFormAccidentDate("");
     setFormAccidentDetails("");
     setFormNotes("");
+    setFormPaymentMethod("cash");
+    setFormChequeNumber("");
+    setFormChequeDate("");
     setEditingReceipt(null);
   }, []);
 
