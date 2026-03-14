@@ -786,7 +786,7 @@ export default function Receipts() {
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handlePrint(primary); }} title="הדפסה">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handlePrintGroup(group); }} title="הדפסה">
                               <Printer className="h-3.5 w-3.5" />
                             </Button>
                           </div>
