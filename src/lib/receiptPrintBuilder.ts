@@ -13,6 +13,7 @@ export interface ReceiptPrintData {
   paymentMethod?: string;
   chequeNumber?: string;
   chequeDate?: string;
+  cardLastFour?: string;
 }
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
