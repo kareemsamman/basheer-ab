@@ -163,6 +163,9 @@ export default function Receipts() {
     setFormAccidentDate(r.accident_date || "");
     setFormAccidentDetails(r.accident_details || "");
     setFormNotes(r.notes || "");
+    setFormPaymentMethod(r.payment_method || "cash");
+    setFormChequeNumber(r.cheque_number || "");
+    setFormChequeDate(r.cheque_date || "");
     setDrawerOpen(true);
   };
 
