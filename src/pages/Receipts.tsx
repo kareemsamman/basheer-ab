@@ -181,6 +181,9 @@ export default function Receipts() {
         accident_details: formType === "accident_fee" ? formAccidentDetails || null : null,
         notes: formNotes || null,
         source: "manual" as const,
+        payment_method: formPaymentMethod || null,
+        cheque_number: formPaymentMethod === "cheque" ? formChequeNumber || null : null,
+        cheque_date: formPaymentMethod === "cheque" && formChequeDate ? formChequeDate : null,
       };
 
       if (editingReceipt) {
