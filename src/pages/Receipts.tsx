@@ -390,6 +390,23 @@ export default function Receipts() {
               </Button>
             )}
           </div>
+
+          {/* Payment method filter */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-sm text-muted-foreground">אמצעי תשלום:</span>
+            <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
+              <SelectTrigger className="w-40 h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">הכל</SelectItem>
+                <SelectItem value="cash">מזומן</SelectItem>
+                <SelectItem value="cheque">שיק</SelectItem>
+                <SelectItem value="visa">כרטיס אשראי</SelectItem>
+                <SelectItem value="transfer">העברה בנקאית</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Table */}
