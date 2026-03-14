@@ -275,6 +275,7 @@ export default function Receipts() {
       paymentMethod,
       chequeNumber,
       chequeDate,
+      cardLastFour,
     };
     const html = buildReceiptPrintHtml(data, companySettings || { logoUrl: "", company_email: "", company_location: "", company_phone_links: [] });
     const printWindow = window.open("", "_blank");
