@@ -300,7 +300,7 @@ export default function Receipts() {
           body: { payment_id: r.payment_id },
         });
         if (error) throw error;
-        const url = data?.url;
+        const url = data?.receipt_url || data?.url;
         if (url) {
           // Update the receipt row with the URL
           await supabase.from("receipts").update({ receipt_url: url }).eq("id", r.id);
