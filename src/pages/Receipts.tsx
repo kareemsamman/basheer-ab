@@ -513,6 +513,32 @@ export default function Receipts() {
             )}
 
             <div className="space-y-2">
+              <Label>אמצעי תשלום</Label>
+              <Select value={formPaymentMethod} onValueChange={setFormPaymentMethod}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">מזומן</SelectItem>
+                  <SelectItem value="cheque">שיק</SelectItem>
+                  <SelectItem value="visa">כרטיס אשראי</SelectItem>
+                  <SelectItem value="transfer">העברה בנקאית</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {formPaymentMethod === "cheque" && (
+              <>
+                <div className="space-y-2">
+                  <Label>מספר שיק</Label>
+                  <Input value={formChequeNumber} onChange={(e) => setFormChequeNumber(e.target.value)} placeholder="מספר השיק" />
+                </div>
+                <div className="space-y-2">
+                  <Label>תאריך שיק</Label>
+                  <Input type="date" value={formChequeDate} onChange={(e) => setFormChequeDate(e.target.value)} />
+                </div>
+              </>
+            )}
+
+            <div className="space-y-2">
               <Label>הערות</Label>
               <Textarea value={formNotes} onChange={(e) => setFormNotes(e.target.value)} placeholder="הערות נוספות..." rows={2} />
             </div>
