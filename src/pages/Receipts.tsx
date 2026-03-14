@@ -496,6 +496,38 @@ export default function Receipts() {
     printWindow.document.close();
   };
 
+  const handlePrintGroup = async (group: GroupedReceipt) => {
+    const paymentIds = group.receipts.map((r) => r.payment_id).filter((id): id is string => !!id);
+
+    // For auto groups, use backend bulk receipt generator to ensure all payments are included
+    if (group.source === "auto" && paymentIds.length === group.receipts.length && paymentIds.length > 1) {
+      try {
+        const { data, error } = await supabase.functions.invoke("generate-bulk-payment-receipt", {
+          body: { payment_ids: paymentIds, total_amount: group.totalAmount },
+        });
+        if (!error) {
+          const url = data?.receipt_url || data?.url;
+          if (url) {
+            window.open(url, "_blank", "noopener,noreferrer");
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("bulk print failed, using local fallback", err);
+      }
+    }
+
+    // Fallback for manual/mixed groups
+    const html = buildGroupedReceiptPrintHtml(
+      group,
+      companySettings || { logoUrl: "", company_email: "", company_location: "", company_phone_links: [] }
+    );
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
   const handleCopyLink = async (r: ReceiptRow) => {
     // If receipt already has a URL, just copy it
     if (r.receipt_url) {
