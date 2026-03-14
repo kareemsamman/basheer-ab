@@ -98,6 +98,48 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
   });
 }
 
+interface GroupedReceipt {
+  key: string;
+  receipts: ReceiptRow[];
+  totalAmount: number;
+  client_name: string;
+  car_number: string | null;
+  receipt_date: string;
+  receipt_type: string;
+  source: string;
+  firstReceiptNumber: number;
+  lastReceiptNumber: number;
+}
+
+function groupReceipts(receipts: ReceiptRow[]): GroupedReceipt[] {
+  const map = new Map<string, ReceiptRow[]>();
+  for (const r of receipts) {
+    const key = `${r.client_name}|${r.car_number || ''}|${r.receipt_date}|${r.receipt_type}`;
+    const group = map.get(key) || [];
+    group.push(r);
+    map.set(key, group);
+  }
+  const groups: GroupedReceipt[] = [];
+  for (const [key, items] of map) {
+    const sorted = items.sort((a, b) => a.receipt_number - b.receipt_number);
+    groups.push({
+      key,
+      receipts: sorted,
+      totalAmount: sorted.reduce((sum, r) => sum + r.amount, 0),
+      client_name: sorted[0].client_name,
+      car_number: sorted[0].car_number,
+      receipt_date: sorted[0].receipt_date,
+      receipt_type: sorted[0].receipt_type,
+      source: sorted[0].source,
+      firstReceiptNumber: sorted[0].receipt_number,
+      lastReceiptNumber: sorted[sorted.length - 1].receipt_number,
+    });
+  }
+  // Sort by first receipt number descending
+  groups.sort((a, b) => b.lastReceiptNumber - a.lastReceiptNumber);
+  return groups;
+}
+
 function useCompanySettings() {
   return useQuery({
     queryKey: ["company-settings-for-receipt"],
