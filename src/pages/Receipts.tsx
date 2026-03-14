@@ -223,7 +223,24 @@ export default function Receipts() {
     },
   });
 
-  const handlePrint = (r: ReceiptRow) => {
+  const handlePrint = async (r: ReceiptRow) => {
+    let paymentMethod = r.payment_method || '';
+    let chequeNumber = r.cheque_number || '';
+    let chequeDate = r.cheque_date || '';
+
+    // For auto receipts, fetch payment details if not stored on receipt
+    if (r.source === 'auto' && r.payment_id && !r.payment_method) {
+      const { data: paymentData } = await supabase
+        .from('policy_payments')
+        .select('payment_type, cheque_number')
+        .eq('id', r.payment_id)
+        .single();
+      if (paymentData) {
+        paymentMethod = paymentData.payment_type || '';
+        chequeNumber = paymentData.cheque_number || '';
+      }
+    }
+
     const data: ReceiptPrintData = {
       receiptNumber: padReceiptNumber(r.receipt_number),
       receiptType: r.receipt_type,
@@ -236,6 +253,9 @@ export default function Receipts() {
       accidentDetails: r.accident_details || "",
       notes: r.notes || "",
       source: r.source,
+      paymentMethod,
+      chequeNumber,
+      chequeDate,
     };
     const html = buildReceiptPrintHtml(data, companySettings || { logoUrl: "", company_email: "", company_location: "", company_phone_links: [] });
     const printWindow = window.open("", "_blank");
