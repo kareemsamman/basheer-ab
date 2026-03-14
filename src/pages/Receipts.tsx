@@ -42,8 +42,19 @@ interface ReceiptRow {
   payment_method: string | null;
   cheque_number: string | null;
   cheque_date: string | null;
+  card_last_four: string | null;
   created_at: string;
 }
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: 'מזומן',
+  cheque: 'שיק',
+  visa: 'כרטיס אשראי',
+  credit_card: 'כרטיס אשראי',
+  transfer: 'העברה בנקאית',
+  bank_transfer: 'העברה בנקאית',
+  accident_fee: 'דמי תאונות',
+};
 
 function padReceiptNumber(num: number): string {
   return String(num).padStart(2, '0');
