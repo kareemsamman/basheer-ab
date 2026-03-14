@@ -17,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Plus, Printer, Pencil, Trash2, Search, Receipt, CalendarIcon, X, Link2, Loader2 } from "lucide-react";
+import { Plus, Printer, Pencil, Trash2, Search, Receipt, CalendarIcon, X, Link2, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { buildReceiptPrintHtml, type ReceiptPrintData, type CompanySettings } from "@/lib/receiptPrintBuilder";
