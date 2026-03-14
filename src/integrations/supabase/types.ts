@@ -3883,6 +3883,8 @@ export type Database = {
           amount: number
           car_id: string | null
           car_number: string | null
+          cheque_date: string | null
+          cheque_number: string | null
           client_id: string | null
           client_name: string
           created_at: string
@@ -3890,6 +3892,7 @@ export type Database = {
           id: string
           notes: string | null
           payment_id: string | null
+          payment_method: string | null
           policy_id: string | null
           receipt_date: string
           receipt_number: number
@@ -3904,6 +3907,8 @@ export type Database = {
           amount?: number
           car_id?: string | null
           car_number?: string | null
+          cheque_date?: string | null
+          cheque_number?: string | null
           client_id?: string | null
           client_name: string
           created_at?: string
@@ -3911,6 +3916,7 @@ export type Database = {
           id?: string
           notes?: string | null
           payment_id?: string | null
+          payment_method?: string | null
           policy_id?: string | null
           receipt_date?: string
           receipt_number?: number
@@ -3925,6 +3931,8 @@ export type Database = {
           amount?: number
           car_id?: string | null
           car_number?: string | null
+          cheque_date?: string | null
+          cheque_number?: string | null
           client_id?: string | null
           client_name?: string
           created_at?: string
@@ -3932,6 +3940,7 @@ export type Database = {
           id?: string
           notes?: string | null
           payment_id?: string | null
+          payment_method?: string | null
           policy_id?: string | null
           receipt_date?: string
           receipt_number?: number
