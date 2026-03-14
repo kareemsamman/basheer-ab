@@ -3883,6 +3883,7 @@ export type Database = {
           amount: number
           car_id: string | null
           car_number: string | null
+          card_last_four: string | null
           cheque_date: string | null
           cheque_number: string | null
           client_id: string | null
@@ -3907,6 +3908,7 @@ export type Database = {
           amount?: number
           car_id?: string | null
           car_number?: string | null
+          card_last_four?: string | null
           cheque_date?: string | null
           cheque_number?: string | null
           client_id?: string | null
@@ -3931,6 +3933,7 @@ export type Database = {
           amount?: number
           car_id?: string | null
           car_number?: string | null
+          card_last_four?: string | null
           cheque_date?: string | null
           cheque_number?: string | null
           client_id?: string | null

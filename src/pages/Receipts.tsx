@@ -42,16 +42,27 @@ interface ReceiptRow {
   payment_method: string | null;
   cheque_number: string | null;
   cheque_date: string | null;
+  card_last_four: string | null;
   created_at: string;
 }
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: 'מזומן',
+  cheque: 'שיק',
+  visa: 'כרטיס אשראי',
+  credit_card: 'כרטיס אשראי',
+  transfer: 'העברה בנקאית',
+  bank_transfer: 'העברה בנקאית',
+  accident_fee: 'דמי תאונות',
+};
 
 function padReceiptNumber(num: number): string {
   return String(num).padStart(2, '0');
 }
 
-function useReceipts(tab: string, search: string, dateFrom: Date | undefined, dateTo: Date | undefined) {
+function useReceipts(tab: string, search: string, dateFrom: Date | undefined, dateTo: Date | undefined, paymentMethodFilter: string) {
   return useQuery({
-    queryKey: ["receipts", tab, search, dateFrom?.toISOString(), dateTo?.toISOString()],
+    queryKey: ["receipts", tab, search, dateFrom?.toISOString(), dateTo?.toISOString(), paymentMethodFilter],
     queryFn: async () => {
       let query = supabase
         .from("receipts")
@@ -74,6 +85,10 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
       }
       if (dateTo) {
         query = query.lte("receipt_date", format(dateTo, "yyyy-MM-dd"));
+      }
+
+      if (paymentMethodFilter && paymentMethodFilter !== "all") {
+        query = query.eq("payment_method", paymentMethodFilter);
       }
 
       const { data, error } = await query;
@@ -117,6 +132,7 @@ export default function Receipts() {
   const [editingReceipt, setEditingReceipt] = useState<ReceiptRow | null>(null);
   const [deleteReceipt, setDeleteReceipt] = useState<ReceiptRow | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState("all");
 
   // Form state
   const [formType, setFormType] = useState<"payment" | "accident_fee">("payment");
@@ -130,7 +146,7 @@ export default function Receipts() {
   const [formPaymentMethod, setFormPaymentMethod] = useState("cash");
   const [formChequeNumber, setFormChequeNumber] = useState("");
   const [formChequeDate, setFormChequeDate] = useState("");
-  const { data: receipts, isLoading } = useReceipts(tab, search, dateFrom, dateTo);
+  const { data: receipts, isLoading } = useReceipts(tab, search, dateFrom, dateTo, paymentMethodFilter);
   const { data: companySettings } = useCompanySettings();
 
   const resetForm = useCallback(() => {
@@ -227,17 +243,20 @@ export default function Receipts() {
     let paymentMethod = r.payment_method || '';
     let chequeNumber = r.cheque_number || '';
     let chequeDate = r.cheque_date || '';
+    let cardLastFour = r.card_last_four || '';
 
     // For auto receipts, fetch payment details if not stored on receipt
     if (r.source === 'auto' && r.payment_id && !r.payment_method) {
       const { data: paymentData } = await supabase
         .from('policy_payments')
-        .select('payment_type, cheque_number')
+        .select('payment_type, cheque_number, card_last_four, cheque_date')
         .eq('id', r.payment_id)
         .single();
       if (paymentData) {
         paymentMethod = paymentData.payment_type || '';
         chequeNumber = paymentData.cheque_number || '';
+        cardLastFour = paymentData.card_last_four || '';
+        chequeDate = paymentData.cheque_date || '';
       }
     }
 
@@ -256,6 +275,7 @@ export default function Receipts() {
       paymentMethod,
       chequeNumber,
       chequeDate,
+      cardLastFour,
     };
     const html = buildReceiptPrintHtml(data, companySettings || { logoUrl: "", company_email: "", company_location: "", company_phone_links: [] });
     const printWindow = window.open("", "_blank");
@@ -374,6 +394,23 @@ export default function Receipts() {
               </Button>
             )}
           </div>
+
+          {/* Payment method filter */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-sm text-muted-foreground">אמצעי תשלום:</span>
+            <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
+              <SelectTrigger className="w-40 h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">הכל</SelectItem>
+                <SelectItem value="cash">מזומן</SelectItem>
+                <SelectItem value="cheque">שיק</SelectItem>
+                <SelectItem value="visa">כרטיס אשראי</SelectItem>
+                <SelectItem value="transfer">העברה בנקאית</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Table */}
@@ -387,15 +424,16 @@ export default function Receipts() {
                 <TableHead className="text-right">מס׳ רכב</TableHead>
                 <TableHead className="text-right">תאריך</TableHead>
                 <TableHead className="text-right">סכום</TableHead>
+                <TableHead className="text-right">אמצעי תשלום</TableHead>
                 <TableHead className="text-right">מקור</TableHead>
                 <TableHead className="text-right w-32">פעולות</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                Array.from({ length: 8 }).map((_, i) => (
+                Array.from({ length: 10 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 8 }).map((_, j) => (
+                    {Array.from({ length: 10 }).map((_, j) => (
                       <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                     ))}
                   </TableRow>
@@ -413,6 +451,17 @@ export default function Receipts() {
                     <TableCell className="font-mono text-sm">{r.car_number || "-"}</TableCell>
                     <TableCell>{r.receipt_date}</TableCell>
                     <TableCell className="font-bold">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <span className="text-sm">{PAYMENT_METHOD_LABELS[r.payment_method || ''] || '-'}</span>
+                        {r.payment_method === 'visa' && r.card_last_four && (
+                          <Badge variant="secondary" className="text-xs font-mono">****{r.card_last_four}</Badge>
+                        )}
+                        {r.payment_method === 'cheque' && r.cheque_number && (
+                          <Badge variant="outline" className="text-xs font-mono">{r.cheque_number}</Badge>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <Badge variant={r.source === "auto" ? "secondary" : "outline"} className="text-xs">
                         {r.source === "auto" ? "אוטומטי" : "ידני"}
@@ -449,7 +498,7 @@ export default function Receipts() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
                     <Receipt className="h-10 w-10 mx-auto mb-2 opacity-30" />
                     <p>אין קבלות</p>
                   </TableCell>

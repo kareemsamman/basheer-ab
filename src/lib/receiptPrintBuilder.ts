@@ -13,6 +13,7 @@ export interface ReceiptPrintData {
   paymentMethod?: string;
   chequeNumber?: string;
   chequeDate?: string;
+  cardLastFour?: string;
 }
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -348,7 +349,7 @@ export function buildReceiptPrintHtml(data: ReceiptPrintData, settings: CompanyS
           <tr>
             <td>1</td>
             <td>${PAYMENT_METHOD_LABELS[data.paymentMethod || ''] || (data.receiptType === 'accident_fee' ? 'דמי תאונות' : 'תשלום')}</td>
-            <td>${data.paymentMethod === 'cheque' && data.chequeNumber ? `שיק מס׳ ${data.chequeNumber}${data.chequeDate ? ' - ' + formatDateHe(data.chequeDate) : ''}` : (data.notes || '-')}</td>
+            <td>${data.paymentMethod === 'cheque' && data.chequeNumber ? `שיק מס׳ ${data.chequeNumber}${data.chequeDate ? ' - ' + formatDateHe(data.chequeDate) : ''}` : ((data.paymentMethod === 'visa' || data.paymentMethod === 'credit_card') && data.cardLastFour ? `כרטיס ****${data.cardLastFour}` : (data.notes || '-'))}</td>
             <td>${formatDateHe(data.receiptDate)}</td>
             <td class="amount-cell">₪${data.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
           </tr>
