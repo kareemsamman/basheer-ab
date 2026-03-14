@@ -10,7 +10,20 @@ export interface ReceiptPrintData {
   accidentDetails: string;
   notes: string;
   source: string;
+  paymentMethod?: string;
+  chequeNumber?: string;
+  chequeDate?: string;
 }
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: 'מזומן',
+  cheque: 'שיק',
+  visa: 'כרטיס אשראי',
+  credit_card: 'כרטיס אשראי',
+  transfer: 'העברה בנקאית',
+  bank_transfer: 'העברה בנקאית',
+  accident_fee: 'דמי תאונות',
+};
 
 export interface CompanySettings {
   logoUrl: string;
