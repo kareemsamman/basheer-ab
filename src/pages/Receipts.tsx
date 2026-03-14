@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Plus, Printer, Pencil, Trash2, Search, Receipt, CalendarIcon, X, Link2, Loader2 } from "lucide-react";
+import { Plus, Printer, Pencil, Trash2, Search, Receipt, CalendarIcon, X, Link2, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { buildReceiptPrintHtml, type ReceiptPrintData, type CompanySettings } from "@/lib/receiptPrintBuilder";
@@ -98,6 +98,48 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
   });
 }
 
+interface GroupedReceipt {
+  key: string;
+  receipts: ReceiptRow[];
+  totalAmount: number;
+  client_name: string;
+  car_number: string | null;
+  receipt_date: string;
+  receipt_type: string;
+  source: string;
+  firstReceiptNumber: number;
+  lastReceiptNumber: number;
+}
+
+function groupReceipts(receipts: ReceiptRow[]): GroupedReceipt[] {
+  const map = new Map<string, ReceiptRow[]>();
+  for (const r of receipts) {
+    const key = `${r.client_name}|${r.car_number || ''}|${r.receipt_date}|${r.receipt_type}`;
+    const group = map.get(key) || [];
+    group.push(r);
+    map.set(key, group);
+  }
+  const groups: GroupedReceipt[] = [];
+  for (const [key, items] of map) {
+    const sorted = items.sort((a, b) => a.receipt_number - b.receipt_number);
+    groups.push({
+      key,
+      receipts: sorted,
+      totalAmount: sorted.reduce((sum, r) => sum + r.amount, 0),
+      client_name: sorted[0].client_name,
+      car_number: sorted[0].car_number,
+      receipt_date: sorted[0].receipt_date,
+      receipt_type: sorted[0].receipt_type,
+      source: sorted[0].source,
+      firstReceiptNumber: sorted[0].receipt_number,
+      lastReceiptNumber: sorted[sorted.length - 1].receipt_number,
+    });
+  }
+  // Sort by first receipt number descending
+  groups.sort((a, b) => b.lastReceiptNumber - a.lastReceiptNumber);
+  return groups;
+}
+
 function useCompanySettings() {
   return useQuery({
     queryKey: ["company-settings-for-receipt"],
@@ -133,6 +175,7 @@ export default function Receipts() {
   const [deleteReceipt, setDeleteReceipt] = useState<ReceiptRow | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
   const [paymentMethodFilter, setPaymentMethodFilter] = useState("all");
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   // Form state
   const [formType, setFormType] = useState<"payment" | "accident_fee">("payment");
@@ -148,6 +191,17 @@ export default function Receipts() {
   const [formChequeDate, setFormChequeDate] = useState("");
   const { data: receipts, isLoading } = useReceipts(tab, search, dateFrom, dateTo, paymentMethodFilter);
   const { data: companySettings } = useCompanySettings();
+  
+  const groupedReceipts = receipts ? groupReceipts(receipts) : [];
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const resetForm = useCallback(() => {
     setFormType("payment");
@@ -438,64 +492,151 @@ export default function Receipts() {
                     ))}
                   </TableRow>
                 ))
-              ) : receipts && receipts.length > 0 ? (
-                receipts.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="font-mono text-xs">{padReceiptNumber(r.receipt_number)}</TableCell>
-                    <TableCell>
-                      <Badge variant={r.receipt_type === "accident_fee" ? "destructive" : "default"} className="text-xs">
-                        {RECEIPT_TYPE_LABELS[r.receipt_type] || r.receipt_type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-medium">{r.client_name}</TableCell>
-                    <TableCell className="font-mono text-sm">{r.car_number || "-"}</TableCell>
-                    <TableCell>{r.receipt_date}</TableCell>
-                    <TableCell className="font-bold">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <span className="text-sm">{PAYMENT_METHOD_LABELS[r.payment_method || ''] || '-'}</span>
-                        {r.payment_method === 'visa' && r.card_last_four && (
-                          <Badge variant="secondary" className="text-xs font-mono">****{r.card_last_four}</Badge>
-                        )}
-                        {r.payment_method === 'cheque' && r.cheque_number && (
-                          <Badge variant="outline" className="text-xs font-mono">{r.cheque_number}</Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={r.source === "auto" ? "secondary" : "outline"} className="text-xs">
-                        {r.source === "auto" ? "אוטומטי" : "ידני"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrint(r)} title="הדפסה">
-                          <Printer className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => handleCopyLink(r)}
-                          disabled={copyingId === r.id}
-                          title="העתק קישור"
-                        >
-                          {copyingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
-                        </Button>
-                        {r.source === "manual" && (
-                          <>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)} title="עריכה">
-                              <Pencil className="h-3.5 w-3.5" />
+              ) : groupedReceipts.length > 0 ? (
+                groupedReceipts.map((group) => {
+                  const isMulti = group.receipts.length > 1;
+                  const isExpanded = expandedGroups.has(group.key);
+                  const primary = group.receipts[0];
+                  
+                  // For single receipts, show normally
+                  if (!isMulti) {
+                    const r = primary;
+                    return (
+                      <TableRow key={r.id}>
+                        <TableCell className="font-mono text-xs">{padReceiptNumber(r.receipt_number)}</TableCell>
+                        <TableCell>
+                          <Badge variant={r.receipt_type === "accident_fee" ? "destructive" : "default"} className="text-xs">
+                            {RECEIPT_TYPE_LABELS[r.receipt_type] || r.receipt_type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-medium">{r.client_name}</TableCell>
+                        <TableCell className="font-mono text-sm">{r.car_number || "-"}</TableCell>
+                        <TableCell>{r.receipt_date}</TableCell>
+                        <TableCell className="font-bold">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <span className="text-sm">{PAYMENT_METHOD_LABELS[r.payment_method || ''] || '-'}</span>
+                            {r.payment_method === 'visa' && r.card_last_four && (
+                              <Badge variant="secondary" className="text-xs font-mono">****{r.card_last_four}</Badge>
+                            )}
+                            {r.payment_method === 'cheque' && r.cheque_number && (
+                              <Badge variant="outline" className="text-xs font-mono">{r.cheque_number}</Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={r.source === "auto" ? "secondary" : "outline"} className="text-xs">
+                            {r.source === "auto" ? "אוטומטי" : "ידני"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrint(r)} title="הדפסה">
+                              <Printer className="h-3.5 w-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteReceipt(r)} title="מחיקה">
-                              <Trash2 className="h-3.5 w-3.5" />
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleCopyLink(r)} disabled={copyingId === r.id} title="העתק קישור">
+                              {copyingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
                             </Button>
-                          </>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                            {r.source === "manual" && (
+                              <>
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)} title="עריכה">
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteReceipt(r)} title="מחיקה">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  }
+
+                  // For multi-receipt groups
+                  const receiptRange = `${padReceiptNumber(group.firstReceiptNumber)}-${padReceiptNumber(group.lastReceiptNumber)}`;
+                  // Collect unique payment methods
+                  const methods = [...new Set(group.receipts.map(r => r.payment_method).filter(Boolean))];
+                  
+                  return (
+                    <React.Fragment key={group.key}>
+                      <TableRow 
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => toggleGroup(group.key)}
+                      >
+                        <TableCell className="font-mono text-xs">
+                          <div className="flex items-center gap-1">
+                            {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                            {receiptRange}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={group.receipt_type === "accident_fee" ? "destructive" : "default"} className="text-xs">
+                            {RECEIPT_TYPE_LABELS[group.receipt_type] || group.receipt_type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-medium">{group.client_name}</TableCell>
+                        <TableCell className="font-mono text-sm">{group.car_number || "-"}</TableCell>
+                        <TableCell>{group.receipt_date}</TableCell>
+                        <TableCell className="font-bold">
+                          ₪{group.totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                          <Badge variant="secondary" className="text-xs mr-1">{group.receipts.length} תשלומים</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {methods.map(m => (
+                              <span key={m} className="text-sm">{PAYMENT_METHOD_LABELS[m || ''] || m}</span>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={group.source === "auto" ? "secondary" : "outline"} className="text-xs">
+                            {group.source === "auto" ? "אוטומטי" : "ידני"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handlePrint(primary); }} title="הדפסה">
+                              <Printer className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      {isExpanded && group.receipts.map((r) => (
+                        <TableRow key={r.id} className="bg-muted/30">
+                          <TableCell className="font-mono text-xs pr-8">{padReceiptNumber(r.receipt_number)}</TableCell>
+                          <TableCell></TableCell>
+                          <TableCell></TableCell>
+                          <TableCell></TableCell>
+                          <TableCell></TableCell>
+                          <TableCell className="font-bold text-sm">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <span className="text-sm">{PAYMENT_METHOD_LABELS[r.payment_method || ''] || '-'}</span>
+                              {r.payment_method === 'visa' && r.card_last_four && (
+                                <Badge variant="secondary" className="text-xs font-mono">****{r.card_last_four}</Badge>
+                              )}
+                              {r.payment_method === 'cheque' && r.cheque_number && (
+                                <Badge variant="outline" className="text-xs font-mono">{r.cheque_number}</Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell></TableCell>
+                          <TableCell>
+                            <div className="flex gap-1">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrint(r)} title="הדפסה">
+                                <Printer className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleCopyLink(r)} disabled={copyingId === r.id} title="העתק קישור">
+                                {copyingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </React.Fragment>
+                  );
+                })
               ) : (
                 <TableRow>
                   <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
