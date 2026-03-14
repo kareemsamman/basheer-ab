@@ -114,7 +114,9 @@ interface GroupedReceipt {
 function groupReceipts(receipts: ReceiptRow[]): GroupedReceipt[] {
   const map = new Map<string, ReceiptRow[]>();
   for (const r of receipts) {
-    const key = `${r.client_name}|${r.car_number || ''}|${r.receipt_date}|${r.receipt_type}`;
+    // Group by client + car + created_at rounded to same minute (payments entered together)
+    const createdMinute = r.created_at ? r.created_at.slice(0, 16) : '';
+    const key = `${r.client_name}|${r.car_number || ''}|${createdMinute}|${r.receipt_type}`;
     const group = map.get(key) || [];
     group.push(r);
     map.set(key, group);
