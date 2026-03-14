@@ -173,6 +173,7 @@ export default function Receipts() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<ReceiptRow | null>(null);
   const [deleteReceipt, setDeleteReceipt] = useState<ReceiptRow | null>(null);
+  const [copyingId, setCopyingId] = useState<string | null>(null);
   const [paymentMethodFilter, setPaymentMethodFilter] = useState("all");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
