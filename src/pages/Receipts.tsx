@@ -420,6 +420,7 @@ export default function Receipts() {
                 <TableHead className="text-right">מס׳ רכב</TableHead>
                 <TableHead className="text-right">תאריך</TableHead>
                 <TableHead className="text-right">סכום</TableHead>
+                <TableHead className="text-right">אמצעי תשלום</TableHead>
                 <TableHead className="text-right">מקור</TableHead>
                 <TableHead className="text-right w-32">פעולות</TableHead>
               </TableRow>
