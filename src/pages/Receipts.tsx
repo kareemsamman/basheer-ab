@@ -191,6 +191,17 @@ export default function Receipts() {
   const [formChequeDate, setFormChequeDate] = useState("");
   const { data: receipts, isLoading } = useReceipts(tab, search, dateFrom, dateTo, paymentMethodFilter);
   const { data: companySettings } = useCompanySettings();
+  
+  const groupedReceipts = receipts ? groupReceipts(receipts) : [];
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const resetForm = useCallback(() => {
     setFormType("payment");
