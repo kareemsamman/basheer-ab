@@ -347,8 +347,8 @@ export function buildReceiptPrintHtml(data: ReceiptPrintData, settings: CompanyS
         <tbody>
           <tr>
             <td>1</td>
-            <td>${data.receiptType === 'accident_fee' ? 'דמי תאונות' : 'תשלום'}</td>
-            <td>${data.notes || '-'}</td>
+            <td>${PAYMENT_METHOD_LABELS[data.paymentMethod || ''] || (data.receiptType === 'accident_fee' ? 'דמי תאונות' : 'תשלום')}</td>
+            <td>${data.paymentMethod === 'cheque' && data.chequeNumber ? `שיק מס׳ ${data.chequeNumber}${data.chequeDate ? ' - ' + formatDateHe(data.chequeDate) : ''}` : (data.notes || '-')}</td>
             <td>${formatDateHe(data.receiptDate)}</td>
             <td class="amount-cell">₪${data.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
           </tr>
