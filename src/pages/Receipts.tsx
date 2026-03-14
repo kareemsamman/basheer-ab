@@ -146,7 +146,7 @@ export default function Receipts() {
   const [formPaymentMethod, setFormPaymentMethod] = useState("cash");
   const [formChequeNumber, setFormChequeNumber] = useState("");
   const [formChequeDate, setFormChequeDate] = useState("");
-  const { data: receipts, isLoading } = useReceipts(tab, search, dateFrom, dateTo);
+  const { data: receipts, isLoading } = useReceipts(tab, search, dateFrom, dateTo, paymentMethodFilter);
   const { data: companySettings } = useCompanySettings();
 
   const resetForm = useCallback(() => {
