@@ -39,6 +39,9 @@ interface ReceiptRow {
   policy_id: string | null;
   notes: string | null;
   receipt_url: string | null;
+  payment_method: string | null;
+  cheque_number: string | null;
+  cheque_date: string | null;
   created_at: string;
 }
 
