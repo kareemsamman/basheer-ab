@@ -243,17 +243,20 @@ export default function Receipts() {
     let paymentMethod = r.payment_method || '';
     let chequeNumber = r.cheque_number || '';
     let chequeDate = r.cheque_date || '';
+    let cardLastFour = r.card_last_four || '';
 
     // For auto receipts, fetch payment details if not stored on receipt
     if (r.source === 'auto' && r.payment_id && !r.payment_method) {
       const { data: paymentData } = await supabase
         .from('policy_payments')
-        .select('payment_type, cheque_number')
+        .select('payment_type, cheque_number, card_last_four, cheque_date')
         .eq('id', r.payment_id)
         .single();
       if (paymentData) {
         paymentMethod = paymentData.payment_type || '';
         chequeNumber = paymentData.cheque_number || '';
+        cardLastFour = paymentData.card_last_four || '';
+        chequeDate = paymentData.cheque_date || '';
       }
     }
 
