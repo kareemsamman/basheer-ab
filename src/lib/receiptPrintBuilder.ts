@@ -10,7 +10,20 @@ export interface ReceiptPrintData {
   accidentDetails: string;
   notes: string;
   source: string;
+  paymentMethod?: string;
+  chequeNumber?: string;
+  chequeDate?: string;
 }
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: 'מזומן',
+  cheque: 'שיק',
+  visa: 'כרטיס אשראי',
+  credit_card: 'כרטיס אשראי',
+  transfer: 'העברה בנקאית',
+  bank_transfer: 'העברה בנקאית',
+  accident_fee: 'דמי תאונות',
+};
 
 export interface CompanySettings {
   logoUrl: string;
@@ -312,7 +325,7 @@ export function buildReceiptPrintHtml(data: ReceiptPrintData, settings: CompanyS
 
     <div class="client-row">
       <div><span>לכבוד: </span><span class="client-name">${data.clientName}</span></div>
-      <div>תאריך: ${formatDateHe(data.receiptDate)}</div>
+      <div>תאריך: ${formatDateHe(new Date().toISOString())}</div>
     </div>
 
     <div class="subject-bar">
@@ -334,8 +347,8 @@ export function buildReceiptPrintHtml(data: ReceiptPrintData, settings: CompanyS
         <tbody>
           <tr>
             <td>1</td>
-            <td>${data.receiptType === 'accident_fee' ? 'דמי תאונות' : 'תשלום'}</td>
-            <td>${data.notes || '-'}</td>
+            <td>${PAYMENT_METHOD_LABELS[data.paymentMethod || ''] || (data.receiptType === 'accident_fee' ? 'דמי תאונות' : 'תשלום')}</td>
+            <td>${data.paymentMethod === 'cheque' && data.chequeNumber ? `שיק מס׳ ${data.chequeNumber}${data.chequeDate ? ' - ' + formatDateHe(data.chequeDate) : ''}` : (data.notes || '-')}</td>
             <td>${formatDateHe(data.receiptDate)}</td>
             <td class="amount-cell">₪${data.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
           </tr>

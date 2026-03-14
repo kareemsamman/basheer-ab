@@ -39,6 +39,9 @@ interface ReceiptRow {
   policy_id: string | null;
   notes: string | null;
   receipt_url: string | null;
+  payment_method: string | null;
+  cheque_number: string | null;
+  cheque_date: string | null;
   created_at: string;
 }
 
@@ -124,7 +127,9 @@ export default function Receipts() {
   const [formAccidentDate, setFormAccidentDate] = useState("");
   const [formAccidentDetails, setFormAccidentDetails] = useState("");
   const [formNotes, setFormNotes] = useState("");
-
+  const [formPaymentMethod, setFormPaymentMethod] = useState("cash");
+  const [formChequeNumber, setFormChequeNumber] = useState("");
+  const [formChequeDate, setFormChequeDate] = useState("");
   const { data: receipts, isLoading } = useReceipts(tab, search, dateFrom, dateTo);
   const { data: companySettings } = useCompanySettings();
 
@@ -137,6 +142,9 @@ export default function Receipts() {
     setFormAccidentDate("");
     setFormAccidentDetails("");
     setFormNotes("");
+    setFormPaymentMethod("cash");
+    setFormChequeNumber("");
+    setFormChequeDate("");
     setEditingReceipt(null);
   }, []);
 
@@ -155,6 +163,9 @@ export default function Receipts() {
     setFormAccidentDate(r.accident_date || "");
     setFormAccidentDetails(r.accident_details || "");
     setFormNotes(r.notes || "");
+    setFormPaymentMethod(r.payment_method || "cash");
+    setFormChequeNumber(r.cheque_number || "");
+    setFormChequeDate(r.cheque_date || "");
     setDrawerOpen(true);
   };
 
@@ -170,6 +181,9 @@ export default function Receipts() {
         accident_details: formType === "accident_fee" ? formAccidentDetails || null : null,
         notes: formNotes || null,
         source: "manual" as const,
+        payment_method: formPaymentMethod || null,
+        cheque_number: formPaymentMethod === "cheque" ? formChequeNumber || null : null,
+        cheque_date: formPaymentMethod === "cheque" && formChequeDate ? formChequeDate : null,
       };
 
       if (editingReceipt) {
@@ -209,7 +223,24 @@ export default function Receipts() {
     },
   });
 
-  const handlePrint = (r: ReceiptRow) => {
+  const handlePrint = async (r: ReceiptRow) => {
+    let paymentMethod = r.payment_method || '';
+    let chequeNumber = r.cheque_number || '';
+    let chequeDate = r.cheque_date || '';
+
+    // For auto receipts, fetch payment details if not stored on receipt
+    if (r.source === 'auto' && r.payment_id && !r.payment_method) {
+      const { data: paymentData } = await supabase
+        .from('policy_payments')
+        .select('payment_type, cheque_number')
+        .eq('id', r.payment_id)
+        .single();
+      if (paymentData) {
+        paymentMethod = paymentData.payment_type || '';
+        chequeNumber = paymentData.cheque_number || '';
+      }
+    }
+
     const data: ReceiptPrintData = {
       receiptNumber: padReceiptNumber(r.receipt_number),
       receiptType: r.receipt_type,
@@ -222,6 +253,9 @@ export default function Receipts() {
       accidentDetails: r.accident_details || "",
       notes: r.notes || "",
       source: r.source,
+      paymentMethod,
+      chequeNumber,
+      chequeDate,
     };
     const html = buildReceiptPrintHtml(data, companySettings || { logoUrl: "", company_email: "", company_location: "", company_phone_links: [] });
     const printWindow = window.open("", "_blank");
@@ -474,6 +508,32 @@ export default function Receipts() {
                 <div className="space-y-2">
                   <Label>פרטי תאונה</Label>
                   <Textarea value={formAccidentDetails} onChange={(e) => setFormAccidentDetails(e.target.value)} placeholder="תיאור התאונה..." rows={3} />
+                </div>
+              </>
+            )}
+
+            <div className="space-y-2">
+              <Label>אמצעי תשלום</Label>
+              <Select value={formPaymentMethod} onValueChange={setFormPaymentMethod}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">מזומן</SelectItem>
+                  <SelectItem value="cheque">שיק</SelectItem>
+                  <SelectItem value="visa">כרטיס אשראי</SelectItem>
+                  <SelectItem value="transfer">העברה בנקאית</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {formPaymentMethod === "cheque" && (
+              <>
+                <div className="space-y-2">
+                  <Label>מספר שיק</Label>
+                  <Input value={formChequeNumber} onChange={(e) => setFormChequeNumber(e.target.value)} placeholder="מספר השיק" />
+                </div>
+                <div className="space-y-2">
+                  <Label>תאריך שיק</Label>
+                  <Input type="date" value={formChequeDate} onChange={(e) => setFormChequeDate(e.target.value)} />
                 </div>
               </>
             )}
