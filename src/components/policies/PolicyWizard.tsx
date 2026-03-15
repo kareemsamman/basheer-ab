@@ -1536,6 +1536,13 @@ export function PolicyWizard({
   // Handle dialog close
   const handleClose = () => {
     if (saving) return;
+    // Clean up temp policy if user closes wizard without completing Visa payment
+    if (tempPolicyId) {
+      const hasCompletedVisa = payments.some(p => p.payment_type === 'visa' && p.tranzila_paid);
+      if (!hasCompletedVisa) {
+        handleDeleteTempPolicy(tempPolicyId);
+      }
+    }
     onOpenChange(false);
   };
 
