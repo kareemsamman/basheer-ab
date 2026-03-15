@@ -1789,6 +1789,10 @@ export function PolicyWizard({
           onFailure={() => {
             setTranzilaModalOpen(false);
             setActiveTranzilaPaymentId(null);
+            // Clean up temp policy on payment failure so orphan policies don't remain
+            if (tempPolicyId) {
+              handleDeleteTempPolicy(tempPolicyId);
+            }
           }}
         />
       )}
