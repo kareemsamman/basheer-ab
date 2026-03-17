@@ -728,13 +728,14 @@ export function DebtPaymentModal({
 
       toast.success('تم تسديد الدفعات بنجاح');
       
-      // Send bulk receipt SMS with all payment IDs
-      if (allCreatedPaymentIds.length > 0) {
-        await sendPaymentConfirmationSms(totalPaymentAmount, allCreatedPaymentIds);
-      }
-      
+      // Close modal and refresh immediately - don't wait for SMS
       onOpenChange(false);
       onSuccess();
+      
+      // Send bulk receipt SMS in background (fire and forget)
+      if (allCreatedPaymentIds.length > 0) {
+        sendPaymentConfirmationSms(totalPaymentAmount, allCreatedPaymentIds).catch(console.error);
+      }
     } catch (error: any) {
       console.error('Error saving payments:', error);
       toast.error(error.message || 'خطأ في حفظ الدفعات');
