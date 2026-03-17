@@ -659,9 +659,10 @@ export function DebtPaymentModal({
           const splits = calculateSplitPayments(paymentLine.amount, paymentLine.paymentType);
           
           if (splits.length > 0) {
-            // Generate batch_id for grouping split payments in the UI
+            // Always generate batch_id for debt payments
             // This links all payments from a single debt payment action
-            const batchId = splits.length > 1 ? crypto.randomUUID() : null;
+            // and allows the trigger bypass for payments exceeding a single policy/package
+            const batchId = crypto.randomUUID();
             
             const paymentsToInsert = splits.map(split => ({
               policy_id: split.policyId,
