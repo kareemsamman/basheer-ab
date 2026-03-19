@@ -752,7 +752,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
 
   // Super Admin: Handle policy deletion
   const handleDeletePolicy = async () => {
-    if (!isSuperAdmin || deletePolicyIds.length === 0) return;
+    if (!isAdmin || deletePolicyIds.length === 0) return;
     
     setDeletingPolicy(true);
     try {
@@ -1642,7 +1642,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                     setPolicyDetailsOpen(true);
                   }
                 }}
-                onDeletePolicy={isSuperAdmin ? (policyIds) => {
+                onDeletePolicy={isAdmin ? (policyIds) => {
                   setDeletePolicyIds(policyIds);
                   setDeletePolicyDialogOpen(true);
                 } : undefined}
