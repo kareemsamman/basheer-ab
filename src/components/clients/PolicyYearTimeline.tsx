@@ -1037,7 +1037,7 @@ function PolicyPackageCard({
                 )}
 
                 {/* Super Admin Only: Delete Policy */}
-                {isAdmin && onDeletePolicy && (
+                {isSuperAdmin && onDeletePolicy && (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem 

@@ -47,7 +47,7 @@ serve(async (req) => {
 
     console.log(`[send-to-rivhit] Processing ${rows.length} rows, doc_type=${document_type}`);
 
-    const results: Array<{ index: number; success: boolean; error?: string; doc_number?: number }> = [];
+    const results: Array<{ index: number; success: boolean; error?: string; doc_number?: number; doc_link?: string }> = [];
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
