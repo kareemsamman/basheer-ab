@@ -128,7 +128,7 @@ export function Step4Payments({
       ...payments,
       {
         id: crypto.randomUUID(),
-        payment_type: "cash",
+        payment_type: isElzami ? "visa" : "cash",
         amount: 0,
         payment_date: new Date().toISOString().split('T')[0],
         refused: false,
@@ -160,7 +160,7 @@ export function Step4Payments({
       
       newPayments.push({
         id: crypto.randomUUID(),
-        payment_type: "cash",
+        payment_type: isElzami ? "visa" : "cash",
         amount,
         payment_date: paymentDate.toISOString().split('T')[0],
         refused: false,
