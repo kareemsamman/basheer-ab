@@ -278,7 +278,7 @@ export function PolicyWizard({
           // Add new locked payment
           setPayments([{
             id: crypto.randomUUID(),
-            payment_type: 'visa',
+            payment_type: 'cash',
             amount: elzamiPrice,
             payment_date: elzamiDate,
             refused: false,
