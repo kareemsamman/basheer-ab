@@ -270,17 +270,25 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved }: ClientDraw
               .select('file_number')
               .not('file_number', 'is', null)
               .neq('file_number', '')
-              .order('file_number', { ascending: false })
-              .limit(100);
-            
+              .order('created_at', { ascending: false })
+              .limit(200);
+
             if (data && data.length > 0) {
               let maxNum = 0;
+              let hasPrefix = false;
               for (const row of data) {
-                const parsed = parseInt(row.file_number || '', 10);
-                if (!isNaN(parsed) && parsed > maxNum) maxNum = parsed;
+                const raw = (row.file_number || '').trim();
+                // Strip common prefixes like "F", "f"
+                const stripped = raw.replace(/^[Ff]/, '');
+                const parsed = parseInt(stripped, 10);
+                if (!isNaN(parsed) && parsed > maxNum) {
+                  maxNum = parsed;
+                  hasPrefix = raw !== stripped;
+                }
               }
               if (maxNum > 0) {
-                form.setValue('file_number', String(maxNum + 1));
+                const nextNum = String(maxNum + 1);
+                form.setValue('file_number', hasPrefix ? `F${nextNum}` : nextNum);
               }
             }
           } catch (err) {
