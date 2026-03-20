@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -27,7 +27,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Save, Building2 } from 'lucide-react';
+import { Loader2, Save, Building2, Upload, X, FileImage, FileVideo, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
@@ -35,6 +35,24 @@ import { useBranches } from '@/hooks/useBranches';
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import { ClientChildrenManager } from './ClientChildrenManager';
 import type { ClientChild, NewChildForm } from '@/types/clientChildren';
+import { cn } from '@/lib/utils';
+import { Progress } from '@/components/ui/progress';
+
+interface PendingFile {
+  id: string;
+  file: File;
+  status: 'pending' | 'uploading' | 'success' | 'error';
+  progress: number;
+  error?: string;
+}
+
+const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'pdf', 'doc', 'docx', 'mp4', 'webm'];
+
+function getFileIcon(file: File) {
+  if (file.type.startsWith('image/')) return FileImage;
+  if (file.type.startsWith('video/')) return FileVideo;
+  return FileText;
+}
 
 const UNDER24_OPTIONS = [
   { value: 'none', label: 'لا' },
@@ -101,12 +119,69 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved }: ClientDraw
   const { isAdmin, branchId: userBranchId } = useAuth();
   const { branches } = useBranches();
   const isEditing = !!client;
-  
+
   // Children state
   const [existingChildren, setExistingChildren] = useState<ClientChild[]>([]);
   const [newChildren, setNewChildren] = useState<NewChildForm[]>([]);
   const [childrenToDelete, setChildrenToDelete] = useState<string[]>([]);
   const [linkedChildIds, setLinkedChildIds] = useState<string[]>([]);
+
+  // File upload state
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const validateFile = (file: File): string | null => {
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (!ext || !ALLOWED_EXTENSIONS.includes(ext)) return 'نوع الملف غير مدعوم';
+    if (file.size > 50 * 1024 * 1024) return 'حجم الملف يتجاوز 50MB';
+    return null;
+  };
+
+  const addFiles = (fileList: FileList | File[]) => {
+    const newFiles: PendingFile[] = Array.from(fileList).map(file => ({
+      id: crypto.randomUUID(),
+      file,
+      status: validateFile(file) ? 'error' : 'pending',
+      progress: 0,
+      error: validateFile(file) || undefined,
+    }));
+    setPendingFiles(prev => [...prev, ...newFiles]);
+  };
+
+  const removeFile = (id: string) => {
+    setPendingFiles(prev => prev.filter(f => f.id !== id));
+  };
+
+  const uploadFilesForClient = async (clientId: string) => {
+    const toUpload = pendingFiles.filter(f => f.status === 'pending');
+    if (toUpload.length === 0) return;
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    for (const pf of toUpload) {
+      setPendingFiles(prev => prev.map(f =>
+        f.id === pf.id ? { ...f, status: 'uploading', progress: 30 } : f
+      ));
+      try {
+        const formData = new FormData();
+        formData.append('file', pf.file);
+        formData.append('entity_type', 'client');
+        formData.append('entity_id', clientId);
+
+        const response = await supabase.functions.invoke('upload-media', { body: formData });
+        if (response.error) throw new Error(response.error.message || 'فشل الرفع');
+
+        setPendingFiles(prev => prev.map(f =>
+          f.id === pf.id ? { ...f, status: 'success', progress: 100 } : f
+        ));
+      } catch (err: any) {
+        setPendingFiles(prev => prev.map(f =>
+          f.id === pf.id ? { ...f, status: 'error', error: err.message || 'فشل الرفع', progress: 0 } : f
+        ));
+      }
+    }
+  };
 
   const form = useForm<ClientFormData>({
     resolver: zodResolver(clientSchema),
@@ -122,6 +197,13 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved }: ClientDraw
       branch_id: '',
     },
   });
+
+  // Clear files when drawer closes or client changes
+  useEffect(() => {
+    if (!open) {
+      setPendingFiles([]);
+    }
+  }, [open]);
 
   // Fetch children when editing a client
   useEffect(() => {
@@ -315,6 +397,12 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved }: ClientDraw
         }
       }
 
+      // Upload pending files
+      const filesToUpload = pendingFiles.filter(f => f.status === 'pending');
+      if (savedClientId && filesToUpload.length > 0) {
+        await uploadFilesForClient(savedClientId);
+      }
+
       if (isEditing) {
         if (branchChanged) {
           toast.success('تم تحديث بيانات العميل ونقل جميع وثائقه للفرع الجديد');
@@ -326,6 +414,7 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved }: ClientDraw
       }
 
       form.reset();
+      setPendingFiles([]);
       onSaved();
     } catch (error: any) {
       console.error('Save error:', error);
@@ -550,6 +639,73 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved }: ClientDraw
                 }}
                 linkedChildIds={linkedChildIds}
               />
+            </div>
+
+            {/* File Upload Section */}
+            <div className="border-t pt-4">
+              <label className="text-sm font-medium mb-2 block">مرفقات</label>
+              <div
+                onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length > 0) addFiles(e.dataTransfer.files); }}
+                onDragOver={(e) => e.preventDefault()}
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-all hover:border-primary/60 hover:bg-accent/30"
+              >
+                <Upload className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">اسحب الملفات هنا أو انقر للاختيار</p>
+                <p className="text-xs text-muted-foreground">صور، PDF، Word، فيديو • حد أقصى 50MB</p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*,application/pdf,.doc,.docx,video/*"
+                  className="hidden"
+                  onChange={(e) => { if (e.target.files) { addFiles(e.target.files); e.target.value = ''; } }}
+                />
+              </div>
+              {pendingFiles.length > 0 && (
+                <div className="space-y-1.5 mt-2 max-h-[200px] overflow-y-auto">
+                  {pendingFiles.map(pf => {
+                    const Icon = getFileIcon(pf.file);
+                    return (
+                      <div
+                        key={pf.id}
+                        className={cn(
+                          'flex items-center gap-2 p-2 rounded-lg border text-sm',
+                          pf.status === 'success' && 'bg-green-500/5 border-green-500/30',
+                          pf.status === 'error' && 'bg-destructive/5 border-destructive/30',
+                          pf.status === 'uploading' && 'bg-primary/5 border-primary/30',
+                          pf.status === 'pending' && 'bg-card border-border'
+                        )}
+                      >
+                        <div className="flex-shrink-0 w-8 h-8 rounded flex items-center justify-center bg-muted">
+                          {pf.status === 'success' ? (
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          ) : pf.status === 'error' ? (
+                            <AlertCircle className="h-4 w-4 text-destructive" />
+                          ) : pf.status === 'uploading' ? (
+                            <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                          ) : pf.file.type.startsWith('image/') ? (
+                            <img src={URL.createObjectURL(pf.file)} alt="" className="w-full h-full object-cover rounded" />
+                          ) : (
+                            <Icon className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="truncate text-xs font-medium">{pf.file.name}</p>
+                          {pf.status === 'uploading' && <Progress value={pf.progress} className="h-1 mt-1" />}
+                          {pf.error && <p className="text-xs text-destructive">{pf.error}</p>}
+                          {pf.status === 'success' && <p className="text-xs text-green-600">تم الرفع</p>}
+                        </div>
+                        {pf.status !== 'uploading' && (
+                          <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" onClick={(e) => { e.stopPropagation(); removeFile(pf.id); }}>
+                            <X className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <FormField
