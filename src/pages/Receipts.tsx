@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
@@ -12,15 +12,18 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Plus, Printer, Pencil, Trash2, Search, Receipt, CalendarIcon, X, Link2, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Printer, Pencil, Trash2, Search, Receipt, CalendarIcon, X, Link2, Loader2, ChevronDown, ChevronUp, Download, FileText } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { buildReceiptPrintHtml, type ReceiptPrintData, type CompanySettings } from "@/lib/receiptPrintBuilder";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
 
 interface ReceiptRow {
   id: string;
@@ -327,6 +330,171 @@ function buildGroupedReceiptPrintHtml(group: GroupedReceipt, settings: CompanySe
 </html>`;
 }
 
+function buildFullInvoiceHtml(receipts: ReceiptRow[], settings: CompanySettings): string {
+  const phoneLinksHtml = (settings.company_phone_links || []).map((link) => `<span>${link.phone}</span>`).join(" | ");
+  const logoImg = settings.logoUrl
+    ? `<img src="${settings.logoUrl}" alt="Logo" class="logo" />`
+    : `<div class="logo-placeholder">AB</div>`;
+
+  const rows = receipts
+    .map(
+      (r, index) => `
+      <tr>
+        <td>${index + 1}</td>
+        <td>${padReceiptNumber(r.receipt_number)}</td>
+        <td>${r.client_name}</td>
+        <td>${r.car_number || "-"}</td>
+        <td>${PAYMENT_METHOD_LABELS[r.payment_method || ""] || "תשלום"}</td>
+        <td>${getReceiptPaymentDetails(r)}</td>
+        <td>${formatPrintDate(r.receipt_date)}</td>
+        <td class="amount-cell">₪${r.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+      </tr>`
+    )
+    .join("");
+
+  const totalAmount = receipts.reduce((sum, r) => sum + r.amount, 0);
+  const dateRange = receipts.length > 0
+    ? `${formatPrintDate(receipts[receipts.length - 1].receipt_date)} - ${formatPrintDate(receipts[0].receipt_date)}`
+    : "";
+
+  return `<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ריכוז קבלות ${dateRange}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    @page { size: A4 landscape; margin: 10mm; }
+    @media print {
+      body { padding: 0; background: white; }
+      .no-print { display: none !important; }
+      .container { box-shadow: none; border: none; }
+    }
+    body { font-family: Arial, Tahoma, 'Segoe UI', sans-serif; font-size: 13px; line-height: 1.4; color: #1a1a1a; background: #f0f2f5; padding: 20px; direction: rtl; }
+    .container { max-width: 1100px; margin: 0 auto; background: white; border: 2px solid #1a3a5c; }
+    .header { display: flex; align-items: center; justify-content: space-between; padding: 15px 25px; border-bottom: 3px solid #1a3a5c; }
+    .header-right { display: flex; align-items: center; gap: 15px; }
+    .logo { height: 60px; width: auto; object-fit: contain; }
+    .logo-placeholder { width: 60px; height: 60px; background: #1a3a5c; color: white; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: bold; border-radius: 8px; }
+    .company-info { text-align: right; }
+    .company-name { font-size: 20px; font-weight: bold; color: #1a3a5c; }
+    .company-name-en { font-size: 10px; color: #666; letter-spacing: 1px; }
+    .company-detail { font-size: 11px; color: #444; margin-top: 2px; }
+    .header-left { text-align: left; font-size: 11px; color: #444; }
+    .header-left div { margin-bottom: 2px; }
+    .title-bar { background: #d6e4f0; padding: 10px 25px; font-weight: bold; font-size: 16px; color: #1a3a5c; border-bottom: 1px solid #b0c4d8; display: flex; justify-content: space-between; align-items: center; }
+    .date-range { font-size: 13px; color: #444; font-weight: normal; }
+    .table-section { padding: 15px 25px; }
+    table { width: 100%; border-collapse: collapse; border: 1px solid #ccc; }
+    th { background: #1a3a5c; color: white; font-weight: bold; padding: 8px 10px; font-size: 12px; border: 1px solid #1a3a5c; text-align: center; white-space: nowrap; }
+    td { padding: 7px 10px; border: 1px solid #ccc; text-align: center; font-size: 12px; }
+    tr:nth-child(even) { background: #f8f9fa; }
+    .amount-cell { font-weight: bold; }
+    .total-row { display: flex; justify-content: flex-end; align-items: center; padding: 12px 25px; gap: 15px; border-top: 2px solid #1a3a5c; }
+    .total-label { font-size: 16px; font-weight: bold; color: #1a3a5c; }
+    .total-value { background: #1a3a5c; color: white; padding: 6px 20px; border-radius: 6px; font-size: 18px; font-weight: bold; }
+    .total-count { font-size: 13px; color: #666; }
+    .footer { border-top: 1px solid #ddd; padding: 10px 25px; display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #888; background: #fafafa; }
+    .footer-badge { color: #1a3a5c; font-weight: bold; }
+    .action-buttons { display: flex; gap: 10px; justify-content: center; padding: 20px; }
+    .btn { padding: 10px 24px; border: none; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer; font-family: Arial, Tahoma, sans-serif; background: #1a3a5c; color: white; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-right">
+        ${logoImg}
+        <div class="company-info">
+          <div class="company-name">בשיר אבו סנינה לביטוח</div>
+          <div class="company-name-en">BASHEER ABU SNEINEH INSURANCE</div>
+          <div class="company-detail">עוסק מורשה: 212426498</div>
+        </div>
+      </div>
+      <div class="header-left">
+        ${settings.company_location ? `<div>📍 ${settings.company_location}</div>` : ""}
+        ${phoneLinksHtml ? `<div>📞 ${phoneLinksHtml}</div>` : ""}
+        ${settings.company_email ? `<div>📧 ${settings.company_email}</div>` : ""}
+      </div>
+    </div>
+
+    <div class="title-bar">
+      <span>ריכוז קבלות</span>
+      ${dateRange ? `<span class="date-range">${dateRange}</span>` : ""}
+    </div>
+
+    <div class="table-section">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>מס׳ קבלה</th>
+            <th>שם לקוח</th>
+            <th>מס׳ רכב</th>
+            <th>אמצעי תשלום</th>
+            <th>פירוט</th>
+            <th>תאריך</th>
+            <th>סכום</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="total-row">
+      <span class="total-count">${receipts.length} קבלות</span>
+      <span class="total-label">סה"כ</span>
+      <span class="total-value">₪${totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+    </div>
+
+    <div class="footer">
+      <div class="footer-badge">🔒 חתימה דיגיטלית מאובטחת</div>
+      <div>הופק ב ${formatPrintDate(new Date().toISOString())} | ריכוז ${receipts.length} קבלות</div>
+    </div>
+  </div>
+
+  <div class="action-buttons no-print">
+    <button class="btn" onclick="window.print()">🖨️ הדפסה</button>
+  </div>
+
+  <script>
+    setTimeout(function(){ window.print(); }, 500);
+  </script>
+</body>
+</html>`;
+}
+
+async function generateReceiptPdfBlob(html: string): Promise<Blob> {
+  const html2pdf = (await import("html2pdf.js")).default;
+  const container = document.createElement("div");
+  container.innerHTML = html;
+  // Extract just the .container element for cleaner PDF
+  const receiptEl = container.querySelector(".container") || container;
+  document.body.appendChild(container);
+  container.style.position = "absolute";
+  container.style.left = "-9999px";
+  container.style.top = "0";
+
+  try {
+    const blob = await html2pdf()
+      .set({
+        margin: 5,
+        filename: "receipt.pdf",
+        image: { type: "jpeg", quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      })
+      .from(receiptEl)
+      .outputPdf("blob");
+    return blob as Blob;
+  } finally {
+    document.body.removeChild(container);
+  }
+}
+
 export default function Receipts() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("all");
@@ -339,6 +507,8 @@ export default function Receipts() {
   const [copyingId, setCopyingId] = useState<string | null>(null);
   const [paymentMethodFilter, setPaymentMethodFilter] = useState("all");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState<string | null>(null); // 'zip' | 'invoice' | null
 
   // Form state
   const [formType, setFormType] = useState<"payment" | "accident_fee">("payment");
@@ -356,6 +526,119 @@ export default function Receipts() {
   const { data: companySettings } = useCompanySettings();
   
   const groupedReceipts = receipts ? groupReceipts(receipts) : [];
+
+  // All receipt IDs in current filtered view (flattened)
+  const allFilteredIds = useMemo(() => {
+    return new Set(groupedReceipts.flatMap(g => g.receipts.map(r => r.id)));
+  }, [groupedReceipts]);
+
+  const allFilteredReceipts = useMemo(() => {
+    return groupedReceipts.flatMap(g => g.receipts);
+  }, [groupedReceipts]);
+
+  const isAllSelected = allFilteredIds.size > 0 && [...allFilteredIds].every(id => selectedIds.has(id));
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allFilteredIds));
+    }
+  };
+
+  const toggleSelectReceipt = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectGroup = (group: GroupedReceipt) => {
+    const ids = group.receipts.map(r => r.id);
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      const allSelected = ids.every(id => next.has(id));
+      if (allSelected) {
+        ids.forEach(id => next.delete(id));
+      } else {
+        ids.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  // Get the receipts to act on: selected ones, or all filtered if none selected
+  const getTargetReceipts = (): ReceiptRow[] => {
+    if (selectedIds.size > 0) {
+      return allFilteredReceipts.filter(r => selectedIds.has(r.id));
+    }
+    return allFilteredReceipts;
+  };
+
+  const defaultSettings: CompanySettings = { logoUrl: "", company_email: "", company_location: "", company_phone_links: [] };
+
+  const handleFullInvoice = () => {
+    const targets = getTargetReceipts();
+    if (targets.length === 0) { toast.error("אין קבלות להצגה"); return; }
+    setBulkLoading("invoice");
+    try {
+      const html = buildFullInvoiceHtml(targets, companySettings || defaultSettings);
+      const printWindow = window.open("", "_blank");
+      if (!printWindow) { toast.error("חלון הודפס נחסם"); return; }
+      printWindow.document.write(html);
+      printWindow.document.close();
+    } finally {
+      setBulkLoading(null);
+    }
+  };
+
+  const handleDownloadZip = async () => {
+    const targets = getTargetReceipts();
+    if (targets.length === 0) { toast.error("אין קבלות להורדה"); return; }
+    setBulkLoading("zip");
+    const toastId = toast.loading(`מייצר ${targets.length} קבצי PDF...`);
+    try {
+      const zip = new JSZip();
+      for (let i = 0; i < targets.length; i++) {
+        const r = targets[i];
+        toast.loading(`מייצר PDF ${i + 1}/${targets.length}...`, { id: toastId });
+        const data: ReceiptPrintData = {
+          receiptNumber: padReceiptNumber(r.receipt_number),
+          receiptType: r.receipt_type,
+          receiptTypeLabel: RECEIPT_TYPE_LABELS[r.receipt_type] || r.receipt_type,
+          clientName: r.client_name,
+          carNumber: r.car_number || "",
+          receiptDate: r.receipt_date,
+          amount: r.amount,
+          accidentDate: r.accident_date || "",
+          accidentDetails: r.accident_details || "",
+          notes: r.notes || "",
+          source: r.source,
+          paymentMethod: r.payment_method || "",
+          chequeNumber: r.cheque_number || "",
+          chequeDate: r.cheque_date || "",
+          cardLastFour: r.card_last_four || "",
+        };
+        // Build HTML without auto-print
+        let html = buildReceiptPrintHtml(data, companySettings || defaultSettings);
+        html = html.replace(/setTimeout\(function\(\)\{.*?\}.*?\);/s, "");
+        const blob = await generateReceiptPdfBlob(html);
+        const fileName = `receipt_${padReceiptNumber(r.receipt_number)}_${r.client_name.replace(/[^a-zA-Z0-9\u0590-\u05FF\u0600-\u06FF]/g, "_")}.pdf`;
+        zip.file(fileName, blob);
+      }
+      toast.loading("מכווץ קבצים...", { id: toastId });
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const dateStr = format(new Date(), "yyyy-MM-dd");
+      saveAs(zipBlob, `receipts_${dateStr}.zip`);
+      toast.success(`${targets.length} קבלות הורדו בהצלחה`, { id: toastId });
+    } catch (err: any) {
+      toast.error("שגיאה בהורדה: " + err.message, { id: toastId });
+    } finally {
+      setBulkLoading(null);
+    }
+  };
 
   const toggleGroup = (key: string) => {
     setExpandedGroups(prev => {
@@ -660,6 +943,36 @@ export default function Receipts() {
               </SelectContent>
             </Select>
           </div>
+
+          {/* Bulk actions bar */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={handleFullInvoice}
+              disabled={!!bulkLoading}
+            >
+              {bulkLoading === "invoice" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+              {selectedIds.size > 0 ? `ריכוז קבלות (${selectedIds.size})` : "ריכוז קבלות"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={handleDownloadZip}
+              disabled={!!bulkLoading}
+            >
+              {bulkLoading === "zip" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              {selectedIds.size > 0 ? `הורד ZIP (${selectedIds.size})` : "הורד ZIP"}
+            </Button>
+            {selectedIds.size > 0 && (
+              <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())} className="gap-1 text-xs">
+                <X className="h-3 w-3" />
+                בטל בחירה
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Table */}
@@ -667,6 +980,9 @@ export default function Receipts() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10 text-center">
+                  <Checkbox checked={isAllSelected} onCheckedChange={toggleSelectAll} />
+                </TableHead>
                 <TableHead className="text-right w-16">#</TableHead>
                 <TableHead className="text-right">סוג</TableHead>
                 <TableHead className="text-right">שם לקוח</TableHead>
@@ -682,7 +998,7 @@ export default function Receipts() {
               {isLoading ? (
                 Array.from({ length: 10 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 10 }).map((_, j) => (
+                    {Array.from({ length: 11 }).map((_, j) => (
                       <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                     ))}
                   </TableRow>
@@ -698,6 +1014,9 @@ export default function Receipts() {
                     const r = primary;
                     return (
                       <TableRow key={r.id}>
+                        <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox checked={selectedIds.has(r.id)} onCheckedChange={() => toggleSelectReceipt(r.id)} />
+                        </TableCell>
                         <TableCell className="font-mono text-xs">{padReceiptNumber(r.receipt_number)}</TableCell>
                         <TableCell>
                           <Badge variant={r.receipt_type === "accident_fee" ? "destructive" : "default"} className="text-xs">
@@ -758,10 +1077,16 @@ export default function Receipts() {
                   
                   return (
                     <React.Fragment key={group.key}>
-                      <TableRow 
+                      <TableRow
                         className="cursor-pointer hover:bg-muted/50"
                         onClick={() => toggleGroup(group.key)}
                       >
+                        <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={group.receipts.every(r => selectedIds.has(r.id))}
+                            onCheckedChange={() => toggleSelectGroup(group)}
+                          />
+                        </TableCell>
                         <TableCell className="font-mono text-xs">
                           <div className="flex items-center gap-1">
                             {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
@@ -802,6 +1127,9 @@ export default function Receipts() {
                       </TableRow>
                       {isExpanded && group.receipts.map((r) => (
                         <TableRow key={r.id} className="bg-muted/30">
+                          <TableCell className="text-center">
+                            <Checkbox checked={selectedIds.has(r.id)} onCheckedChange={() => toggleSelectReceipt(r.id)} />
+                          </TableCell>
                           <TableCell className="font-mono text-xs pr-8">{padReceiptNumber(r.receipt_number)}</TableCell>
                           <TableCell></TableCell>
                           <TableCell></TableCell>
@@ -840,7 +1168,7 @@ export default function Receipts() {
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={11} className="text-center py-12 text-muted-foreground">
                     <Receipt className="h-10 w-10 mx-auto mb-2 opacity-30" />
                     <p>אין קבלות</p>
                   </TableCell>
