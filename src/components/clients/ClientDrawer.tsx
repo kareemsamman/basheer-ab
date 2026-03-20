@@ -359,7 +359,26 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved }: ClientDraw
 
         if (error) {
           if (error.code === '23505') {
-            toast.error('رقم الهوية موجود مسبقاً');
+            const detail = error.message || '';
+            const isFileNumber = detail.includes('file_number');
+            if (isFileNumber) {
+              toast.error('رقم الملف موجود مسبقاً، يرجى اختيار رقم آخر');
+            } else {
+              // Find the existing client with this ID number to give a helpful message
+              const { data: existing } = await supabase
+                .from('clients')
+                .select('full_name, deleted_at')
+                .eq('id_number', data.id_number)
+                .limit(1)
+                .single();
+              if (existing?.deleted_at) {
+                toast.error(`رقم الهوية مسجل لعميل محذوف (${existing.full_name}). يرجى حذفه نهائياً أو تعديل رقم الهوية`);
+              } else if (existing) {
+                toast.error(`رقم الهوية موجود مسبقاً للعميل: ${existing.full_name}`);
+              } else {
+                toast.error('رقم الهوية موجود مسبقاً');
+              }
+            }
             return;
           }
           throw error;
