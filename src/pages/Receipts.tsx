@@ -712,6 +712,9 @@ export default function Receipts() {
                             {r.payment_method === 'cheque' && r.cheque_number && (
                               <Badge variant="outline" className="text-xs font-mono">{r.cheque_number}</Badge>
                             )}
+                            {r.payment_method === 'cheque' && r.cheque_date && (
+                              <Badge variant="outline" className="text-xs">{formatPrintDate(r.cheque_date)}</Badge>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>
@@ -798,7 +801,7 @@ export default function Receipts() {
                           <TableCell></TableCell>
                           <TableCell></TableCell>
                           <TableCell></TableCell>
-                          <TableCell></TableCell>
+                          <TableCell>{r.receipt_date}</TableCell>
                           <TableCell className="font-bold text-sm">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
@@ -808,6 +811,9 @@ export default function Receipts() {
                               )}
                               {r.payment_method === 'cheque' && r.cheque_number && (
                                 <Badge variant="outline" className="text-xs font-mono">{r.cheque_number}</Badge>
+                              )}
+                              {r.payment_method === 'cheque' && r.cheque_date && (
+                                <Badge variant="outline" className="text-xs">{formatPrintDate(r.cheque_date)}</Badge>
                               )}
                             </div>
                           </TableCell>
