@@ -44,6 +44,7 @@ interface ReceiptRow {
   cheque_date: string | null;
   card_last_four: string | null;
   created_at: string;
+  policy_payments: { cheque_date: string | null; payment_date: string | null } | null;
 }
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -66,7 +67,7 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
     queryFn: async () => {
       let query = supabase
         .from("receipts")
-        .select("*")
+        .select("*, policy_payments!payment_id(cheque_date, payment_date)")
         .order("receipt_number", { ascending: false })
         .limit(500);
 
@@ -171,6 +172,10 @@ function formatPrintDate(dateStr: string): string {
   const date = new Date(dateStr);
   if (Number.isNaN(date.getTime())) return dateStr;
   return date.toLocaleDateString("en-GB", { year: "numeric", month: "2-digit", day: "2-digit" });
+}
+
+function getEffectiveChequeDate(r: ReceiptRow): string | null {
+  return r.cheque_date || r.policy_payments?.cheque_date || r.policy_payments?.payment_date || r.receipt_date || null;
 }
 
 function getReceiptPaymentDetails(r: ReceiptRow): string {
@@ -712,8 +717,8 @@ export default function Receipts() {
                             {r.payment_method === 'cheque' && r.cheque_number && (
                               <Badge variant="outline" className="text-xs font-mono">{r.cheque_number}</Badge>
                             )}
-                            {r.payment_method === 'cheque' && r.cheque_date && (
-                              <Badge variant="outline" className="text-xs">{formatPrintDate(r.cheque_date)}</Badge>
+                            {r.payment_method === 'cheque' && getEffectiveChequeDate(r) && (
+                              <Badge variant="outline" className="text-xs">{formatPrintDate(getEffectiveChequeDate(r)!)}</Badge>
                             )}
                           </div>
                         </TableCell>
@@ -812,8 +817,8 @@ export default function Receipts() {
                               {r.payment_method === 'cheque' && r.cheque_number && (
                                 <Badge variant="outline" className="text-xs font-mono">{r.cheque_number}</Badge>
                               )}
-                              {r.payment_method === 'cheque' && r.cheque_date && (
-                                <Badge variant="outline" className="text-xs">{formatPrintDate(r.cheque_date)}</Badge>
+                              {r.payment_method === 'cheque' && getEffectiveChequeDate(r) && (
+                                <Badge variant="outline" className="text-xs">{formatPrintDate(getEffectiveChequeDate(r)!)}</Badge>
                               )}
                             </div>
                           </TableCell>
