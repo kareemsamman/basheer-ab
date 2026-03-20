@@ -106,6 +106,10 @@ export default function Clients() {
             }
           }
         });
+    } else if (!openClientId && viewingClient) {
+      // Navigated to /clients without an ID — close the detail view
+      setViewingClient(null);
+      setInitialCarFilter(null);
     }
   }, [urlClientId, searchParams, setSearchParams, viewingClient]);
 
