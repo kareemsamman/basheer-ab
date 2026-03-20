@@ -102,6 +102,7 @@ export const navigationGroups: NavGroup[] = [
       { name: "شركات التأمين", href: "/companies", icon: Building2, adminOnly: true },
       { name: "الوسطاء", href: "/brokers", icon: Wallet, adminOnly: true },
       { name: "سندات القبض والصرف", href: "/expenses", icon: DollarSign, adminOnly: true },
+      { name: "الموظفون", href: "/workers", icon: UserCog, adminOnly: true },
     ],
   },
   {
