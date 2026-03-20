@@ -261,34 +261,26 @@ export function ClientDrawer({ open, onOpenChange, client, onSaved }: ClientDraw
         branch_id: defaultBranch,
       });
 
-      // Auto-fetch next file number for new clients
+      // Auto-fetch next file number for new clients (format: F1071, F1072, etc.)
       if (!isEditing) {
         (async () => {
           try {
             const { data } = await supabase
               .from('clients')
               .select('file_number')
-              .not('file_number', 'is', null)
-              .neq('file_number', '')
+              .ilike('file_number', 'F%')
               .order('created_at', { ascending: false })
               .limit(200);
 
             if (data && data.length > 0) {
               let maxNum = 0;
-              let hasPrefix = false;
               for (const row of data) {
                 const raw = (row.file_number || '').trim();
-                // Strip common prefixes like "F", "f"
-                const stripped = raw.replace(/^[Ff]/, '');
-                const parsed = parseInt(stripped, 10);
-                if (!isNaN(parsed) && parsed > maxNum) {
-                  maxNum = parsed;
-                  hasPrefix = raw !== stripped;
-                }
+                const num = parseInt(raw.replace(/^[Ff]/, ''), 10);
+                if (!isNaN(num) && num > maxNum) maxNum = num;
               }
               if (maxNum > 0) {
-                const nextNum = String(maxNum + 1);
-                form.setValue('file_number', hasPrefix ? `F${nextNum}` : nextNum);
+                form.setValue('file_number', `F${maxNum + 1}`);
               }
             }
           } catch (err) {
