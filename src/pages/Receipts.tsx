@@ -594,45 +594,94 @@ export default function Receipts() {
     }
   };
 
-  const handleDownloadZip = async () => {
+  // Build PDF-ready groups from selected receipts (groups multiple payments for same client into one PDF)
+  const getTargetGroups = (): GroupedReceipt[] => {
     const targets = getTargetReceipts();
-    if (targets.length === 0) { toast.error("אין קבלות להורדה"); return; }
+    if (targets.length === 0) return [];
+    const targetIds = new Set(targets.map(r => r.id));
+    // Filter grouped receipts to only include selected items
+    return groupedReceipts
+      .map(g => ({
+        ...g,
+        receipts: g.receipts.filter(r => targetIds.has(r.id)),
+      }))
+      .filter(g => g.receipts.length > 0)
+      .map(g => ({
+        ...g,
+        totalAmount: g.receipts.reduce((sum, r) => sum + r.amount, 0),
+        firstReceiptNumber: g.receipts[0].receipt_number,
+        lastReceiptNumber: g.receipts[g.receipts.length - 1].receipt_number,
+      }));
+  };
+
+  const buildGroupPdfHtml = (group: GroupedReceipt): string => {
+    const settings = companySettings || defaultSettings;
+    let html: string;
+    if (group.receipts.length === 1) {
+      const r = group.receipts[0];
+      const data: ReceiptPrintData = {
+        receiptNumber: padReceiptNumber(r.receipt_number),
+        receiptType: r.receipt_type,
+        receiptTypeLabel: RECEIPT_TYPE_LABELS[r.receipt_type] || r.receipt_type,
+        clientName: r.client_name,
+        carNumber: r.car_number || "",
+        receiptDate: r.receipt_date,
+        amount: r.amount,
+        accidentDate: r.accident_date || "",
+        accidentDetails: r.accident_details || "",
+        notes: r.notes || "",
+        source: r.source,
+        paymentMethod: r.payment_method || "",
+        chequeNumber: r.cheque_number || "",
+        chequeDate: r.cheque_date || "",
+        cardLastFour: r.card_last_four || "",
+      };
+      html = buildReceiptPrintHtml(data, settings);
+    } else {
+      html = buildGroupedReceiptPrintHtml(group, settings);
+    }
+    // Remove auto-print script
+    return html.replace(/setTimeout\(function\(\)\{.*?\}.*?\);/s, "");
+  };
+
+  const handleDownloadPdf = async () => {
+    const groups = getTargetGroups();
+    if (groups.length === 0) { toast.error("אין קבלות להורדה"); return; }
     setBulkLoading("zip");
-    const toastId = toast.loading(`מייצר ${targets.length} קבצי PDF...`);
+    const toastId = toast.loading(`מייצר ${groups.length} קבצי PDF...`);
     try {
-      const zip = new JSZip();
-      for (let i = 0; i < targets.length; i++) {
-        const r = targets[i];
-        toast.loading(`מייצר PDF ${i + 1}/${targets.length}...`, { id: toastId });
-        const data: ReceiptPrintData = {
-          receiptNumber: padReceiptNumber(r.receipt_number),
-          receiptType: r.receipt_type,
-          receiptTypeLabel: RECEIPT_TYPE_LABELS[r.receipt_type] || r.receipt_type,
-          clientName: r.client_name,
-          carNumber: r.car_number || "",
-          receiptDate: r.receipt_date,
-          amount: r.amount,
-          accidentDate: r.accident_date || "",
-          accidentDetails: r.accident_details || "",
-          notes: r.notes || "",
-          source: r.source,
-          paymentMethod: r.payment_method || "",
-          chequeNumber: r.cheque_number || "",
-          chequeDate: r.cheque_date || "",
-          cardLastFour: r.card_last_four || "",
-        };
-        // Build HTML without auto-print
-        let html = buildReceiptPrintHtml(data, companySettings || defaultSettings);
-        html = html.replace(/setTimeout\(function\(\)\{.*?\}.*?\);/s, "");
+      const pdfEntries: { name: string; blob: Blob }[] = [];
+      for (let i = 0; i < groups.length; i++) {
+        const group = groups[i];
+        toast.loading(`מייצר PDF ${i + 1}/${groups.length}...`, { id: toastId });
+        const html = buildGroupPdfHtml(group);
         const blob = await generateReceiptPdfBlob(html);
-        const fileName = `receipt_${padReceiptNumber(r.receipt_number)}_${r.client_name.replace(/[^a-zA-Z0-9\u0590-\u05FF\u0600-\u06FF]/g, "_")}.pdf`;
-        zip.file(fileName, blob);
+        const clientSlug = group.client_name.replace(/[^a-zA-Z0-9\u0590-\u05FF\u0600-\u06FF]/g, "_");
+        const receiptLabel = group.receipts.length === 1
+          ? padReceiptNumber(group.firstReceiptNumber)
+          : `${padReceiptNumber(group.firstReceiptNumber)}-${padReceiptNumber(group.lastReceiptNumber)}`;
+        pdfEntries.push({
+          name: `receipt_${receiptLabel}_${clientSlug}.pdf`,
+          blob,
+        });
       }
-      toast.loading("מכווץ קבצים...", { id: toastId });
-      const zipBlob = await zip.generateAsync({ type: "blob" });
-      const dateStr = format(new Date(), "yyyy-MM-dd");
-      saveAs(zipBlob, `receipts_${dateStr}.zip`);
-      toast.success(`${targets.length} קבלות הורדו בהצלחה`, { id: toastId });
+
+      if (pdfEntries.length === 1) {
+        // Single PDF — download directly, no ZIP
+        saveAs(pdfEntries[0].blob, pdfEntries[0].name);
+        toast.success("הקובץ הורד בהצלחה", { id: toastId });
+      } else {
+        // Multiple PDFs — bundle into ZIP
+        toast.loading("מכווץ קבצים...", { id: toastId });
+        const zip = new JSZip();
+        for (const entry of pdfEntries) {
+          zip.file(entry.name, entry.blob);
+        }
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        const dateStr = format(new Date(), "yyyy-MM-dd");
+        saveAs(zipBlob, `receipts_${dateStr}.zip`);
+        toast.success(`${pdfEntries.length} קבלות הורדו בהצלחה`, { id: toastId });
+      }
     } catch (err: any) {
       toast.error("שגיאה בהורדה: " + err.message, { id: toastId });
     } finally {
@@ -960,11 +1009,11 @@ export default function Receipts() {
               variant="outline"
               size="sm"
               className="gap-2"
-              onClick={handleDownloadZip}
+              onClick={handleDownloadPdf}
               disabled={!!bulkLoading}
             >
               {bulkLoading === "zip" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-              {selectedIds.size > 0 ? `הורד ZIP (${selectedIds.size})` : "הורד ZIP"}
+              הורד PDF
             </Button>
             {selectedIds.size > 0 && (
               <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())} className="gap-1 text-xs">
