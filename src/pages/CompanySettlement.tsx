@@ -705,73 +705,33 @@ export default function CompanySettlement() {
           </TabsList>
 
           <TabsContent value="with-company" className="space-y-6 mt-6">
-            {/* Filter Status Banner */}
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border">
-              <div className="flex items-center gap-2 text-sm">
-                <AlertCircle className="h-4 w-4 text-muted-foreground" />
-                <span className="text-muted-foreground">النتائج المعروضة:</span>
-                <Badge variant="secondary">{getFilterDescription()}</Badge>
-                {isDetailMode && (
-                  <Badge variant="default" className="bg-primary/20 text-primary">عرض تفصيلي (وسيط)</Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={handleResetFilters}>
-                  <RotateCcw className="h-4 w-4 ml-2" />
-                  إعادة ضبط
-                </Button>
-              </div>
-            </div>
-
-            {/* Filters */}
+            {/* Filters + Actions */}
             <Card>
-              <CardContent className="pt-6">
-                <div className="grid grid-cols-1 md:grid-cols-6 gap-4" dir="rtl">
-                  {/* Date From */}
-                  <div className="space-y-2">
-                    <Label>من تاريخ</Label>
+              <CardContent className="pt-5 pb-4 space-y-4">
+                {/* Filters grid */}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3" dir="rtl">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">من تاريخ</Label>
                     <ArabicDatePicker
                       value={dateFrom}
-                      onChange={(v) => {
-                        setDateFrom(v);
-                        if (v) setShowAllTime(false);
-                      }}
-                      placeholder="من"
+                      onChange={(v) => { setDateFrom(v); if (v) setShowAllTime(false); }}
+                      placeholder="DD/MM/YYYY"
                       compact
                     />
                   </div>
 
-                  {/* Date To */}
-                  <div className="space-y-2">
-                    <Label>إلى تاريخ</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">إلى تاريخ</Label>
                     <ArabicDatePicker
                       value={dateTo}
-                      onChange={(v) => {
-                        setDateTo(v);
-                        if (v) setShowAllTime(false);
-                      }}
-                      placeholder="إلى"
+                      onChange={(v) => { setDateTo(v); if (v) setShowAllTime(false); }}
+                      placeholder="DD/MM/YYYY"
                       compact
                     />
-                    {!showAllTime && (
-                      <Button 
-                        variant="link" 
-                        size="sm" 
-                        className="p-0 h-auto text-xs"
-                        onClick={() => {
-                          setShowAllTime(true);
-                          setDateFrom('');
-                          setDateTo('');
-                        }}
-                      >
-                        <Calendar className="h-3 w-3 ml-1" />
-                        عرض كل الفترات
-                      </Button>
-                    )}
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>الوسيط</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">الوسيط</Label>
                     <MultiSelectFilter
                       options={brokers.map((b) => ({ value: b.id, label: b.name }))}
                       selected={selectedBrokers}
@@ -780,8 +740,8 @@ export default function CompanySettlement() {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>الشركة</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">الشركة</Label>
                     <MultiSelectFilter
                       options={filteredCompanies.map((c) => ({
                         value: c.company_id,
@@ -793,26 +753,23 @@ export default function CompanySettlement() {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>نوع الوثيقة</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">نوع الوثيقة</Label>
                     <MultiSelectFilter
-                      options={Object.entries(POLICY_TYPE_LABELS).map(([value, label]) => ({
-                        value,
-                        label,
-                      }))}
+                      options={Object.entries(POLICY_TYPE_LABELS).map(([value, label]) => ({ value, label }))}
                       selected={selectedCategories}
                       onChange={setSelectedCategories}
                       placeholder="جميع الأنواع"
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>الملغية</Label>
-                    <Select 
-                      value={includeCancelled ? 'include' : 'exclude'} 
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">الملغية</Label>
+                    <Select
+                      value={includeCancelled ? 'include' : 'exclude'}
                       onValueChange={(v) => setIncludeCancelled(v === 'include')}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="h-9">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent align="end">
@@ -821,49 +778,40 @@ export default function CompanySettlement() {
                       </SelectContent>
                     </Select>
                   </div>
-
                 </div>
 
-                {/* Action buttons row */}
-                <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-border">
-                  {/* Primary actions */}
+                {/* Action buttons */}
+                <div className="flex flex-wrap items-center gap-2 pt-3 border-t">
                   {isDetailMode && selectedCompanies.length === 1 && (
-                    <Button
-                      onClick={handleGenerateReport}
-                      disabled={generatingReport}
-                      className="gap-2"
-                    >
-                      {generatingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                    <Button size="sm" onClick={handleGenerateReport} disabled={generatingReport} className="gap-1.5">
+                      {generatingReport ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
                       تقرير PDF
                     </Button>
                   )}
 
-                  <Button variant="outline" onClick={exportToCSV} className="gap-2">
-                    <Download className="h-4 w-4" />
+                  <Button variant="outline" size="sm" onClick={exportToCSV} className="gap-1.5">
+                    <Download className="h-3.5 w-3.5" />
                     CSV
                   </Button>
 
                   <Popover open={showTaxInvoicePopover} onOpenChange={setShowTaxInvoicePopover}>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" className="gap-2">
-                        <Receipt className="h-4 w-4" />
+                      <Button variant="outline" size="sm" className="gap-1.5">
+                        <Receipt className="h-3.5 w-3.5" />
                         فاتورة ضريبية
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-64">
+                    <PopoverContent className="w-56">
                       <div className="space-y-3">
-                        <h4 className="font-medium text-sm">فاتورة ضريبية</h4>
-                        <div className="space-y-1">
-                          <Label className="text-xs">نسبة المربح %</Label>
-                          <Input
-                            type="number"
-                            value={profitPercent}
-                            onChange={(e) => setProfitPercent(Number(e.target.value))}
-                            min={0}
-                            max={100}
-                            className="h-8"
-                          />
-                        </div>
+                        <h4 className="font-medium text-sm">نسبة المربح %</h4>
+                        <Input
+                          type="number"
+                          value={profitPercent}
+                          onChange={(e) => setProfitPercent(Number(e.target.value))}
+                          min={0}
+                          max={100}
+                          className="h-8"
+                        />
                         <Button
                           size="sm"
                           className="w-full"
@@ -880,7 +828,11 @@ export default function CompanySettlement() {
                     </PopoverContent>
                   </Popover>
 
-                  {/* Recalculate - pushed to the end */}
+                  <Button variant="ghost" size="sm" onClick={handleResetFilters} className="gap-1.5 text-muted-foreground">
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    إعادة ضبط
+                  </Button>
+
                   {isDetailMode && (
                     <div className="mr-auto">
                       <Button
@@ -888,17 +840,17 @@ export default function CompanySettlement() {
                         size="sm"
                         onClick={handleRecalculateProfits}
                         disabled={recalculating || brokerPolicies.filter(p => !p.cancelled && !p.transferred).length === 0}
-                        className="gap-2"
+                        className="gap-1.5"
                       >
-                        <RefreshCw className="h-4 w-4" />
-                        إعادة احتساب الأرباح ({brokerPolicies.filter(p => !p.cancelled && !p.transferred).length})
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        إعادة احتساب ({brokerPolicies.filter(p => !p.cancelled && !p.transferred).length})
                       </Button>
                     </div>
                   )}
                 </div>
 
                 {recalculating && (
-                  <div className="mt-3 space-y-2">
+                  <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span>جاري إعادة الاحتساب...</span>
                       <span>{recalcProgress.current} / {recalcProgress.total}</span>
