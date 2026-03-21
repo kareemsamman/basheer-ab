@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
@@ -10,9 +10,10 @@ import { DeleteConfirmDialog } from '@/components/shared/DeleteConfirmDialog';
 import { WorkerDrawer, type Worker } from '@/components/workers/WorkerDrawer';
 import { SalaryDialog, type Salary } from '@/components/workers/SalaryDialog';
 import { FileUploader } from '@/components/media/FileUploader';
+import { FilePreviewGallery } from '@/components/policies/FilePreviewGallery';
 import {
   Plus, Search, Pencil, Trash2, ArrowRight, DollarSign, Loader2,
-  FileImage, FileText as FileTextIcon, Download, ExternalLink,
+  FileImage, FileText as FileTextIcon, FileVideo, Download, Eye, ExternalLink,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -35,7 +36,18 @@ interface MediaFile {
   mime_type: string;
   size: number;
   created_at: string;
+  entity_type: string | null;
+  storage_path?: string | null;
 }
+
+const getFileIcon = (mimeType: string) => {
+  if (mimeType?.startsWith('image/')) return FileImage;
+  if (mimeType?.startsWith('video/')) return FileVideo;
+  return FileTextIcon;
+};
+
+const isPreviewable = (mimeType: string) =>
+  mimeType?.startsWith('image/') || mimeType === 'application/pdf';
 
 export default function Workers() {
   // Workers list state
@@ -59,6 +71,12 @@ export default function Workers() {
   // Worker files state
   const [files, setFiles] = useState<MediaFile[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
+  const [previewFile, setPreviewFile] = useState<MediaFile | null>(null);
+
+  const previewableFiles = useMemo(
+    () => files.filter(f => isPreviewable(f.mime_type)),
+    [files]
+  );
 
   const fetchWorkers = useCallback(async () => {
     setLoading(true);
@@ -108,7 +126,7 @@ export default function Workers() {
     try {
       const { data, error } = await supabase
         .from('media_files')
-        .select('id, original_name, cdn_url, mime_type, size, created_at')
+        .select('id, original_name, cdn_url, mime_type, size, created_at, entity_type, storage_path')
         .eq('entity_type', 'worker')
         .eq('entity_id', workerId)
         .is('deleted_at', null)
@@ -221,37 +239,66 @@ export default function Workers() {
               onUploadComplete={() => fetchFiles(viewingWorker.id)}
             />
             {filesLoading ? (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-lg" />)}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-lg" />)}
               </div>
             ) : files.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                {files.map(f => (
-                  <a
-                    key={f.id}
-                    href={f.cdn_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 p-2.5 rounded-lg border hover:bg-accent/50 transition-colors"
-                  >
-                    {f.mime_type.startsWith('image/') ? (
-                      <img src={f.cdn_url} alt="" className="w-10 h-10 rounded object-cover flex-shrink-0" />
-                    ) : (
-                      <div className="w-10 h-10 rounded bg-muted flex items-center justify-center flex-shrink-0">
-                        <FileTextIcon className="h-5 w-5 text-muted-foreground" />
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                {files.map(file => {
+                  const Icon = getFileIcon(file.mime_type);
+                  const isImage = file.mime_type?.startsWith('image/');
+                  const canPreview = isPreviewable(file.mime_type);
+
+                  return (
+                    <div
+                      key={file.id}
+                      className="group relative rounded-lg border bg-card overflow-hidden hover:shadow-md transition-all cursor-pointer"
+                      onClick={() => {
+                        if (canPreview) {
+                          setPreviewFile(file);
+                        } else {
+                          window.open(file.cdn_url, '_blank');
+                        }
+                      }}
+                    >
+                      <div className="aspect-square bg-muted flex items-center justify-center overflow-hidden">
+                        {isImage ? (
+                          <img src={file.cdn_url} alt={file.original_name} className="w-full h-full object-cover" loading="lazy" />
+                        ) : (
+                          <Icon className="h-10 w-10 text-muted-foreground/50" />
+                        )}
                       </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium truncate">{f.original_name}</p>
-                      <p className="text-xs text-muted-foreground">{(f.size / 1024).toFixed(0)} KB</p>
+                      <div className="p-2">
+                        <p className="text-xs font-medium truncate" title={file.original_name}>{file.original_name}</p>
+                        <p className="text-[10px] text-muted-foreground">{(file.size / 1024).toFixed(0)} KB</p>
+                      </div>
+                      {/* Hover Actions */}
+                      <div className="absolute top-1 left-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {canPreview && (
+                          <Button variant="secondary" size="icon" className="h-7 w-7" onClick={e => { e.stopPropagation(); setPreviewFile(file); }}>
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        <Button variant="secondary" size="icon" className="h-7 w-7" onClick={e => { e.stopPropagation(); window.open(file.cdn_url, '_blank'); }}>
+                          <Download className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
-                  </a>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground text-center py-4">لا توجد ملفات</p>
             )}
           </div>
+
+          {/* File Preview Gallery */}
+          <FilePreviewGallery
+            file={previewFile}
+            allFiles={previewableFiles}
+            onClose={() => setPreviewFile(null)}
+            onNavigate={f => setPreviewFile(f)}
+          />
 
           {/* Salaries Section */}
           <div className="space-y-3">
