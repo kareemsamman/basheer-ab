@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Building2, Download, Wallet, FileText, ChevronLeft, Calendar, RotateCcw, AlertCircle, Printer, AlertTriangle, Eye, Pencil, Search, Receipt, Loader2, RefreshCw } from 'lucide-react';
+import { Building2, Download, Wallet, FileText, ChevronLeft, Calendar, RotateCcw, AlertCircle, Printer, AlertTriangle, Eye, Pencil, Search, Receipt, Loader2, RefreshCw, Plus, Trash2, Copy } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/integrations/supabase/client';
@@ -33,6 +33,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 import { POLICY_TYPE_LABELS, getInsuranceTypeBadgeClass, POLICY_CHILD_LABELS } from '@/lib/insuranceTypes';
 import { recalculatePolicyProfit } from '@/lib/pricingCalculator';
+import { SupplementFormDialog } from '@/components/reports/SupplementFormDialog';
 import { PolicyDetailsDrawer } from '@/components/policies/PolicyDetailsDrawer';
 import { MultiSelectFilter } from '@/components/shared/MultiSelectFilter';
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
@@ -124,6 +125,14 @@ export default function CompanySettlement() {
   // Recalculate profits
   const [recalculating, setRecalculating] = useState(false);
   const [recalcProgress, setRecalcProgress] = useState({ current: 0, total: 0 });
+
+  // PDF report
+  const [generatingReport, setGeneratingReport] = useState(false);
+
+  // Supplements
+  const [showSupplementForm, setShowSupplementForm] = useState(false);
+  const [editingSupplement, setEditingSupplement] = useState<any>(null);
+  const [supplements, setSupplements] = useState<any[]>([]);
 
   const isBrokerFiltered = selectedBrokers.length > 0;
   // Show flat policy table when any filter is active (not just broker)
@@ -542,6 +551,65 @@ export default function CompanySettlement() {
     fetchBrokerPolicies();
   };
 
+  const handleGenerateReport = async () => {
+    if (selectedCompanies.length !== 1) return;
+    setGeneratingReport(true);
+    try {
+      const { startDate, endDate } = getDateRange();
+      const { data, error } = await supabase.functions.invoke('generate-settlement-report', {
+        body: {
+          company_id: selectedCompanies[0],
+          start_date: showAllTime ? null : startDate,
+          end_date: showAllTime ? null : endDate,
+          policy_type: selectedCategories.length === 1 ? selectedCategories[0] : null,
+          include_cancelled: includeCancelled,
+        },
+      });
+      if (error) throw error;
+      if (data?.url) window.open(data.url, '_blank');
+      toast({ title: 'تم إنشاء التقرير' });
+    } catch {
+      toast({ title: 'خطأ', description: 'فشل في إنشاء التقرير', variant: 'destructive' });
+    } finally {
+      setGeneratingReport(false);
+    }
+  };
+
+  const fetchSupplements = async () => {
+    if (selectedCompanies.length !== 1) { setSupplements([]); return; }
+    const { startDate, endDate } = getDateRange();
+    let query = supabase.from('settlement_supplements').select('*').eq('company_id', selectedCompanies[0]);
+    if (!showAllTime) {
+      query = query.gte('settlement_date', startDate);
+      if (endDate) query = query.lte('settlement_date', endDate);
+    }
+    const { data } = await query.order('created_at', { ascending: false });
+    setSupplements(data || []);
+  };
+
+  const handleDeleteSupplement = async (id: string) => {
+    if (!confirm('هل أنت متأكد من حذف هذا الملحق؟')) return;
+    await supabase.from('settlement_supplements').delete().eq('id', id);
+    toast({ title: 'تم حذف الملحق' });
+    fetchSupplements();
+  };
+
+  const handleSupplementSaved = () => {
+    setShowSupplementForm(false);
+    setEditingSupplement(null);
+    fetchSupplements();
+    fetchBrokerPolicies();
+  };
+
+  // Fetch supplements when company filter changes
+  useEffect(() => {
+    if (isDetailMode && selectedCompanies.length === 1) {
+      fetchSupplements();
+    } else {
+      setSupplements([]);
+    }
+  }, [selectedCompanies, dateFrom, dateTo, showAllTime, isDetailMode]);
+
   const handleGenerateTaxInvoice = async () => {
     setGeneratingTaxInvoice(true);
     try {
@@ -803,14 +871,26 @@ export default function CompanySettlement() {
                     كل الفترات
                   </Button>
                   {isDetailMode && (
-                    <Button
-                      variant="outline"
-                      onClick={handleRecalculateProfits}
-                      disabled={recalculating || brokerPolicies.filter(p => !p.cancelled && !p.transferred).length === 0}
-                    >
-                      <RefreshCw className="h-4 w-4 ml-2" />
-                      إعادة احتساب الأرباح ({brokerPolicies.filter(p => !p.cancelled && !p.transferred).length})
-                    </Button>
+                    <>
+                      {selectedCompanies.length === 1 && (
+                        <Button
+                          variant="default"
+                          onClick={handleGenerateReport}
+                          disabled={generatingReport}
+                        >
+                          {generatingReport ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : <FileText className="h-4 w-4 ml-2" />}
+                          تقرير PDF
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        onClick={handleRecalculateProfits}
+                        disabled={recalculating || brokerPolicies.filter(p => !p.cancelled && !p.transferred).length === 0}
+                      >
+                        <RefreshCw className="h-4 w-4 ml-2" />
+                        إعادة احتساب الأرباح ({brokerPolicies.filter(p => !p.cancelled && !p.transferred).length})
+                      </Button>
+                    </>
                   )}
                 </div>
                 {recalculating && (
@@ -894,6 +974,12 @@ export default function CompanySettlement() {
                     {isDetailMode ? 'تفاصيل الوثائق' : 'تفاصيل التسوية حسب الشركة'}
                   </CardTitle>
                   <div className="flex items-center gap-2">
+                    {isDetailMode && selectedCompanies.length === 1 && (
+                      <Button size="sm" variant="outline" onClick={() => { setEditingSupplement(null); setShowSupplementForm(true); }}>
+                        <Plus className="h-4 w-4 ml-1" />
+                        ملحق
+                      </Button>
+                    )}
                     <div className="relative w-64">
                       <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
@@ -984,6 +1070,36 @@ export default function CompanySettlement() {
                             </TableRow>
                           ));
                         })()}
+                        {/* Supplement rows */}
+                        {supplements.map((s) => (
+                          <TableRow key={`supp-${s.id}`} className={cn("border-amber-200", s.is_cancelled && "opacity-50 bg-muted/30", !s.is_cancelled && "bg-amber-50/50")}>
+                            <TableCell className="font-medium">
+                              {s.customer_name || <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">ملحق</Badge>}
+                              {s.customer_name && <Badge variant="outline" className="mr-2 text-xs bg-amber-100 text-amber-800 border-amber-300">يدوي</Badge>}
+                              {s.is_cancelled && <Badge variant="destructive" className="mr-2 text-xs">ملغية</Badge>}
+                            </TableCell>
+                            <TableCell className="font-mono"><bdi>{s.car_number || '-'}</bdi></TableCell>
+                            <TableCell>
+                              {s.policy_type ? <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">{s.policy_type}</Badge> : '-'}
+                            </TableCell>
+                            <TableCell>-</TableCell>
+                            <TableCell>{s.start_date ? formatDate(s.start_date) : formatDate(s.settlement_date)}</TableCell>
+                            <TableCell>{s.end_date ? formatDate(s.end_date) : '-'}</TableCell>
+                            <TableCell className="font-mono">₪{Number(s.insurance_price).toLocaleString('en-US')}</TableCell>
+                            <TableCell className="font-mono text-destructive">₪{Number(s.company_payment).toLocaleString('en-US')}</TableCell>
+                            <TableCell className="font-mono text-green-600">₪{Number(s.profit).toLocaleString('en-US')}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Button variant="ghost" size="sm" onClick={() => { setEditingSupplement(s); setShowSupplementForm(true); }} title="تعديل">
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => handleDeleteSupplement(s.id)} title="حذف">
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
                       </TableBody>
                     </Table>
                   ) : (
@@ -1211,6 +1327,17 @@ export default function CompanySettlement() {
           setSelectedPolicyId(newPolicyId);
         }}
       />
+
+      {/* Supplement Form Dialog */}
+      {selectedCompanies.length === 1 && (
+        <SupplementFormDialog
+          open={showSupplementForm}
+          onOpenChange={setShowSupplementForm}
+          editingSupplement={editingSupplement}
+          companyId={selectedCompanies[0]}
+          onSaved={handleSupplementSaved}
+        />
+      )}
     </MainLayout>
   );
 }
