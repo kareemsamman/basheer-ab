@@ -24,13 +24,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Building2, Download, Wallet, FileText, ChevronLeft, Calendar, RotateCcw, AlertCircle, Printer, AlertTriangle, Eye, Pencil, Search, Receipt, Loader2 } from 'lucide-react';
+import { Building2, Download, Wallet, FileText, ChevronLeft, Calendar, RotateCcw, AlertCircle, Printer, AlertTriangle, Eye, Pencil, Search, Receipt, Loader2, RefreshCw } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 import { POLICY_TYPE_LABELS, getInsuranceTypeBadgeClass, POLICY_CHILD_LABELS } from '@/lib/insuranceTypes';
+import { recalculatePolicyProfit } from '@/lib/pricingCalculator';
 import { PolicyDetailsDrawer } from '@/components/policies/PolicyDetailsDrawer';
 import { MultiSelectFilter } from '@/components/shared/MultiSelectFilter';
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
@@ -118,6 +120,10 @@ export default function CompanySettlement() {
   // Broker detail view
   const [brokerPolicies, setBrokerPolicies] = useState<BrokerPolicyDetail[]>([]);
   const [loadingBrokerPolicies, setLoadingBrokerPolicies] = useState(false);
+
+  // Recalculate profits
+  const [recalculating, setRecalculating] = useState(false);
+  const [recalcProgress, setRecalcProgress] = useState({ current: 0, total: 0 });
 
   const isBrokerFiltered = selectedBrokers.length > 0;
   // Show flat policy table when any filter is active (not just broker)
@@ -515,6 +521,27 @@ export default function CompanySettlement() {
     fetchPoliciesWithoutCompany();
   };
 
+  const handleRecalculateProfits = async () => {
+    const eligible = brokerPolicies.filter(p => !p.cancelled && !p.transferred);
+    if (eligible.length === 0) return;
+    setRecalculating(true);
+    setRecalcProgress({ current: 0, total: eligible.length });
+    let successCount = 0;
+    let failCount = 0;
+    for (let i = 0; i < eligible.length; i++) {
+      try {
+        await recalculatePolicyProfit(eligible[i].id);
+        successCount++;
+      } catch {
+        failCount++;
+      }
+      setRecalcProgress({ current: i + 1, total: eligible.length });
+    }
+    setRecalculating(false);
+    toast({ title: `تم إعادة احتساب ${successCount} وثيقة${failCount > 0 ? ` (${failCount} فشل)` : ''}` });
+    fetchBrokerPolicies();
+  };
+
   const handleGenerateTaxInvoice = async () => {
     setGeneratingTaxInvoice(true);
     try {
@@ -775,7 +802,26 @@ export default function CompanySettlement() {
                     <RotateCcw className="h-4 w-4 ml-2" />
                     كل الفترات
                   </Button>
+                  {isDetailMode && (
+                    <Button
+                      variant="outline"
+                      onClick={handleRecalculateProfits}
+                      disabled={recalculating || brokerPolicies.filter(p => !p.cancelled && !p.transferred).length === 0}
+                    >
+                      <RefreshCw className="h-4 w-4 ml-2" />
+                      إعادة احتساب الأرباح ({brokerPolicies.filter(p => !p.cancelled && !p.transferred).length})
+                    </Button>
+                  )}
                 </div>
+                {recalculating && (
+                  <div className="mt-4 space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span>جاري إعادة الاحتساب...</span>
+                      <span>{recalcProgress.current} / {recalcProgress.total}</span>
+                    </div>
+                    <Progress value={(recalcProgress.current / recalcProgress.total) * 100} />
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -877,13 +923,14 @@ export default function CompanySettlement() {
                           <TableHead className="text-right">المحصل</TableHead>
                           <TableHead className="text-right">للشركة</TableHead>
                           <TableHead className="text-right">الربح</TableHead>
+                          <TableHead className="text-right w-20">إجراءات</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {loading || loadingBrokerPolicies ? (
                           Array.from({ length: 8 }).map((_, i) => (
                             <TableRow key={i}>
-                              {Array.from({ length: 9 }).map((_, j) => (
+                              {Array.from({ length: 10 }).map((_, j) => (
                                 <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
                               ))}
                             </TableRow>
@@ -901,18 +948,18 @@ export default function CompanySettlement() {
                           
                           return filtered.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                              <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                                 لا توجد بيانات
                               </TableCell>
                             </TableRow>
                           ) : filtered.map((policy) => (
                             <TableRow
                               key={policy.id}
-                              onClick={() => handleViewPolicy(policy.id)}
                               className={cn(
                                 "cursor-pointer transition-colors hover:bg-secondary/50",
                                 policy.cancelled && "opacity-50 line-through"
                               )}
+                              onClick={() => handleViewPolicy(policy.id)}
                             >
                               <TableCell className="font-medium">{policy.client_name || '-'}</TableCell>
                               <TableCell className="font-mono"><bdi>{policy.car_number || '-'}</bdi></TableCell>
@@ -927,6 +974,13 @@ export default function CompanySettlement() {
                               <TableCell className="font-mono">₪{Number(policy.insurance_price).toLocaleString('en-US')}</TableCell>
                               <TableCell className="font-mono text-destructive">₪{Number(policy.payed_for_company || 0).toLocaleString('en-US')}</TableCell>
                               <TableCell className="font-mono text-green-600">₪{Number(policy.profit || 0).toLocaleString('en-US')}</TableCell>
+                              <TableCell onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center gap-1">
+                                  <Button variant="ghost" size="sm" onClick={() => handleViewPolicy(policy.id)} title="عرض التفاصيل">
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
                             </TableRow>
                           ));
                         })()}
