@@ -825,15 +825,28 @@ export default function CompanySettlement() {
                 </div>
 
                 {/* Action buttons row */}
-                <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-border">
-                  <Button variant="outline" onClick={exportToCSV}>
-                    <Download className="h-4 w-4 ml-2" />
+                <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-border">
+                  {/* Primary actions */}
+                  {isDetailMode && selectedCompanies.length === 1 && (
+                    <Button
+                      onClick={handleGenerateReport}
+                      disabled={generatingReport}
+                      className="gap-2"
+                    >
+                      {generatingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                      تقرير PDF
+                    </Button>
+                  )}
+
+                  <Button variant="outline" onClick={exportToCSV} className="gap-2">
+                    <Download className="h-4 w-4" />
                     CSV
                   </Button>
+
                   <Popover open={showTaxInvoicePopover} onOpenChange={setShowTaxInvoicePopover}>
                     <PopoverTrigger asChild>
-                      <Button variant="outline">
-                        <Receipt className="h-4 w-4 ml-2" />
+                      <Button variant="outline" className="gap-2">
+                        <Receipt className="h-4 w-4" />
                         فاتورة ضريبية
                       </Button>
                     </PopoverTrigger>
@@ -866,35 +879,26 @@ export default function CompanySettlement() {
                       </div>
                     </PopoverContent>
                   </Popover>
-                  <Button variant="ghost" onClick={() => { setShowAllTime(true); setDateFrom(''); setDateTo(''); }} disabled={showAllTime}>
-                    <RotateCcw className="h-4 w-4 ml-2" />
-                    كل الفترات
-                  </Button>
+
+                  {/* Recalculate - pushed to the end */}
                   {isDetailMode && (
-                    <>
-                      {selectedCompanies.length === 1 && (
-                        <Button
-                          variant="default"
-                          onClick={handleGenerateReport}
-                          disabled={generatingReport}
-                        >
-                          {generatingReport ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : <FileText className="h-4 w-4 ml-2" />}
-                          تقرير PDF
-                        </Button>
-                      )}
+                    <div className="mr-auto">
                       <Button
                         variant="outline"
+                        size="sm"
                         onClick={handleRecalculateProfits}
                         disabled={recalculating || brokerPolicies.filter(p => !p.cancelled && !p.transferred).length === 0}
+                        className="gap-2"
                       >
-                        <RefreshCw className="h-4 w-4 ml-2" />
+                        <RefreshCw className="h-4 w-4" />
                         إعادة احتساب الأرباح ({brokerPolicies.filter(p => !p.cancelled && !p.transferred).length})
                       </Button>
-                    </>
+                    </div>
                   )}
                 </div>
+
                 {recalculating && (
-                  <div className="mt-4 space-y-2">
+                  <div className="mt-3 space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span>جاري إعادة الاحتساب...</span>
                       <span>{recalcProgress.current} / {recalcProgress.total}</span>
