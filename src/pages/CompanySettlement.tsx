@@ -120,6 +120,8 @@ export default function CompanySettlement() {
   const [loadingBrokerPolicies, setLoadingBrokerPolicies] = useState(false);
 
   const isBrokerFiltered = selectedBrokers.length > 0;
+  // Show flat policy table when any filter is active (not just broker)
+  const isDetailMode = !showAllTime || selectedCompanies.length > 0 || selectedCategories.length > 0 || selectedBrokers.length > 0;
 
   // Summary totals
   const [summary, setSummary] = useState({
@@ -128,12 +130,11 @@ export default function CompanySettlement() {
     totalCompanyPayment: 0,
   });
 
-  // Broker detail summary
+  // Detail mode summary (policies flat view)
   const brokerSummary = useMemo(() => {
-    if (!isBrokerFiltered) return null;
+    if (!isDetailMode) return null;
     const filtered = brokerPolicies.filter(p => {
       if (!includeCancelled && p.cancelled) return false;
-      if (selectedCompanies.length > 0 && !selectedCompanies.some(c => p.company_name === c || p.company_name_ar === c)) return false;
       return true;
     });
     // Exclude ELZAMI from totals
@@ -147,7 +148,7 @@ export default function CompanySettlement() {
         totalProfit: acc.totalProfit + (isTransferred ? 0 : (Number(p.profit) || 0)),
       };
     }, { totalPolicies: 0, totalInsurancePrice: 0, totalCompanyPayment: 0, totalProfit: 0 });
-  }, [brokerPolicies, includeCancelled, selectedCompanies, isBrokerFiltered]);
+  }, [brokerPolicies, includeCancelled, isDetailMode]);
 
   useEffect(() => {
     fetchBrokers();
@@ -159,7 +160,7 @@ export default function CompanySettlement() {
   }, [dateFrom, dateTo, selectedCategories, selectedBrokers, showAllTime]);
 
   useEffect(() => {
-    if (isBrokerFiltered) {
+    if (isDetailMode) {
       fetchBrokerPolicies();
     } else {
       setBrokerPolicies([]);
@@ -324,7 +325,7 @@ export default function CompanySettlement() {
     }
   };
 
-  // Fetch detailed policies when broker is filtered
+  // Fetch detailed policies when any filter is active (detail mode)
   const fetchBrokerPolicies = async () => {
     setLoadingBrokerPolicies(true);
     setLoading(true);
@@ -437,7 +438,7 @@ export default function CompanySettlement() {
   };
 
   const exportToCSV = () => {
-    if (isBrokerFiltered) {
+    if (isDetailMode) {
       // Detailed export
       const headers = ['العميل', 'رقم السيارة', 'نوع التأمين', 'الشركة', 'تاريخ البداية', 'تاريخ النهاية', 'المحصل', 'المستحق للشركة', 'الربح'];
       const rows = brokerPolicies.map(p => [
@@ -506,7 +507,7 @@ export default function CompanySettlement() {
   };
 
   const handlePolicyUpdated = () => {
-    if (isBrokerFiltered) {
+    if (isDetailMode) {
       fetchBrokerPolicies();
     } else {
       fetchSettlementData();
@@ -571,7 +572,7 @@ export default function CompanySettlement() {
     return parts.join(' • ');
   };
 
-  const activeSummary = isBrokerFiltered && brokerSummary ? brokerSummary : summary;
+  const activeSummary = isDetailMode && brokerSummary ? brokerSummary : summary;
 
   if (!isAdmin) {
     return (
@@ -615,7 +616,7 @@ export default function CompanySettlement() {
                 <AlertCircle className="h-4 w-4 text-muted-foreground" />
                 <span className="text-muted-foreground">النتائج المعروضة:</span>
                 <Badge variant="secondary">{getFilterDescription()}</Badge>
-                {isBrokerFiltered && (
+                {isDetailMode && (
                   <Badge variant="default" className="bg-primary/20 text-primary">عرض تفصيلي (وسيط)</Badge>
                 )}
               </div>
@@ -779,7 +780,7 @@ export default function CompanySettlement() {
             </Card>
 
             {/* Summary Cards */}
-            <div className={cn("grid gap-4", isBrokerFiltered ? "md:grid-cols-4" : "md:grid-cols-3")}>
+            <div className={cn("grid gap-4", isDetailMode ? "md:grid-cols-4" : "md:grid-cols-3")}>
               <Card>
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
@@ -822,7 +823,7 @@ export default function CompanySettlement() {
                 </CardContent>
               </Card>
 
-              {isBrokerFiltered && brokerSummary && (
+              {isDetailMode && brokerSummary && (
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex items-center justify-between">
@@ -844,13 +845,13 @@ export default function CompanySettlement() {
               <CardHeader>
                 <div className="flex items-center justify-between gap-4">
                   <CardTitle>
-                    {isBrokerFiltered ? 'تفاصيل وثائق الوسيط' : 'تفاصيل التسوية حسب الشركة'}
+                    {isDetailMode ? 'تفاصيل الوثائق' : 'تفاصيل التسوية حسب الشركة'}
                   </CardTitle>
                   <div className="flex items-center gap-2">
                     <div className="relative w-64">
                       <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
-                        placeholder={isBrokerFiltered ? "بحث بالاسم أو رقم السيارة..." : "بحث باسم الشركة..."}
+                        placeholder={isDetailMode ? "بحث بالاسم أو رقم السيارة..." : "بحث باسم الشركة..."}
                         value={companySearch}
                         onChange={(e) => setCompanySearch(e.target.value)}
                         className="pr-10"
@@ -862,7 +863,7 @@ export default function CompanySettlement() {
               </CardHeader>
               <CardContent>
                 <div className="rounded-lg border overflow-auto" style={{ maxHeight: '70vh' }}>
-                  {isBrokerFiltered ? (
+                  {isDetailMode ? (
                     /* Broker detail table */
                     <Table>
                       <TableHeader>
