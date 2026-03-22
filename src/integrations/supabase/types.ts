@@ -4686,6 +4686,113 @@ export type Database = {
           },
         ]
       }
+      worker_salaries: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          expense_id: string | null
+          id: string
+          month: number
+          notes: string | null
+          payment_method: string
+          updated_at: string
+          worker_id: string
+          year: number
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          expense_id?: string | null
+          id?: string
+          month: number
+          notes?: string | null
+          payment_method?: string
+          updated_at?: string
+          worker_id: string
+          year: number
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          expense_id?: string | null
+          id?: string
+          month?: number
+          notes?: string | null
+          payment_method?: string
+          updated_at?: string
+          worker_id?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "worker_salaries_expense_id_fkey"
+            columns: ["expense_id"]
+            isOneToOne: false
+            referencedRelation: "expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "worker_salaries_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workers: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          first_name: string
+          id: string
+          id_number: string | null
+          last_name: string
+          notes: string | null
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          first_name: string
+          id?: string
+          id_number?: string | null
+          last_name: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          first_name?: string
+          id?: string
+          id_number?: string | null
+          last_name?: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workers_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       xservice_settings: {
         Row: {
           agent_name: string
