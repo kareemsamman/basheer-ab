@@ -487,7 +487,7 @@ async function generateReceiptPdfBlob(html: string): Promise<Blob> {
         html2canvas: { scale: 2, useCORS: true, letterRendering: true },
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
       })
-      .from(receiptEl)
+      .from(receiptEl as HTMLElement)
       .outputPdf("blob");
     return blob as Blob;
   } finally {
