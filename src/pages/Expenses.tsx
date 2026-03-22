@@ -489,6 +489,42 @@ export default function Expenses() {
               console.error('Error updating cheque status:', updateError);
             }
           }
+
+          // Auto-create company_settlements entry when expense is for a company
+          if (formData.entity_type === 'company' && formData.entity_id) {
+            if (payment.payment_type === 'customer_cheque' && payment.selected_cheques && payment.selected_cheques.length > 0) {
+              // Create a separate settlement for each customer cheque
+              for (const cheque of payment.selected_cheques) {
+                await supabase.from('company_settlements').insert({
+                  company_id: formData.entity_id,
+                  total_amount: cheque.amount,
+                  settlement_date: payment.payment_date,
+                  notes: formData.description || multiNotes || null,
+                  status: 'completed',
+                  created_by_admin_id: profile?.id,
+                  payment_type: 'customer_cheque',
+                  cheque_number: cheque.cheque_number || null,
+                  customer_cheque_ids: [cheque.id],
+                  refused: false,
+                });
+              }
+            } else {
+              // Single settlement entry for cash/cheque/transfer/visa
+              await supabase.from('company_settlements').insert({
+                company_id: formData.entity_id,
+                total_amount: amount,
+                settlement_date: payment.payment_date,
+                notes: formData.description || multiNotes || null,
+                status: 'completed',
+                created_by_admin_id: profile?.id,
+                payment_type: paymentMethod,
+                cheque_number: payment.payment_type === 'cheque' ? payment.cheque_number : null,
+                cheque_image_url: payment.cheque_image_url || null,
+                bank_reference: payment.payment_type === 'bank_transfer' ? payment.bank_reference : null,
+                refused: false,
+              });
+            }
+          }
         }
 
         toast.success(`تم إضافة ${validLines.length} دفعة بنجاح`);
@@ -538,6 +574,23 @@ export default function Expenses() {
             .from('expenses')
             .insert(expenseData);
           if (error) throw error;
+
+          // Auto-create company_settlements entry for single-line company expenses
+          if (formData.entity_type === 'company' && formData.entity_id && formData.voucher_type === 'payment') {
+            await supabase.from('company_settlements').insert({
+              company_id: formData.entity_id,
+              total_amount: parseFloat(formData.amount),
+              settlement_date: formData.expense_date,
+              notes: formData.description || formData.notes || null,
+              status: 'completed',
+              created_by_admin_id: profile?.id,
+              payment_type: formData.payment_method,
+              cheque_number: formData.payment_method === 'cheque' ? formData.reference_number : null,
+              bank_reference: formData.payment_method === 'bank_transfer' ? formData.reference_number : null,
+              refused: false,
+            });
+          }
+
           toast.success(formData.voucher_type === 'receipt' ? 'تم إضافة سند القبض' : 'تم إضافة سند الصرف');
         }
 
