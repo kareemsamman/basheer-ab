@@ -346,7 +346,7 @@ export function ArabicDatePicker({
         dir="ltr"
         className={cn(
           "font-mono text-center ltr-nums",
-          compact ? "h-8 text-xs w-[130px]" : "h-9 text-sm flex-1",
+          compact ? "h-8 text-xs w-[170px]" : "h-9 text-sm flex-1",
           inputError && "border-destructive focus-visible:ring-destructive"
         )}
       />
