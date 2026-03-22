@@ -90,7 +90,7 @@ serve(async (req) => {
       .from("policies")
       .select(`
         id, policy_type_parent, policy_type_child, insurance_price,
-        start_date, end_date, cancelled, group_id, company_id, car_id,
+        start_date, end_date, issue_date, cancelled, group_id, company_id, car_id,
         clients (full_name, phone_number, id_number),
         insurance_companies:company_id (name, name_ar),
         cars:car_id (car_number)
@@ -101,8 +101,8 @@ serve(async (req) => {
     if (effectiveCompanyIds) query = query.in("company_id", effectiveCompanyIds);
     if (effectivePolicyTypes) query = query.in("policy_type_parent", effectivePolicyTypes);
     if (broker_ids?.length) query = query.in("broker_id", broker_ids);
-    if (start_date) query = query.gte("start_date", start_date);
-    if (end_date) query = query.lte("start_date", end_date);
+    if (start_date) query = query.gte("issue_date", start_date);
+    if (end_date) query = query.lte("issue_date", end_date);
     if (!include_cancelled) query = query.eq("cancelled", false);
 
     const { data: policies, error: policiesError } = await query.order("start_date", { ascending: true });
@@ -124,7 +124,7 @@ serve(async (req) => {
         .from("policies")
         .select(`
           id, policy_type_parent, policy_type_child, insurance_price,
-          group_id, company_id, car_id,
+          issue_date, group_id, company_id, car_id,
           insurance_companies:company_id (name, name_ar),
           cars:car_id (car_number)
         `)
@@ -133,8 +133,8 @@ serve(async (req) => {
         .is("deleted_at", null);
 
       if (!include_cancelled) groupQuery = groupQuery.eq("cancelled", false);
-      if (start_date) groupQuery = groupQuery.gte("start_date", start_date);
-      if (end_date) groupQuery = groupQuery.lte("start_date", end_date);
+      if (start_date) groupQuery = groupQuery.gte("issue_date", start_date);
+      if (end_date) groupQuery = groupQuery.lte("issue_date", end_date);
 
       const { data: groupData } = await groupQuery;
       allGroupPolicies = groupData || [];
