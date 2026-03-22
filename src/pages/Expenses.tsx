@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Navigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Header } from "@/components/layout/Header";
@@ -34,6 +34,9 @@ import {
   ShieldCheck,
   FileDown,
   Loader2,
+  ChevronDown,
+  ChevronUp,
+  X,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -65,6 +68,18 @@ interface Expense {
   is_elzami_commission?: boolean;
   entity_type?: string | null;
   entity_id?: string | null;
+  customer_cheque_ids?: string[] | null;
+  batch_id?: string | null;
+  entity_name?: string | null;
+}
+
+interface ChequeDetail {
+  id: string;
+  amount: number;
+  cheque_number: string | null;
+  payment_date: string;
+  client_name: string | null;
+  car_number: string | null;
 }
 
 // Payment categories
@@ -117,6 +132,86 @@ export default function Expenses() {
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
   
+  // Cheque details expansion
+  const [expandedExpenseId, setExpandedExpenseId] = useState<string | null>(null);
+  const [chequeDetails, setChequeDetails] = useState<Record<string, ChequeDetail[]>>({});
+  const [loadingCheques, setLoadingCheques] = useState<string | null>(null);
+
+  const fetchChequeDetails = async (expenseId: string, chequeIds: string[]) => {
+    if (chequeDetails[expenseId]) {
+      setExpandedExpenseId(expandedExpenseId === expenseId ? null : expenseId);
+      return;
+    }
+    setLoadingCheques(expenseId);
+    try {
+      const { data } = await supabase
+        .from('policy_payments')
+        .select('id, amount, cheque_number, payment_date, policies(clients(full_name), cars(car_number))')
+        .in('id', chequeIds);
+      const details: ChequeDetail[] = (data || []).map((p: any) => ({
+        id: p.id,
+        amount: p.amount,
+        cheque_number: p.cheque_number,
+        payment_date: p.payment_date,
+        client_name: p.policies?.clients?.full_name || null,
+        car_number: p.policies?.cars?.car_number || null,
+      }));
+      setChequeDetails(prev => ({ ...prev, [expenseId]: details }));
+      setExpandedExpenseId(expenseId);
+    } catch {
+      toast.error('فشل تحميل تفاصيل الشيكات');
+    } finally {
+      setLoadingCheques(null);
+    }
+  };
+
+  const handleRemoveCheque = async (expense: Expense, chequeId: string) => {
+    if (!confirm('هل أنت متأكد من إزالة هذا الشيك؟')) return;
+    try {
+      const chequeIds = (expense.customer_cheque_ids || []).filter(id => id !== chequeId);
+      const removedCheque = chequeDetails[expense.id]?.find(c => c.id === chequeId);
+      const newAmount = expense.amount - (removedCheque?.amount || 0);
+
+      // Update expense
+      if (chequeIds.length === 0) {
+        // No cheques left, delete the expense
+        await supabase.from('expenses').delete().eq('id', expense.id);
+      } else {
+        await supabase.from('expenses').update({
+          amount: newAmount,
+          customer_cheque_ids: chequeIds,
+        }).eq('id', expense.id);
+      }
+
+      // Release cheque back to available
+      await supabase.from('policy_payments').update({
+        cheque_status: 'pending',
+        transferred_to_type: null,
+        transferred_to_id: null,
+        transferred_at: null,
+      }).eq('id', chequeId);
+
+      // Remove from company_settlements if linked
+      if (expense.entity_type === 'company' && expense.entity_id) {
+        await supabase.from('company_settlements')
+          .delete()
+          .eq('company_id', expense.entity_id)
+          .contains('customer_cheque_ids', JSON.stringify([chequeId]));
+      }
+
+      // Update local state
+      setChequeDetails(prev => ({
+        ...prev,
+        [expense.id]: (prev[expense.id] || []).filter(c => c.id !== chequeId),
+      }));
+
+      toast.success('تم إزالة الشيك');
+      fetchExpenses();
+    } catch (err: any) {
+      toast.error('فشل إزالة الشيك: ' + err.message);
+    }
+  };
+
   // Form state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
@@ -923,7 +1018,8 @@ export default function Expenses() {
                       const pm = paymentMethodLabels[expense.payment_method] || paymentMethodLabels.cash;
                       const PmIcon = pm.icon;
                       return (
-                        <TableRow key={expense.id} className={isCompanyDue ? 'bg-warning/[0.04]' : isElzamiComm ? 'bg-accent/[0.06]' : isPP ? 'bg-success/[0.03]' : ''}>
+                        <React.Fragment key={expense.id}>
+                        <TableRow className={isCompanyDue ? 'bg-warning/[0.04]' : isElzamiComm ? 'bg-accent/[0.06]' : isPP ? 'bg-success/[0.03]' : ''}>
                           <TableCell>
                             <div className="flex items-center gap-1.5">
                               {isCompanyDue ? (
@@ -987,7 +1083,26 @@ export default function Expenses() {
                             {isReceipt ? '+' : '-'}{formatCurrency(expense.amount)}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
-                            {expense.reference_number || '-'}
+                            {expense.customer_cheque_ids && expense.customer_cheque_ids.length > 0 ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="gap-1 h-7 px-2 text-xs"
+                                onClick={() => fetchChequeDetails(expense.id, expense.customer_cheque_ids!)}
+                                disabled={loadingCheques === expense.id}
+                              >
+                                {loadingCheques === expense.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : expandedExpenseId === expense.id ? (
+                                  <ChevronUp className="h-3 w-3" />
+                                ) : (
+                                  <ChevronDown className="h-3 w-3" />
+                                )}
+                                <Badge variant="secondary" className="text-[10px] px-1.5">{expense.customer_cheque_ids.length} شيك</Badge>
+                              </Button>
+                            ) : (
+                              expense.reference_number || '-'
+                            )}
                           </TableCell>
                           <TableCell>
                             {isPP ? (
@@ -1004,6 +1119,36 @@ export default function Expenses() {
                             )}
                           </TableCell>
                         </TableRow>
+                        {/* Expanded cheque details */}
+                        {expandedExpenseId === expense.id && chequeDetails[expense.id] && (
+                          chequeDetails[expense.id].map((cheque) => (
+                            <TableRow key={cheque.id} className="bg-muted/30">
+                              <TableCell colSpan={4} className="text-xs pr-8">
+                                <span className="font-medium">{cheque.client_name || '-'}</span>
+                                {cheque.car_number && <span className="text-muted-foreground mr-2">({cheque.car_number})</span>}
+                              </TableCell>
+                              <TableCell colSpan={2} className="text-xs font-mono">
+                                شيك #{cheque.cheque_number || '-'}
+                              </TableCell>
+                              <TableCell className="text-xs">{cheque.payment_date ? new Date(cheque.payment_date).toLocaleDateString('en-GB') : '-'}</TableCell>
+                              <TableCell className="text-xs font-bold text-destructive">₪{Number(cheque.amount).toLocaleString('en-US')}</TableCell>
+                              <TableCell></TableCell>
+                              <TableCell>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-destructive"
+                                  onClick={() => handleRemoveCheque(expense, cheque.id)}
+                                  title="إزالة الشيك"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </Button>
+                              </TableCell>
+                              <TableCell></TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                        </React.Fragment>
                       );
                     })}
                   </TableBody>
