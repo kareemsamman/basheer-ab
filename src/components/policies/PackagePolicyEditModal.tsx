@@ -229,8 +229,13 @@ export function PackagePolicyEditModal({
           const { data } = await supabase.from("accident_fee_services").select("id, name, name_ar").eq("active", true).order("name");
           opts[type] = (data || []).map(r => ({ id: r.id, name: r.name_ar || r.name }));
         } else {
-          // ELZAMI, THIRD_FULL → insurance_companies
-          const { data } = await supabase.from("insurance_companies").select("id, name, name_ar").order("name");
+          // ELZAMI, THIRD_FULL → insurance_companies filtered by category_parent
+          const { data } = await supabase
+            .from("insurance_companies")
+            .select("id, name, name_ar, category_parent")
+            .eq("active", true)
+            .contains("category_parent", [type])
+            .order("name");
           opts[type] = (data || []).map(r => ({ id: r.id, name: r.name_ar || r.name }));
         }
       }));
