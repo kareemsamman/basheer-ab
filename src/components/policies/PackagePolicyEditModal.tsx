@@ -493,6 +493,8 @@ export function PackagePolicyEditModal({
       }
 
       // 3. Process each policy
+      const xserviceSyncIds: string[] = [];
+      
       for (const policy of policies) {
         const state = editStates[policy.id];
         if (!state) continue;
@@ -500,41 +502,53 @@ export function PackagePolicyEditModal({
         const price = parseFloat(state.insurancePrice) || 0;
         let companyPayment = price;
         let profit = 0;
+        const selectedCompanyId = state.companyId;
 
-        // Recalculate profit based on policy type
+        // Detect company change for X-Service sync
+        const origCompanyId = policy.policy_type_parent === "ROAD_SERVICE"
+          ? policy.road_services?.id
+          : policy.policy_type_parent === "ACCIDENT_FEE_EXEMPTION"
+            ? policy.accident_fee_services?.id
+            : policy.insurance_companies?.id;
+        const companyChanged = selectedCompanyId && selectedCompanyId !== origCompanyId;
+
+        // Recalculate profit based on policy type using SELECTED company
         if (policy.policy_type_parent === "ELZAMI") {
           const { data: companyData } = await supabase
             .from("insurance_companies")
             .select("elzami_commission")
-            .eq("id", policy.insurance_companies?.id || "")
+            .eq("id", selectedCompanyId || "")
             .single();
           profit = companyData?.elzami_commission || 0;
           companyPayment = price;
-        } else if (["ROAD_SERVICE", "ACCIDENT_FEE_EXEMPTION"].includes(policy.policy_type_parent)) {
-          if (policy.policy_type_parent === "ROAD_SERVICE" && policy.road_services?.id) {
+        } else if (policy.policy_type_parent === "ROAD_SERVICE") {
+          if (selectedCompanyId) {
             const { data: priceData } = await supabase
               .from("company_road_service_prices")
               .select("company_cost")
-              .eq("road_service_id", policy.road_services.id)
-              .limit(1)
-              .single();
-            companyPayment = priceData?.company_cost || price;
-          } else if (policy.policy_type_parent === "ACCIDENT_FEE_EXEMPTION" && policy.accident_fee_services?.id) {
-            const { data: priceData } = await supabase
-              .from("company_accident_fee_prices")
-              .select("company_cost")
-              .eq("accident_fee_service_id", policy.accident_fee_services.id)
+              .eq("road_service_id", selectedCompanyId)
               .limit(1)
               .single();
             companyPayment = priceData?.company_cost || price;
           }
           profit = price - companyPayment;
-        } else if (policy.policy_type_parent === "THIRD_FULL" && policy.insurance_companies?.id) {
+        } else if (policy.policy_type_parent === "ACCIDENT_FEE_EXEMPTION") {
+          if (selectedCompanyId) {
+            const { data: priceData } = await supabase
+              .from("company_accident_fee_prices")
+              .select("company_cost")
+              .eq("accident_fee_service_id", selectedCompanyId)
+              .limit(1)
+              .single();
+            companyPayment = priceData?.company_cost || price;
+          }
+          profit = price - companyPayment;
+        } else if (policy.policy_type_parent === "THIRD_FULL" && selectedCompanyId) {
           const ageBand: Enums<"age_band"> = policy.is_under_24 ? "UNDER_24" : "UP_24";
           const result = await calculatePolicyProfit({
             policyTypeParent: policy.policy_type_parent as Enums<"policy_type_parent">,
             policyTypeChild: (policy.policy_type_child || null) as Enums<"policy_type_child"> | null,
-            companyId: policy.insurance_companies.id,
+            companyId: selectedCompanyId,
             carType: (policy.cars?.car_type || "car") as Enums<"car_type">,
             ageBand,
             carValue: policy.cars?.car_value || null,
@@ -545,21 +559,41 @@ export function PackagePolicyEditModal({
           profit = result.profit;
         }
 
-        // Update the policy
+        // Build update payload with correct company field
+        const updatePayload: Record<string, any> = {
+          start_date: state.startDate,
+          end_date: state.endDate,
+          issue_date: state.issueDate || state.startDate,
+          insurance_price: price,
+          payed_for_company: companyPayment,
+          profit,
+          updated_at: new Date().toISOString(),
+        };
+
+        if (policy.policy_type_parent === "ROAD_SERVICE") {
+          updatePayload.road_service_id = selectedCompanyId || null;
+        } else if (policy.policy_type_parent === "ACCIDENT_FEE_EXEMPTION") {
+          updatePayload.accident_fee_service_id = selectedCompanyId || null;
+        } else {
+          updatePayload.company_id = selectedCompanyId || null;
+        }
+
         const { error } = await supabase
           .from("policies")
-          .update({
-            start_date: state.startDate,
-            end_date: state.endDate,
-            issue_date: state.issueDate || state.startDate,
-            insurance_price: price,
-            payed_for_company: companyPayment,
-            profit,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updatePayload)
           .eq("id", policy.id);
 
         if (error) throw error;
+
+        // Queue X-Service sync for service policies whose company changed
+        if (companyChanged && ["ROAD_SERVICE", "ACCIDENT_FEE_EXEMPTION"].includes(policy.policy_type_parent)) {
+          xserviceSyncIds.push(policy.id);
+        }
+      }
+
+      // Fire X-Service re-sync in background
+      for (const pid of xserviceSyncIds) {
+        supabase.functions.invoke("sync-to-xservice", { body: { policy_id: pid } }).catch(console.error);
       }
 
       toast({ title: "تم الحفظ", description: "تم تحديث جميع وثائق الباقة بنجاح" });
