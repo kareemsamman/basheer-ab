@@ -201,17 +201,40 @@ export function PackagePolicyEditModal({
 
       setPolicies(sortedData);
 
-      // Initialize edit states
+      // Initialize edit states with companyId
       const states: Record<string, EditState> = {};
       sortedData.forEach((p) => {
+        let cid = "";
+        if (p.policy_type_parent === "ROAD_SERVICE") cid = p.road_services?.id || "";
+        else if (p.policy_type_parent === "ACCIDENT_FEE_EXEMPTION") cid = p.accident_fee_services?.id || "";
+        else cid = p.insurance_companies?.id || "";
         states[p.id] = {
           startDate: p.start_date || "",
           endDate: p.end_date || "",
           issueDate: (p as any).issue_date || p.start_date || "",
           insurancePrice: p.insurance_price?.toString() || "0",
+          companyId: cid,
         };
       });
       setEditStates(states);
+
+      // Fetch company options for each policy type present
+      const uniqueTypes = [...new Set(sortedData.map(p => p.policy_type_parent))];
+      const opts: Record<string, CompanyOption[]> = {};
+      await Promise.all(uniqueTypes.map(async (type) => {
+        if (type === "ROAD_SERVICE") {
+          const { data } = await supabase.from("road_services").select("id, name, name_ar").eq("active", true).order("name");
+          opts[type] = (data || []).map(r => ({ id: r.id, name: r.name_ar || r.name }));
+        } else if (type === "ACCIDENT_FEE_EXEMPTION") {
+          const { data } = await supabase.from("accident_fee_services").select("id, name, name_ar").eq("active", true).order("name");
+          opts[type] = (data || []).map(r => ({ id: r.id, name: r.name_ar || r.name }));
+        } else {
+          // ELZAMI, THIRD_FULL → insurance_companies
+          const { data } = await supabase.from("insurance_companies").select("id, name, name_ar").order("name");
+          opts[type] = (data || []).map(r => ({ id: r.id, name: r.name_ar || r.name }));
+        }
+      }));
+      setCompanyOptions(opts);
 
       // Get client name, car number, and client_id from first policy
       if (sortedData.length > 0) {
