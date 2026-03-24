@@ -101,6 +101,12 @@ interface EditState {
   endDate: string;
   issueDate: string;
   insurancePrice: string;
+  companyId: string;
+}
+
+interface CompanyOption {
+  id: string;
+  name: string;
 }
 
 const policyTypeLabels: Record<string, string> = {
