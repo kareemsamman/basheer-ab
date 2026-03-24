@@ -1,55 +1,39 @@
 
 
-# Fix Package Payment Splitting — Insert 1 Record Per Cheque, Not Split Across Components
+## Plan: Add Company Editing to Package Policy Edit Modal
 
-## Problem
-When paying for a package policy (e.g., شامل ₪3,700 + خدمات طريق ₪500 = ₪4,200) with 3 cheques of ₪1,400 each, `PackagePaymentModal` proportionally splits each cheque across the 2 component policies, creating **6 payment records** (₪1,233 + ₪167 per cheque). The user expects **3 records** — one per cheque.
+### What Changes
 
-## Root Cause
-`PackagePaymentModal.handleSubmit` calls `calculateSplitPayments()` which distributes each payment proportionally by remaining balance across all package component policies.
+Currently, the package edit modal shows the company name as read-only text for each policy. This plan adds a company dropdown selector per policy, allowing you to change the company for any policy in the package. When saved, the new `company_id` is persisted and profit is recalculated using the new company.
 
-## Solution
+### Technical Details
 
-### 1. Update the DB trigger to validate across the entire package group
-**Migration SQL** — Change the existing payment total check in `validate_policy_payment_total()` so that when a policy belongs to a group, `v_existing_total` sums payments across **all** policies in that group (not just `NEW.policy_id`).
+**File: `src/components/policies/PackagePolicyEditModal.tsx`**
 
-Current trigger (line 42-48) only sums `pp.policy_id = NEW.policy_id`. Updated version:
-```sql
-IF v_group_id IS NOT NULL THEN
-  -- Sum payments across ALL policies in the package
-  SELECT COALESCE(SUM(pp.amount), 0) INTO v_existing_total
-  FROM policy_payments pp
-  JOIN policies pol ON pol.id = pp.policy_id
-  WHERE pol.group_id = v_group_id
-    AND pol.deleted_at IS NULL
-    AND COALESCE(pp.refused, false) = false
-    AND (TG_OP <> 'UPDATE' OR pp.id <> NEW.id);
-ELSE
-  -- Single policy: sum only for that policy
-  SELECT COALESCE(SUM(pp.amount), 0) INTO v_existing_total ...
-END IF;
-```
+1. **Extend `EditState`** to include `companyId: string` field.
 
-### 2. Update `PackagePaymentModal.handleSubmit` — Stop splitting, insert 1 record per payment
-**File:** `src/components/clients/PackagePaymentModal.tsx`
+2. **Add state for available companies** per policy type:
+   - On modal open, fetch companies from `insurance_companies` filtered by `category_parent` for each unique policy type in the package.
+   - For `ROAD_SERVICE` policies, fetch from `road_services` table.
+   - For `ACCIDENT_FEE_EXEMPTION`, fetch from `accident_fee_services` table.
+   - Store in a `companyOptions: Record<string, Array<{id, name}>>` keyed by policy type.
 
-Instead of calling `calculateSplitPayments()` and looping over splits, insert each payment line as a **single record** against the primary (first) policy in the package. Add `batch_id` to group them. Include `cheque_image_url` for cheque payments.
+3. **Replace the static company text** (line 609-611) with a `<Select>` dropdown:
+   - For standard policies (ELZAMI, THIRD_FULL): show companies from `insurance_companies`.
+   - For ROAD_SERVICE: show road service providers.
+   - For ACCIDENT_FEE_EXEMPTION: show accident fee service providers.
 
-Key changes in `handleSubmit` (lines 448-496):
-- Generate a `batch_id` for all payments in this batch
-- Pick the primary policy ID (first policy with remaining, or first overall)
-- Insert one `policy_payments` record per payment line (no split loop)
-- Include `cheque_image_url` from scanned cheques
-- Upload images for each payment
+4. **Update `handleSaveAll`** (line 516-527):
+   - Include `company_id` in the update payload for standard policies.
+   - Include `road_service_id` for ROAD_SERVICE policies.
+   - Include `accident_fee_service_id` for ACCIDENT_FEE_EXEMPTION policies.
+   - Use the new company ID when calling `calculatePolicyProfit` and fetching cost prices.
 
-### 3. Update `handleScannedCheques` to preserve `cheque_image_url`
-**File:** `src/components/clients/PackagePaymentModal.tsx`
+5. **Trigger X-Service re-sync** for ROAD_SERVICE / ACCIDENT_FEE_EXEMPTION policies whose company changed, by invoking `sync-to-xservice` after save.
 
-The scanned cheque handler (line 324-356) doesn't preserve the CDN `image_url` from the scanner. Add `cheque_image_url: cheque.image_url` to the payment line (same pattern as `PolicyPaymentsSection`).
-
-### Files Changed
-| File | Change |
-|---|---|
-| DB migration (SQL) | Update trigger to sum across package group |
-| `src/components/clients/PackagePaymentModal.tsx` | Stop proportional split; insert 1 record per payment against primary policy with batch_id + cheque_image_url |
+### Summary of Changes
+- 1 file modified: `src/components/policies/PackagePolicyEditModal.tsx`
+- Company selector per policy in package edit modal
+- Profit recalculated with new company on save
+- X-Service re-sync triggered when service company changes
 
