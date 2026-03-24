@@ -286,6 +286,7 @@ export function PackagePolicyEditModal({
     if (!open) {
       setPolicies([]);
       setEditStates({});
+      setCompanyOptions({});
       setClientName("");
       setCarNumber("");
       setClientId(null);
