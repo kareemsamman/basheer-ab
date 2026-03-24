@@ -101,6 +101,12 @@ interface EditState {
   endDate: string;
   issueDate: string;
   insurancePrice: string;
+  companyId: string;
+}
+
+interface CompanyOption {
+  id: string;
+  name: string;
 }
 
 const policyTypeLabels: Record<string, string> = {
@@ -144,6 +150,9 @@ export function PackagePolicyEditModal({
   const [editStates, setEditStates] = useState<Record<string, EditState>>({});
   const [clientName, setClientName] = useState<string>("");
   const [carNumber, setCarNumber] = useState<string>("");
+  
+  // Company options per policy type
+  const [companyOptions, setCompanyOptions] = useState<Record<string, CompanyOption[]>>({});
   
   // Extra drivers state
   const [clientId, setClientId] = useState<string | null>(null);
@@ -192,17 +201,40 @@ export function PackagePolicyEditModal({
 
       setPolicies(sortedData);
 
-      // Initialize edit states
+      // Initialize edit states with companyId
       const states: Record<string, EditState> = {};
       sortedData.forEach((p) => {
+        let cid = "";
+        if (p.policy_type_parent === "ROAD_SERVICE") cid = p.road_services?.id || "";
+        else if (p.policy_type_parent === "ACCIDENT_FEE_EXEMPTION") cid = p.accident_fee_services?.id || "";
+        else cid = p.insurance_companies?.id || "";
         states[p.id] = {
           startDate: p.start_date || "",
           endDate: p.end_date || "",
           issueDate: (p as any).issue_date || p.start_date || "",
           insurancePrice: p.insurance_price?.toString() || "0",
+          companyId: cid,
         };
       });
       setEditStates(states);
+
+      // Fetch company options for each policy type present
+      const uniqueTypes = [...new Set(sortedData.map(p => p.policy_type_parent))];
+      const opts: Record<string, CompanyOption[]> = {};
+      await Promise.all(uniqueTypes.map(async (type) => {
+        if (type === "ROAD_SERVICE") {
+          const { data } = await supabase.from("road_services").select("id, name, name_ar").eq("active", true).order("name");
+          opts[type] = (data || []).map(r => ({ id: r.id, name: r.name_ar || r.name }));
+        } else if (type === "ACCIDENT_FEE_EXEMPTION") {
+          const { data } = await supabase.from("accident_fee_services").select("id, name, name_ar").eq("active", true).order("name");
+          opts[type] = (data || []).map(r => ({ id: r.id, name: r.name_ar || r.name }));
+        } else {
+          // ELZAMI, THIRD_FULL → insurance_companies
+          const { data } = await supabase.from("insurance_companies").select("id, name, name_ar").order("name");
+          opts[type] = (data || []).map(r => ({ id: r.id, name: r.name_ar || r.name }));
+        }
+      }));
+      setCompanyOptions(opts);
 
       // Get client name, car number, and client_id from first policy
       if (sortedData.length > 0) {
@@ -254,6 +286,7 @@ export function PackagePolicyEditModal({
     if (!open) {
       setPolicies([]);
       setEditStates({});
+      setCompanyOptions({});
       setClientName("");
       setCarNumber("");
       setClientId(null);
@@ -460,6 +493,8 @@ export function PackagePolicyEditModal({
       }
 
       // 3. Process each policy
+      const xserviceSyncIds: string[] = [];
+      
       for (const policy of policies) {
         const state = editStates[policy.id];
         if (!state) continue;
@@ -467,41 +502,53 @@ export function PackagePolicyEditModal({
         const price = parseFloat(state.insurancePrice) || 0;
         let companyPayment = price;
         let profit = 0;
+        const selectedCompanyId = state.companyId;
 
-        // Recalculate profit based on policy type
+        // Detect company change for X-Service sync
+        const origCompanyId = policy.policy_type_parent === "ROAD_SERVICE"
+          ? policy.road_services?.id
+          : policy.policy_type_parent === "ACCIDENT_FEE_EXEMPTION"
+            ? policy.accident_fee_services?.id
+            : policy.insurance_companies?.id;
+        const companyChanged = selectedCompanyId && selectedCompanyId !== origCompanyId;
+
+        // Recalculate profit based on policy type using SELECTED company
         if (policy.policy_type_parent === "ELZAMI") {
           const { data: companyData } = await supabase
             .from("insurance_companies")
             .select("elzami_commission")
-            .eq("id", policy.insurance_companies?.id || "")
+            .eq("id", selectedCompanyId || "")
             .single();
           profit = companyData?.elzami_commission || 0;
           companyPayment = price;
-        } else if (["ROAD_SERVICE", "ACCIDENT_FEE_EXEMPTION"].includes(policy.policy_type_parent)) {
-          if (policy.policy_type_parent === "ROAD_SERVICE" && policy.road_services?.id) {
+        } else if (policy.policy_type_parent === "ROAD_SERVICE") {
+          if (selectedCompanyId) {
             const { data: priceData } = await supabase
               .from("company_road_service_prices")
               .select("company_cost")
-              .eq("road_service_id", policy.road_services.id)
-              .limit(1)
-              .single();
-            companyPayment = priceData?.company_cost || price;
-          } else if (policy.policy_type_parent === "ACCIDENT_FEE_EXEMPTION" && policy.accident_fee_services?.id) {
-            const { data: priceData } = await supabase
-              .from("company_accident_fee_prices")
-              .select("company_cost")
-              .eq("accident_fee_service_id", policy.accident_fee_services.id)
+              .eq("road_service_id", selectedCompanyId)
               .limit(1)
               .single();
             companyPayment = priceData?.company_cost || price;
           }
           profit = price - companyPayment;
-        } else if (policy.policy_type_parent === "THIRD_FULL" && policy.insurance_companies?.id) {
+        } else if (policy.policy_type_parent === "ACCIDENT_FEE_EXEMPTION") {
+          if (selectedCompanyId) {
+            const { data: priceData } = await supabase
+              .from("company_accident_fee_prices")
+              .select("company_cost")
+              .eq("accident_fee_service_id", selectedCompanyId)
+              .limit(1)
+              .single();
+            companyPayment = priceData?.company_cost || price;
+          }
+          profit = price - companyPayment;
+        } else if (policy.policy_type_parent === "THIRD_FULL" && selectedCompanyId) {
           const ageBand: Enums<"age_band"> = policy.is_under_24 ? "UNDER_24" : "UP_24";
           const result = await calculatePolicyProfit({
             policyTypeParent: policy.policy_type_parent as Enums<"policy_type_parent">,
             policyTypeChild: (policy.policy_type_child || null) as Enums<"policy_type_child"> | null,
-            companyId: policy.insurance_companies.id,
+            companyId: selectedCompanyId,
             carType: (policy.cars?.car_type || "car") as Enums<"car_type">,
             ageBand,
             carValue: policy.cars?.car_value || null,
@@ -512,21 +559,41 @@ export function PackagePolicyEditModal({
           profit = result.profit;
         }
 
-        // Update the policy
+        // Build update payload with correct company field
+        const updatePayload: Record<string, any> = {
+          start_date: state.startDate,
+          end_date: state.endDate,
+          issue_date: state.issueDate || state.startDate,
+          insurance_price: price,
+          payed_for_company: companyPayment,
+          profit,
+          updated_at: new Date().toISOString(),
+        };
+
+        if (policy.policy_type_parent === "ROAD_SERVICE") {
+          updatePayload.road_service_id = selectedCompanyId || null;
+        } else if (policy.policy_type_parent === "ACCIDENT_FEE_EXEMPTION") {
+          updatePayload.accident_fee_service_id = selectedCompanyId || null;
+        } else {
+          updatePayload.company_id = selectedCompanyId || null;
+        }
+
         const { error } = await supabase
           .from("policies")
-          .update({
-            start_date: state.startDate,
-            end_date: state.endDate,
-            issue_date: state.issueDate || state.startDate,
-            insurance_price: price,
-            payed_for_company: companyPayment,
-            profit,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updatePayload)
           .eq("id", policy.id);
 
         if (error) throw error;
+
+        // Queue X-Service sync for service policies whose company changed
+        if (companyChanged && ["ROAD_SERVICE", "ACCIDENT_FEE_EXEMPTION"].includes(policy.policy_type_parent)) {
+          xserviceSyncIds.push(policy.id);
+        }
+      }
+
+      // Fire X-Service re-sync in background
+      for (const pid of xserviceSyncIds) {
+        supabase.functions.invoke("sync-to-xservice", { body: { policy_id: pid } }).catch(console.error);
       }
 
       toast({ title: "تم الحفظ", description: "تم تحديث جميع وثائق الباقة بنجاح" });
@@ -606,8 +673,23 @@ export function PackagePolicyEditModal({
                             {getTypeName(policy)}
                           </Badge>
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          الشركة: <span className="font-medium text-foreground">{getCompanyName(policy)}</span>
+                        <div className="text-xs text-muted-foreground flex items-center gap-1">
+                          الشركة:
+                          <Select
+                            value={state?.companyId || ""}
+                            onValueChange={(v) => updateEditState(policy.id, "companyId", v)}
+                          >
+                            <SelectTrigger className="h-7 text-xs w-[160px] border-dashed">
+                              <SelectValue placeholder="اختر..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(companyOptions[policy.policy_type_parent] || []).map((opt) => (
+                                <SelectItem key={opt.id} value={opt.id}>
+                                  {opt.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
 
