@@ -151,6 +151,9 @@ export function PackagePolicyEditModal({
   const [clientName, setClientName] = useState<string>("");
   const [carNumber, setCarNumber] = useState<string>("");
   
+  // Company options per policy type
+  const [companyOptions, setCompanyOptions] = useState<Record<string, CompanyOption[]>>({});
+  
   // Extra drivers state
   const [clientId, setClientId] = useState<string | null>(null);
   const [existingChildren, setExistingChildren] = useState<ClientChild[]>([]);
