@@ -639,8 +639,23 @@ export function PackagePolicyEditModal({
                             {getTypeName(policy)}
                           </Badge>
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          الشركة: <span className="font-medium text-foreground">{getCompanyName(policy)}</span>
+                        <div className="text-xs text-muted-foreground flex items-center gap-1">
+                          الشركة:
+                          <Select
+                            value={state?.companyId || ""}
+                            onValueChange={(v) => updateEditState(policy.id, "companyId", v)}
+                          >
+                            <SelectTrigger className="h-7 text-xs w-[160px] border-dashed">
+                              <SelectValue placeholder="اختر..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(companyOptions[policy.policy_type_parent] || []).map((opt) => (
+                                <SelectItem key={opt.id} value={opt.id}>
+                                  {opt.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
 
