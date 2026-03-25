@@ -723,8 +723,15 @@ export default function PolicyReports() {
       
       const remaining = data?.remaining || 0;
       const sentSoFar = data?.sent_count || 0;
+      const failedSoFar = data?.error_count || 0;
+      const skippedSoFar = data?.skipped_count || 0;
+
       if (remaining > 0) {
-        toast.success(`تم إرسال ${sentSoFar} رسالة حتى الآن، يتم إرسال ${remaining} رسالة إضافية تلقائياً...`);
+        toast.success(`تم إرسال ${sentSoFar}، فشل ${failedSoFar}، متبقي ${remaining} رسالة...`);
+      } else if (failedSoFar > 0 && sentSoFar === 0) {
+        toast.error(`لم يتم إرسال أي رسالة (فشل ${failedSoFar})`);
+      } else if (failedSoFar > 0 || skippedSoFar > 0) {
+        toast.success(`تم إرسال ${sentSoFar}، فشل ${failedSoFar}، تم تخطي ${skippedSoFar}`);
       } else {
         toast.success(`تم إرسال ${sentSoFar} رسالة تذكير`);
       }
