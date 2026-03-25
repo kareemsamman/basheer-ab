@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
         payment_type: 'visa',
         created_by_admin_id: user.id,
         tranzila_transaction_id: tranzilaIndex, // Use as our index
-        refused: null, // null = pending
+        refused: true, // true = not paid yet; only set to false on confirmed Tranzila success
       })
       .select()
       .single()

@@ -236,10 +236,19 @@ export function TranzilaPaymentModal({
     initializePayment();
   };
 
-  const handleCancel = () => {
+  const handleCancel = async () => {
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
+    }
+
+    // Delete the pending payment record to prevent orphaned records
+    if (paymentId && status !== 'success' && status !== 'test_success') {
+      try {
+        await supabase.from('policy_payments').delete().eq('id', paymentId).eq('refused', true);
+      } catch (e) {
+        console.error('Failed to cleanup pending payment:', e);
+      }
     }
     
     onFailure();
