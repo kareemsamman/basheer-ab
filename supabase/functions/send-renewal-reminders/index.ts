@@ -206,7 +206,16 @@ serve(async (req) => {
       .select('id, end_date, policy_type_parent, client_id, car_id, company_id')
       .in('id', currentBatch);
 
-    const clientIds = [...new Set((batchPolicies || []).map(p => p.client_id).filter(Boolean))];
+    // Group policies by client_id so we send ONE SMS per client
+    const clientPoliciesMap = new Map<string, typeof batchPolicies>();
+    for (const policy of batchPolicies || []) {
+      if (!policy.client_id) continue;
+      const existing = clientPoliciesMap.get(policy.client_id) || [];
+      existing.push(policy);
+      clientPoliciesMap.set(policy.client_id, existing);
+    }
+
+    const clientIds = [...clientPoliciesMap.keys()];
     const carIds = [...new Set((batchPolicies || []).map(p => p.car_id).filter(Boolean))];
     const companyIds = [...new Set((batchPolicies || []).map(p => p.company_id).filter(Boolean))];
 
@@ -224,24 +233,32 @@ serve(async (req) => {
     let batchSkipped = 0;
     let batchErrors = 0;
 
-    for (const policy of batchPolicies || []) {
+    for (const [clientId, clientPolicies] of clientPoliciesMap) {
       try {
-        const client = clientsMap.get(policy.client_id);
-        const car = carsMap.get(policy.car_id);
-        const company = companiesMap.get(policy.company_id);
+        const client = clientsMap.get(clientId);
 
         if (!client?.phone_number) {
-          batchSkipped++;
+          batchSkipped += clientPolicies.length;
           continue;
         }
 
-        const endDate = new Date(policy.end_date).toLocaleDateString('en-GB');
+        // Build a single message summarizing all policies for this client
+        const earliestEnd = clientPolicies
+          .map(p => p.end_date)
+          .sort()[0];
+        const endDate = new Date(earliestEnd).toLocaleDateString('en-GB');
+        const carNumbers = [...new Set(clientPolicies.map(p => carsMap.get(p.car_id)?.car_number).filter(Boolean))];
+        const carNumbersStr = carNumbers.join(', ') || '';
+
         const message = template
           .replace('{client_name}', client.full_name || 'العميل')
-          .replace('{car_number}', car?.car_number || '')
+          .replace('{car_number}', carNumbersStr)
           .replace('{policy_end_date}', endDate)
-          .replace('{policy_type}', policy.policy_type_parent)
-          .replace('{company}', company?.name_ar || company?.name || '');
+          .replace('{policy_type}', clientPolicies.map(p => p.policy_type_parent).join(', '))
+          .replace('{company}', [...new Set(clientPolicies.map(p => {
+            const co = companiesMap.get(p.company_id);
+            return co?.name_ar || co?.name || '';
+          }).filter(Boolean))].join(', '));
 
         let phone = client.phone_number.replace(/[^0-9]/g, '');
         if (phone.startsWith('972')) {
@@ -274,9 +291,10 @@ serve(async (req) => {
         const status = parseInt(extractXmlTag(responseText, 'status') || '-1', 10);
         const providerMessage = extractXmlTag(responseText, 'message');
 
+        // Log SMS once per client (use first policy_id as reference)
         await supabase.from('sms_logs').insert({
-          policy_id: policy.id,
-          client_id: client.id,
+          policy_id: clientPolicies[0].id,
+          client_id: clientId,
           phone_number: phone,
           message: message,
           sms_type: 'renewal_reminder',
@@ -287,17 +305,20 @@ serve(async (req) => {
 
         if (status === 0) {
           batchSent++;
-          await supabase.from('policy_renewal_tracking').upsert({
-            policy_id: policy.id,
-            renewal_status: 'sms_sent',
-            reminder_sent_at: new Date().toISOString()
-          }, { onConflict: 'policy_id' });
+          // Mark ALL policies for this client as sms_sent
+          for (const p of clientPolicies) {
+            await supabase.from('policy_renewal_tracking').upsert({
+              policy_id: p.id,
+              renewal_status: 'sms_sent',
+              reminder_sent_at: new Date().toISOString()
+            }, { onConflict: 'policy_id' });
+          }
         } else {
-          console.error(`[send-renewal-reminders] SMS provider rejected policy ${policy.id}: status=${status}, message=${providerMessage || 'N/A'}`);
+          console.error(`[send-renewal-reminders] SMS provider rejected client ${clientId}: status=${status}, message=${providerMessage || 'N/A'}`);
           batchErrors++;
         }
       } catch (err: any) {
-        console.error(`[send-renewal-reminders] Error for policy ${policy.id}:`, err.message);
+        console.error(`[send-renewal-reminders] Error for client ${clientId}:`, err.message);
         batchErrors++;
       }
     }
