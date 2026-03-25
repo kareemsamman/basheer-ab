@@ -8,6 +8,19 @@ const corsHeaders = {
 
 const BATCH_SIZE = 200;
 
+const escapeXml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+
+const extractXmlTag = (xml: string, tag: string) => {
+  const match = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'i'));
+  return match?.[1]?.trim() ?? null;
+};
+
 interface SendRemindersRequest {
   month?: string;
   days_remaining?: number;
@@ -230,37 +243,36 @@ serve(async (req) => {
           .replace('{policy_type}', policy.policy_type_parent)
           .replace('{company}', company?.name_ar || company?.name || '');
 
-        let phone = client.phone_number.replace(/[\s\-\(\)]/g, '');
-        if (phone.startsWith('0')) {
-          phone = '972' + phone.slice(1);
-        } else if (!phone.startsWith('972') && !phone.startsWith('+972')) {
-          phone = '972' + phone;
+        let phone = client.phone_number.replace(/[^0-9]/g, '');
+        if (phone.startsWith('972')) {
+          phone = '0' + phone.substring(3);
         }
-        phone = phone.replace('+', '');
+        if (!phone.startsWith('0') && phone.length >= 9) {
+          phone = '0' + phone;
+        }
 
         const smsPayload = `<?xml version="1.0" encoding="UTF-8"?>
 <sms>
-  <user>${smsSettings.sms_user}</user>
-  <password>${smsSettings.sms_token}</password>
-  <source>${smsSettings.sms_source}</source>
+  <user><username>${escapeXml(smsSettings.sms_user || '')}</username></user>
+  <source>${escapeXml(smsSettings.sms_source || '')}</source>
   <destinations>
-    <phone>${phone}</phone>
+    <phone id="${crypto.randomUUID()}">${escapeXml(phone)}</phone>
   </destinations>
-  <message>${message}</message>
+  <message>${escapeXml(message)}</message>
 </sms>`;
 
         const smsResponse = await fetch('https://019sms.co.il/api', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/xml',
+            'Content-Type': 'application/xml; charset=utf-8',
             'Authorization': `Bearer ${smsSettings.sms_token}`
           },
           body: smsPayload
         });
 
         const responseText = await smsResponse.text();
-        const statusMatch = responseText.match(/<status>(\d+)<\/status>/);
-        const status = statusMatch ? parseInt(statusMatch[1]) : -1;
+        const status = parseInt(extractXmlTag(responseText, 'status') || '-1', 10);
+        const providerMessage = extractXmlTag(responseText, 'message');
 
         await supabase.from('sms_logs').insert({
           policy_id: policy.id,
@@ -269,7 +281,7 @@ serve(async (req) => {
           message: message,
           sms_type: 'renewal_reminder',
           status: status === 0 ? 'sent' : 'failed',
-          error_message: status !== 0 ? `Status: ${status}` : null,
+          error_message: status !== 0 ? `Status: ${status}${providerMessage ? ` - ${providerMessage}` : ''}` : null,
           sent_at: new Date().toISOString()
         });
 
@@ -281,6 +293,7 @@ serve(async (req) => {
             reminder_sent_at: new Date().toISOString()
           }, { onConflict: 'policy_id' });
         } else {
+          console.error(`[send-renewal-reminders] SMS provider rejected policy ${policy.id}: status=${status}, message=${providerMessage || 'N/A'}`);
           batchErrors++;
         }
       } catch (err: any) {
