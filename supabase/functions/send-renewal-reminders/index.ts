@@ -103,17 +103,30 @@ serve(async (req) => {
       policyIdsToProcess = continuation_policy_ids!;
     } else {
       // Initial call: fetch all matching policies and filter by cooldown
-      const targetDate = new Date(today);
-      targetDate.setDate(today.getDate() + days_remaining);
+      let startDate: string;
+      let endDate: string;
+
+      if (month) {
+        // Use the selected month range (e.g. "2026-03" → 2026-03-01 to 2026-03-31)
+        const [y, m] = month.split('-').map(Number);
+        startDate = `${y}-${String(m).padStart(2, '0')}-01`;
+        const lastDay = new Date(y, m, 0).getDate();
+        endDate = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      } else {
+        startDate = today.toISOString().split('T')[0];
+        const targetDate = new Date(today);
+        targetDate.setDate(today.getDate() + days_remaining);
+        endDate = targetDate.toISOString().split('T')[0];
+      }
 
       const { data: policies, error: policiesError } = await supabase
         .from('policies')
         .select('id, end_date, client_id')
         .is('deleted_at', null)
-        .is('cancelled', false)
-        .is('transferred', false)
-        .gte('end_date', today.toISOString().split('T')[0])
-        .lte('end_date', targetDate.toISOString().split('T')[0]);
+        .or('cancelled.is.null,cancelled.eq.false')
+        .or('transferred.is.null,transferred.eq.false')
+        .gte('end_date', startDate)
+        .lte('end_date', endDate);
 
       if (policiesError) {
         console.error('[send-renewal-reminders] Error fetching policies:', policiesError);
