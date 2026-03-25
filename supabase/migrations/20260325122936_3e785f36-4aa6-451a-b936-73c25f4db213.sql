@@ -1,0 +1,1 @@
+ALTER TYPE sms_type ADD VALUE IF NOT EXISTS 'renewal_reminder';
