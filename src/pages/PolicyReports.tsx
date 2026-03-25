@@ -64,6 +64,7 @@ import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import { useAuth } from '@/hooks/useAuth';
 import { ClickablePhone } from '@/components/shared/ClickablePhone';
 import { getInsuranceTypeLabel } from '@/lib/insuranceTypes';
+import { ExpiryBadge } from '@/components/shared/ExpiryBadge';
 
 const policyTypeLabels: Record<string, string> = {
   ELZAMI: 'إلزامي',
@@ -1426,74 +1427,74 @@ export default function PolicyReports() {
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/50">
-                        <TableHead className="w-10"></TableHead>
+                        <TableHead className="w-8">#</TableHead>
                         <TableHead className="text-right">العميل</TableHead>
-                        <TableHead className="text-right">الهاتف</TableHead>
-                        <TableHead className="text-right">الوثائق</TableHead>
-                        <TableHead className="text-right">السيارات</TableHead>
-                        <TableHead className="text-right">الأنواع</TableHead>
-                        <TableHead className="text-right">أقرب انتهاء</TableHead>
-                        <TableHead className="text-right">الأيام المتبقية</TableHead>
-                        <TableHead className="text-right">إجمالي السعر</TableHead>
+                        <TableHead className="text-right">رقم السيارة</TableHead>
+                        <TableHead className="text-right">النوع</TableHead>
+                        <TableHead className="text-right">الشركة</TableHead>
+                        <TableHead className="text-right">تاريخ الانتهاء</TableHead>
+                        <TableHead className="text-right">المتبقي</TableHead>
+                        <TableHead className="text-right">السعر</TableHead>
                         <TableHead className="text-right">الحالة</TableHead>
-                        <TableHead className="text-right">ملاحظات</TableHead>
                         <TableHead className="w-10"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {renewalClients.map(client => (
+                      {renewalClients.map((client, clientIndex) => (
                         <React.Fragment key={client.client_id}>
+                          {/* Client summary row */}
                           <TableRow 
                             className={cn(
-                              "hover:bg-muted/30 cursor-pointer",
-                              expandedClientId === client.client_id && "bg-muted/40"
+                              "hover:bg-muted/30 cursor-pointer border-b",
+                              expandedClientId === client.client_id && "bg-primary/5",
+                              client.days_remaining <= 0 && "bg-destructive/5"
                             )}
                             onClick={() => fetchClientPolicies(client.client_id)}
                           >
-                            <TableCell className="w-10">
-                              {loadingClientPolicies === client.client_id ? (
-                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                              ) : (
-                                <ChevronDown 
-                                  className={cn(
-                                    "h-4 w-4 text-muted-foreground transition-transform",
-                                    expandedClientId === client.client_id && "rotate-180"
-                                  )} 
-                                />
-                              )}
+                            <TableCell className="w-8 text-center text-muted-foreground text-xs">
+                              {clientIndex + 1 + renewalsPage * 50}
                             </TableCell>
                             <TableCell onClick={(e) => e.stopPropagation()}>
-                              <div>
-                                <button
-                                  onClick={() => navigate(`/clients/${client.client_id}`, { 
-                                    state: { from: '/reports/policies', tab: 'renewals' }
-                                  })}
-                                  className="font-medium hover:text-primary hover:underline transition-colors text-right"
-                                >
-                                  {client.client_name}
-                                </button>
-                                {client.client_file_number && (
-                                  <p className="text-xs text-muted-foreground">{client.client_file_number}</p>
+                              <div className="flex items-center gap-2">
+                                {loadingClientPolicies === client.client_id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />
+                                ) : (
+                                  <ChevronDown 
+                                    className={cn(
+                                      "h-3 w-3 text-muted-foreground transition-transform shrink-0",
+                                      expandedClientId === client.client_id && "rotate-180"
+                                    )} 
+                                  />
                                 )}
+                                <div>
+                                  <button
+                                    onClick={() => navigate(`/clients/${client.client_id}`, { 
+                                      state: { from: '/reports/policies', tab: 'renewals' }
+                                    })}
+                                    className="font-medium hover:text-primary hover:underline transition-colors text-right"
+                                  >
+                                    {client.client_name}
+                                  </button>
+                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                    {client.client_phone && (
+                                      <ClickablePhone phone={client.client_phone} />
+                                    )}
+                                    {client.client_file_number && (
+                                      <span>#{client.client_file_number}</span>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
-                            </TableCell>
-                            <TableCell onClick={(e) => e.stopPropagation()}>
-                              <ClickablePhone phone={client.client_phone} />
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="font-bold">
-                                {client.policies_count} وثيقة
-                              </Badge>
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-wrap gap-1">
-                                {client.car_numbers?.slice(0, 3).map((num, i) => (
-                                  <span key={i} className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">
+                                {client.car_numbers?.slice(0, 2).map((num, i) => (
+                                  <Badge key={i} variant="outline" className="font-mono text-xs bg-primary/5">
                                     {num}
-                                  </span>
+                                  </Badge>
                                 ))}
-                                {(client.car_numbers?.length || 0) > 3 && (
-                                  <span className="text-xs text-muted-foreground">+{client.car_numbers!.length - 3}</span>
+                                {(client.car_numbers?.length || 0) > 2 && (
+                                  <span className="text-xs text-muted-foreground">+{client.car_numbers!.length - 2}</span>
                                 )}
                               </div>
                             </TableCell>
@@ -1506,20 +1507,28 @@ export default function PolicyReports() {
                                 ))}
                               </div>
                             </TableCell>
-                            <TableCell className="font-mono">{formatDate(client.earliest_end_date)}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {client.policies_count > 1 ? (
+                                <Badge variant="outline" className="text-xs">
+                                  {client.policies_count} شركات
+                                </Badge>
+                              ) : '-'}
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">{formatDate(client.earliest_end_date)}</TableCell>
                             <TableCell>
-                              <Badge variant={client.days_remaining <= 7 ? 'destructive' : client.days_remaining <= 14 ? 'warning' : 'secondary'}>
-                                {client.days_remaining} يوم
+                              <Badge variant={
+                                client.days_remaining <= 0 ? 'destructive' : 
+                                client.days_remaining <= 7 ? 'destructive' : 
+                                client.days_remaining <= 14 ? 'warning' : 'secondary'
+                              }>
+                                {client.days_remaining <= 0 ? 'اليوم!' : `${client.days_remaining} يوم`}
                               </Badge>
                             </TableCell>
                             <TableCell className="font-bold">₪{client.total_insurance_price.toLocaleString()}</TableCell>
                             <TableCell>
-                              <Badge className={cn('border', renewalStatusColors[client.worst_renewal_status])}>
+                              <Badge className={cn('border text-xs', renewalStatusColors[client.worst_renewal_status])}>
                                 {renewalStatusLabels[client.worst_renewal_status]}
                               </Badge>
-                            </TableCell>
-                            <TableCell className="max-w-[150px] truncate text-xs text-muted-foreground">
-                              {client.renewal_notes || '-'}
                             </TableCell>
                             <TableCell onClick={(e) => e.stopPropagation()}>
                               <DropdownMenu>
@@ -1576,61 +1585,40 @@ export default function PolicyReports() {
                             </TableCell>
                           </TableRow>
                           
-                          {/* Expanded Policies Row */}
+                          {/* Expanded Policies - as sub-rows in the same table */}
                           {expandedClientId === client.client_id && clientPolicies[client.client_id] && (
-                            <TableRow key={`${client.client_id}-policies`} className="bg-muted/20">
-                              <TableCell colSpan={12} className="p-0">
-                                <div className="px-6 py-4 border-t border-dashed">
-                                  <div className="flex items-center gap-2 mb-3">
-                                    <FileText className="h-4 w-4 text-primary" />
-                                    <span className="font-medium text-sm">الوثائق المنتهية</span>
-                                    <Badge variant="outline" className="text-xs">
-                                      {clientPolicies[client.client_id].length} وثيقة
-                                    </Badge>
-                                  </div>
-                                  
-                                  <div className="space-y-2">
-                                    {clientPolicies[client.client_id].map((policy) => (
-                                      <div 
-                                        key={policy.id} 
-                                        className="flex items-center gap-4 p-3 rounded-lg bg-background border text-sm"
-                                      >
-                                        <div className="flex-1 grid grid-cols-6 gap-4">
-                                          <div>
-                                            <p className="text-xs text-muted-foreground">السيارة</p>
-                                            <p className="font-mono">{policy.car_number || '-'}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-muted-foreground">النوع</p>
-                                            <Badge variant="secondary" className="text-xs">
-                                              {getInsuranceTypeLabel(policy.policy_type_parent as any, policy.policy_type_child as any)}
-                                            </Badge>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-muted-foreground">الشركة</p>
-                                            <p>{policy.company_name_ar || policy.company_name || '-'}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-muted-foreground">تاريخ الانتهاء</p>
-                                            <p className="font-mono">{formatDate(policy.end_date)}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-muted-foreground">السعر</p>
-                                            <p className="font-bold">₪{policy.insurance_price.toLocaleString()}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-muted-foreground">الحالة</p>
-                                            <Badge className={cn('border text-xs', renewalStatusColors[policy.renewal_status])}>
-                                              {renewalStatusLabels[policy.renewal_status]}
-                                            </Badge>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              </TableCell>
-                            </TableRow>
+                            clientPolicies[client.client_id].map((policy, pIdx) => (
+                              <TableRow key={policy.id} className="bg-muted/10 border-b border-dashed">
+                                <TableCell className="text-center text-xs text-muted-foreground">{pIdx + 1}</TableCell>
+                                <TableCell>
+                                  <span className="text-xs text-muted-foreground mr-4">↳</span>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className="font-mono text-xs bg-primary/10 border-primary/30">
+                                    {policy.car_number || '-'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="secondary" className="text-xs">
+                                    {getInsuranceTypeLabel(policy.policy_type_parent as any, policy.policy_type_child as any)}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-sm">
+                                  {policy.company_name_ar || policy.company_name || '-'}
+                                </TableCell>
+                                <TableCell className="font-mono text-sm">{formatDate(policy.end_date)}</TableCell>
+                                <TableCell>
+                                  <ExpiryBadge endDate={policy.end_date} showDays={true} />
+                                </TableCell>
+                                <TableCell className="font-bold">₪{policy.insurance_price.toLocaleString()}</TableCell>
+                                <TableCell>
+                                  <Badge className={cn('border text-xs', renewalStatusColors[policy.renewal_status])}>
+                                    {renewalStatusLabels[policy.renewal_status]}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell></TableCell>
+                              </TableRow>
+                            ))
                           )}
                         </React.Fragment>
                       ))}

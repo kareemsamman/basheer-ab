@@ -5846,6 +5846,7 @@ export type Database = {
         | "reminder_1week"
         | "manual"
         | "payment_request"
+        | "renewal_reminder"
       under24_type: "none" | "client" | "additional_driver"
       user_status: "pending" | "active" | "blocked"
     }
@@ -6049,6 +6050,7 @@ export const Constants = {
         "reminder_1week",
         "manual",
         "payment_request",
+        "renewal_reminder",
       ],
       under24_type: ["none", "client", "additional_driver"],
       user_status: ["pending", "active", "blocked"],
