@@ -302,10 +302,10 @@ function buildDetailedReportHtml(clients: ClientWithPolicies[], totalPolicies: n
     
     body {
       font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
-      background: #f8fafc;
+      background: #f0f2f5;
       color: #1e293b;
-      line-height: 1.5;
-      padding: 20px;
+      line-height: 1.6;
+      padding: 0;
     }
     
     .container {
@@ -313,119 +313,115 @@ function buildDetailedReportHtml(clients: ClientWithPolicies[], totalPolicies: n
       margin: 0 auto;
     }
     
-    /* Header */
+    /* Header - Dark Blue */
     .report-header {
-      background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%);
+      background: linear-gradient(135deg, #1e2a4a 0%, #2d3a5c 50%, #1e2a4a 100%);
       color: white;
-      padding: 24px 32px;
-      border-radius: 12px 12px 0 0;
+      padding: 40px 32px 32px;
+      text-align: center;
+    }
+    .header-title h1 {
+      font-size: 28px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+    .header-subtitle {
+      opacity: 0.8;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+    .header-month-badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.25);
+      padding: 8px 32px;
+      border-radius: 8px;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    /* Date + period bar */
+    .date-bar {
+      background: white;
+      padding: 12px 32px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      flex-wrap: wrap;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 13px;
+      color: #6b7280;
+    }
+
+    /* Summary Cards */
+    .summary-cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
       gap: 16px;
+      padding: 24px 32px;
+      background: white;
+      border-bottom: 1px solid #e5e7eb;
     }
-    .header-title h1 {
-      font-size: 24px;
-      font-weight: 800;
-      margin-bottom: 2px;
-    }
-    .header-title p {
-      opacity: 0.9;
-      font-size: 14px;
-    }
-    .header-stats {
-      display: flex;
-      gap: 24px;
-    }
-    .header-stat {
+    .summary-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 20px 16px;
       text-align: center;
     }
-    .header-stat .stat-value {
+    .summary-card .card-label {
+      font-size: 13px;
+      color: #6b7280;
+      margin-bottom: 8px;
+    }
+    .summary-card .card-value {
       font-size: 28px;
       font-weight: 800;
-      display: block;
-    }
-    .header-stat .stat-label {
-      font-size: 11px;
-      opacity: 0.85;
-    }
-    
-    /* Summary Bar */
-    .summary-bar {
-      background: white;
-      padding: 16px 24px;
-      display: flex;
-      gap: 32px;
-      border-bottom: 2px solid #e2e8f0;
-      flex-wrap: wrap;
-    }
-    .summary-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .summary-dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-    }
-    .summary-dot.urgent { background: #dc2626; }
-    .summary-dot.warning { background: #f59e0b; }
-    .summary-dot.normal { background: #10b981; }
-    .summary-item span {
-      font-size: 13px;
-      color: #475569;
-    }
-    .summary-item strong {
-      font-size: 15px;
       color: #1e293b;
+    }
+    .summary-card .card-value.urgent { color: #dc2626; }
+    .summary-card .card-value.warning { color: #f59e0b; }
+    .summary-card .card-value.success { color: #059669; }
+    .summary-card .card-value.teal { color: #0f766e; }
+
+    /* Section Title */
+    .section-title {
+      padding: 20px 32px 12px;
+      font-size: 16px;
+      font-weight: 700;
+      color: #1e293b;
+      text-align: right;
+      background: white;
     }
     
     /* Main Table */
+    .table-wrap {
+      background: white;
+      padding: 0 32px 24px;
+    }
     .main-table {
       width: 100%;
       border-collapse: collapse;
-      background: white;
       font-size: 13px;
     }
     
     .main-table thead th {
-      background: #f1f5f9;
+      background: #1e2a4a;
+      color: white;
       padding: 14px 12px;
       text-align: right;
       font-weight: 700;
-      color: #475569;
       font-size: 12px;
-      border-bottom: 2px solid #e2e8f0;
-      position: sticky;
-      top: 0;
+      white-space: nowrap;
     }
-    .main-table thead th:first-child { width: 50px; text-align: center; }
-    .main-table thead th:nth-child(2) { width: 120px; }
-    .main-table thead th:nth-child(3) { width: 100px; }
-    .main-table thead th:nth-child(5) { width: 100px; }
-    .main-table thead th:nth-child(6) { width: 90px; }
-    .main-table thead th:nth-child(7) { width: 80px; }
-    .main-table thead th:last-child { width: 90px; text-align: left; }
+    .main-table thead th:first-child { width: 45px; text-align: center; border-radius: 0 8px 0 0; }
+    .main-table thead th:last-child { text-align: left; border-radius: 8px 0 0 0; }
     
-    /* Client Row (Header) */
+    /* Client Row */
     .client-row {
-      background: #f8fafc;
-      border-top: 2px solid #e2e8f0;
+      border-top: 2px solid #e5e7eb;
     }
-    .client-row.urgent {
-      background: linear-gradient(to left, #fef2f2, #fff5f5);
-      border-right: 4px solid #dc2626;
-    }
-    .client-row.warning {
-      background: linear-gradient(to left, #fffbeb, #fefce8);
-      border-right: 4px solid #f59e0b;
-    }
-    .client-row.normal {
-      background: linear-gradient(to left, #f0fdf4, #f7fee7);
-      border-right: 4px solid #10b981;
-    }
+    .client-row.urgent { background: #fef2f2; }
+    .client-row.warning { background: #fffbeb; }
+    .client-row.normal { background: #f0fdf4; }
     .client-row td {
       padding: 12px;
       font-weight: 700;
@@ -446,10 +442,7 @@ function buildDetailedReportHtml(clients: ClientWithPolicies[], totalPolicies: n
       color: #1e293b;
     }
     .client-row .client-phone {
-      background: #ecfdf5;
       color: #0f766e;
-      padding: 2px 8px;
-      border-radius: 4px;
       font-size: 12px;
       font-family: 'Consolas', monospace;
     }
@@ -474,30 +467,26 @@ function buildDetailedReportHtml(clients: ClientWithPolicies[], totalPolicies: n
     }
     .client-row .client-total {
       text-align: left;
-      color: #0f766e;
+      color: #1e293b;
       font-size: 14px;
-      font-family: 'Consolas', monospace;
+      font-weight: 700;
     }
     
     /* Policy Row */
-    .policy-row {
-      background: white;
-    }
-    .policy-row:hover {
-      background: #fafafa;
-    }
     .policy-row td {
       padding: 10px 12px;
       border-bottom: 1px solid #f1f5f9;
       vertical-align: middle;
+      background: white;
     }
+    .policy-row:nth-child(even) td { background: #fafbfc; }
     .policy-row .policy-num {
       text-align: center;
       color: #94a3b8;
       font-size: 12px;
     }
     .policy-row .car-badge {
-      background: linear-gradient(135deg, #0f766e, #14b8a6);
+      background: #0f766e;
       color: white;
       padding: 3px 10px;
       border-radius: 6px;
@@ -514,48 +503,33 @@ function buildDetailedReportHtml(clients: ClientWithPolicies[], totalPolicies: n
       font-size: 11px;
       font-weight: 600;
     }
-    .policy-row .policy-company {
-      color: #475569;
-    }
+    .policy-row .policy-company { color: #475569; }
     .policy-row .policy-date {
       font-family: 'Consolas', monospace;
       color: #64748b;
       font-size: 12px;
     }
-    .policy-row .policy-days {
-      text-align: center;
-    }
+    .policy-row .policy-days { text-align: center; }
     .policy-row .days-badge {
       padding: 3px 10px;
       border-radius: 12px;
       font-size: 11px;
       font-weight: 700;
     }
-    .policy-row .policy-days.urgent .days-badge {
-      background: #fee2e2;
-      color: #dc2626;
-    }
-    .policy-row .policy-days.warning .days-badge {
-      background: #fef3c7;
-      color: #d97706;
-    }
-    .policy-row .policy-days.normal .days-badge {
-      background: #d1fae5;
-      color: #059669;
-    }
+    .policy-row .policy-days.urgent .days-badge { background: #fee2e2; color: #dc2626; }
+    .policy-row .policy-days.warning .days-badge { background: #fef3c7; color: #d97706; }
+    .policy-row .policy-days.normal .days-badge { background: #d1fae5; color: #059669; }
     .policy-row .policy-price {
       text-align: left;
       font-weight: 600;
-      color: #0f766e;
-      font-family: 'Consolas', monospace;
+      color: #1e293b;
     }
     
     /* Footer */
     .report-footer {
-      background: #f8fafc;
-      padding: 16px 24px;
-      border-top: 2px solid #e2e8f0;
-      border-radius: 0 0 12px 12px;
+      background: white;
+      padding: 16px 32px;
+      border-top: 1px solid #e5e7eb;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -563,33 +537,28 @@ function buildDetailedReportHtml(clients: ClientWithPolicies[], totalPolicies: n
       gap: 12px;
     }
     .report-footer p {
-      color: #64748b;
+      color: #6b7280;
       font-size: 12px;
     }
-    .report-footer strong {
-      color: #475569;
-    }
+    .report-footer strong { color: #374151; }
     
     /* Print */
     @media print {
       body { padding: 0; background: white; }
-      .report-header { border-radius: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .report-footer { border-radius: 0; }
-      .client-row { page-break-inside: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .report-header, .client-row, .summary-cards .summary-card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .main-table thead { display: table-header-group; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .client-row { page-break-inside: avoid; }
       .policy-row { page-break-inside: avoid; }
-      .main-table thead { display: table-header-group; }
     }
     
     @media (max-width: 768px) {
-      body { padding: 8px; }
-      .report-header { padding: 16px; flex-direction: column; text-align: center; }
-      .header-title h1 { font-size: 20px; }
-      .header-stats { gap: 16px; }
-      .summary-bar { padding: 12px; gap: 16px; }
+      .report-header { padding: 24px 16px; }
+      .header-title h1 { font-size: 22px; }
+      .summary-cards { grid-template-columns: repeat(2, 1fr); padding: 16px; gap: 12px; }
+      .table-wrap { padding: 0 12px 16px; }
       .main-table { font-size: 11px; }
       .main-table thead th, .main-table td { padding: 8px 6px; }
-      .client-row .client-info { gap: 6px; }
-      .client-row .client-name { font-size: 13px; }
+      .date-bar, .section-title { padding-left: 16px; padding-right: 16px; }
     }
   </style>
 </head>
@@ -598,62 +567,60 @@ function buildDetailedReportHtml(clients: ClientWithPolicies[], totalPolicies: n
     <!-- Header -->
     <div class="report-header">
       <div class="header-title">
-        <h1>📋 تقرير الوثائق المنتهية</h1>
-        <p>${monthName}</p>
+        <h1>تقرير الوثائق المنتهية</h1>
+        <p class="header-subtitle">بشير للتأمين - BASHEER INSURANCE</p>
       </div>
-      <div class="header-stats">
-        <div class="header-stat">
-          <span class="stat-value">${totalCustomers}</span>
-          <span class="stat-label">عميل</span>
-        </div>
-        <div class="header-stat">
-          <span class="stat-value">${totalPolicies}</span>
-          <span class="stat-label">وثيقة</span>
-        </div>
-        <div class="header-stat">
-          <span class="stat-value">₪${totalPrice.toLocaleString('en-US')}</span>
-          <span class="stat-label">إجمالي</span>
-        </div>
-      </div>
+      <div class="header-month-badge">${monthName}</div>
     </div>
     
-    <!-- Summary Bar -->
-    <div class="summary-bar">
-      <div class="summary-item">
-        <span class="summary-dot urgent"></span>
-        <span>عاجل (≤7 أيام):</span>
-        <strong>${urgentCount}</strong>
+    <!-- Date Bar -->
+    <div class="date-bar">
+      <span>تاريخ التقرير: ${now}</span>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="summary-cards">
+      <div class="summary-card">
+        <div class="card-label">عدد العملاء</div>
+        <div class="card-value">${totalCustomers}</div>
       </div>
-      <div class="summary-item">
-        <span class="summary-dot warning"></span>
-        <span>تحذير (8-14):</span>
-        <strong>${warningCount}</strong>
+      <div class="summary-card">
+        <div class="card-label">عدد الوثائق</div>
+        <div class="card-value">${totalPolicies}</div>
       </div>
-      <div class="summary-item">
-        <span class="summary-dot normal"></span>
-        <span>عادي (15+):</span>
-        <strong>${totalCustomers - urgentCount - warningCount}</strong>
+      <div class="summary-card">
+        <div class="card-label">عاجل (≤7 أيام)</div>
+        <div class="card-value urgent">${urgentCount}</div>
+      </div>
+      <div class="summary-card">
+        <div class="card-label">إجمالي السعر</div>
+        <div class="card-value teal">₪${totalPrice.toLocaleString('en-US')}</div>
       </div>
     </div>
+
+    <!-- Section Title -->
+    <div class="section-title">تفاصيل الوثائق (${totalPolicies} وثيقة)</div>
     
-    <!-- Unified Table -->
-    <table class="main-table">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>رقم السيارة</th>
-          <th>النوع</th>
-          <th>الشركة</th>
-          <th>تاريخ الانتهاء</th>
-          <th>المتبقي</th>
-          <th></th>
-          <th>السعر</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${tableRows || '<tr><td colspan="8" style="text-align:center;padding:40px;color:#64748b;">لا يوجد وثائق منتهية في هذه الفترة</td></tr>'}
-      </tbody>
-    </table>
+    <!-- Table -->
+    <div class="table-wrap">
+      <table class="main-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>رقم السيارة</th>
+            <th>النوع</th>
+            <th>الشركة</th>
+            <th>تاريخ الانتهاء</th>
+            <th>المتبقي</th>
+            <th></th>
+            <th>السعر</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tableRows || '<tr><td colspan="8" style="text-align:center;padding:40px;color:#64748b;">لا يوجد وثائق منتهية في هذه الفترة</td></tr>'}
+        </tbody>
+      </table>
+    </div>
     
     <!-- Footer -->
     <div class="report-footer">
