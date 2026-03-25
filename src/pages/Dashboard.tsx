@@ -260,46 +260,50 @@ export default function Dashboard() {
             </div>
           </Card>
 
-          {/* 3. Profits (with period filter) */}
-          <Card className="p-6 border shadow-sm hover:shadow-md transition-shadow bg-success/5 border-success/20">
-            <div className="flex items-start justify-between">
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-muted-foreground">{getProfitLabel()}</p>
-                <p className="text-2xl font-bold text-success ltr-nums">
-                  {profitLoading ? '...' : `₪${getProfitValue().toLocaleString('en-US')}`}
-                </p>
-                <Select value={profitPeriod} onValueChange={setProfitPeriod}>
-                  <SelectTrigger className="h-7 text-xs w-fit min-w-[100px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {profitPeriodOptions.map(o => (
-                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+          {/* 3. Profits (with period filter) - admin only */}
+          {isAdmin && (
+            <Card className="p-6 border shadow-sm hover:shadow-md transition-shadow bg-success/5 border-success/20">
+              <div className="flex items-start justify-between">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">{getProfitLabel()}</p>
+                  <p className="text-2xl font-bold text-success ltr-nums">
+                    {profitLoading ? '...' : `₪${getProfitValue().toLocaleString('en-US')}`}
+                  </p>
+                  <Select value={profitPeriod} onValueChange={setProfitPeriod}>
+                    <SelectTrigger className="h-7 text-xs w-fit min-w-[100px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {profitPeriodOptions.map(o => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="rounded-xl bg-success/10 p-3">
+                  <TrendingUp className="h-6 w-6 text-success" />
+                </div>
               </div>
-              <div className="rounded-xl bg-success/10 p-3">
-                <TrendingUp className="h-6 w-6 text-success" />
-              </div>
-            </div>
-          </Card>
+            </Card>
+          )}
 
-          {/* 4. Client Debts */}
-          <Card className="p-6 border shadow-sm hover:shadow-md transition-shadow bg-destructive/5 border-destructive/20">
-            <div className="flex items-start justify-between">
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-muted-foreground">ديون العملاء</p>
-                <p className="text-2xl font-bold text-destructive ltr-nums">
-                  {loading ? '...' : `₪${clientDebt.toLocaleString('en-US')}`}
-                </p>
-                <p className="text-xs text-muted-foreground">إجمالي المبالغ المتبقية</p>
+          {/* 4. Client Debts - admin only */}
+          {isAdmin && (
+            <Card className="p-6 border shadow-sm hover:shadow-md transition-shadow bg-destructive/5 border-destructive/20">
+              <div className="flex items-start justify-between">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">ديون العملاء</p>
+                  <p className="text-2xl font-bold text-destructive ltr-nums">
+                    {loading ? '...' : `₪${clientDebt.toLocaleString('en-US')}`}
+                  </p>
+                  <p className="text-xs text-muted-foreground">إجمالي المبالغ المتبقية</p>
+                </div>
+                <div className="rounded-xl bg-destructive/10 p-3">
+                  <CreditCard className="h-6 w-6 text-destructive" />
+                </div>
               </div>
-              <div className="rounded-xl bg-destructive/10 p-3">
-                <CreditCard className="h-6 w-6 text-destructive" />
-              </div>
-            </div>
-          </Card>
+            </Card>
+          )}
         </div>
 
         {/* Row 2: Production summary + Company debt total */}
