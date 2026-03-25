@@ -1436,12 +1436,12 @@ export default function PolicyReports() {
                       <TableRow className="bg-muted/50">
                         <TableHead className="w-8">#</TableHead>
                         <TableHead className="text-right">العميل</TableHead>
-                        <TableHead className="text-right">الهاتف</TableHead>
-                        <TableHead className="text-right">الوثائق</TableHead>
-                        <TableHead className="text-right">السيارات</TableHead>
-                        <TableHead className="text-right">الأنواع</TableHead>
+                        <TableHead className="text-right">رقم السيارة</TableHead>
+                        <TableHead className="text-right">النوع</TableHead>
+                        <TableHead className="text-right">الشركة</TableHead>
                         <TableHead className="text-right">تاريخ الانتهاء</TableHead>
-                        <TableHead className="text-right">إجمالي السعر</TableHead>
+                        <TableHead className="text-right">المتبقي</TableHead>
+                        <TableHead className="text-right">السعر</TableHead>
                         <TableHead className="text-right">الحالة</TableHead>
                         <TableHead className="w-10"></TableHead>
                       </TableRow>
@@ -1514,13 +1514,22 @@ export default function PolicyReports() {
                                 ))}
                               </div>
                             </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col gap-0.5">
-                                <span className="font-mono text-sm">{formatDate(client.earliest_end_date)}</span>
-                                <Badge variant={client.days_remaining <= 0 ? 'destructive' : client.days_remaining <= 7 ? 'destructive' : client.days_remaining <= 14 ? 'warning' : 'secondary'} className="w-fit text-[10px]">
-                                  {client.days_remaining <= 0 ? `منتهي منذ ${Math.abs(client.days_remaining)} يوم` : client.days_remaining === 0 ? 'ينتهي اليوم' : `باقي ${client.days_remaining} يوم`}
+                            <TableCell className="text-sm text-muted-foreground">
+                              {client.policies_count > 1 ? (
+                                <Badge variant="outline" className="text-xs">
+                                  {client.policies_count} شركات
                                 </Badge>
-                              </div>
+                              ) : '-'}
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">{formatDate(client.earliest_end_date)}</TableCell>
+                            <TableCell>
+                              <Badge variant={
+                                client.days_remaining <= 0 ? 'destructive' : 
+                                client.days_remaining <= 7 ? 'destructive' : 
+                                client.days_remaining <= 14 ? 'warning' : 'secondary'
+                              }>
+                                {client.days_remaining <= 0 ? 'اليوم!' : `${client.days_remaining} يوم`}
+                              </Badge>
                             </TableCell>
                             <TableCell className="font-bold">₪{client.total_insurance_price.toLocaleString()}</TableCell>
                             <TableCell>
