@@ -1,39 +1,43 @@
 
 
-## Plan: Add Company Editing to Package Policy Edit Modal
+## Problem Analysis
 
-### What Changes
+**Root Cause**: When `tranzila-init` creates a payment record, it sets `refused: null` (pending). Throughout the entire codebase, payments are filtered with `!p.refused` — in JavaScript, `!null === true`, so **pending payments with `refused: null` are counted as paid**. Same in SQL: `refused IS NOT TRUE` includes `null`.
 
-Currently, the package edit modal shows the company name as read-only text for each policy. This plan adds a company dropdown selector per policy, allowing you to change the company for any policy in the package. When saved, the new `company_id` is persisted and profit is recalculated using the new company.
+This means the moment the payment record is created (before the user even enters their card), the amount is already counted as "paid" in all calculations — debt, wallet, policy details, etc.
 
-### Technical Details
+**Flow**:
+1. User clicks "Pay via Visa" → `tranzila-init` creates payment with `refused: null`
+2. Payment immediately counts as paid everywhere (`!null === true`)
+3. Tranzila returns failure (code 004) → `payment-result` sets `refused: true`
+4. But if the page doesn't load, postMessage fails, or webhook doesn't fire → payment stays `refused: null` → permanently counted as paid
 
-**File: `src/components/policies/PackagePolicyEditModal.tsx`**
+## Solution
 
-1. **Extend `EditState`** to include `companyId: string` field.
+### 1. Fix `tranzila-init` — Create payment as refused by default
+Change `refused: null` → `refused: true` when creating the pending payment. This ensures it **never counts as paid** until explicitly confirmed by Tranzila success.
 
-2. **Add state for available companies** per policy type:
-   - On modal open, fetch companies from `insurance_companies` filtered by `category_parent` for each unique policy type in the package.
-   - For `ROAD_SERVICE` policies, fetch from `road_services` table.
-   - For `ACCIDENT_FEE_EXEMPTION`, fetch from `accident_fee_services` table.
-   - Store in a `companyOptions: Record<string, Array<{id, name}>>` keyed by policy type.
+### 2. Fix `payment-result` — Only set `refused: false` on confirmed success
+Already works correctly, but also add a guard: if `tranzila_response_code` is already set, skip update (already handled).
 
-3. **Replace the static company text** (line 609-611) with a `<Select>` dropdown:
-   - For standard policies (ELZAMI, THIRD_FULL): show companies from `insurance_companies`.
-   - For ROAD_SERVICE: show road service providers.
-   - For ACCIDENT_FEE_EXEMPTION: show accident fee service providers.
+### 3. Fix `tranzila-webhook` — Same guard
+Already sets `refused: false` on success, `refused: true` on failure. No change needed.
 
-4. **Update `handleSaveAll`** (line 516-527):
-   - Include `company_id` in the update payload for standard policies.
-   - Include `road_service_id` for ROAD_SERVICE policies.
-   - Include `accident_fee_service_id` for ACCIDENT_FEE_EXEMPTION policies.
-   - Use the new company ID when calling `calculatePolicyProfit` and fetching cost prices.
+### 4. Fix `tranzila-broker-init` — Same pattern
+Check if broker init also creates with `refused: null` and fix to `refused: true`.
 
-5. **Trigger X-Service re-sync** for ROAD_SERVICE / ACCIDENT_FEE_EXEMPTION policies whose company changed, by invoking `sync-to-xservice` after save.
+### 5. Fix frontend `onFailure` cleanup
+When modal is cancelled/closed without success, delete the pending payment record from the database to prevent orphaned records.
 
-### Summary of Changes
-- 1 file modified: `src/components/policies/PackagePolicyEditModal.tsx`
-- Company selector per policy in package edit modal
-- Profit recalculated with new company on save
-- X-Service re-sync triggered when service company changes
+### 6. Fix `tranzila-status` polling
+Update the status check: treat `refused: null` as pending (already correct), but ensure it doesn't trigger success.
+
+### Files to modify:
+- `supabase/functions/tranzila-init/index.ts` — line 109: `refused: null` → `refused: true`
+- `supabase/functions/tranzila-broker-init/index.ts` — same fix
+- `src/components/payments/TranzilaPaymentModal.tsx` — add cleanup of payment record on cancel/failure
+- `src/components/brokers/BrokerPaymentModal.tsx` — add cleanup of settlement record on cancel/failure
+
+### Impact
+This is a one-line core fix (`refused: true` instead of `null`) that prevents any failed/pending Tranzila payment from ever being counted as paid. The payment will only count once Tranzila confirms success and `payment-result` sets `refused: false`.
 
