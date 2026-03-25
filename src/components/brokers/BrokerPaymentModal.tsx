@@ -225,10 +225,19 @@ export function BrokerPaymentModal({
     initializePayment();
   };
 
-  const handleCancel = () => {
+  const handleCancel = async () => {
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
+    }
+
+    // Delete the pending settlement record to prevent orphaned records
+    if (settlementId && status !== 'success' && status !== 'test_success') {
+      try {
+        await supabase.from('broker_settlements').delete().eq('id', settlementId).eq('refused', true);
+      } catch (e) {
+        console.error('Failed to cleanup pending settlement:', e);
+      }
     }
     
     onFailure();

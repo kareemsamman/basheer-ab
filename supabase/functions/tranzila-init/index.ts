@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
         provider: 'tranzila',
         tranzila_index: 'pending', // Temporary, will update after getting ID
         created_by_admin_id: user.id,
-        refused: null, // null = pending, false = paid, true = refused
+        refused: true, // true = not paid yet; only set to false on confirmed Tranzila success
         branch_id: policyData?.branch_id || null, // Inherit branch from policy for RLS
       })
       .select()
