@@ -64,6 +64,7 @@ import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import { useAuth } from '@/hooks/useAuth';
 import { ClickablePhone } from '@/components/shared/ClickablePhone';
 import { getInsuranceTypeLabel } from '@/lib/insuranceTypes';
+import { ExpiryBadge } from '@/components/shared/ExpiryBadge';
 
 const policyTypeLabels: Record<string, string> = {
   ELZAMI: 'إلزامي',
