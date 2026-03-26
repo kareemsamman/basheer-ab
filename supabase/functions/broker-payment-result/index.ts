@@ -110,7 +110,8 @@ Deno.serve(async (req) => {
   const errorMessageEncoded = encodeURIComponent(errorMessage)
 
   // Update settlement in database
-  if (settlementId) {
+  // Only update DB if we have a definitive status (not pending)
+  if (settlementId && finalStatus !== 'pending') {
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!
       const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!

@@ -110,9 +110,8 @@ Deno.serve(async (req) => {
   // URL-encode for safe embedding in JavaScript
   const errorMessageEncoded = encodeURIComponent(errorMessage)
 
-  // Also update payment in database if we have the info
-  let updatedPayment: any = null
-  if (myid || paymentId) {
+  // Only update DB if we have a definitive status (not pending)
+  if ((myid || paymentId) && finalStatus !== 'pending') {
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!
       const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
