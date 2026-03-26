@@ -83,17 +83,25 @@ Deno.serve(async (req) => {
     // Get branch_id from the policy to set on the payment
     const policyBranchId = (payment as any).policies?.branch_id || null
 
-    // Check if payment was already processed (refused=false means paid for visa)
-    if (payment.tranzila_response_code === '000' || payment.tranzila_response_code === '0') {
+    // Check if payment was already processed
+    if (payment.tranzila_response_code === '000' || payment.tranzila_response_code === '0' || payment.refused === false) {
       console.log('Payment already processed:', payment.id)
-      return new globalThis.Response('OK', { 
+      return new globalThis.Response('OK', {
         status: 200,
-        headers: corsHeaders 
+        headers: corsHeaders
       })
     }
 
     // Determine if payment was successful
     // Tranzila uses "000" or "0" for successful transactions
+    // If no response code at all, skip (don't mark as failed — let payment-result handle it)
+    if (!responseCode || responseCode === '') {
+      console.log('No response code in webhook, skipping:', payment.id)
+      return new globalThis.Response('OK', {
+        status: 200,
+        headers: corsHeaders
+      })
+    }
     const isSuccess = responseCode === '000' || responseCode === '0'
 
     if (isSuccess) {
