@@ -44,7 +44,10 @@ async function callTranzilaApi(
   invoicePayload: Record<string, any>,
 ): Promise<{ success: boolean; data?: any; error?: string; provider_raw?: string }> {
   const payloadString = JSON.stringify(invoicePayload);
-  const requestHash = await generateHash(privateKey, payloadString);
+  // Tranzila requires a Unix timestamp for request freshness validation
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  // Hash is computed over payload + timestamp
+  const requestHash = await generateHash(privateKey, payloadString + timestamp);
 
   const response = await fetch(`${BILLING_API_URL}/create_document`, {
     method: 'POST',
@@ -53,6 +56,7 @@ async function callTranzilaApi(
       'Accept': 'application/json',
       'X-tranzila-api-app-key': publicKey,
       'X-tranzila-api-request-hash': requestHash,
+      'X-tranzila-api-request-ts': timestamp,
     },
     body: payloadString,
   });
