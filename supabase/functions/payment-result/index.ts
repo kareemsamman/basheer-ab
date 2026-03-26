@@ -205,7 +205,7 @@ Deno.serve(async (req) => {
       width: 80px;
       height: 80px;
       border-radius: 50%;
-      background: ${isSuccess ? '#dcfce7' : '#fee2e2'};
+      background: ${isSuccess ? '#dcfce7' : isPending ? '#fef3c7' : '#fee2e2'};
       display: flex;
       align-items: center;
       justify-content: center;
@@ -214,12 +214,12 @@ Deno.serve(async (req) => {
     .icon svg {
       width: 48px;
       height: 48px;
-      color: ${isSuccess ? '#16a34a' : '#dc2626'};
+      color: ${isSuccess ? '#16a34a' : isPending ? '#d97706' : '#dc2626'};
     }
     h1 {
       font-size: 22px;
       font-weight: 700;
-      color: ${isSuccess ? '#16a34a' : '#dc2626'};
+      color: ${isSuccess ? '#16a34a' : isPending ? '#d97706' : '#dc2626'};
       margin-bottom: 12px;
     }
     p {
@@ -265,12 +265,17 @@ Deno.serve(async (req) => {
     <div class="icon">
       ${isSuccess 
         ? '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>'
+        : isPending
+        ? '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
         : '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>'
       }
     </div>
     ${isSuccess 
       ? `<h1>התשלום בוצע בהצלחה!</h1>
          <p>תודה רבה, התשלום התקבל</p>`
+      : isPending
+      ? `<h1>ממתין לאישור מחברת האשראי</h1>
+         <p>העסקה בבדיקה, אנא המתן...</p>`
       : `<h1>${displaySum ? `עסקה בסך ₪${displaySum} נכשלה` : 'התשלום נכשל'}</h1>
          <p class="error-reason">סיבת הכשלון:</p>
          <div class="error-detail">${errorMessage}</div>`
