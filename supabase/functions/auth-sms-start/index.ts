@@ -277,7 +277,7 @@ serve(async (req) => {
     }
 
     // Rate limit check (already fetched in parallel)
-    if (recentOtps && recentOtps.length >= 3) {
+    if (recentOtps && recentOtps.length >= 6) {
       return new Response(
         JSON.stringify({ success: false, error: "تم تجاوز الحد الأقصى للمحاولات. حاول لاحقاً." }),
         { status: 429, headers: { "Content-Type": "application/json", ...corsHeaders } }
