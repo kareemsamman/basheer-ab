@@ -1,43 +1,21 @@
 
 
-## Problem
+## Fix: `tranzila-create-invoice` edge function fails because `clients` table has no `email` column
 
-The Tranzila payment shows as "success" in your system even when Tranzila returns error code 004 (credit card rejected). This happens because of the `payment-result` edge function logic:
+### Problem
+The edge function logs show: `column clients_2.email does not exist`. The `clients` table does not have an `email` column, but `tranzila-create-invoice` tries to select it in the Supabase query (line 76).
 
-```
-let finalStatus = status          // "success" from URL param
-if (responseCode === '000') ...   // override to success  
-else if (responseCode !== '') ... // override to failed
-```
+### Solution
+Remove `email` from the select query in `tranzila-create-invoice/index.ts` and set `client_email_1` to empty string since clients don't have emails.
 
-If Tranzila redirects to `success_url_address` but doesn't include the `Response` parameter in the URL, or if the iframe loads the success URL before the actual authorization completes, `finalStatus` defaults to `'success'` from the URL param — even though the real transaction failed.
+### Changes
 
-## Solution
+**File: `supabase/functions/tranzila-create-invoice/index.ts`**
+1. Line 76: Change `client:clients!inner(full_name, id_number, phone_number, email)` to `client:clients!inner(full_name, id_number, phone_number)`
+2. Line 133: Change `client_email_1: client?.email || ''` to `client_email_1: ''`
+3. Redeploy the function
 
-### 1. Never trust the URL `status` parameter
-In `payment-result/index.ts`, change the logic so that without a confirmed `Response` code of `000` or `0`, it is **never** marked as success:
-
-```
-// OLD: let finalStatus = status (trusts URL param)
-// NEW: default to 'pending', only success if Response=000/0
-let finalStatus = 'pending'
-if (responseCode === '000' || responseCode === '0') {
-  finalStatus = 'success'
-} else if (responseCode && responseCode !== '') {
-  finalStatus = 'failed'  
-}
-```
-
-### 2. Don't update database without Response code
-Add a guard: if `finalStatus` is still `'pending'` (no Response code), don't update the payment record at all. The webhook or polling will handle it later.
-
-### 3. Don't send success postMessage without confirmed Response
-The HTML page's JavaScript should only post `status: 'success'` when `finalStatus === 'success'`, never for `'pending'`.
-
-### Files to modify
-- **`supabase/functions/payment-result/index.ts`** — Change default `finalStatus` from URL param to `'pending'`, guard DB update and postMessage accordingly
-- **`supabase/functions/broker-payment-result/index.ts`** — Same fix for broker payments
-
-### Impact
-This ensures a payment is **only** marked as paid when Tranzila explicitly returns Response code `000`/`0`. No more false successes from URL parameter fallback.
+### Technical Details
+- The `clients` table columns: `full_name`, `id_number`, `phone_number`, `phone_number_2`, `birth_date`, `notes`, etc. -- no `email` field exists.
+- This is a simple column reference fix, no database migration needed.
 
