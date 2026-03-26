@@ -91,7 +91,6 @@ Deno.serve(async (req) => {
 
   // NEVER trust URL status param — only trust Tranzila's Response code
   let finalStatus = 'pending'
-  let updatedPayment: any = null
   if (responseCode === '000' || responseCode === '0') {
     finalStatus = 'success'
   } else if (responseCode && responseCode !== '') {
