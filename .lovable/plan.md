@@ -1,43 +1,43 @@
 
 
-## Problem Analysis
+## Problem
 
-**Root Cause**: When `tranzila-init` creates a payment record, it sets `refused: null` (pending). Throughout the entire codebase, payments are filtered with `!p.refused` — in JavaScript, `!null === true`, so **pending payments with `refused: null` are counted as paid**. Same in SQL: `refused IS NOT TRUE` includes `null`.
+The Tranzila payment shows as "success" in your system even when Tranzila returns error code 004 (credit card rejected). This happens because of the `payment-result` edge function logic:
 
-This means the moment the payment record is created (before the user even enters their card), the amount is already counted as "paid" in all calculations — debt, wallet, policy details, etc.
+```
+let finalStatus = status          // "success" from URL param
+if (responseCode === '000') ...   // override to success  
+else if (responseCode !== '') ... // override to failed
+```
 
-**Flow**:
-1. User clicks "Pay via Visa" → `tranzila-init` creates payment with `refused: null`
-2. Payment immediately counts as paid everywhere (`!null === true`)
-3. Tranzila returns failure (code 004) → `payment-result` sets `refused: true`
-4. But if the page doesn't load, postMessage fails, or webhook doesn't fire → payment stays `refused: null` → permanently counted as paid
+If Tranzila redirects to `success_url_address` but doesn't include the `Response` parameter in the URL, or if the iframe loads the success URL before the actual authorization completes, `finalStatus` defaults to `'success'` from the URL param — even though the real transaction failed.
 
 ## Solution
 
-### 1. Fix `tranzila-init` — Create payment as refused by default
-Change `refused: null` → `refused: true` when creating the pending payment. This ensures it **never counts as paid** until explicitly confirmed by Tranzila success.
+### 1. Never trust the URL `status` parameter
+In `payment-result/index.ts`, change the logic so that without a confirmed `Response` code of `000` or `0`, it is **never** marked as success:
 
-### 2. Fix `payment-result` — Only set `refused: false` on confirmed success
-Already works correctly, but also add a guard: if `tranzila_response_code` is already set, skip update (already handled).
+```
+// OLD: let finalStatus = status (trusts URL param)
+// NEW: default to 'pending', only success if Response=000/0
+let finalStatus = 'pending'
+if (responseCode === '000' || responseCode === '0') {
+  finalStatus = 'success'
+} else if (responseCode && responseCode !== '') {
+  finalStatus = 'failed'  
+}
+```
 
-### 3. Fix `tranzila-webhook` — Same guard
-Already sets `refused: false` on success, `refused: true` on failure. No change needed.
+### 2. Don't update database without Response code
+Add a guard: if `finalStatus` is still `'pending'` (no Response code), don't update the payment record at all. The webhook or polling will handle it later.
 
-### 4. Fix `tranzila-broker-init` — Same pattern
-Check if broker init also creates with `refused: null` and fix to `refused: true`.
+### 3. Don't send success postMessage without confirmed Response
+The HTML page's JavaScript should only post `status: 'success'` when `finalStatus === 'success'`, never for `'pending'`.
 
-### 5. Fix frontend `onFailure` cleanup
-When modal is cancelled/closed without success, delete the pending payment record from the database to prevent orphaned records.
-
-### 6. Fix `tranzila-status` polling
-Update the status check: treat `refused: null` as pending (already correct), but ensure it doesn't trigger success.
-
-### Files to modify:
-- `supabase/functions/tranzila-init/index.ts` — line 109: `refused: null` → `refused: true`
-- `supabase/functions/tranzila-broker-init/index.ts` — same fix
-- `src/components/payments/TranzilaPaymentModal.tsx` — add cleanup of payment record on cancel/failure
-- `src/components/brokers/BrokerPaymentModal.tsx` — add cleanup of settlement record on cancel/failure
+### Files to modify
+- **`supabase/functions/payment-result/index.ts`** — Change default `finalStatus` from URL param to `'pending'`, guard DB update and postMessage accordingly
+- **`supabase/functions/broker-payment-result/index.ts`** — Same fix for broker payments
 
 ### Impact
-This is a one-line core fix (`refused: true` instead of `null`) that prevents any failed/pending Tranzila payment from ever being counted as paid. The payment will only count once Tranzila confirms success and `payment-result` sets `refused: false`.
+This ensures a payment is **only** marked as paid when Tranzila explicitly returns Response code `000`/`0`. No more false successes from URL parameter fallback.
 
