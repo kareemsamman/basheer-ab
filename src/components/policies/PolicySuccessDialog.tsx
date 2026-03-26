@@ -368,8 +368,16 @@ export function PolicySuccessDialog({
         body: { payment_id: targetPayment.id }
       });
 
-      if (result.error || result.data?.error) {
-        const errorMsg = result.data?.error || result.error?.message || 'فشل في إنشاء القبض';
+      // Prefer logical error from response body over generic SDK error
+      if (result.data && result.data.success === false) {
+        const errorMsg = result.data.error || 'فشل في إنشاء القبض';
+        const detail = result.data.provider_raw ? ` (${result.data.provider_raw})` : '';
+        setErrorMessage(errorMsg + detail);
+        toast.error(errorMsg);
+        return;
+      }
+      if (result.error) {
+        const errorMsg = result.error?.message || 'فشل في إنشاء القبض';
         setErrorMessage(errorMsg);
         toast.error(errorMsg);
         return;
