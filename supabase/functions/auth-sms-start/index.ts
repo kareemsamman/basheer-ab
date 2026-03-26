@@ -311,7 +311,7 @@ serve(async (req) => {
       );
     }
 
-    if (!authSettings.sms_019_user || !authSettings.sms_019_token || !authSettings.sms_019_source) {
+    if (!smsUser || !smsToken || !smsSource) {
       return new Response(
         JSON.stringify({ success: false, error: "إعدادات الرسائل النصية غير مكتملة" }),
         { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
