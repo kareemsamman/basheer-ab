@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { CreditCard, Save, Loader2, Shield, TestTube, AlertCircle } from "lucide-react";
+import { CreditCard, Save, Loader2, Shield, TestTube, AlertCircle, FileText } from "lucide-react";
 
 interface TranzilaSettings {
   id: string;
@@ -22,6 +22,9 @@ interface TranzilaSettings {
   is_enabled: boolean;
   test_mode: boolean;
   sandbox_terminal_name: string | null;
+  invoice_api_public_key: string | null;
+  invoice_api_private_key: string | null;
+  invoice_enabled: boolean;
 }
 
 export default function PaymentSettings() {
@@ -40,6 +43,9 @@ export default function PaymentSettings() {
     is_enabled: false,
     test_mode: true,
     sandbox_terminal_name: "demo5964",
+    invoice_api_public_key: "",
+    invoice_api_private_key: "",
+    invoice_enabled: false,
   });
 
   // Redirect if not admin
@@ -62,7 +68,7 @@ export default function PaymentSettings() {
         if (error && error.code !== 'PGRST116') throw error;
 
         if (data) {
-          setSettings(data);
+          setSettings(data as any);
           setFormData({
             terminal_name: data.terminal_name || "",
             api_password: data.api_password || "",
@@ -72,6 +78,9 @@ export default function PaymentSettings() {
             is_enabled: data.is_enabled,
             test_mode: data.test_mode,
             sandbox_terminal_name: data.sandbox_terminal_name || "demo5964",
+            invoice_api_public_key: (data as any).invoice_api_public_key || "",
+            invoice_api_private_key: (data as any).invoice_api_private_key || "",
+            invoice_enabled: (data as any).invoice_enabled || false,
           });
         }
       } catch (error) {
@@ -113,7 +122,10 @@ export default function PaymentSettings() {
           is_enabled: formData.is_enabled,
           test_mode: formData.test_mode,
           sandbox_terminal_name: formData.sandbox_terminal_name || null,
-        })
+          invoice_api_public_key: formData.invoice_api_public_key || null,
+          invoice_api_private_key: formData.invoice_api_private_key || null,
+          invoice_enabled: formData.invoice_enabled,
+        } as any)
         .eq('provider', 'tranzila');
 
       if (error) throw error;
@@ -347,6 +359,57 @@ export default function PaymentSettings() {
                 <p className="text-xs text-muted-foreground">
                   هذا الرابط يُستخدم للتحقق من الدفع (server-to-server)
                 </p>
+              </div>
+            </div>
+
+            {/* Invoices API Section */}
+            <div className="space-y-4 pt-4 border-t">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                <h3 className="font-medium">Tranzila Invoices API (קבלות)</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                הפקת קבלות אוטומטית לאחר תשלום בכרטיס אשראי
+              </p>
+
+              <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+                <div className="space-y-0.5">
+                  <Label className="text-base font-medium">تفعيل הפقת קבלות</Label>
+                  <p className="text-sm text-muted-foreground">
+                    הפקה אוטומטית של קבלה דרך Tranzila לאחר כל תשלום מוצלח
+                  </p>
+                </div>
+                <Switch
+                  checked={formData.invoice_enabled}
+                  onCheckedChange={(checked) => setFormData(f => ({ ...f, invoice_enabled: checked }))}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="invoice_api_public_key">
+                  מפתח ציבורי (Public Key)
+                </Label>
+                <Input
+                  id="invoice_api_public_key"
+                  value={formData.invoice_api_public_key}
+                  onChange={(e) => setFormData(f => ({ ...f, invoice_api_public_key: e.target.value }))}
+                  placeholder="4ZLEHwc91j..."
+                  className="ltr-input text-sm font-mono"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="invoice_api_private_key">
+                  מפתח פרטי (Private Key)
+                </Label>
+                <Input
+                  id="invoice_api_private_key"
+                  type="password"
+                  value={formData.invoice_api_private_key}
+                  onChange={(e) => setFormData(f => ({ ...f, invoice_api_private_key: e.target.value }))}
+                  placeholder="••••••••"
+                  className="ltr-input text-sm font-mono"
+                />
               </div>
             </div>
 
