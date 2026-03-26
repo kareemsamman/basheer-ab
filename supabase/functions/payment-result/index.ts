@@ -89,14 +89,19 @@ Deno.serve(async (req) => {
     sum
   })
 
-  // NEVER trust URL status param — only trust Tranzila's Response code
+  // Determine payment status from Tranzila Response code, with URL status fallback
   let finalStatus = 'pending'
   if (responseCode === '000' || responseCode === '0') {
     finalStatus = 'success'
   } else if (responseCode && responseCode !== '') {
     finalStatus = 'failed'
+  } else if (status === 'success') {
+    // Fallback: trust URL status param when Response code is missing
+    finalStatus = 'success'
+  } else if (status === 'fail' || status === 'failed' || status === 'error') {
+    finalStatus = 'failed'
   }
-  
+
   console.log('Determined finalStatus:', finalStatus, 'from responseCode:', responseCode, '(URL status param was:', status, ')')
 
   // Extract last 4 digits from card number (Tranzila returns format like 1234****5678)
@@ -111,7 +116,6 @@ Deno.serve(async (req) => {
   const errorMessageEncoded = encodeURIComponent(errorMessage)
 
   // Only update DB if we have a definitive status (not pending)
-  let updatedPayment: any = null
   if ((myid || paymentId) && finalStatus !== 'pending') {
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!
