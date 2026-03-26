@@ -342,14 +342,15 @@ serve(async (req) => {
     }
 
     // Prepare SMS content
-    const message = (authSettings.sms_message_template || "رمز التحقق الخاص بك هو: {code}")
+    const message = (authSettings?.sms_message_template || "رمز التحقق الخاص بك هو: {code}")
       .replace(/{code}/g, otp);
 
-    // Send SMS
+    // Send SMS using resolved credentials (from sms_settings or auth_settings)
+    console.log("Using SMS credentials from:", smsSettings?.sms_user ? "sms_settings" : "auth_settings");
     const smsResult = await sendSmsOTP(
-      authSettings.sms_019_user,
-      authSettings.sms_019_token,
-      authSettings.sms_019_source,
+      smsUser,
+      smsToken,
+      smsSource,
       normalizedPhone,
       message
     );
