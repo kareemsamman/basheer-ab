@@ -152,6 +152,7 @@ Deno.serve(async (req) => {
   }
 
   const isSuccess = finalStatus === 'success'
+  const isPending = finalStatus === 'pending'
   const displaySum = sum || ''
   
   const html = `<!DOCTYPE html>
