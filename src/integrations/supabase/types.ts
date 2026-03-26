@@ -3026,6 +3026,9 @@ export type Database = {
           created_at: string
           fail_url: string | null
           id: string
+          invoice_api_private_key: string | null
+          invoice_api_public_key: string | null
+          invoice_enabled: boolean
           is_enabled: boolean
           notify_url: string | null
           provider: string
@@ -3040,6 +3043,9 @@ export type Database = {
           created_at?: string
           fail_url?: string | null
           id?: string
+          invoice_api_private_key?: string | null
+          invoice_api_public_key?: string | null
+          invoice_enabled?: boolean
           is_enabled?: boolean
           notify_url?: string | null
           provider?: string
@@ -3054,6 +3060,9 @@ export type Database = {
           created_at?: string
           fail_url?: string | null
           id?: string
+          invoice_api_private_key?: string | null
+          invoice_api_public_key?: string | null
+          invoice_enabled?: boolean
           is_enabled?: boolean
           notify_url?: string | null
           provider?: string

@@ -237,8 +237,8 @@ serve(async (req) => {
       try {
         const client = clientsMap.get(clientId);
 
-        if (!client?.phone_number) {
-          batchSkipped += clientPolicies.length;
+        if (!client?.phone_number || !clientPolicies) {
+          batchSkipped += (clientPolicies?.length ?? 0);
           continue;
         }
 
