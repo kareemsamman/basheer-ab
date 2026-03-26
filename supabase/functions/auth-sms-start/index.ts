@@ -140,7 +140,7 @@ serve(async (req) => {
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
     // Parallel fetch: profile, auth settings, and rate limit check - MUCH faster
-    const [profileResult, authSettingsResult, rateLimitResult] = await Promise.all([
+    const [profileResult, authSettingsResult, smsSettingsResult, rateLimitResult] = await Promise.all([
       supabase
         .from("profiles")
         .select("id, status, phone, full_name")
@@ -152,6 +152,11 @@ serve(async (req) => {
         .limit(1)
         .single(),
       supabase
+        .from("sms_settings")
+        .select("sms_user, sms_token, sms_source, is_enabled")
+        .limit(1)
+        .maybeSingle(),
+      supabase
         .from("otp_codes")
         .select("id")
         .eq("identifier", normalizedPhone)
@@ -161,7 +166,13 @@ serve(async (req) => {
 
     const { data: existingProfile } = profileResult;
     const { data: authSettings, error: settingsError } = authSettingsResult;
+    const { data: smsSettings } = smsSettingsResult;
     const { data: recentOtps } = rateLimitResult;
+
+    // Resolve SMS credentials: prefer sms_settings (same as test/send-sms), fallback to auth_settings
+    const smsUser = smsSettings?.sms_user || authSettings?.sms_019_user;
+    const smsToken = smsSettings?.sms_token || authSettings?.sms_019_token;
+    const smsSource = smsSettings?.sms_source || authSettings?.sms_019_source;
 
     // Case 1: Profile exists
     if (existingProfile) {
@@ -300,7 +311,7 @@ serve(async (req) => {
       );
     }
 
-    if (!authSettings.sms_019_user || !authSettings.sms_019_token || !authSettings.sms_019_source) {
+    if (!smsUser || !smsToken || !smsSource) {
       return new Response(
         JSON.stringify({ success: false, error: "إعدادات الرسائل النصية غير مكتملة" }),
         { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -331,14 +342,15 @@ serve(async (req) => {
     }
 
     // Prepare SMS content
-    const message = (authSettings.sms_message_template || "رمز التحقق الخاص بك هو: {code}")
+    const message = (authSettings?.sms_message_template || "رمز التحقق الخاص بك هو: {code}")
       .replace(/{code}/g, otp);
 
-    // Send SMS
+    // Send SMS using resolved credentials (from sms_settings or auth_settings)
+    console.log("Using SMS credentials from:", smsSettings?.sms_user ? "sms_settings" : "auth_settings");
     const smsResult = await sendSmsOTP(
-      authSettings.sms_019_user,
-      authSettings.sms_019_token,
-      authSettings.sms_019_source,
+      smsUser,
+      smsToken,
+      smsSource,
       normalizedPhone,
       message
     );
