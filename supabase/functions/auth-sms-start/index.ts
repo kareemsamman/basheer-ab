@@ -140,7 +140,7 @@ serve(async (req) => {
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
     // Parallel fetch: profile, auth settings, and rate limit check - MUCH faster
-    const [profileResult, authSettingsResult, rateLimitResult] = await Promise.all([
+    const [profileResult, authSettingsResult, smsSettingsResult, rateLimitResult] = await Promise.all([
       supabase
         .from("profiles")
         .select("id, status, phone, full_name")
@@ -151,6 +151,11 @@ serve(async (req) => {
         .select("*")
         .limit(1)
         .single(),
+      supabase
+        .from("sms_settings")
+        .select("sms_user, sms_token, sms_source, is_enabled")
+        .limit(1)
+        .maybeSingle(),
       supabase
         .from("otp_codes")
         .select("id")
