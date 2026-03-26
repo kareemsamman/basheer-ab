@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
         tranzila_approval_code, tranzila_transaction_id, tranzila_receipt_url,
         policy:policies!inner(
           id, policy_number, policy_type_parent, policy_type_child, insurance_price,
-          client:clients!inner(full_name, id_number, phone_number, email),
+          client:clients!inner(full_name, id_number, phone_number),
           car:cars(car_number)
         )
       `)
@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
       customer_name: client?.full_name || '',
       vat_id: client?.id_number || '',
       client_phone_1: client?.phone_number || '',
-      client_email_1: client?.email || '',
+      client_email_1: '',
       currency_set: 'ILS',
       items: [
         {
