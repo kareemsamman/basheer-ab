@@ -185,7 +185,7 @@ Deno.serve(async (req) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${isSuccess ? 'תשלום בוצע בהצלחה' : 'התשלום נכשל'}</title>
+  <title>${isSuccess ? 'תשלום בוצע בהצלחה' : isPending ? 'ממתין לאישור' : 'התשלום נכשל'}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -194,7 +194,7 @@ Deno.serve(async (req) => {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(135deg, ${isSuccess ? '#f0fdf4' : '#fef2f2'} 0%, #ffffff 100%);
+      background: linear-gradient(135deg, ${isSuccess ? '#f0fdf4' : isPending ? '#fffbeb' : '#fef2f2'} 0%, #ffffff 100%);
       padding: 20px;
     }
     .container {
