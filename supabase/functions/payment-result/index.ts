@@ -89,13 +89,15 @@ Deno.serve(async (req) => {
     sum
   })
 
-  // Determine actual status from response code if available
-  let finalStatus = status
+  // NEVER trust URL status param — only trust Tranzila's Response code
+  let finalStatus = 'pending'
   if (responseCode === '000' || responseCode === '0') {
     finalStatus = 'success'
   } else if (responseCode && responseCode !== '') {
     finalStatus = 'failed'
   }
+  
+  console.log('Determined finalStatus:', finalStatus, 'from responseCode:', responseCode, '(URL status param was:', status, ')')
 
   // Extract last 4 digits from card number (Tranzila returns format like 1234****5678)
   let cardLastFour = ''
