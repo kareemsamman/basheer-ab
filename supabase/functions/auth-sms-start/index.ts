@@ -166,7 +166,13 @@ serve(async (req) => {
 
     const { data: existingProfile } = profileResult;
     const { data: authSettings, error: settingsError } = authSettingsResult;
+    const { data: smsSettings } = smsSettingsResult;
     const { data: recentOtps } = rateLimitResult;
+
+    // Resolve SMS credentials: prefer sms_settings (same as test/send-sms), fallback to auth_settings
+    const smsUser = smsSettings?.sms_user || authSettings?.sms_019_user;
+    const smsToken = smsSettings?.sms_token || authSettings?.sms_019_token;
+    const smsSource = smsSettings?.sms_source || authSettings?.sms_019_source;
 
     // Case 1: Profile exists
     if (existingProfile) {
