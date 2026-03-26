@@ -328,34 +328,44 @@ export function PolicySuccessDialog({
       return;
     }
 
-    if (paymentIds.length === 0) return;
     setGeneratingTranzilaInvoice(true);
     setErrorMessage(null);
 
     try {
-      // Find the visa payment ID
+      // Find a payment for this policy (prefer visa, but try any)
+      let policyIds = [policyId];
+      if (isPackage) {
+        const { data: mainPolicy } = await supabase.from('policies').select('group_id').eq('id', policyId).single();
+        if (mainPolicy?.group_id) {
+          const { data: groupPolicies } = await supabase.from('policies').select('id').eq('group_id', mainPolicy.group_id);
+          if (groupPolicies) policyIds = groupPolicies.map(p => p.id);
+        }
+      }
+
       const { data: payments } = await supabase
         .from('policy_payments')
         .select('id, payment_type, tranzila_receipt_url')
-        .in('id', paymentIds)
-        .eq('payment_type', 'visa')
-        .limit(1);
+        .in('policy_id', policyIds)
+        .order('created_at', { ascending: false });
 
-      const visaPayment = payments?.[0];
-      if (!visaPayment) {
-        setErrorMessage("لا يوجد دفعة ببطاقة ائتمان");
+      // Prefer visa payment, fallback to first payment
+      const visaPayment = payments?.find(p => p.payment_type === 'visa');
+      const targetPayment = visaPayment || payments?.[0];
+
+      if (!targetPayment) {
+        setErrorMessage("لا يوجد دفعات");
         return;
       }
 
-      if (visaPayment.tranzila_receipt_url) {
-        setTranzilaInvoiceUrl(visaPayment.tranzila_receipt_url);
-        window.open(visaPayment.tranzila_receipt_url, '_blank');
+      if (targetPayment.tranzila_receipt_url) {
+        setTranzilaInvoiceUrl(targetPayment.tranzila_receipt_url);
+        window.open(targetPayment.tranzila_receipt_url, '_blank');
         return;
       }
 
       // Generate invoice via edge function
       const result = await supabase.functions.invoke('tranzila-create-invoice', {
-        body: { payment_id: visaPayment.id }
+        body: { payment_id: targetPayment.id }
       });
 
       if (result.error || result.data?.error) {
@@ -373,7 +383,7 @@ export function PolicySuccessDialog({
       }
     } catch (error) {
       console.error('Tranzila invoice error:', error);
-      const errorMsg = error instanceof Error ? error.message : "فشل في إنشاء القبض";
+      const errorMsg = error instanceof Error ? error.message : "فشل في إنشاء القבלה";
       setErrorMessage(errorMsg);
       toast.error(errorMsg);
     } finally {
@@ -476,24 +486,22 @@ export function PolicySuccessDialog({
                 {receiptSmsSent ? "تم إرسال فاتورة الدفع SMS" : "إرسال فاتورة الدفع SMS"}
               </Button>
 
-              {/* Tranzila Invoice Button - only for visa payments */}
-              {hasVisaPayment && (
-                <Button
-                  variant="outline"
-                  className="w-full gap-2 h-12 border-primary/30 text-primary hover:bg-primary/5"
-                  onClick={handleTranzilaInvoice}
-                  disabled={generatingTranzilaInvoice}
-                >
-                  {generatingTranzilaInvoice ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : tranzilaInvoiceUrl ? (
-                    <Check className="h-5 w-5 text-success" />
-                  ) : (
-                    <FileText className="h-5 w-5" />
-                  )}
-                  {tranzilaInvoiceUrl ? "فتح קבלה מ-Tranzila" : "הפקת קבלה מ-Tranzila"}
-                </Button>
-              )}
+              {/* Tranzila Invoice Button */}
+              <Button
+                variant="outline"
+                className="w-full gap-2 h-12 border-primary/30 text-primary hover:bg-primary/5"
+                onClick={handleTranzilaInvoice}
+                disabled={generatingTranzilaInvoice}
+              >
+                {generatingTranzilaInvoice ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : tranzilaInvoiceUrl ? (
+                  <Check className="h-5 w-5 text-success" />
+                ) : (
+                  <FileText className="h-5 w-5" />
+                )}
+                {tranzilaInvoiceUrl ? "فتح קבלה מ-Tranzila" : "הפקת קבלה מ-Tranzila"}
+              </Button>
             </>
           )}
 
