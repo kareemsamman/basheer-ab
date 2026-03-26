@@ -116,6 +116,7 @@ Deno.serve(async (req) => {
   const errorMessageEncoded = encodeURIComponent(errorMessage)
 
   // Only update DB if we have a definitive status (not pending)
+  let updatedPayment: any = null
   if ((myid || paymentId) && finalStatus !== 'pending') {
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!
