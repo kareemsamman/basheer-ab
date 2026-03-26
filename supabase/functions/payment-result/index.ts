@@ -89,13 +89,15 @@ Deno.serve(async (req) => {
     sum
   })
 
-  // Determine actual status from response code if available
-  let finalStatus = status
+  // NEVER trust URL status param — only trust Tranzila's Response code
+  let finalStatus = 'pending'
   if (responseCode === '000' || responseCode === '0') {
     finalStatus = 'success'
   } else if (responseCode && responseCode !== '') {
     finalStatus = 'failed'
   }
+  
+  console.log('Determined finalStatus:', finalStatus, 'from responseCode:', responseCode, '(URL status param was:', status, ')')
 
   // Extract last 4 digits from card number (Tranzila returns format like 1234****5678)
   let cardLastFour = ''
@@ -108,9 +110,8 @@ Deno.serve(async (req) => {
   // URL-encode for safe embedding in JavaScript
   const errorMessageEncoded = encodeURIComponent(errorMessage)
 
-  // Also update payment in database if we have the info
-  let updatedPayment: any = null
-  if (myid || paymentId) {
+  // Only update DB if we have a definitive status (not pending)
+  if ((myid || paymentId) && finalStatus !== 'pending') {
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!
       const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -176,6 +177,7 @@ Deno.serve(async (req) => {
   }
 
   const isSuccess = finalStatus === 'success'
+  const isPending = finalStatus === 'pending'
   const displaySum = sum || ''
   
   const html = `<!DOCTYPE html>
@@ -183,7 +185,7 @@ Deno.serve(async (req) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${isSuccess ? 'תשלום בוצע בהצלחה' : 'התשלום נכשל'}</title>
+  <title>${isSuccess ? 'תשלום בוצע בהצלחה' : isPending ? 'ממתין לאישור' : 'התשלום נכשל'}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -192,7 +194,7 @@ Deno.serve(async (req) => {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(135deg, ${isSuccess ? '#f0fdf4' : '#fef2f2'} 0%, #ffffff 100%);
+      background: linear-gradient(135deg, ${isSuccess ? '#f0fdf4' : isPending ? '#fffbeb' : '#fef2f2'} 0%, #ffffff 100%);
       padding: 20px;
     }
     .container {
@@ -203,7 +205,7 @@ Deno.serve(async (req) => {
       width: 80px;
       height: 80px;
       border-radius: 50%;
-      background: ${isSuccess ? '#dcfce7' : '#fee2e2'};
+      background: ${isSuccess ? '#dcfce7' : isPending ? '#fef3c7' : '#fee2e2'};
       display: flex;
       align-items: center;
       justify-content: center;
@@ -212,12 +214,12 @@ Deno.serve(async (req) => {
     .icon svg {
       width: 48px;
       height: 48px;
-      color: ${isSuccess ? '#16a34a' : '#dc2626'};
+      color: ${isSuccess ? '#16a34a' : isPending ? '#d97706' : '#dc2626'};
     }
     h1 {
       font-size: 22px;
       font-weight: 700;
-      color: ${isSuccess ? '#16a34a' : '#dc2626'};
+      color: ${isSuccess ? '#16a34a' : isPending ? '#d97706' : '#dc2626'};
       margin-bottom: 12px;
     }
     p {
@@ -263,12 +265,17 @@ Deno.serve(async (req) => {
     <div class="icon">
       ${isSuccess 
         ? '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>'
+        : isPending
+        ? '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
         : '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>'
       }
     </div>
     ${isSuccess 
       ? `<h1>התשלום בוצע בהצלחה!</h1>
          <p>תודה רבה, התשלום התקבל</p>`
+      : isPending
+      ? `<h1>ממתין לאישור מחברת האשראי</h1>
+         <p>העסקה בבדיקה, אנא המתן...</p>`
       : `<h1>${displaySum ? `עסקה בסך ₪${displaySum} נכשלה` : 'התשלום נכשל'}</h1>
          <p class="error-reason">סיבת הכשלון:</p>
          <div class="error-detail">${errorMessage}</div>`
