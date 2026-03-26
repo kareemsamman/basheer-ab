@@ -119,6 +119,26 @@ Deno.serve(async (req) => {
       }
 
       console.log('Payment marked as paid:', payment.id)
+
+      // Auto-create Tranzila invoice (non-blocking)
+      try {
+        const invoiceRes = await fetch(`${supabaseUrl}/functions/v1/tranzila-create-invoice`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({ payment_id: payment.id }),
+        })
+        const invoiceResult = await invoiceRes.json()
+        if (invoiceResult.success) {
+          console.log('Tranzila invoice created:', invoiceResult.document_id)
+        } else {
+          console.log('Invoice creation skipped or failed:', invoiceResult.error || 'unknown')
+        }
+      } catch (invoiceErr) {
+        console.error('Failed to create invoice (non-blocking):', invoiceErr)
+      }
     } else {
       // Mark as failed - use refused=true
       const { error: updateError } = await supabase
