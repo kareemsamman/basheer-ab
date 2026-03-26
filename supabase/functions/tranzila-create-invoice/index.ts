@@ -48,7 +48,7 @@ async function callTranzilaApi(
   // Tranzila requires a Unix timestamp for request freshness validation
   const timestamp = Math.floor(Date.now() / 1000).toString();
   // Hash is computed over payload + timestamp
-  const requestHash = await generateHash(privateKey, payloadString + timestamp);
+  const requestHash = await generateHash(privateKey, publicKey, payloadString + timestamp);
 
   const response = await fetch(`${BILLING_API_URL}/create_document`, {
     method: 'POST',
