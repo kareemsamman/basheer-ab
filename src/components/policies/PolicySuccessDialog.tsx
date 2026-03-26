@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Printer, MessageSquare, X, Loader2, Check, AlertCircle, Receipt } from "lucide-react";
+import { Printer, MessageSquare, X, Loader2, Check, AlertCircle, Receipt, FileText } from "lucide-react";
 
 interface PolicySuccessDialogProps {
   open: boolean;
@@ -42,6 +42,11 @@ export function PolicySuccessDialog({
   const [sendingReceiptSms, setSendingReceiptSms] = useState(false);
   const [receiptSmsSent, setReceiptSmsSent] = useState(false);
 
+  // Tranzila invoice states
+  const [generatingTranzilaInvoice, setGeneratingTranzilaInvoice] = useState(false);
+  const [tranzilaInvoiceUrl, setTranzilaInvoiceUrl] = useState<string | null>(null);
+  const [hasVisaPayment, setHasVisaPayment] = useState(false);
+
   // Fetch payment IDs when dialog opens
   useEffect(() => {
     if (!open || !policyId) return;
@@ -70,11 +75,18 @@ export function PolicySuccessDialog({
 
         const { data: payments } = await supabase
           .from('policy_payments')
-          .select('id')
+          .select('id, payment_type, tranzila_receipt_url')
           .in('policy_id', policyIds);
 
         if (payments && payments.length > 0) {
           setPaymentIds(payments.map(p => p.id));
+          const visaPayment = payments.find(p => p.payment_type === 'visa');
+          if (visaPayment) {
+            setHasVisaPayment(true);
+            if (visaPayment.tranzila_receipt_url) {
+              setTranzilaInvoiceUrl(visaPayment.tranzila_receipt_url);
+            }
+          }
         }
       } catch (err) {
         console.error('Error fetching payment IDs:', err);
@@ -309,6 +321,66 @@ export function PolicySuccessDialog({
     }
   };
 
+  const handleTranzilaInvoice = async () => {
+    // If we already have the URL, just open it
+    if (tranzilaInvoiceUrl) {
+      window.open(tranzilaInvoiceUrl, '_blank');
+      return;
+    }
+
+    if (paymentIds.length === 0) return;
+    setGeneratingTranzilaInvoice(true);
+    setErrorMessage(null);
+
+    try {
+      // Find the visa payment ID
+      const { data: payments } = await supabase
+        .from('policy_payments')
+        .select('id, payment_type, tranzila_receipt_url')
+        .in('id', paymentIds)
+        .eq('payment_type', 'visa')
+        .limit(1);
+
+      const visaPayment = payments?.[0];
+      if (!visaPayment) {
+        setErrorMessage("لا يوجد دفعة ببطاقة ائتمان");
+        return;
+      }
+
+      if (visaPayment.tranzila_receipt_url) {
+        setTranzilaInvoiceUrl(visaPayment.tranzila_receipt_url);
+        window.open(visaPayment.tranzila_receipt_url, '_blank');
+        return;
+      }
+
+      // Generate invoice via edge function
+      const result = await supabase.functions.invoke('tranzila-create-invoice', {
+        body: { payment_id: visaPayment.id }
+      });
+
+      if (result.error || result.data?.error) {
+        const errorMsg = result.data?.error || result.error?.message || 'فشل في إنشاء القبض';
+        setErrorMessage(errorMsg);
+        toast.error(errorMsg);
+        return;
+      }
+
+      const url = result.data?.receipt_url;
+      if (url) {
+        setTranzilaInvoiceUrl(url);
+        window.open(url, '_blank');
+        toast.success("تم إنشاء קבלה מ-Tranzila");
+      }
+    } catch (error) {
+      console.error('Tranzila invoice error:', error);
+      const errorMsg = error instanceof Error ? error.message : "فشل في إنشاء القبض";
+      setErrorMessage(errorMsg);
+      toast.error(errorMsg);
+    } finally {
+      setGeneratingTranzilaInvoice(false);
+    }
+  };
+
   const handleClose = () => {
     setErrorMessage(null);
     onOpenChange(false);
@@ -403,6 +475,25 @@ export function PolicySuccessDialog({
                 )}
                 {receiptSmsSent ? "تم إرسال فاتورة الدفع SMS" : "إرسال فاتورة الدفع SMS"}
               </Button>
+
+              {/* Tranzila Invoice Button - only for visa payments */}
+              {hasVisaPayment && (
+                <Button
+                  variant="outline"
+                  className="w-full gap-2 h-12 border-primary/30 text-primary hover:bg-primary/5"
+                  onClick={handleTranzilaInvoice}
+                  disabled={generatingTranzilaInvoice}
+                >
+                  {generatingTranzilaInvoice ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : tranzilaInvoiceUrl ? (
+                    <Check className="h-5 w-5 text-success" />
+                  ) : (
+                    <FileText className="h-5 w-5" />
+                  )}
+                  {tranzilaInvoiceUrl ? "فتح קבלה מ-Tranzila" : "הפקת קבלה מ-Tranzila"}
+                </Button>
+              )}
             </>
           )}
 
