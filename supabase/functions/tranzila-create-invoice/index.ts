@@ -13,6 +13,7 @@ interface CreateInvoiceRequest {
 
 async function generateHash(privateKey: string, payload: string): Promise<string> {
   const encoder = new TextEncoder();
+  const dataToSign = privateKey + publicKey + payload;
   const key = await crypto.subtle.importKey(
     'raw',
     encoder.encode(privateKey),
@@ -20,7 +21,7 @@ async function generateHash(privateKey: string, payload: string): Promise<string
     false,
     ['sign']
   );
-  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(payload));
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(dataToSign));
   return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
@@ -189,6 +190,7 @@ Deno.serve(async (req) => {
       }],
     };
 
+<<<<<<< HEAD
     // 3. Call Tranzila with retry on "request too old"
     console.log('[tranzila-create-invoice] Creating invoice for payment:', payment_id);
 
@@ -206,6 +208,46 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ success: false, error: apiResult.error, provider_raw: apiResult.provider_raw }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+=======
+    const payloadString = JSON.stringify(invoicePayload);
+
+    // 4. Generate auth hash (privateKey + publicKey + body)
+    const requestHash = await generateHash(privateKey, publicKey, payloadString);
+
+    console.log('[tranzila-create-invoice] Creating invoice for payment:', payment_id);
+    console.log('[tranzila-create-invoice] Terminal:', terminalName, 'Payload length:', payloadString.length);
+
+    // 5. Call Tranzila create_document API
+    const response = await fetch(`${BILLING_API_URL}/create_document`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-tranzila-api-app-key': publicKey,
+        'X-tranzila-api-request-hash': requestHash,
+      },
+      body: payloadString,
+    });
+
+    const responseText = await response.text();
+    console.log('[tranzila-create-invoice] Tranzila raw response:', responseText, 'Status:', response.status);
+
+    let result: any;
+    try {
+      result = JSON.parse(responseText);
+    } catch {
+      return new Response(
+        JSON.stringify({ error: `Tranzila returned: ${responseText}` }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (result.status_code !== 0) {
+      console.error('[tranzila-create-invoice] Tranzila error:', result.status_msg, result);
+      return new Response(
+        JSON.stringify({ error: `Tranzila returned: ${result.status_msg} (${result.error || ''})`, status_code: result.status_code }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+>>>>>>> 16d258c (Fix Tranzila invoice auth hash and improve error logging)
       );
     }
 
