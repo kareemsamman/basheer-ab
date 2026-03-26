@@ -11,7 +11,7 @@ interface CreateInvoiceRequest {
   payment_id: string;
 }
 
-async function generateHash(privateKey: string, payload: string): Promise<string> {
+async function generateHash(privateKey: string, publicKey: string, payload: string): Promise<string> {
   const encoder = new TextEncoder();
   const dataToSign = privateKey + publicKey + payload;
   const key = await crypto.subtle.importKey(
