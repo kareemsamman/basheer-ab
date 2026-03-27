@@ -25,7 +25,7 @@ export function useRenewalsCount() {
       }
       
       if (data && data.length > 0) {
-        setRenewalsCount(data[0].total_expiring || 0);
+        setRenewalsCount((data[0] as any).total_count || 0);
       }
     } catch (err) {
       console.error('Unexpected error fetching renewals count:', err);
