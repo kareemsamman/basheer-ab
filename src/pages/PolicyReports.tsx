@@ -621,8 +621,50 @@ export default function PolicyReports() {
   useEffect(() => {
     if (activeTab === 'renewals') {
       fetchRenewals();
+      // Auto-open assistant first time
+      if (renewalSubTab === 'pending') {
+        setAssistantOpen(true);
+      }
     }
   }, [activeTab, renewalsPage, renewalsMonth, renewalsDaysFilter, renewalsPolicyTypeFilter, renewalsCreatedByFilter, renewalsSearch]);
+
+  // Fetch declined clients
+  const fetchDeclinedClients = async () => {
+    setDeclinedLoading(true);
+    try {
+      const followUpMonth = `${renewalsMonth}-01`;
+      const { data, error } = await supabase
+        .from('renewal_followups')
+        .select(`
+          id,
+          client_id,
+          status,
+          decline_reason,
+          updated_by,
+          updated_at,
+          clients(full_name, phone_number, file_number)
+        `)
+        .eq('follow_up_month', followUpMonth)
+        .eq('status', 'declined_renewal')
+        .order('updated_at', { ascending: false })
+        .range(declinedPage * PAGE_SIZE, (declinedPage + 1) * PAGE_SIZE - 1);
+
+      if (error) throw error;
+      setDeclinedClients(data || []);
+      // Estimate total (if full page, there may be more)
+      setDeclinedTotalRows(data?.length === PAGE_SIZE ? (declinedPage + 1) * PAGE_SIZE + 1 : declinedPage * PAGE_SIZE + (data?.length || 0));
+    } catch (error) {
+      console.error('Error fetching declined clients:', error);
+    } finally {
+      setDeclinedLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'renewals' && renewalSubTab === 'declined') {
+      fetchDeclinedClients();
+    }
+  }, [activeTab, renewalSubTab, renewalsMonth, declinedPage]);
 
   // Fetch renewed clients
   const fetchRenewedClients = async () => {
