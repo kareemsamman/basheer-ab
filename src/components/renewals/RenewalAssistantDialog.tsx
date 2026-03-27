@@ -206,7 +206,7 @@ export function RenewalAssistantDialog({
               <TableBody>
                 {policies.map(p => (
                   <TableRow key={p.id}>
-                    <TableCell className="font-mono text-xs">{p.policy_number || '-'}</TableCell>
+                    <TableCell className="font-mono text-xs">{p.car_number || '-'}</TableCell>
                     <TableCell className="font-mono text-xs">{p.car_number || '-'}</TableCell>
                     <TableCell>
                       <Badge variant="secondary" className="text-xs">
