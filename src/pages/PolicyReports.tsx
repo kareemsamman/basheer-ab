@@ -1480,7 +1480,30 @@ export default function PolicyReports() {
               </div>
             </Card>
 
-            {/* Table - Grouped by Customer */}
+            {/* Sub-tabs for Pending / Declined */}
+            <div className="flex gap-2">
+              <Button
+                variant={renewalSubTab === 'pending' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setRenewalSubTab('pending')}
+                className="gap-2"
+              >
+                <Clock className="h-4 w-4" />
+                بانتظار التجديد
+              </Button>
+              <Button
+                variant={renewalSubTab === 'declined' ? 'destructive' : 'outline'}
+                size="sm"
+                onClick={() => setRenewalSubTab('declined')}
+                className="gap-2"
+              >
+                <XCircle className="h-4 w-4" />
+                لا يريدون التجديد
+              </Button>
+            </div>
+
+            {/* Pending Table */}
+            {renewalSubTab === 'pending' && (
             <Card className="overflow-hidden">
               {renewalsLoading ? (
                 <div className="p-4 space-y-2">
