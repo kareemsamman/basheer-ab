@@ -45,6 +45,7 @@ interface Payment {
   cheque_status: string | null;
   refused: boolean | null;
   notes: string | null;
+  tranzila_receipt_url: string | null;
   images?: PaymentImage[];
 }
 
@@ -150,6 +151,7 @@ export function PolicyPaymentsSection({
   const [uploadingImages, setUploadingImages] = useState(false);
   const [removeExistingFiles, setRemoveExistingFiles] = useState(false);
   const [generatingReceipt, setGeneratingReceipt] = useState<string | null>(null);
+  const [generatingTranzilaReceipt, setGeneratingTranzilaReceipt] = useState<string | null>(null);
 
   // Calculate totals - use package totals if provided
   const effectivePrice = packageTotalPrice ?? insurancePrice;
@@ -785,7 +787,37 @@ export function PolicyPaymentsSection({
     }
   };
 
-  return (
+  // Generate or open Tranzila receipt for visa payments
+  const handleTranzilaReceipt = async (payment: Payment) => {
+    if (payment.tranzila_receipt_url) {
+      window.open(payment.tranzila_receipt_url, '_blank');
+      return;
+    }
+
+    setGeneratingTranzilaReceipt(payment.id);
+    try {
+      const { data, error } = await supabase.functions.invoke('tranzila-create-invoice', {
+        body: { payment_id: payment.id },
+      });
+
+      if (error) throw error;
+
+      if (data?.success && data?.receipt_url) {
+        window.open(data.receipt_url, '_blank');
+        toast({ title: "تم إنشاء القبض", description: "تم فتح قبض Tranzila في نافذة جديدة" });
+        onPaymentsChange(); // Refresh to show the saved URL
+      } else {
+        toast({ title: "خطأ", description: data?.error || "فشل في إنشاء القبض", variant: "destructive" });
+      }
+    } catch (error: any) {
+      console.error('Error generating Tranzila receipt:', error);
+      toast({ title: "خطأ", description: error.message || "فشل في إنشاء القبض", variant: "destructive" });
+    } finally {
+      setGeneratingTranzilaReceipt(null);
+    }
+  };
+
+
     <>
       <Card className="p-4 space-y-4">
         <div className="flex items-center justify-between">
@@ -861,6 +893,27 @@ export function PolicyPaymentsSection({
                   )}
                 </div>
                 <div className="flex items-center gap-1">
+                  {payment.payment_type === 'visa' && !payment.refused && (
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className={cn(
+                        "h-8 w-8",
+                        payment.tranzila_receipt_url 
+                          ? "text-success hover:text-success hover:bg-success/10" 
+                          : "text-amber-600 hover:text-amber-600 hover:bg-amber-50"
+                      )}
+                      onClick={() => handleTranzilaReceipt(payment)}
+                      disabled={generatingTranzilaReceipt === payment.id}
+                      title={payment.tranzila_receipt_url ? "فتح קבלה من Tranzila" : "הפקת קבלה מ-Tranzila"}
+                    >
+                      {generatingTranzilaReceipt === payment.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <FileText className="h-4 w-4" />
+                      )}
+                    </Button>
+                  )}
                   <Button 
                     variant="ghost" 
                     size="icon" 

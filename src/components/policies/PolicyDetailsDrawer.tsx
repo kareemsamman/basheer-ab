@@ -174,6 +174,7 @@ interface Payment {
   cheque_status: string | null;
   refused: boolean | null;
   notes: string | null;
+  tranzila_receipt_url: string | null;
   images?: PaymentImage[];
 }
 
