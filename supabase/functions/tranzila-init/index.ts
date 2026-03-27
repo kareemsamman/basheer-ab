@@ -132,8 +132,11 @@ Deno.serve(async (req) => {
       .update({ tranzila_index: tranzilaIndex })
       .eq('id', payment.id)
 
-    // Always use real terminal. When test_mode is on, tranmode=VER (verify only, no charge)
-    const terminalName = settings.terminal_name
+    // In test mode: use demo terminal (full iframe flow, no real charge)
+    // In production: use real terminal
+    const terminalName = settings.test_mode
+      ? (settings.sandbox_terminal_name || 'demo5964')
+      : settings.terminal_name
 
     if (!terminalName) {
       return new Response(JSON.stringify({ error: 'Terminal name not configured' }), {
@@ -152,7 +155,7 @@ Deno.serve(async (req) => {
       cred_type: '8', // 8 = installments (תשלומים)
       maxpay: '12', // Up to 12 payments
       lang: 'il', // Hebrew language
-      tranmode: settings.test_mode ? 'VER' : 'A', // VER = verify only (no charge), A = actual charge
+      tranmode: 'A', // A = standard transaction (demo terminal handles no-charge in test mode)
       newprocess: '1', // 3DS V2 (can also be enabled in terminal settings)
       myid: tranzilaIndex, // Our reference for tracking this payment
     }
