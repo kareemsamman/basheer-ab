@@ -125,23 +125,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let isMounted = true;
-    
+
     // Set up auth state listener FIRST
+    // Skip INITIAL_SESSION to avoid race condition with getSession() -
+    // getSession() handles token refresh and is the single source of truth for init
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (!isMounted) return;
-        
+
+        // Skip INITIAL_SESSION - we use getSession() for initialization
+        // This prevents a race where INITIAL_SESSION fires with null/expired
+        // session before getSession() completes token refresh
+        if (event === 'INITIAL_SESSION') return;
+
         // Keep session guard flag synced whenever a valid session exists
         if (session) {
           sessionStorage.setItem('admin_session_active', 'true');
         }
-        
+
         setSession(session);
         setUser(session?.user ?? null);
-        
-        const shouldRefetchProfile = event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED';
 
-        // Defer profile fetch with setTimeout to avoid deadlock
+        const shouldRefetchProfile = event === 'SIGNED_IN' || event === 'USER_UPDATED';
+
+        // Defer profile fetch with setTimeout to avoid Supabase deadlock
         if (session?.user && shouldRefetchProfile) {
           setTimeout(() => {
             if (isMounted) {
@@ -156,18 +163,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setBranchName(null);
           setProfileLoading(false);
         }
-        
-        setLoading(false);
       }
     );
 
-    // THEN check for existing session
+    // THEN check for existing session - single source of truth for initialization
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!isMounted) return;
-      
+
       setSession(session);
       setUser(session?.user ?? null);
-      
+
       if (session?.user) {
         sessionStorage.setItem('admin_session_active', 'true');
 
@@ -180,7 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setProfileLoading(false);
       }
-      
+
       setIsReady(true);
       setLoading(false);
     });
