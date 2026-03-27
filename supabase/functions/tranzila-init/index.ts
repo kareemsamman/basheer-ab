@@ -132,12 +132,8 @@ Deno.serve(async (req) => {
       .update({ tranzila_index: tranzilaIndex })
       .eq('id', payment.id)
 
-    // Determine terminal: sandbox only for super admin (morshed500@gmail.com) when test_mode is on
-    const SUPER_ADMIN_EMAIL = 'morshed500@gmail.com'
-    const useSandbox = settings.test_mode && user.email === SUPER_ADMIN_EMAIL
-    const terminalName = useSandbox
-      ? (settings.sandbox_terminal_name || 'demo5964')
-      : settings.terminal_name
+    // Always use real terminal. When test_mode is on, tranmode=VER (verify only, no charge)
+    const terminalName = settings.terminal_name
 
     if (!terminalName) {
       return new Response(JSON.stringify({ error: 'Terminal name not configured' }), {
@@ -156,7 +152,7 @@ Deno.serve(async (req) => {
       cred_type: '8', // 8 = installments (תשלומים)
       maxpay: '12', // Up to 12 payments
       lang: 'il', // Hebrew language
-      tranmode: 'A', // A = standard transaction
+      tranmode: settings.test_mode ? 'VER' : 'A', // VER = verify only (no charge), A = actual charge
       newprocess: '1', // 3DS V2 (can also be enabled in terminal settings)
       myid: tranzilaIndex, // Our reference for tracking this payment
     }
