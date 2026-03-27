@@ -4,6 +4,12 @@ import { supabase } from '@/integrations/supabase/client';
 
 const SUPER_ADMIN_EMAIL = 'morshed500@gmail.com';
 
+const normalizeEmail = (email: string | null | undefined) =>
+  email?.trim().toLowerCase() ?? '';
+
+const isSuperAdminEmail = (email: string | null | undefined) =>
+  normalizeEmail(email) === normalizeEmail(SUPER_ADMIN_EMAIL);
+
 interface UserProfile {
   id: string;
   email: string;
@@ -41,7 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [branchName, setBranchName] = useState<string | null>(null);
 
   // Super admin check based on email - this is the authoritative check
-  const isSuperAdmin = user?.email === SUPER_ADMIN_EMAIL;
+  const isSuperAdmin = isSuperAdminEmail(user?.email);
 
   const fetchingRef = useRef<string | null>(null);
 
@@ -65,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // Check if user has admin role OR is super admin
-      const isSuperAdminUser = userEmail === SUPER_ADMIN_EMAIL;
+      const isSuperAdminUser = isSuperAdminEmail(userEmail);
       
       if (isSuperAdminUser) {
         setIsAdmin(true);
@@ -185,7 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const SESSION_KEY = 'admin_session_active';
     const userEmail = user?.email;
-    const isNonSuperAdmin = userEmail !== SUPER_ADMIN_EMAIL && isAdmin;
+    const isNonSuperAdmin = !isSuperAdminEmail(userEmail) && isAdmin;
     
     if (!isReady || !session || !user || !isNonSuperAdmin) {
       return;
