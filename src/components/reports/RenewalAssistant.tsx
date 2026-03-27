@@ -71,7 +71,7 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
       const endDate = new Date(year, mo, 0).toISOString().split('T')[0];
 
       // Get clients with expiring policies
-      const query = supabase
+      const { data: policies, error } = await (supabase as any)
         .from('policies')
         .select(`
           id,
@@ -90,8 +90,6 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
         .is('deleted_at', null)
         .neq('status', 'cancelled')
         .order('client_id');
-
-      const { data: policies, error } = await (query as any);
 
       if (error) throw error;
 
