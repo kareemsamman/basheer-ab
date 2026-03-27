@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
     const responseCode = data.Response || data.response || data.ResponseCode
     const confirmationCode = data.ConfirmationCode || data.confirmationcode || data.ApprovalCode
     const tranzilaIndex = data.index || data.Index || data.TranzactionIndex
-    const ourIndex = data.myid || data.Myid || data.myId
+    const ourIndex = data.myid || data.Myid || data.myId || data.pdesc || data.Pdesc
 
     // Skip if no response code at all
     if (!responseCode || responseCode === '') {
