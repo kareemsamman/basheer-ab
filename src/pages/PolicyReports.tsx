@@ -487,17 +487,15 @@ export default function PolicyReports() {
     try {
       const { startDate, endDate } = getRenewalDateRange();
       
-      const [renewalsRes, summaryRes] = await Promise.all([
-        supabase.rpc('report_renewals', {
+      const renewalsRes = await supabase.rpc('report_renewals', {
           p_start_date: startDate,
           p_end_date: endDate,
           p_policy_type: renewalsPolicyTypeFilter !== 'all' ? renewalsPolicyTypeFilter : null,
           p_created_by: renewalsCreatedByFilter !== 'all' ? renewalsCreatedByFilter : null,
           p_search: renewalsSearch || null,
           p_page_size: PAGE_SIZE,
-          p_page: renewalsPage + 1 // 1-indexed
-        })
-      ]);
+          p_page: renewalsPage + 1
+        });
 
       if (renewalsRes.error) throw renewalsRes.error;
       // Cast to unknown first to handle type mismatch during types.ts regeneration
