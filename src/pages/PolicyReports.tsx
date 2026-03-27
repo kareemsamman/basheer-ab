@@ -33,6 +33,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { PolicyWizard } from '@/components/policies/PolicyWizard';
+import { RenewalAssistant } from '@/components/reports/RenewalAssistant';
 import { RenewalData } from '@/components/policies/wizard/types';
 import {
   Search,
@@ -56,6 +57,8 @@ import {
   CreditCard,
   Banknote,
   Package,
+  Users,
+  PlayCircle,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
