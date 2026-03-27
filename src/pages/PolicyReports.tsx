@@ -1528,7 +1528,11 @@ export default function PolicyReports() {
                                 client.days_remaining <= 7 ? 'destructive' : 
                                 client.days_remaining <= 14 ? 'warning' : 'secondary'
                               }>
-                                {client.days_remaining <= 0 ? 'اليوم!' : `${client.days_remaining} يوم`}
+                                {client.days_remaining < 0 
+                                  ? `منتهي منذ ${Math.abs(client.days_remaining)} يوم` 
+                                  : client.days_remaining === 0 
+                                    ? 'اليوم!' 
+                                    : `${client.days_remaining} يوم`}
                               </Badge>
                             </TableCell>
                             <TableCell className="font-bold">₪{client.total_insurance_price.toLocaleString()}</TableCell>
