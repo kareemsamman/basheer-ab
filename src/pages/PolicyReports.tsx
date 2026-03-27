@@ -105,6 +105,7 @@ const renewalStatusLabels: Record<string, string> = {
   called: 'تم الاتصال',
   renewed: 'تم التجديد',
   not_interested: 'غير مهتم',
+  declined_renewal: 'لا يرغب بالتجديد',
 };
 
 const renewalStatusColors: Record<string, string> = {
@@ -113,6 +114,7 @@ const renewalStatusColors: Record<string, string> = {
   called: 'bg-amber-100 text-amber-700 border-amber-200',
   renewed: 'bg-green-100 text-green-700 border-green-200',
   not_interested: 'bg-red-100 text-red-700 border-red-200',
+  declined_renewal: 'bg-red-100 text-red-700 border-red-200',
 };
 
 interface PolicyPaymentActivity {
