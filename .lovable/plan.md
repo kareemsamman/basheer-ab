@@ -1,59 +1,74 @@
 
 
-## Fix: Admin Users Page Shows 0 Users
+## Root Cause: Token Refresh Storm + Duplicate Profile Fetches
 
-### Root Cause Analysis
+The auth logs reveal the smoking gun: **~50+ token refresh events within 2 seconds**, hitting **429 rate limits**. Here's the cascade:
 
-The database has **11 profiles** and the RLS policies are correctly configured. The super admin (`morshed500@gmail.com`) has an `admin` role in `user_roles`, and the `has_role` SECURITY DEFINER function works properly.
+1. Google OAuth callback redirects back to the app
+2. Both `onAuthStateChange` AND `getSession()` fire simultaneously, both calling `setUser`/`setSession`
+3. Each state update triggers `fetchUserProfile`, which makes Supabase API calls
+4. Each API call can trigger token refresh → emits another `TOKEN_REFRESHED` event → triggers another `onAuthStateChange` → another profile fetch → **infinite loop**
+5. Eventually hits 429 rate limit → Supabase may invalidate the session → `user` becomes null → ProtectedRoute redirects to `/login`
 
-The most likely cause is a **race condition**: when the super admin logs in, `isAdmin` becomes `true` (via the `isSuperAdmin` check on `user.email`) before the Supabase client's session/JWT is fully established internally. The `fetchUsers` query fires immediately but the Supabase client sends the request without a valid JWT, so the RLS `has_role(auth.uid(), 'admin')` check fails (because `auth.uid()` is null), returning an empty result set with no error.
+Additionally, the `admin_session_active` flag is only set in `Login.tsx`'s useEffect, but on OAuth redirect the user lands on `/` (not `/login`), so the flag may not be set before the admin session guard checks it.
 
-### Fix
+## Fix (3 changes in `src/hooks/useAuth.tsx`)
 
-**File: `src/pages/AdminUsers.tsx`**
-
-1. Add the `session` from `useAuth` to the dependency check — only fetch when both `isAdmin` AND `session` are available:
+### 1. Deduplicate profile fetches
+Add a ref to track in-flight profile fetches. Skip if already fetching for the same user ID.
 
 ```typescript
-const { isAdmin, loading: authLoading, session } = useAuth();
+const fetchingRef = useRef<string | null>(null);
 
-useEffect(() => {
-  if (isAdmin && session) {
-    fetchUsers();
-  }
-}, [isAdmin, session]);
+const fetchUserProfile = async (userId: string, userEmail: string | undefined) => {
+  if (fetchingRef.current === userId) return profile; // already fetching
+  fetchingRef.current = userId;
+  // ... existing logic
+  fetchingRef.current = null;
+  return profileData;
+};
 ```
 
-2. Add error logging inside `fetchUsers` to catch silent failures:
+### 2. Skip redundant `getSession` profile fetch
+In the `getSession().then(...)` block, only fetch profile if `onAuthStateChange` hasn't already handled it (check if user is already set):
 
 ```typescript
-const fetchUsers = async () => {
-  setLoading(true);
-  try {
-    const { data: profiles, error: profilesError } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (profilesError) {
-      console.error('Profiles fetch error:', profilesError);
-      throw profilesError;
+supabase.auth.getSession().then(({ data: { session } }) => {
+  if (!isMounted) return;
+  setSession(session);
+  setUser(session?.user ?? null);
+  
+  if (session?.user) {
+    // Only fetch if not already being fetched by onAuthStateChange
+    if (!fetchingRef.current) {
+      fetchUserProfile(session.user.id, session.user.email).then(p => {
+        if (isMounted) setProfile(p);
+      });
     }
-    
-    console.log('Fetched profiles count:', profiles?.length);
-    // ... rest unchanged
+  } else {
+    setProfileLoading(false);
+  }
+  setLoading(false);
+});
 ```
 
-**File: `src/hooks/useAuth.tsx`**
+### 3. Set `admin_session_active` flag in `onAuthStateChange`
+Set the session flag immediately when a SIGNED_IN or TOKEN_REFRESHED event fires, not just in Login.tsx:
 
-3. Ensure `session` is exposed in the context (it already is), and ensure the `admin_session_active` flag is set for super admin too in `Login.tsx` — currently it's only set for non-super-admins, which could cause issues on page refresh:
-
-**File: `src/pages/Login.tsx`** (line ~45)
-
-Change the session flag logic to set it for ALL authenticated users:
 ```typescript
-sessionStorage.setItem('admin_session_active', 'true');
+supabase.auth.onAuthStateChange((event, session) => {
+  if (!isMounted) return;
+  
+  // Set admin session flag on any successful auth event
+  if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+    sessionStorage.setItem('admin_session_active', 'true');
+  }
+  
+  setSession(session);
+  setUser(session?.user ?? null);
+  // ... rest unchanged
+});
 ```
 
-This ensures `fetchUsers` only runs after the Supabase client has a valid JWT, so the RLS policies can identify the user as admin.
+These three changes break the token refresh storm and ensure the session guard never fires prematurely.
 
