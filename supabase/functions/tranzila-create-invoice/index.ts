@@ -183,27 +183,29 @@ Deno.serve(async (req) => {
     const invoicePayload: Record<string, any> = {
       terminal_name: terminalName,
       document_type: 'RE',
-      customer_name: client?.full_name || '',
-      vat_id: client?.id_number || '',
-      client_phone_1: client?.phone_number || '',
-      currency_set: 'ILS',
-      amount_type: 'G',
-      language: 'heb',
+      action: 1,
+      document_language: 'heb',
+      document_currency_code: 'ILS',
+      client_name: client?.full_name || '',
+      client_id: client?.id_number || '',
       items: [{
+        type: 'I',
         name: itemDescription,
-        quantity: 1,
-        unit_type: '1',
-        price_per_unit: amt,
-        item_type: 'I',
+        unit_price: amt,
+        units_number: 1,
+        unit_type: 1,
+        price_type: 'G',
+        currency_code: 'ILS',
       }],
       payments: [{
-        payment_method: paymentMethod,
-        amount: amt,
+        payment_method: Number(paymentMethod),
         payment_date: payment.payment_date,
+        amount: amt,
+        currency_code: 'ILS',
         ...(payment.payment_type === 'visa' ? {
           cc_last_4_digits: payment.card_last_four || '',
-          credit_term: '1',
-          installments_number: String(payment.installments_count || 1),
+          cc_credit_term: 1,
+          ...(payment.installments_count > 1 ? { cc_installments_number: payment.installments_count } : {}),
         } : {}),
       }],
     };
@@ -231,8 +233,9 @@ Deno.serve(async (req) => {
     }
 
     const result = apiResult.data;
-    const retrievalKey = result.retrieval_key;
-    const documentId = result.document_id;
+    const doc = result.document;
+    const retrievalKey = doc.retrieval_key;
+    const documentId = doc.id;
     const receiptUrl = `https://my.tranzila.com/api/get_financial_document/${retrievalKey}`;
 
     // 4. Store receipt URL
