@@ -787,7 +787,37 @@ export function PolicyPaymentsSection({
     }
   };
 
-  return (
+  // Generate or open Tranzila receipt for visa payments
+  const handleTranzilaReceipt = async (payment: Payment) => {
+    if (payment.tranzila_receipt_url) {
+      window.open(payment.tranzila_receipt_url, '_blank');
+      return;
+    }
+
+    setGeneratingTranzilaReceipt(payment.id);
+    try {
+      const { data, error } = await supabase.functions.invoke('tranzila-create-invoice', {
+        body: { payment_id: payment.id },
+      });
+
+      if (error) throw error;
+
+      if (data?.success && data?.receipt_url) {
+        window.open(data.receipt_url, '_blank');
+        toast({ title: "تم إنشاء القبض", description: "تم فتح قبض Tranzila في نافذة جديدة" });
+        onPaymentsChange(); // Refresh to show the saved URL
+      } else {
+        toast({ title: "خطأ", description: data?.error || "فشل في إنشاء القبض", variant: "destructive" });
+      }
+    } catch (error: any) {
+      console.error('Error generating Tranzila receipt:', error);
+      toast({ title: "خطأ", description: error.message || "فشل في إنشاء القبض", variant: "destructive" });
+    } finally {
+      setGeneratingTranzilaReceipt(null);
+    }
+  };
+
+
     <>
       <Card className="p-4 space-y-4">
         <div className="flex items-center justify-between">
