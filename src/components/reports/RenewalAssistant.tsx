@@ -70,9 +70,8 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
       const startDate = new Date(year, mo - 1, 1).toISOString().split('T')[0];
       const endDate = new Date(year, mo, 0).toISOString().split('T')[0];
 
-      // Get clients with expiring policies that don't have a followup record yet
-      // or have status = 'pending'
-      const { data: policies, error } = await (supabase
+      // Get clients with expiring policies
+      const query = supabase
         .from('policies')
         .select(`
           id,
@@ -90,7 +89,9 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
         .lte('end_date', endDate)
         .is('deleted_at', null)
         .neq('status', 'cancelled')
-        .order('client_id') as any);
+        .order('client_id');
+
+      const { data: policies, error } = await (query as any);
 
       if (error) throw error;
 
