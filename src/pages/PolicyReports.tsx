@@ -304,6 +304,18 @@ export default function PolicyReports() {
   const [renewalData, setRenewalData] = useState<RenewalData | null>(null);
   const [renewingClientId, setRenewingClientId] = useState<string | null>(null);
   
+  // Renewal Assistant
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  
+  // Renewal sub-tab (pending / declined)
+  const [renewalSubTab, setRenewalSubTab] = useState<'pending' | 'declined'>('pending');
+  
+  // Declined clients state
+  const [declinedClients, setDeclinedClients] = useState<any[]>([]);
+  const [declinedLoading, setDeclinedLoading] = useState(false);
+  const [declinedPage, setDeclinedPage] = useState(0);
+  const [declinedTotalRows, setDeclinedTotalRows] = useState(0);
+  
   // Expandable row for payment activity (created policies)
   const [expandedPolicyId, setExpandedPolicyId] = useState<string | null>(null);
   const [policyPayments, setPolicyPayments] = useState<Record<string, PolicyPaymentActivity[]>>({});
