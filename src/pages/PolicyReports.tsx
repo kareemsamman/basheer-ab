@@ -302,6 +302,16 @@ export default function PolicyReports() {
   const [renewedSearch, setRenewedSearch] = useState('');
   const [expandedRenewedClientId, setExpandedRenewedClientId] = useState<string | null>(null);
   
+  // Declined Renewals State
+  const [declinedClients, setDeclinedClients] = useState<DeclinedClient[]>([]);
+  const [declinedLoading, setDeclinedLoading] = useState(false);
+  const [declinedPage, setDeclinedPage] = useState(0);
+  const [declinedTotalRows, setDeclinedTotalRows] = useState(0);
+  
+  // Renewal Assistant State
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [renewalsSubTab, setRenewalsSubTab] = useState('pending');
+  
   // Reference Data
   const [companies, setCompanies] = useState<Company[]>([]);
   const [users, setUsers] = useState<User[]>([]);
