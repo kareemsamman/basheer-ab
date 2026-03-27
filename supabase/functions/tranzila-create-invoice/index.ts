@@ -186,17 +186,15 @@ Deno.serve(async (req) => {
       customer_name: client?.full_name || '',
       vat_id: client?.id_number || '',
       client_phone_1: client?.phone_number || '',
-      client_email_1: '',
       currency_set: 'ILS',
       items: [{
-        name: itemDescription,
-        units: '1',
-        price_inc_vat: String(amt),
-        is_taxable: 'true',
+        item_name: itemDescription,
+        item_quantity: 1,
+        item_price: amt,
       }],
       payments: [{
         payment_method: paymentMethod,
-        amount: String(amt),
+        payment_sum: amt,
         payment_date: payment.payment_date,
         ...(payment.payment_type === 'visa' ? {
           cc_last_4_digits: payment.card_last_four || '',
