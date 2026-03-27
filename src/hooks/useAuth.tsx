@@ -126,17 +126,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
-    // Set up auth state listener FIRST
-    // Skip INITIAL_SESSION to avoid race condition with getSession() -
-    // getSession() handles token refresh and is the single source of truth for init
+    // Set up auth state listener FIRST - handles all auth events
+    // IMPORTANT: loading/isReady are only set by getSession() below,
+    // NOT here. This prevents premature redirects while keeping
+    // the auth state up-to-date from all events (including OAuth callbacks).
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (!isMounted) return;
 
-        // Skip INITIAL_SESSION - we use getSession() for initialization
-        // This prevents a race where INITIAL_SESSION fires with null/expired
-        // session before getSession() completes token refresh
-        if (event === 'INITIAL_SESSION') return;
+        console.log('[Auth]', event, session ? 'has session' : 'no session', session?.user?.email);
 
         // Keep session guard flag synced whenever a valid session exists
         if (session) {
@@ -146,7 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
 
-        const shouldRefetchProfile = event === 'SIGNED_IN' || event === 'USER_UPDATED';
+        const shouldRefetchProfile = event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED';
 
         // Defer profile fetch with setTimeout to avoid Supabase deadlock
         if (session?.user && shouldRefetchProfile) {
@@ -166,7 +164,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    // THEN check for existing session - single source of truth for initialization
+    // THEN check for existing session - this is the ONLY place that
+    // sets loading=false and isReady=true, ensuring ProtectedRoute
+    // won't redirect until initialization is fully complete
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!isMounted) return;
 
