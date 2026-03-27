@@ -68,9 +68,9 @@ async function callTranzilaApi(
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       'X-tranzila-api-app-key': publicKey,
+      'X-tranzila-api-request-time': timestamp,
+      'X-tranzila-api-nonce': nonce,
       'X-tranzila-api-access-token': accessToken,
-      'X-tranzila-api-request-ts': timestamp,
-      'X-tranzila-api-request-nonce': nonce,
     },
     body: payloadString,
   });
