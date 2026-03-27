@@ -1340,10 +1340,10 @@ export default function PolicyReports() {
                         <p className="text-sm text-muted-foreground">إجمالي بحاجة للتجديد</p>
                         <p className="text-4xl font-bold text-primary mt-1">{renewalsSummary.total_expiring}</p>
                         <p className="text-xs text-muted-foreground mt-2">
-                          عميل • ₪{(renewalsSummary.total_value || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                          {renewalsSummary.total_expiring} عميل • ₪{(renewalsSummary.total_value || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}
                         </p>
                       </div>
-                      <RefreshCw className="h-12 w-12 text-primary/30" />
+                      <Users className="h-12 w-12 text-primary/30" />
                     </div>
                   </Card>
 
