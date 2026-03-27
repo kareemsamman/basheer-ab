@@ -1,75 +1,68 @@
 
 
-## Fix Tranzila `create_document` Payload
+## Renewal Assistant & Follow-Up Page Overhaul
 
-The "Invalid item total sum value" error is caused by **wrong field names** in the payload. The current code uses invented field names that don't match the Tranzila Billing API schema. Here's what needs to change:
+### Overview
+Transform the renewals tab into a customer-centric monthly follow-up system with a guided "Renewal Assistant" popup and three sub-tabs (Pending / Renewed / Declined).
 
-### Field Name Corrections
+### Database Changes
 
-| Current (Wrong) | Correct (Per Docs) |
-|---|---|
-| `customer_name` | `client_name` |
-| `vat_id` | `client_id` |
-| `currency_set` | `document_currency_code` |
-| `amount_type: 'G'` | Remove (use `price_type: 'G'` inside each item) |
-| `language` | `document_language` |
-| `quantity` | `units_number` |
-| `unit_type: '1'` | `unit_type: 1` (number) |
-| `price_per_unit` | `unit_price` |
-| `item_type` | `type` |
-| `credit_term` | `cc_credit_term` |
-| `installments_number` | `cc_installments_number` |
-| Missing `action` | Add `action: 1` |
-| Missing `price_type` in item | Add `price_type: 'G'` |
+**No new tables needed.** The existing `policy_renewal_tracking` table already has `renewal_status` (text), `notes`, `contacted_by`, and timestamps. We'll use:
+- `pending` (or `not_contacted`/`sms_sent`/`called`) → pending renewal
+- `renewed` → already exists
+- `declined_renewal` → new status value, `notes` stores the reason
 
-### Response Parsing Fix
+**Migration:** Update `report_renewals` RPC to exclude `renewed` and `declined_renewal` statuses from the pending list. Create a new `report_declined_renewals` RPC for the declined tab. Update `report_renewals_summary` to return unique customer counts instead of policy counts.
 
-The response structure is `result.document.retrieval_key` and `result.document.id`, not `result.retrieval_key`.
+SQL changes:
+1. Update `report_renewals` to add `WHERE renewal_status NOT IN ('renewed', 'declined_renewal')` filter
+2. Create `report_declined_renewals(p_end_month, p_policy_type, p_created_by, p_search, p_page_size, p_page)` — returns clients whose ALL policies have `declined_renewal` status, including the decline reason
+3. Update `report_renewals_summary` to count unique `client_id` values (not policy rows) for the main KPI
 
-### Implementation
+### Frontend Changes — `src/pages/PolicyReports.tsx`
 
-**File: `supabase/functions/tranzila-create-invoice/index.ts`**
+**1. Tabs restructure (renewals only)**
+- Keep top-level tabs: `الوثائق المنشأة` | `التجديدات` | `تم التجديد` (unchanged)
+- Inside the `التجديدات` tab content, add 3 inner sub-tabs:
+  - `بانتظار التجديد` (Pending) — current renewals table, minus renewed/declined
+  - `تم التجديد` — stays as-is (the existing outer tab moves here? No — user said "تم التجديد will stay how it is now with no change")
+  
+  Actually re-reading: the user says the tabs `الوثائق المنشأة` and `تم التجديد` stay unchanged. Only the renewals tab gets sub-tabs:
+  - Pending renewal (default)
+  - Declined renewal (لا يرغبون بالتجديد)
 
-Replace the payload construction (lines 183-209) with the correct schema:
+**2. Renewal Assistant Popup**
+- New state: `assistantOpen`, `assistantClients` (list of all pending clients for the month), `assistantIndex` (current customer index)
+- On renewals tab load → auto-open the assistant popup (once per session/month)
+- Button "فتح مساعد التجديد" in the toolbar to reopen manually
+- Dialog shows current customer with:
+  - Name, phone
+  - Table of all their policies: policy number, car number, expiry date, price, company, policy type
+- 4 action buttons:
+  - **نعم، تم التجديد** → upsert `renewed` status for all client policies → remove from pending, move to next
+  - **لا، ليس بعد** → keep `pending`/current status → move to next
+  - **لا يرغب بالتجديد** → show reason textarea (required) → upsert `declined_renewal` with reason in `notes` → move to next
+  - **تخطي** → no changes → move to next
+- X button to close the assistant flow entirely
+- Progress indicator: "عميل 3 من 28"
 
-```typescript
-const invoicePayload: Record<string, any> = {
-  terminal_name: terminalName,
-  document_type: 'RE',
-  action: 1,
-  document_language: 'heb',
-  document_currency_code: 'ILS',
-  client_name: client?.full_name || '',
-  client_id: client?.id_number || '',
-  items: [{
-    type: 'I',
-    name: itemDescription,
-    unit_price: amt,
-    units_number: 1,
-    unit_type: 1,
-    price_type: 'G',
-    currency_code: 'ILS',
-  }],
-  payments: [{
-    payment_method: Number(paymentMethod),
-    payment_date: payment.payment_date,
-    amount: amt,
-    currency_code: 'ILS',
-    ...(payment.payment_type === 'visa' ? {
-      cc_last_4_digits: payment.card_last_four || '',
-      cc_credit_term: 1,
-      ...(payment.installments_count > 1 ? { cc_installments_number: payment.installments_count } : {}),
-    } : {}),
-  }],
-};
-```
+**3. Summary card update**
+- Main number = unique customers still pending
+- Secondary: `X عميل • ₪Y` where Y = total premium of their policies
 
-Fix response parsing (lines 233-236):
-```typescript
-const doc = result.document;
-const retrievalKey = doc.retrieval_key;
-const documentId = doc.id;
-```
+**4. New "Declined" sub-tab**
+- State: `declinedClients`, `declinedLoading`, pagination
+- Table columns: Customer name, phone, policies count, total price, decline reason, declined by, date
+- Fetched via `report_declined_renewals` RPC
 
-Then redeploy the edge function.
+### Implementation Steps
+
+1. **DB migration**: Update `report_renewals` to exclude renewed/declined, create `report_declined_renewals` RPC, update summary to count customers
+2. **Renewal Assistant component**: Build the popup dialog with customer-by-customer flow, policy details table, 4 action buttons, and reason input for declined
+3. **Update PolicyReports.tsx**: Add assistant state/trigger, add "Open Assistant" button, add declined sub-tab within renewals, update summary card display
+4. **Wire data**: Connect assistant actions to `policy_renewal_tracking` upserts, refresh data after each action
+
+### Files Modified
+- `src/pages/PolicyReports.tsx` — main page with assistant popup, sub-tabs, updated summary
+- 1 new migration SQL — updated RPCs
 
