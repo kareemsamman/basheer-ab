@@ -118,6 +118,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         
+        // On sign-in events, immediately set session flag to prevent guard race condition
+        if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+          const email = session.user.email;
+          if (email && email !== SUPER_ADMIN_EMAIL) {
+            sessionStorage.setItem('admin_session_active', 'true');
+          }
+        }
+        
         // Defer profile fetch with setTimeout to avoid deadlock
         if (session?.user) {
           setTimeout(() => {
