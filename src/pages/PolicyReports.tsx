@@ -1458,6 +1458,16 @@ export default function PolicyReports() {
                 </div>
 
                 <div className="flex gap-2 mr-auto">
+                  {/* Assistant Button */}
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setAssistantOpen(true)} 
+                    disabled={renewalClients.length === 0}
+                    className="gap-2"
+                  >
+                    <Users className="h-4 w-4" />
+                    فتح مساعد التجديد
+                  </Button>
                   {/* PDF للمسؤولين فقط */}
                   {isAdmin && (
                     <Button variant="outline" onClick={handleGeneratePdf} disabled={generatingPdf}>
