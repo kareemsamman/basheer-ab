@@ -239,6 +239,24 @@ interface Company {
   name_ar: string | null;
 }
 
+interface DeclinedClient {
+  client_id: string;
+  client_name: string;
+  client_file_number: string | null;
+  client_phone: string | null;
+  policies_count: number;
+  earliest_end_date: string;
+  total_insurance_price: number;
+  policy_types: string[] | null;
+  decline_reason: string | null;
+  declined_by_name: string | null;
+  declined_at: string | null;
+  total_count: number;
+}
+  name: string;
+  name_ar: string | null;
+}
+
 interface User {
   id: string;
   display_name: string;
