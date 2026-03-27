@@ -62,13 +62,19 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
   const [declineReason, setDeclineReason] = useState('');
 
   const followUpMonth = `${month}-01`;
+  const formatLocalDate = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
 
   const fetchPendingClients = useCallback(async () => {
     setLoading(true);
     try {
       const [year, mo] = month.split('-').map(Number);
-      const startDate = new Date(year, mo - 1, 1).toISOString().split('T')[0];
-      const endDate = new Date(year, mo, 0).toISOString().split('T')[0];
+      const startDate = formatLocalDate(new Date(year, mo - 1, 1));
+      const endDate = formatLocalDate(new Date(year, mo, 0));
 
       // Get clients with expiring policies
       const { data: policies, error } = await (supabase as any)
