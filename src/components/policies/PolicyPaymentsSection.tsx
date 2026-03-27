@@ -151,6 +151,7 @@ export function PolicyPaymentsSection({
   const [uploadingImages, setUploadingImages] = useState(false);
   const [removeExistingFiles, setRemoveExistingFiles] = useState(false);
   const [generatingReceipt, setGeneratingReceipt] = useState<string | null>(null);
+  const [generatingTranzilaReceipt, setGeneratingTranzilaReceipt] = useState<string | null>(null);
 
   // Calculate totals - use package totals if provided
   const effectivePrice = packageTotalPrice ?? insurancePrice;
