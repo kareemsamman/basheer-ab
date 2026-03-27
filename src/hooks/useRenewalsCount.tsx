@@ -7,23 +7,29 @@ export function useRenewalsCount() {
 
   const fetchCount = useCallback(async () => {
     try {
-      // Get current month for default filter
       const now = new Date();
-      const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
-      
-      const { data, error } = await supabase.rpc('report_renewals_summary', {
-        p_end_month: `${currentMonth}-01`,
+      const currentMonth = now.toISOString().slice(0, 7);
+      const [year, month] = currentMonth.split('-').map(Number);
+      const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
+      const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+
+      // Use report_renewals with page_size=1 just to get total_count
+      const { data, error } = await supabase.rpc('report_renewals', {
+        p_start_date: startDate,
+        p_end_date: endDate,
         p_policy_type: null,
         p_created_by: null,
-        p_search: null
+        p_search: null,
+        p_page_size: 1,
+        p_page: 1
       });
-      
+
       if (error) {
         console.error('Error fetching renewals count:', error);
         setIsLoading(false);
         return;
       }
-      
+
       if (data && data.length > 0) {
         setRenewalsCount((data[0] as any).total_count || 0);
       }
@@ -36,9 +42,9 @@ export function useRenewalsCount() {
 
   useEffect(() => {
     fetchCount();
-    const interval = setInterval(fetchCount, 60000); // Refresh every minute
+    const interval = setInterval(fetchCount, 60000);
     window.addEventListener('focus', fetchCount);
-    
+
     return () => {
       clearInterval(interval);
       window.removeEventListener('focus', fetchCount);
