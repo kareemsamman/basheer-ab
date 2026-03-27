@@ -163,12 +163,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Admin session guard - force logout for non-super admins on new browser session
+  // IMPORTANT: Skip guard on fresh OAuth callback (hash contains access_token)
   useEffect(() => {
     const SESSION_KEY = 'admin_session_active';
     const userEmail = user?.email;
     const isNonSuperAdmin = userEmail !== SUPER_ADMIN_EMAIL && isAdmin;
     
     if (!user || !isNonSuperAdmin) {
+      return;
+    }
+
+    // If URL contains OAuth callback tokens, this is a fresh login — mark session active
+    const hash = window.location.hash;
+    if (hash.includes('access_token') || hash.includes('type=recovery')) {
+      sessionStorage.setItem(SESSION_KEY, 'true');
       return;
     }
 
