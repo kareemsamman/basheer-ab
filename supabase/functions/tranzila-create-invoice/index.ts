@@ -12,8 +12,9 @@ interface CreateInvoiceRequest {
 }
 
 /**
- * Generate Tranzila access token.
- * Formula: HMAC-SHA256(message=appKey, key=secret+timestamp+nonce)
+ * Generate Tranzila access token per docs:
+ * hash_hmac('sha256', appKey, secret + time + nonce)
+ * message = appKey, key = secret + time + nonce
  */
 async function generateAccessToken(appKey: string, secret: string, timestamp: string, nonce: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -30,7 +31,7 @@ async function generateAccessToken(appKey: string, secret: string, timestamp: st
 }
 
 function generateNonce(): string {
-  const bytes = new Uint8Array(32);
+  const bytes = new Uint8Array(40); // 40 random bytes → 80 hex chars per Tranzila docs
   crypto.getRandomValues(bytes);
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
