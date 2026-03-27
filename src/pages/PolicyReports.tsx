@@ -1746,6 +1746,111 @@ export default function PolicyReports() {
                 </>
               )}
             </Card>
+              </TabsContent>
+
+              {/* Declined Renewals Sub-tab */}
+              <TabsContent value="declined" className="mt-4">
+                <Card className="overflow-hidden">
+                  {declinedLoading ? (
+                    <div className="p-4 space-y-2">
+                      {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+                    </div>
+                  ) : declinedClients.length === 0 ? (
+                    <div className="text-center py-12">
+                      <ThumbsDown className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
+                      <p className="text-muted-foreground">لا يوجد عملاء رفضوا التجديد في هذه الفترة</p>
+                    </div>
+                  ) : (
+                    <>
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="text-right">العميل</TableHead>
+                            <TableHead className="text-right">الهاتف</TableHead>
+                            <TableHead className="text-right">عدد الوثائق</TableHead>
+                            <TableHead className="text-right">النوع</TableHead>
+                            <TableHead className="text-right">تاريخ الانتهاء</TableHead>
+                            <TableHead className="text-right">السعر</TableHead>
+                            <TableHead className="text-right">سبب الرفض</TableHead>
+                            <TableHead className="text-right">بواسطة</TableHead>
+                            <TableHead className="text-right">التاريخ</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {declinedClients.map(client => (
+                            <TableRow key={client.client_id} className="hover:bg-muted/30">
+                              <TableCell>
+                                <button
+                                  onClick={() => navigate(`/clients/${client.client_id}`)}
+                                  className="font-medium hover:text-primary hover:underline transition-colors text-right"
+                                >
+                                  {client.client_name}
+                                </button>
+                                {client.client_file_number && (
+                                  <p className="text-xs text-muted-foreground">#{client.client_file_number}</p>
+                                )}
+                              </TableCell>
+                              <TableCell onClick={(e) => e.stopPropagation()}>
+                                <ClickablePhone phone={client.client_phone} />
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{client.policies_count} وثيقة</Badge>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-1">
+                                  {client.policy_types?.map(type => (
+                                    <Badge key={type} variant="secondary" className="text-xs">
+                                      {policyTypeLabels[type] || type}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </TableCell>
+                              <TableCell className="font-mono text-sm">{formatDate(client.earliest_end_date)}</TableCell>
+                              <TableCell className="font-bold">₪{client.total_insurance_price.toLocaleString()}</TableCell>
+                              <TableCell className="max-w-[200px]">
+                                <p className="text-sm text-muted-foreground truncate" title={client.decline_reason || ''}>
+                                  {client.decline_reason || '-'}
+                                </p>
+                              </TableCell>
+                              <TableCell className="text-sm">{client.declined_by_name || '-'}</TableCell>
+                              <TableCell className="font-mono text-xs">{client.declined_at ? formatDate(client.declined_at) : '-'}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+
+                      {/* Pagination */}
+                      <div className="flex items-center justify-between p-4 border-t">
+                        <p className="text-sm text-muted-foreground">
+                          إجمالي: {declinedTotalRows} عميل
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setDeclinedPage(p => Math.max(0, p - 1))}
+                            disabled={declinedPage === 0}
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                          <span className="text-sm">
+                            {declinedPage + 1} / {Math.ceil(declinedTotalRows / PAGE_SIZE) || 1}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setDeclinedPage(p => p + 1)}
+                            disabled={declinedPage >= Math.ceil(declinedTotalRows / PAGE_SIZE) - 1}
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </Card>
+              </TabsContent>
+            </Tabs>
           </TabsContent>
 
           {/* Renewed Clients Tab */}
