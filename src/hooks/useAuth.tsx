@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -41,7 +41,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Super admin check based on email - this is the authoritative check
   const isSuperAdmin = user?.email === SUPER_ADMIN_EMAIL;
 
+  const fetchingRef = useRef<string | null>(null);
+
   const fetchUserProfile = async (userId: string, userEmail: string | undefined) => {
+    // Deduplicate: skip if already fetching for this user
+    if (fetchingRef.current === userId) return profile;
+    fetchingRef.current = userId;
     setProfileLoading(true);
     try {
       const { data: profileData, error: profileError } = await supabase
@@ -53,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (profileError) {
         console.error('Error fetching profile:', profileError);
         setProfileLoading(false);
+        fetchingRef.current = null;
         return null;
       }
 
@@ -60,10 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const isSuperAdminUser = userEmail === SUPER_ADMIN_EMAIL;
       
       if (isSuperAdminUser) {
-        // Super admin is always admin
         setIsAdmin(true);
       } else {
-        // Check role in database for other users
         const { data: roleData } = await supabase
           .from('user_roles')
           .select('role')
@@ -90,10 +94,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setProfileLoading(false);
+      fetchingRef.current = null;
       return profileData as UserProfile;
     } catch (error) {
       console.error('Error in fetchUserProfile:', error);
       setProfileLoading(false);
+      fetchingRef.current = null;
       return null;
     }
   };
@@ -114,6 +120,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (!isMounted) return;
+        
+        // Set admin session flag on any successful auth event
+        if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+          sessionStorage.setItem('admin_session_active', 'true');
+        }
         
         setSession(session);
         setUser(session?.user ?? null);
@@ -146,9 +157,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        fetchUserProfile(session.user.id, session.user.email).then(p => {
-          if (isMounted) setProfile(p);
-        });
+        // Only fetch if not already being fetched by onAuthStateChange
+        if (!fetchingRef.current) {
+          fetchUserProfile(session.user.id, session.user.email).then(p => {
+            if (isMounted) setProfile(p);
+          });
+        }
       } else {
         setProfileLoading(false);
       }
