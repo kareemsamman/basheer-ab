@@ -179,8 +179,6 @@ Deno.serve(async (req) => {
     const paymentMethod = PAYMENT_METHOD_MAP[payment.payment_type || 'visa'] || '3';
 
     const amt = Number(payment.amount);
-    // Tranzila Billing API uses agorot (cents) for amounts
-    const amtAgorot = Math.round(amt * 100);
 
     const invoicePayload: Record<string, any> = {
       terminal_name: terminalName,
@@ -192,13 +190,13 @@ Deno.serve(async (req) => {
       currency_set: 'ILS',
       items: [{
         name: itemDescription,
-        units: 1,
-        price_inc_vat: amtAgorot,
-        is_taxable: false,
+        units: '1',
+        price_inc_vat: String(amt),
+        is_taxable: 'true',
       }],
       payments: [{
         payment_method: paymentMethod,
-        amount: amtAgorot,
+        amount: String(amt),
         payment_date: payment.payment_date,
         ...(payment.payment_type === 'visa' ? {
           cc_last_4_digits: payment.card_last_four || '',
