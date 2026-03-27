@@ -176,7 +176,7 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       success: true,
-      test_mode: useSandbox,
+      test_mode: settings.test_mode,
       payment_id: payment.id,
       iframe_url: iframeUrl,
       form_fields: formFields, // Return fields for POST submission
