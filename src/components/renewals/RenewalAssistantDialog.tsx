@@ -28,7 +28,6 @@ interface AssistantPolicy {
   company_name_ar: string | null;
   end_date: string;
   insurance_price: number;
-  policy_number: string | null;
 }
 
 interface RenewalAssistantDialogProps {
