@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.report_renewals(date, text, uuid, text);
