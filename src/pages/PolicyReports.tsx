@@ -2119,6 +2119,17 @@ export default function PolicyReports() {
         }}
         renewalData={renewalData ?? undefined}
       />
+
+      {/* Renewal Assistant */}
+      <RenewalAssistant
+        open={assistantOpen}
+        onOpenChange={setAssistantOpen}
+        month={renewalsMonth}
+        onActionComplete={() => {
+          fetchRenewals();
+          if (renewalSubTab === 'declined') fetchDeclinedClients();
+        }}
+      />
     </MainLayout>
   );
 }
