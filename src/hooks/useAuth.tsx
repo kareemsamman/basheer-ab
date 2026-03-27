@@ -18,6 +18,7 @@ interface AuthContextType {
   session: Session | null;
   profile: UserProfile | null;
   loading: boolean;
+  isReady: boolean;
   profileLoading: boolean;
   isActive: boolean;
   isAdmin: boolean;
@@ -34,6 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isReady, setIsReady] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [branchName, setBranchName] = useState<string | null>(null);
@@ -121,8 +123,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (event, session) => {
         if (!isMounted) return;
         
-        // Set admin session flag on any successful auth event
-        if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+        // Keep session guard flag synced whenever a valid session exists
+        if (session) {
           sessionStorage.setItem('admin_session_active', 'true');
         }
         
@@ -157,6 +159,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
       
       if (session?.user) {
+        sessionStorage.setItem('admin_session_active', 'true');
+
         // Only fetch if not already being fetched by onAuthStateChange
         if (!fetchingRef.current) {
           fetchUserProfile(session.user.id, session.user.email).then(p => {
@@ -167,6 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfileLoading(false);
       }
       
+      setIsReady(true);
       setLoading(false);
     });
 
@@ -182,7 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const userEmail = user?.email;
     const isNonSuperAdmin = userEmail !== SUPER_ADMIN_EMAIL && isAdmin;
     
-    if (!user || !isNonSuperAdmin) {
+    if (!isReady || !session || !user || !isNonSuperAdmin) {
       return;
     }
 
@@ -199,7 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Keep session flag active
     sessionStorage.setItem(SESSION_KEY, 'true');
-  }, [user, isAdmin]);
+  }, [isReady, session, user, isAdmin]);
 
   // CRITICAL: Super admin and admins bypass status checks entirely
   // Order: super admin → admin → active status
@@ -214,6 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       profile,
       loading,
+      isReady,
       profileLoading,
       isActive,
       isAdmin: isAdmin || isSuperAdmin,
