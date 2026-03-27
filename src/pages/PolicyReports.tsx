@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -33,6 +33,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { PolicyWizard } from '@/components/policies/PolicyWizard';
+import { RenewalAssistantDialog } from '@/components/renewals/RenewalAssistantDialog';
 import { RenewalData } from '@/components/policies/wizard/types';
 import {
   Search,
@@ -56,6 +57,8 @@ import {
   CreditCard,
   Banknote,
   Package,
+  Users,
+  ThumbsDown,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
