@@ -656,7 +656,7 @@ export default function PolicyReports() {
     }
   };
 
-
+  useEffect(() => {
     if (activeTab === 'renewals') {
       fetchRenewals();
       if (renewalsSubTab === 'declined') {
