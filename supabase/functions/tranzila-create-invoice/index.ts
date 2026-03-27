@@ -11,18 +11,28 @@ interface CreateInvoiceRequest {
   payment_id: string;
 }
 
-async function generateHash(privateKey: string, publicKey: string, payload: string): Promise<string> {
+/**
+ * Generate Tranzila access token.
+ * Formula: HMAC-SHA256(message=appKey, key=secret+timestamp+nonce)
+ */
+async function generateAccessToken(appKey: string, secret: string, timestamp: string, nonce: string): Promise<string> {
   const encoder = new TextEncoder();
-  const dataToSign = privateKey + publicKey + payload;
+  const hmacKey = secret + timestamp + nonce;
   const key = await crypto.subtle.importKey(
     'raw',
-    encoder.encode(privateKey),
+    encoder.encode(hmacKey),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign']
   );
-  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(dataToSign));
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(appKey));
   return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function generateNonce(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 const POLICY_TYPE_LABELS: Record<string, string> = {
@@ -45,10 +55,11 @@ async function callTranzilaApi(
   invoicePayload: Record<string, any>,
 ): Promise<{ success: boolean; data?: any; error?: string; provider_raw?: string }> {
   const payloadString = JSON.stringify(invoicePayload);
-  // Tranzila requires a Unix timestamp for request freshness validation
   const timestamp = Math.floor(Date.now() / 1000).toString();
-  // Hash is computed over payload + timestamp
-  const requestHash = await generateHash(privateKey, publicKey, payloadString + timestamp);
+  const nonce = generateNonce();
+  const accessToken = await generateAccessToken(publicKey, privateKey, timestamp, nonce);
+
+  console.log('[tranzila-create-invoice] Auth: timestamp=', timestamp, 'nonce length=', nonce.length);
 
   const response = await fetch(`${BILLING_API_URL}/create_document`, {
     method: 'POST',
@@ -56,8 +67,9 @@ async function callTranzilaApi(
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       'X-tranzila-api-app-key': publicKey,
-      'X-tranzila-api-request-hash': requestHash,
+      'X-tranzila-api-access-token': accessToken,
       'X-tranzila-api-request-ts': timestamp,
+      'X-tranzila-api-request-nonce': nonce,
     },
     body: payloadString,
   });
