@@ -5584,24 +5584,6 @@ export type Database = {
       report_renewals:
         | {
             Args: {
-              p_created_by?: string
-              p_end_month: string
-              p_policy_type?: string
-              p_search?: string
-            }
-            Returns: {
-              client_file_number: string
-              client_id: string
-              client_name: string
-              client_phone: string
-              earliest_end_date: string
-              min_days_remaining: number
-              policy_count: number
-              total_insurance_price: number
-            }[]
-          }
-        | {
-            Args: {
               p_branch_id?: string
               p_broker_id?: string
               p_company_id?: string
