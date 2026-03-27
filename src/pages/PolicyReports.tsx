@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -33,6 +33,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { PolicyWizard } from '@/components/policies/PolicyWizard';
+import { RenewalAssistantDialog } from '@/components/renewals/RenewalAssistantDialog';
 import { RenewalData } from '@/components/policies/wizard/types';
 import {
   Search,
@@ -56,6 +57,8 @@ import {
   CreditCard,
   Banknote,
   Package,
+  Users,
+  ThumbsDown,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -102,6 +105,7 @@ const renewalStatusLabels: Record<string, string> = {
   called: 'تم الاتصال',
   renewed: 'تم التجديد',
   not_interested: 'غير مهتم',
+  declined_renewal: 'لا يرغب بالتجديد',
 };
 
 const renewalStatusColors: Record<string, string> = {
@@ -110,6 +114,7 @@ const renewalStatusColors: Record<string, string> = {
   called: 'bg-amber-100 text-amber-700 border-amber-200',
   renewed: 'bg-green-100 text-green-700 border-green-200',
   not_interested: 'bg-red-100 text-red-700 border-red-200',
+  declined_renewal: 'bg-red-100 text-red-700 border-red-200',
 };
 
 interface PolicyPaymentActivity {
@@ -234,6 +239,21 @@ interface Company {
   name_ar: string | null;
 }
 
+interface DeclinedClient {
+  client_id: string;
+  client_name: string;
+  client_file_number: string | null;
+  client_phone: string | null;
+  policies_count: number;
+  earliest_end_date: string;
+  total_insurance_price: number;
+  policy_types: string[] | null;
+  decline_reason: string | null;
+  declined_by_name: string | null;
+  declined_at: string | null;
+  total_count: number;
+}
+
 interface User {
   id: string;
   display_name: string;
@@ -281,6 +301,16 @@ export default function PolicyReports() {
   const [renewedCreatedByFilter, setRenewedCreatedByFilter] = useState<string>('all');
   const [renewedSearch, setRenewedSearch] = useState('');
   const [expandedRenewedClientId, setExpandedRenewedClientId] = useState<string | null>(null);
+  
+  // Declined Renewals State
+  const [declinedClients, setDeclinedClients] = useState<DeclinedClient[]>([]);
+  const [declinedLoading, setDeclinedLoading] = useState(false);
+  const [declinedPage, setDeclinedPage] = useState(0);
+  const [declinedTotalRows, setDeclinedTotalRows] = useState(0);
+  
+  // Renewal Assistant State
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [renewalsSubTab, setRenewalsSubTab] = useState('pending');
   
   // Reference Data
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -603,11 +633,37 @@ export default function PolicyReports() {
     }
   }, [activeTab, createdPage, createdDatePreset, createdFromDate, createdToDate, createdByFilter, createdPolicyTypeFilter, createdCompanyFilter, createdSearch]);
 
+  // Fetch declined renewals
+  const fetchDeclinedClients = async () => {
+    setDeclinedLoading(true);
+    try {
+      const { data, error } = await supabase.rpc('report_declined_renewals', {
+        p_end_month: renewalsMonth ? `${renewalsMonth}-01` : null,
+        p_policy_type: renewalsPolicyTypeFilter !== 'all' ? renewalsPolicyTypeFilter : null,
+        p_created_by: renewalsCreatedByFilter !== 'all' ? renewalsCreatedByFilter : null,
+        p_search: renewalsSearch || null,
+        p_page_size: PAGE_SIZE,
+        p_page: declinedPage + 1,
+      });
+      if (error) throw error;
+      const clientData = (data as unknown as DeclinedClient[]) || [];
+      setDeclinedClients(clientData);
+      setDeclinedTotalRows(clientData[0]?.total_count || 0);
+    } catch (err) {
+      console.error('Error fetching declined clients:', err);
+    } finally {
+      setDeclinedLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'renewals') {
       fetchRenewals();
+      if (renewalsSubTab === 'declined') {
+        fetchDeclinedClients();
+      }
     }
-  }, [activeTab, renewalsPage, renewalsMonth, renewalsDaysFilter, renewalsPolicyTypeFilter, renewalsCreatedByFilter, renewalsSearch]);
+  }, [activeTab, renewalsPage, renewalsMonth, renewalsDaysFilter, renewalsPolicyTypeFilter, renewalsCreatedByFilter, renewalsSearch, renewalsSubTab]);
 
   // Fetch renewed clients
   const fetchRenewedClients = async () => {
@@ -1283,7 +1339,7 @@ export default function PolicyReports() {
                         <p className="text-sm text-muted-foreground">إجمالي بحاجة للتجديد</p>
                         <p className="text-4xl font-bold text-primary mt-1">{renewalsSummary.total_expiring}</p>
                         <p className="text-xs text-muted-foreground mt-2">
-                          عميل • ₪{(renewalsSummary.total_value || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                          {renewalsSummary.total_expiring} عميل • ₪{(renewalsSummary.total_value || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}
                         </p>
                       </div>
                       <RefreshCw className="h-12 w-12 text-primary/30" />
@@ -1402,6 +1458,16 @@ export default function PolicyReports() {
                 </div>
 
                 <div className="flex gap-2 mr-auto">
+                  {/* Assistant Button */}
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setAssistantOpen(true)} 
+                    disabled={renewalClients.length === 0}
+                    className="gap-2"
+                  >
+                    <Users className="h-4 w-4" />
+                    فتح مساعد التجديد
+                  </Button>
                   {/* PDF للمسؤولين فقط */}
                   {isAdmin && (
                     <Button variant="outline" onClick={handleGeneratePdf} disabled={generatingPdf}>
@@ -1418,6 +1484,20 @@ export default function PolicyReports() {
               </div>
             </Card>
 
+            {/* Sub-tabs for pending / declined */}
+            <Tabs value={renewalsSubTab} onValueChange={setRenewalsSubTab}>
+              <TabsList className="grid w-full max-w-sm grid-cols-2">
+                <TabsTrigger value="pending" className="gap-2">
+                  <Clock className="h-4 w-4" />
+                  بانتظار التجديد
+                </TabsTrigger>
+                <TabsTrigger value="declined" className="gap-2">
+                  <ThumbsDown className="h-4 w-4" />
+                  لا يرغبون بالتجديد
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="pending" className="mt-4">
             {/* Table - Grouped by Customer */}
             <Card className="overflow-hidden">
               {renewalsLoading ? (
@@ -1666,6 +1746,111 @@ export default function PolicyReports() {
                 </>
               )}
             </Card>
+              </TabsContent>
+
+              {/* Declined Renewals Sub-tab */}
+              <TabsContent value="declined" className="mt-4">
+                <Card className="overflow-hidden">
+                  {declinedLoading ? (
+                    <div className="p-4 space-y-2">
+                      {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+                    </div>
+                  ) : declinedClients.length === 0 ? (
+                    <div className="text-center py-12">
+                      <ThumbsDown className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
+                      <p className="text-muted-foreground">لا يوجد عملاء رفضوا التجديد في هذه الفترة</p>
+                    </div>
+                  ) : (
+                    <>
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="text-right">العميل</TableHead>
+                            <TableHead className="text-right">الهاتف</TableHead>
+                            <TableHead className="text-right">عدد الوثائق</TableHead>
+                            <TableHead className="text-right">النوع</TableHead>
+                            <TableHead className="text-right">تاريخ الانتهاء</TableHead>
+                            <TableHead className="text-right">السعر</TableHead>
+                            <TableHead className="text-right">سبب الرفض</TableHead>
+                            <TableHead className="text-right">بواسطة</TableHead>
+                            <TableHead className="text-right">التاريخ</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {declinedClients.map(client => (
+                            <TableRow key={client.client_id} className="hover:bg-muted/30">
+                              <TableCell>
+                                <button
+                                  onClick={() => navigate(`/clients/${client.client_id}`)}
+                                  className="font-medium hover:text-primary hover:underline transition-colors text-right"
+                                >
+                                  {client.client_name}
+                                </button>
+                                {client.client_file_number && (
+                                  <p className="text-xs text-muted-foreground">#{client.client_file_number}</p>
+                                )}
+                              </TableCell>
+                              <TableCell onClick={(e) => e.stopPropagation()}>
+                                <ClickablePhone phone={client.client_phone} />
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{client.policies_count} وثيقة</Badge>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-1">
+                                  {client.policy_types?.map(type => (
+                                    <Badge key={type} variant="secondary" className="text-xs">
+                                      {policyTypeLabels[type] || type}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </TableCell>
+                              <TableCell className="font-mono text-sm">{formatDate(client.earliest_end_date)}</TableCell>
+                              <TableCell className="font-bold">₪{client.total_insurance_price.toLocaleString()}</TableCell>
+                              <TableCell className="max-w-[200px]">
+                                <p className="text-sm text-muted-foreground truncate" title={client.decline_reason || ''}>
+                                  {client.decline_reason || '-'}
+                                </p>
+                              </TableCell>
+                              <TableCell className="text-sm">{client.declined_by_name || '-'}</TableCell>
+                              <TableCell className="font-mono text-xs">{client.declined_at ? formatDate(client.declined_at) : '-'}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+
+                      {/* Pagination */}
+                      <div className="flex items-center justify-between p-4 border-t">
+                        <p className="text-sm text-muted-foreground">
+                          إجمالي: {declinedTotalRows} عميل
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setDeclinedPage(p => Math.max(0, p - 1))}
+                            disabled={declinedPage === 0}
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                          <span className="text-sm">
+                            {declinedPage + 1} / {Math.ceil(declinedTotalRows / PAGE_SIZE) || 1}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setDeclinedPage(p => p + 1)}
+                            disabled={declinedPage >= Math.ceil(declinedTotalRows / PAGE_SIZE) - 1}
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </Card>
+              </TabsContent>
+            </Tabs>
           </TabsContent>
 
           {/* Renewed Clients Tab */}
@@ -1983,6 +2168,28 @@ export default function PolicyReports() {
           fetchRenewals();
         }}
         renewalData={renewalData ?? undefined}
+      />
+
+      {/* Renewal Assistant Dialog */}
+      <RenewalAssistantDialog
+        open={assistantOpen}
+        onOpenChange={setAssistantOpen}
+        clients={renewalClients.map(c => ({
+          client_id: c.client_id,
+          client_name: c.client_name,
+          client_phone: c.client_phone,
+          policy_ids: c.policy_ids || [],
+        }))}
+        startDate={getRenewalDateRange().startDate}
+        endDate={getRenewalDateRange().endDate}
+        onComplete={() => {
+          setClientPolicies({});
+          setExpandedClientId(null);
+          fetchRenewals();
+          if (renewalsSubTab === 'declined') {
+            fetchDeclinedClients();
+          }
+        }}
       />
     </MainLayout>
   );
