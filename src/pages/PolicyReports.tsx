@@ -253,9 +253,6 @@ interface DeclinedClient {
   declined_at: string | null;
   total_count: number;
 }
-  name: string;
-  name_ar: string | null;
-}
 
 interface User {
   id: string;
