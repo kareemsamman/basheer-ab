@@ -33,6 +33,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { PolicyWizard } from '@/components/policies/PolicyWizard';
+import { RenewalAssistant } from '@/components/reports/RenewalAssistant';
 import { RenewalData } from '@/components/policies/wizard/types';
 import {
   Search,
@@ -56,6 +57,8 @@ import {
   CreditCard,
   Banknote,
   Package,
+  Users,
+  PlayCircle,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -301,6 +304,18 @@ export default function PolicyReports() {
   const [renewalData, setRenewalData] = useState<RenewalData | null>(null);
   const [renewingClientId, setRenewingClientId] = useState<string | null>(null);
   
+  // Renewal Assistant
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  
+  // Renewal sub-tab (pending / declined)
+  const [renewalSubTab, setRenewalSubTab] = useState<'pending' | 'declined'>('pending');
+  
+  // Declined clients state
+  const [declinedClients, setDeclinedClients] = useState<any[]>([]);
+  const [declinedLoading, setDeclinedLoading] = useState(false);
+  const [declinedPage, setDeclinedPage] = useState(0);
+  const [declinedTotalRows, setDeclinedTotalRows] = useState(0);
+  
   // Expandable row for payment activity (created policies)
   const [expandedPolicyId, setExpandedPolicyId] = useState<string | null>(null);
   const [policyPayments, setPolicyPayments] = useState<Record<string, PolicyPaymentActivity[]>>({});
@@ -472,24 +487,15 @@ export default function PolicyReports() {
     try {
       const { startDate, endDate } = getRenewalDateRange();
       
-      const [renewalsRes, summaryRes] = await Promise.all([
-        supabase.rpc('report_renewals', {
+      const renewalsRes = await supabase.rpc('report_renewals', {
           p_start_date: startDate,
           p_end_date: endDate,
           p_policy_type: renewalsPolicyTypeFilter !== 'all' ? renewalsPolicyTypeFilter : null,
           p_created_by: renewalsCreatedByFilter !== 'all' ? renewalsCreatedByFilter : null,
           p_search: renewalsSearch || null,
           p_page_size: PAGE_SIZE,
-          p_page: renewalsPage + 1 // 1-indexed
-        }),
-        // Pass the same filters to summary so numbers always match
-        supabase.rpc('report_renewals_summary', {
-          p_end_month: renewalsMonth ? `${renewalsMonth}-01` : null,
-          p_policy_type: renewalsPolicyTypeFilter !== 'all' ? renewalsPolicyTypeFilter : null,
-          p_created_by: renewalsCreatedByFilter !== 'all' ? renewalsCreatedByFilter : null,
-          p_search: renewalsSearch || null,
-        })
-      ]);
+          p_page: renewalsPage + 1
+        });
 
       if (renewalsRes.error) throw renewalsRes.error;
       // Cast to unknown first to handle type mismatch during types.ts regeneration
@@ -497,26 +503,20 @@ export default function PolicyReports() {
       setRenewalClients(clientData);
       setRenewalsTotalRows(clientData[0]?.total_count || 0);
       
-      // Handle summary separately to show errors clearly
-      if (summaryRes.error) {
-        console.error('Error fetching renewals summary:', summaryRes.error);
-        toast.error('فشل في تحميل ملخص التجديدات');
-      } else if (summaryRes.data && summaryRes.data.length > 0) {
-        setRenewalsSummary(summaryRes.data[0] as unknown as RenewalSummary);
-      } else {
-        // No data returned, set default empty summary
-        setRenewalsSummary({
-          total_expiring: 0,
-          not_contacted: 0,
-          sms_sent: 0,
-          called: 0,
-          renewed: 0,
-          not_interested: 0,
-          total_packages: 0,
-          total_single: 0,
-          total_value: 0
-        });
-      }
+      // Compute summary from client data
+      const totalCount = clientData[0]?.total_count || 0;
+      const totalValue = clientData.reduce((s, c) => s + (c.total_insurance_price || 0), 0);
+      setRenewalsSummary({
+        total_expiring: totalCount,
+        not_contacted: clientData.filter(c => c.worst_renewal_status === 'not_contacted').length,
+        sms_sent: clientData.filter(c => c.worst_renewal_status === 'sms_sent').length,
+        called: clientData.filter(c => c.worst_renewal_status === 'called').length,
+        renewed: 0,
+        not_interested: clientData.filter(c => c.worst_renewal_status === 'not_interested').length,
+        total_packages: 0,
+        total_single: 0,
+        total_value: totalValue,
+      });
     } catch (error) {
       console.error('Error fetching renewals:', error);
       toast.error('فشل في تحميل البيانات');
@@ -606,8 +606,50 @@ export default function PolicyReports() {
   useEffect(() => {
     if (activeTab === 'renewals') {
       fetchRenewals();
+      // Auto-open assistant first time
+      if (renewalSubTab === 'pending') {
+        setAssistantOpen(true);
+      }
     }
   }, [activeTab, renewalsPage, renewalsMonth, renewalsDaysFilter, renewalsPolicyTypeFilter, renewalsCreatedByFilter, renewalsSearch]);
+
+  // Fetch declined clients
+  const fetchDeclinedClients = async () => {
+    setDeclinedLoading(true);
+    try {
+      const followUpMonth = `${renewalsMonth}-01`;
+      const { data, error } = await supabase
+        .from('renewal_followups')
+        .select(`
+          id,
+          client_id,
+          status,
+          decline_reason,
+          updated_by,
+          updated_at,
+          clients(full_name, phone_number, file_number)
+        `)
+        .eq('follow_up_month', followUpMonth)
+        .eq('status', 'declined_renewal')
+        .order('updated_at', { ascending: false })
+        .range(declinedPage * PAGE_SIZE, (declinedPage + 1) * PAGE_SIZE - 1);
+
+      if (error) throw error;
+      setDeclinedClients(data || []);
+      // Estimate total (if full page, there may be more)
+      setDeclinedTotalRows(data?.length === PAGE_SIZE ? (declinedPage + 1) * PAGE_SIZE + 1 : declinedPage * PAGE_SIZE + (data?.length || 0));
+    } catch (error) {
+      console.error('Error fetching declined clients:', error);
+    } finally {
+      setDeclinedLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'renewals' && renewalSubTab === 'declined') {
+      fetchDeclinedClients();
+    }
+  }, [activeTab, renewalSubTab, renewalsMonth, declinedPage]);
 
   // Fetch renewed clients
   const fetchRenewedClients = async () => {
@@ -1283,10 +1325,10 @@ export default function PolicyReports() {
                         <p className="text-sm text-muted-foreground">إجمالي بحاجة للتجديد</p>
                         <p className="text-4xl font-bold text-primary mt-1">{renewalsSummary.total_expiring}</p>
                         <p className="text-xs text-muted-foreground mt-2">
-                          عميل • ₪{(renewalsSummary.total_value || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                          {renewalsSummary.total_expiring} عميل • ₪{(renewalsSummary.total_value || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}
                         </p>
                       </div>
-                      <RefreshCw className="h-12 w-12 text-primary/30" />
+                      <Users className="h-12 w-12 text-primary/30" />
                     </div>
                   </Card>
 
@@ -1402,6 +1444,11 @@ export default function PolicyReports() {
                 </div>
 
                 <div className="flex gap-2 mr-auto">
+                  {/* Renewal Assistant */}
+                  <Button variant="glow" onClick={() => setAssistantOpen(true)} className="gap-2">
+                    <PlayCircle className="h-4 w-4" />
+                    مساعد التجديد
+                  </Button>
                   {/* PDF للمسؤولين فقط */}
                   {isAdmin && (
                     <Button variant="outline" onClick={handleGeneratePdf} disabled={generatingPdf}>
@@ -1418,7 +1465,30 @@ export default function PolicyReports() {
               </div>
             </Card>
 
-            {/* Table - Grouped by Customer */}
+            {/* Sub-tabs for Pending / Declined */}
+            <div className="flex gap-2">
+              <Button
+                variant={renewalSubTab === 'pending' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setRenewalSubTab('pending')}
+                className="gap-2"
+              >
+                <Clock className="h-4 w-4" />
+                بانتظار التجديد
+              </Button>
+              <Button
+                variant={renewalSubTab === 'declined' ? 'destructive' : 'outline'}
+                size="sm"
+                onClick={() => setRenewalSubTab('declined')}
+                className="gap-2"
+              >
+                <XCircle className="h-4 w-4" />
+                لا يريدون التجديد
+              </Button>
+            </div>
+
+            {/* Pending Table */}
+            {renewalSubTab === 'pending' && (
             <Card className="overflow-hidden">
               {renewalsLoading ? (
                 <div className="p-4 space-y-2">
@@ -1662,6 +1732,60 @@ export default function PolicyReports() {
                 </>
               )}
             </Card>
+            )}
+
+            {/* Declined Tab */}
+            {renewalSubTab === 'declined' && (
+              <Card className="overflow-hidden">
+                {declinedLoading ? (
+                  <div className="p-4 space-y-2">
+                    {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+                  </div>
+                ) : declinedClients.length === 0 ? (
+                  <div className="text-center py-12">
+                    <XCircle className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
+                    <p className="text-muted-foreground">لا يوجد عملاء رفضوا التجديد في هذا الشهر</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="text-right">العميل</TableHead>
+                        <TableHead className="text-right">الهاتف</TableHead>
+                        <TableHead className="text-right">سبب الرفض</TableHead>
+                        <TableHead className="text-right">تاريخ التحديث</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {declinedClients.map(item => {
+                        const client = item.clients as any;
+                        return (
+                          <TableRow key={item.id}>
+                            <TableCell>
+                              <div>
+                                <p className="font-medium">{client?.full_name || '-'}</p>
+                                {client?.file_number && (
+                                  <p className="text-xs text-muted-foreground">{client.file_number}</p>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <ClickablePhone phone={client?.phone_number} />
+                            </TableCell>
+                            <TableCell>
+                              <p className="text-sm text-destructive">{item.decline_reason || '-'}</p>
+                            </TableCell>
+                            <TableCell className="text-sm font-mono">
+                              {item.updated_at ? new Date(item.updated_at).toLocaleDateString('en-GB') : '-'}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </Card>
+            )}
           </TabsContent>
 
           {/* Renewed Clients Tab */}
@@ -1979,6 +2103,17 @@ export default function PolicyReports() {
           fetchRenewals();
         }}
         renewalData={renewalData ?? undefined}
+      />
+
+      {/* Renewal Assistant */}
+      <RenewalAssistant
+        open={assistantOpen}
+        onOpenChange={setAssistantOpen}
+        month={renewalsMonth}
+        onActionComplete={() => {
+          fetchRenewals();
+          if (renewalSubTab === 'declined') fetchDeclinedClients();
+        }}
       />
     </MainLayout>
   );

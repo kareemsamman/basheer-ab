@@ -3999,6 +3999,47 @@ export type Database = {
           },
         ]
       }
+      renewal_followups: {
+        Row: {
+          client_id: string
+          created_at: string | null
+          decline_reason: string | null
+          follow_up_month: string
+          id: string
+          status: string
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string | null
+          decline_reason?: string | null
+          follow_up_month: string
+          id?: string
+          status?: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string | null
+          decline_reason?: string | null
+          follow_up_month?: string
+          id?: string
+          status?: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "renewal_followups_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       repair_claim_notes: {
         Row: {
           claim_id: string
