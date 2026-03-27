@@ -5516,30 +5516,6 @@ export type Database = {
           status: string
         }[]
       }
-      report_declined_renewals: {
-        Args: {
-          p_created_by?: string
-          p_end_month?: string
-          p_page?: number
-          p_page_size?: number
-          p_policy_type?: string
-          p_search?: string
-        }
-        Returns: {
-          client_file_number: string
-          client_id: string
-          client_name: string
-          client_phone: string
-          decline_reason: string
-          declined_at: string
-          declined_by_name: string
-          earliest_end_date: string
-          policies_count: number
-          policy_types: string[]
-          total_count: number
-          total_insurance_price: number
-        }[]
-      }
       report_renewals:
         | {
             Args: {
@@ -5739,45 +5715,25 @@ export type Database = {
           renewal_status: string
         }[]
       }
-      report_renewals_summary:
-        | {
-            Args: {
-              p_created_by?: string
-              p_end_month?: string
-              p_policy_type?: string
-              p_search?: string
-            }
-            Returns: {
-              called: number
-              not_contacted: number
-              not_interested: number
-              renewed: number
-              sms_sent: number
-              total_expiring: number
-              total_packages: number
-              total_single: number
-              total_value: number
-            }[]
-          }
-        | {
-            Args: {
-              p_created_by?: string
-              p_end_month?: string
-              p_policy_type?: string
-              p_search?: string
-            }
-            Returns: {
-              called: number
-              not_contacted: number
-              not_interested: number
-              renewed: number
-              sms_sent: number
-              total_expiring: number
-              total_packages: number
-              total_single: number
-              total_value: number
-            }[]
-          }
+      report_renewals_summary: {
+        Args: {
+          p_created_by?: string
+          p_end_month?: string
+          p_policy_type?: string
+          p_search?: string
+        }
+        Returns: {
+          called: number
+          not_contacted: number
+          not_interested: number
+          renewed: number
+          sms_sent: number
+          total_expiring: number
+          total_packages: number
+          total_single: number
+          total_value: number
+        }[]
+      }
       report_renewed_clients: {
         Args: {
           p_created_by?: string

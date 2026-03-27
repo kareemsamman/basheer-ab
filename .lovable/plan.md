@@ -1,50 +1,75 @@
 
 
-## Fix Login → Dashboard → Login Redirect Loop
+## Fix Tranzila `create_document` Payload
 
-### Root Cause
+The "Invalid item total sum value" error is caused by **wrong field names** in the payload. The current code uses invented field names that don't match the Tranzila Billing API schema. Here's what needs to change:
 
-The auth logs show a **token refresh storm**: dozens of `token_revoked` + `TOKEN_REFRESHED` events per second, hitting **429 rate limits**. This happens because:
+### Field Name Corrections
 
-1. On mount, both `getSession()` AND `onAuthStateChange()` fire and both call `setUser()` + `fetchUserProfile()`
-2. Each state update causes re-renders, which can trigger more token refreshes
-3. Eventually the 429 rate limit causes a token refresh to fail, the session becomes invalid, and `ProtectedRoute` redirects to `/login`
-4. `/login` detects no user → stays. But Supabase retries token refresh, succeeds → user appears → navigate to `/` → loop restarts
+| Current (Wrong) | Correct (Per Docs) |
+|---|---|
+| `customer_name` | `client_name` |
+| `vat_id` | `client_id` |
+| `currency_set` | `document_currency_code` |
+| `amount_type: 'G'` | Remove (use `price_type: 'G'` inside each item) |
+| `language` | `document_language` |
+| `quantity` | `units_number` |
+| `unit_type: '1'` | `unit_type: 1` (number) |
+| `price_per_unit` | `unit_price` |
+| `item_type` | `type` |
+| `credit_term` | `cc_credit_term` |
+| `installments_number` | `cc_installments_number` |
+| Missing `action` | Add `action: 1` |
+| Missing `price_type` in item | Add `price_type: 'G'` |
 
-### Fix (single file: `src/hooks/useAuth.tsx`)
+### Response Parsing Fix
 
-**1. Deduplicate `getSession` vs `onAuthStateChange`**
-- Add a `ref` flag (`initialSessionHandled`) so `getSession()` only processes if `onAuthStateChange` hasn't already fired
-- This prevents double profile fetches and double state updates on initial load
+The response structure is `result.document.retrieval_key` and `result.document.id`, not `result.retrieval_key`.
 
-**2. Deduplicate profile fetches**
-- Add a `ref` to track the current profile fetch user ID, skip if already fetching for the same user
-- Prevents concurrent profile fetch calls that waste network and cause extra re-renders
+### Implementation
 
-**3. Set `loading = false` only once**
-- Use a ref to ensure we don't re-trigger state transitions after the initial resolution
+**File: `supabase/functions/tranzila-create-invoice/index.ts`**
 
-**4. Always set `admin_session_active` for ALL authenticated users on auth events** (not just non-super-admins)
-- The guard already skips super admin, so setting the flag for everyone is harmless and prevents edge cases
+Replace the payload construction (lines 183-209) with the correct schema:
 
-### Technical Details
-
-```text
-Current flow (broken):
-  mount → getSession() ──→ setUser + fetchProfile ──→ re-render
-       → onAuthStateChange ──→ setUser + fetchProfile ──→ re-render
-       → TOKEN_REFRESHED ──→ setUser + fetchProfile ──→ re-render
-       → TOKEN_REFRESHED ──→ 429 error ──→ session lost ──→ /login
-
-Fixed flow:
-  mount → onAuthStateChange(INITIAL_SESSION) ──→ setUser + fetchProfile (once)
-       → getSession() ──→ skipped (already handled)
-       → TOKEN_REFRESHED ──→ update session only (no re-fetch profile)
+```typescript
+const invoicePayload: Record<string, any> = {
+  terminal_name: terminalName,
+  document_type: 'RE',
+  action: 1,
+  document_language: 'heb',
+  document_currency_code: 'ILS',
+  client_name: client?.full_name || '',
+  client_id: client?.id_number || '',
+  items: [{
+    type: 'I',
+    name: itemDescription,
+    unit_price: amt,
+    units_number: 1,
+    unit_type: 1,
+    price_type: 'G',
+    currency_code: 'ILS',
+  }],
+  payments: [{
+    payment_method: Number(paymentMethod),
+    payment_date: payment.payment_date,
+    amount: amt,
+    currency_code: 'ILS',
+    ...(payment.payment_type === 'visa' ? {
+      cc_last_4_digits: payment.card_last_four || '',
+      cc_credit_term: 1,
+      ...(payment.installments_count > 1 ? { cc_installments_number: payment.installments_count } : {}),
+    } : {}),
+  }],
+};
 ```
 
-Key changes in `useAuth.tsx`:
-- `initialSessionHandled` ref to skip `getSession` result if auth listener already fired
-- `currentProfileUserId` ref to skip redundant profile fetches
-- On `TOKEN_REFRESHED`: only update session/user, do NOT re-fetch profile (it hasn't changed)
-- `loading` set to false via ref guard (only once)
+Fix response parsing (lines 233-236):
+```typescript
+const doc = result.document;
+const retrievalKey = doc.retrieval_key;
+const documentId = doc.id;
+```
+
+Then redeploy the edge function.
 

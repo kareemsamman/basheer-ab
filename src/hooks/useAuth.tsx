@@ -1,9 +1,8 @@
-import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
 const SUPER_ADMIN_EMAIL = 'morshed500@gmail.com';
-const SESSION_KEY = 'admin_session_active';
 
 interface UserProfile {
   id: string;
@@ -39,36 +38,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [branchName, setBranchName] = useState<string | null>(null);
 
+  // Super admin check based on email - this is the authoritative check
   const isSuperAdmin = user?.email === SUPER_ADMIN_EMAIL;
 
-  // Auth/profile flow refs
-  const hasHandledInitialAuth = useRef(false);
-  const loadingResolved = useRef(false);
-  const profileFetchInFlightForUserId = useRef<string | null>(null);
-  const lastLoadedProfileUserId = useRef<string | null>(null);
-
-  const resolveLoading = () => {
-    if (!loadingResolved.current) {
-      loadingResolved.current = true;
-      setLoading(false);
-    }
-  };
-
   const fetchUserProfile = async (userId: string, userEmail: string | undefined) => {
-    // Avoid duplicate in-flight fetches
-    if (profileFetchInFlightForUserId.current === userId) {
-      return null;
-    }
-
-    // Reuse already loaded profile for same user
-    if (lastLoadedProfileUserId.current === userId && profile) {
-      setProfileLoading(false);
-      return profile;
-    }
-
-    profileFetchInFlightForUserId.current = userId;
     setProfileLoading(true);
-
     try {
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
@@ -82,11 +56,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null;
       }
 
+      // Check if user has admin role OR is super admin
       const isSuperAdminUser = userEmail === SUPER_ADMIN_EMAIL;
-
+      
       if (isSuperAdminUser) {
+        // Super admin is always admin
         setIsAdmin(true);
       } else {
+        // Check role in database for other users
         const { data: roleData } = await supabase
           .from('user_roles')
           .select('role')
@@ -97,13 +74,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAdmin(!!roleData);
       }
 
+      // Fetch branch name if user has a branch
       if (profileData.branch_id) {
         const { data: branchData } = await supabase
           .from('branches')
           .select('name_ar, name')
           .eq('id', profileData.branch_id)
           .single();
-
+        
         if (branchData) {
           setBranchName(branchData.name_ar || branchData.name);
         }
@@ -111,24 +89,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setBranchName(null);
       }
 
-      lastLoadedProfileUserId.current = userId;
       setProfileLoading(false);
       return profileData as UserProfile;
     } catch (error) {
       console.error('Error in fetchUserProfile:', error);
       setProfileLoading(false);
       return null;
-    } finally {
-      profileFetchInFlightForUserId.current = null;
     }
   };
 
   const signOut = async () => {
-    profileFetchInFlightForUserId.current = null;
-    lastLoadedProfileUserId.current = null;
-
     await supabase.auth.signOut();
-
     setUser(null);
     setSession(null);
     setProfile(null);
@@ -138,74 +109,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let isMounted = true;
+    
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (!isMounted) return;
+        
+        setSession(session);
+        setUser(session?.user ?? null);
+        
+        // Defer profile fetch with setTimeout to avoid deadlock
+        if (session?.user) {
+          setTimeout(() => {
+            if (isMounted) {
+              fetchUserProfile(session.user.id, session.user.email).then(p => {
+                if (isMounted) setProfile(p);
+              });
+            }
+          }, 0);
+        } else {
+          setProfile(null);
+          setIsAdmin(false);
+          setBranchName(null);
+          setProfileLoading(false);
+        }
+        
+        setLoading(false);
+      }
+    );
 
-    const applySession = (nextSession: Session | null, authEvent?: string) => {
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
       if (!isMounted) return;
-
-      setSession(nextSession);
-      setUser(nextSession?.user ?? null);
-
-      if (!nextSession?.user) {
-        profileFetchInFlightForUserId.current = null;
-        lastLoadedProfileUserId.current = null;
-        setProfile(null);
-        setIsAdmin(false);
-        setBranchName(null);
-        setProfileLoading(false);
-        resolveLoading();
-        return;
-      }
-
-      // Keep session marker active for admin browser-session guard
-      sessionStorage.setItem(SESSION_KEY, 'true');
-
-      const shouldSkipProfileFetch =
-        authEvent === 'TOKEN_REFRESHED' &&
-        lastLoadedProfileUserId.current === nextSession.user.id;
-
-      if (shouldSkipProfileFetch) {
-        setProfileLoading(false);
-        resolveLoading();
-        return;
-      }
-
-      fetchUserProfile(nextSession.user.id, nextSession.user.email)
-        .then((p) => {
-          if (isMounted && p) {
-            setProfile(p);
-          }
-        })
-        .finally(() => {
-          if (isMounted) {
-            resolveLoading();
-          }
+      
+      setSession(session);
+      setUser(session?.user ?? null);
+      
+      if (session?.user) {
+        fetchUserProfile(session.user.id, session.user.email).then(p => {
+          if (isMounted) setProfile(p);
         });
-    };
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
-      if (!isMounted) return;
-
-      // Some environments emit INITIAL_SESSION with null before storage restore.
-      // In that case, let getSession() do the initial restore.
-      if (event === 'INITIAL_SESSION' && !nextSession) {
-        return;
+      } else {
+        setProfileLoading(false);
       }
-
-      hasHandledInitialAuth.current = true;
-      applySession(nextSession, event);
-    });
-
-    // Fallback / storage restore path.
-    supabase.auth.getSession().then(({ data: { session: restoredSession } }) => {
-      if (!isMounted) return;
-
-      if (hasHandledInitialAuth.current) {
-        resolveLoading();
-        return;
-      }
-
-      hasHandledInitialAuth.current = true;
-      applySession(restoredSession, 'GET_SESSION');
+      
+      setLoading(false);
     });
 
     return () => {
@@ -215,23 +163,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Admin session guard - force logout for non-super admins on new browser session
-  // IMPORTANT: Skip guard on fresh OAuth callback (hash contains access_token)
   useEffect(() => {
-    const isNonSuperAdmin = !!user && isAdmin && !isSuperAdmin;
-
-    if (!isNonSuperAdmin) {
-      return;
-    }
-
-    const hash = window.location.hash;
-    if (hash.includes('access_token') || hash.includes('type=recovery')) {
-      sessionStorage.setItem(SESSION_KEY, 'true');
+    const SESSION_KEY = 'admin_session_active';
+    const userEmail = user?.email;
+    const isNonSuperAdmin = userEmail !== SUPER_ADMIN_EMAIL && isAdmin;
+    
+    if (!user || !isNonSuperAdmin) {
       return;
     }
 
     const wasActive = sessionStorage.getItem(SESSION_KEY);
-
+    
     if (!wasActive) {
+      // This is a new browser session after browser was closed - force logout
       console.log('[AdminSessionGuard] New browser session detected for admin, forcing logout');
       supabase.auth.signOut().then(() => {
         window.location.href = '/login';
@@ -239,11 +183,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // Keep session flag active
     sessionStorage.setItem(SESSION_KEY, 'true');
-  }, [user, isAdmin, isSuperAdmin]);
+  }, [user, isAdmin]);
 
+  // CRITICAL: Super admin and admins bypass status checks entirely
   // Order: super admin → admin → active status
   const isActive = isSuperAdmin || isAdmin || profile?.status === 'active';
+
+  // User's branch - admins can see all, workers only their branch
   const branchId = profile?.branch_id || null;
 
   return (
