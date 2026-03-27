@@ -126,22 +126,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
-    // Set up auth state listener FIRST - handles all auth events
-    // IMPORTANT: loading/isReady are only set by getSession() below,
-    // NOT here. This prevents premature redirects while keeping
-    // the auth state up-to-date from all events (including OAuth callbacks).
+    // Single initialization source: onAuthStateChange handles everything.
+    // We do NOT call getSession() separately — doing so races with
+    // onAuthStateChange and causes duplicate token refreshes that
+    // exhaust the refresh token, leading to SIGNED_OUT.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (!isMounted) return;
 
-        // TOKEN_REFRESHED only updates the internal token - no need to
-        // trigger React re-renders. Re-rendering causes cascading queries
-        // that can exhaust the refresh token and cause SIGNED_OUT.
+        // TOKEN_REFRESHED: Supabase manages tokens internally.
+        // Updating React state here causes cascading re-renders/queries
+        // that trigger more refreshes, exhausting the refresh token.
         if (event === 'TOKEN_REFRESHED') {
           return;
         }
 
-        // Keep session guard flag synced whenever a valid session exists
+        // Keep session guard flag synced
         if (session) {
           try { sessionStorage.setItem('admin_session_active', 'true'); } catch {}
         }
@@ -149,12 +149,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
 
-        // Only refetch profile on explicit sign-in or user update.
-        // INITIAL_SESSION is handled by getSession() below.
-        const shouldRefetchProfile = event === 'SIGNED_IN' || event === 'USER_UPDATED';
+        // INITIAL_SESSION = initialization complete (page load / OAuth redirect)
+        if (event === 'INITIAL_SESSION') {
+          if (session?.user) {
+            setTimeout(() => {
+              if (isMounted) {
+                fetchUserProfile(session.user.id, session.user.email).then(p => {
+                  if (isMounted) setProfile(p);
+                });
+              }
+            }, 0);
+          } else {
+            setProfileLoading(false);
+          }
+          setIsReady(true);
+          setLoading(false);
+          return;
+        }
 
-        // Defer profile fetch with setTimeout to avoid Supabase deadlock
-        if (session?.user && shouldRefetchProfile) {
+        // SIGNED_IN / USER_UPDATED: refetch profile
+        if (session?.user && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
           setTimeout(() => {
             if (isMounted) {
               fetchUserProfile(session.user.id, session.user.email).then(p => {
@@ -162,7 +176,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               });
             }
           }, 0);
-        } else if (!session?.user) {
+        }
+
+        // SIGNED_OUT: clear everything
+        if (!session?.user) {
           setProfile(null);
           setIsAdmin(false);
           setBranchName(null);
@@ -170,32 +187,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
     );
-
-    // THEN check for existing session - this is the ONLY place that
-    // sets loading=false and isReady=true, ensuring ProtectedRoute
-    // won't redirect until initialization is fully complete
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!isMounted) return;
-
-      setSession(session);
-      setUser(session?.user ?? null);
-
-      if (session?.user) {
-        try { sessionStorage.setItem('admin_session_active', 'true'); } catch {}
-
-        // Only fetch if not already being fetched by onAuthStateChange
-        if (!fetchingRef.current) {
-          fetchUserProfile(session.user.id, session.user.email).then(p => {
-            if (isMounted) setProfile(p);
-          });
-        }
-      } else {
-        setProfileLoading(false);
-      }
-
-      setIsReady(true);
-      setLoading(false);
-    });
 
     return () => {
       isMounted = false;
