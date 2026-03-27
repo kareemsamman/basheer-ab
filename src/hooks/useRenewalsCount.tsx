@@ -12,10 +12,7 @@ export function useRenewalsCount() {
       const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
       
       const { data, error } = await supabase.rpc('report_renewals_summary', {
-        p_end_month: `${currentMonth}-01`,
-        p_policy_type: null,
-        p_created_by: null,
-        p_search: null
+        p_end_month: `${currentMonth}-01`
       });
       
       if (error) {
