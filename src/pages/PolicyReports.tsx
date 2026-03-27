@@ -496,13 +496,6 @@ export default function PolicyReports() {
           p_search: renewalsSearch || null,
           p_page_size: PAGE_SIZE,
           p_page: renewalsPage + 1 // 1-indexed
-        }),
-        // Pass the same filters to summary so numbers always match
-        supabase.rpc('report_renewals_summary', {
-          p_end_month: renewalsMonth ? `${renewalsMonth}-01` : null,
-          p_policy_type: renewalsPolicyTypeFilter !== 'all' ? renewalsPolicyTypeFilter : null,
-          p_created_by: renewalsCreatedByFilter !== 'all' ? renewalsCreatedByFilter : null,
-          p_search: renewalsSearch || null,
         })
       ]);
 
@@ -512,26 +505,20 @@ export default function PolicyReports() {
       setRenewalClients(clientData);
       setRenewalsTotalRows(clientData[0]?.total_count || 0);
       
-      // Handle summary separately to show errors clearly
-      if (summaryRes.error) {
-        console.error('Error fetching renewals summary:', summaryRes.error);
-        toast.error('فشل في تحميل ملخص التجديدات');
-      } else if (summaryRes.data && summaryRes.data.length > 0) {
-        setRenewalsSummary(summaryRes.data[0] as unknown as RenewalSummary);
-      } else {
-        // No data returned, set default empty summary
-        setRenewalsSummary({
-          total_expiring: 0,
-          not_contacted: 0,
-          sms_sent: 0,
-          called: 0,
-          renewed: 0,
-          not_interested: 0,
-          total_packages: 0,
-          total_single: 0,
-          total_value: 0
-        });
-      }
+      // Compute summary from client data
+      const totalCount = clientData[0]?.total_count || 0;
+      const totalValue = clientData.reduce((s, c) => s + (c.total_insurance_price || 0), 0);
+      setRenewalsSummary({
+        total_expiring: totalCount,
+        not_contacted: clientData.filter(c => c.worst_renewal_status === 'not_contacted').length,
+        sms_sent: clientData.filter(c => c.worst_renewal_status === 'sms_sent').length,
+        called: clientData.filter(c => c.worst_renewal_status === 'called').length,
+        renewed: 0,
+        not_interested: clientData.filter(c => c.worst_renewal_status === 'not_interested').length,
+        total_packages: 0,
+        total_single: 0,
+        total_value: totalValue,
+      });
     } catch (error) {
       console.error('Error fetching renewals:', error);
       toast.error('فشل في تحميل البيانات');
