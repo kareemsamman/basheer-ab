@@ -134,7 +134,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (event, session) => {
         if (!isMounted) return;
 
-        console.log('[Auth]', event, session ? 'has session' : 'no session', session?.user?.email);
+        // TOKEN_REFRESHED only updates the internal token - no need to
+        // trigger React re-renders. Re-rendering causes cascading queries
+        // that can exhaust the refresh token and cause SIGNED_OUT.
+        if (event === 'TOKEN_REFRESHED') {
+          return;
+        }
 
         // Keep session guard flag synced whenever a valid session exists
         if (session) {
@@ -144,7 +149,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
 
-        const shouldRefetchProfile = event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED';
+        // Only refetch profile on explicit sign-in or user update.
+        // INITIAL_SESSION is handled by getSession() below.
+        const shouldRefetchProfile = event === 'SIGNED_IN' || event === 'USER_UPDATED';
 
         // Defer profile fetch with setTimeout to avoid Supabase deadlock
         if (session?.user && shouldRefetchProfile) {
