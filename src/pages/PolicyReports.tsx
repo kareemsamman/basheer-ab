@@ -1484,6 +1484,20 @@ export default function PolicyReports() {
               </div>
             </Card>
 
+            {/* Sub-tabs for pending / declined */}
+            <Tabs value={renewalsSubTab} onValueChange={setRenewalsSubTab}>
+              <TabsList className="grid w-full max-w-sm grid-cols-2">
+                <TabsTrigger value="pending" className="gap-2">
+                  <Clock className="h-4 w-4" />
+                  بانتظار التجديد
+                </TabsTrigger>
+                <TabsTrigger value="declined" className="gap-2">
+                  <ThumbsDown className="h-4 w-4" />
+                  لا يرغبون بالتجديد
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="pending" className="mt-4">
             {/* Table - Grouped by Customer */}
             <Card className="overflow-hidden">
               {renewalsLoading ? (
