@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
       lang: 'il', // Hebrew language
       tranmode: settings.test_mode ? 'VER' : 'A', // VER = verify only (no charge), A = actual charge
       newprocess: '1', // 3DS V2 (can also be enabled in terminal settings)
-      myid: tranzilaIndex, // Our reference for tracking this payment
+      pdesc: tranzilaIndex, // Our tracking reference (pdesc = order description, not shown in ID field)
     }
 
     // Build edge function URLs for success/fail - these are simple HTML pages
