@@ -44,10 +44,10 @@ const POLICY_TYPE_LABELS: Record<string, string> = {
 };
 
 const PAYMENT_METHOD_MAP: Record<string, string> = {
-  cash: '1',
-  cheque: '2',
-  visa: '3',
-  transfer: '5',
+  cash: '5',
+  cheque: '3',
+  visa: '1',
+  transfer: '4',
 };
 
 async function callTranzilaApi(
@@ -187,18 +187,23 @@ Deno.serve(async (req) => {
       vat_id: client?.id_number || '',
       client_phone_1: client?.phone_number || '',
       currency_set: 'ILS',
+      amount_type: 'G',
+      language: 'heb',
       items: [{
-        item_name: itemDescription,
-        item_quantity: 1,
-        item_price: amt,
+        name: itemDescription,
+        quantity: 1,
+        unit_type: '1',
+        price_per_unit: amt,
+        item_type: 'I',
       }],
       payments: [{
         payment_method: paymentMethod,
-        payment_sum: amt,
+        amount: amt,
         payment_date: payment.payment_date,
         ...(payment.payment_type === 'visa' ? {
           cc_last_4_digits: payment.card_last_four || '',
-          cc_number_of_payments: String(payment.installments_count || 1),
+          credit_term: '1',
+          installments_number: String(payment.installments_count || 1),
         } : {}),
       }],
     };
