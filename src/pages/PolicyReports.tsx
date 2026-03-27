@@ -1459,6 +1459,11 @@ export default function PolicyReports() {
                 </div>
 
                 <div className="flex gap-2 mr-auto">
+                  {/* Renewal Assistant */}
+                  <Button variant="glow" onClick={() => setAssistantOpen(true)} className="gap-2">
+                    <PlayCircle className="h-4 w-4" />
+                    مساعد التجديد
+                  </Button>
                   {/* PDF للمسؤولين فقط */}
                   {isAdmin && (
                     <Button variant="outline" onClick={handleGeneratePdf} disabled={generatingPdf}>
