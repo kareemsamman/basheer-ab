@@ -636,8 +636,11 @@ export default function PolicyReports() {
   useEffect(() => {
     if (activeTab === 'renewals') {
       fetchRenewals();
+      if (renewalsSubTab === 'declined') {
+        fetchDeclinedClients();
+      }
     }
-  }, [activeTab, renewalsPage, renewalsMonth, renewalsDaysFilter, renewalsPolicyTypeFilter, renewalsCreatedByFilter, renewalsSearch]);
+  }, [activeTab, renewalsPage, renewalsMonth, renewalsDaysFilter, renewalsPolicyTypeFilter, renewalsCreatedByFilter, renewalsSearch, renewalsSubTab]);
 
   // Fetch renewed clients
   const fetchRenewedClients = async () => {
