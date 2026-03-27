@@ -1,75 +1,59 @@
 
 
-## Fix Tranzila `create_document` Payload
+## Fix: Admin Users Page Shows 0 Users
 
-The "Invalid item total sum value" error is caused by **wrong field names** in the payload. The current code uses invented field names that don't match the Tranzila Billing API schema. Here's what needs to change:
+### Root Cause Analysis
 
-### Field Name Corrections
+The database has **11 profiles** and the RLS policies are correctly configured. The super admin (`morshed500@gmail.com`) has an `admin` role in `user_roles`, and the `has_role` SECURITY DEFINER function works properly.
 
-| Current (Wrong) | Correct (Per Docs) |
-|---|---|
-| `customer_name` | `client_name` |
-| `vat_id` | `client_id` |
-| `currency_set` | `document_currency_code` |
-| `amount_type: 'G'` | Remove (use `price_type: 'G'` inside each item) |
-| `language` | `document_language` |
-| `quantity` | `units_number` |
-| `unit_type: '1'` | `unit_type: 1` (number) |
-| `price_per_unit` | `unit_price` |
-| `item_type` | `type` |
-| `credit_term` | `cc_credit_term` |
-| `installments_number` | `cc_installments_number` |
-| Missing `action` | Add `action: 1` |
-| Missing `price_type` in item | Add `price_type: 'G'` |
+The most likely cause is a **race condition**: when the super admin logs in, `isAdmin` becomes `true` (via the `isSuperAdmin` check on `user.email`) before the Supabase client's session/JWT is fully established internally. The `fetchUsers` query fires immediately but the Supabase client sends the request without a valid JWT, so the RLS `has_role(auth.uid(), 'admin')` check fails (because `auth.uid()` is null), returning an empty result set with no error.
 
-### Response Parsing Fix
+### Fix
 
-The response structure is `result.document.retrieval_key` and `result.document.id`, not `result.retrieval_key`.
+**File: `src/pages/AdminUsers.tsx`**
 
-### Implementation
-
-**File: `supabase/functions/tranzila-create-invoice/index.ts`**
-
-Replace the payload construction (lines 183-209) with the correct schema:
+1. Add the `session` from `useAuth` to the dependency check — only fetch when both `isAdmin` AND `session` are available:
 
 ```typescript
-const invoicePayload: Record<string, any> = {
-  terminal_name: terminalName,
-  document_type: 'RE',
-  action: 1,
-  document_language: 'heb',
-  document_currency_code: 'ILS',
-  client_name: client?.full_name || '',
-  client_id: client?.id_number || '',
-  items: [{
-    type: 'I',
-    name: itemDescription,
-    unit_price: amt,
-    units_number: 1,
-    unit_type: 1,
-    price_type: 'G',
-    currency_code: 'ILS',
-  }],
-  payments: [{
-    payment_method: Number(paymentMethod),
-    payment_date: payment.payment_date,
-    amount: amt,
-    currency_code: 'ILS',
-    ...(payment.payment_type === 'visa' ? {
-      cc_last_4_digits: payment.card_last_four || '',
-      cc_credit_term: 1,
-      ...(payment.installments_count > 1 ? { cc_installments_number: payment.installments_count } : {}),
-    } : {}),
-  }],
-};
+const { isAdmin, loading: authLoading, session } = useAuth();
+
+useEffect(() => {
+  if (isAdmin && session) {
+    fetchUsers();
+  }
+}, [isAdmin, session]);
 ```
 
-Fix response parsing (lines 233-236):
+2. Add error logging inside `fetchUsers` to catch silent failures:
+
 ```typescript
-const doc = result.document;
-const retrievalKey = doc.retrieval_key;
-const documentId = doc.id;
+const fetchUsers = async () => {
+  setLoading(true);
+  try {
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (profilesError) {
+      console.error('Profiles fetch error:', profilesError);
+      throw profilesError;
+    }
+    
+    console.log('Fetched profiles count:', profiles?.length);
+    // ... rest unchanged
 ```
 
-Then redeploy the edge function.
+**File: `src/hooks/useAuth.tsx`**
+
+3. Ensure `session` is exposed in the context (it already is), and ensure the `admin_session_active` flag is set for super admin too in `Login.tsx` — currently it's only set for non-super-admins, which could cause issues on page refresh:
+
+**File: `src/pages/Login.tsx`** (line ~45)
+
+Change the session flag logic to set it for ALL authenticated users:
+```typescript
+sessionStorage.setItem('admin_session_active', 'true');
+```
+
+This ensures `fetchUsers` only runs after the Supabase client has a valid JWT, so the RLS policies can identify the user as admin.
 
