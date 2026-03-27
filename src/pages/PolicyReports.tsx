@@ -457,16 +457,23 @@ export default function PolicyReports() {
     }
   };
 
+  const formatLocalDate = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
   // Fetch renewals - compute date range from month/days filter
   const getRenewalDateRange = () => {
     if (renewalsDaysFilter === 'month' && renewalsMonth) {
-      // Full month
-      const [year, month] = renewalsMonth.split('-').map(Number);
-      const startDate = new Date(year, month - 1, 1);
-      const endDate = new Date(year, month, 0);
+      // Full month (timezone-safe)
+      const [year, monthNumber] = renewalsMonth.split('-').map(Number);
+      const month = String(monthNumber).padStart(2, '0');
+      const lastDay = String(new Date(year, monthNumber, 0).getDate()).padStart(2, '0');
       return {
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: endDate.toISOString().split('T')[0]
+        startDate: `${year}-${month}-01`,
+        endDate: `${year}-${month}-${lastDay}`
       };
     } else {
       // Next N days from today
@@ -475,8 +482,8 @@ export default function PolicyReports() {
       const endDate = new Date(today);
       endDate.setDate(today.getDate() + daysAhead);
       return {
-        startDate: today.toISOString().split('T')[0],
-        endDate: endDate.toISOString().split('T')[0]
+        startDate: formatLocalDate(today),
+        endDate: formatLocalDate(endDate)
       };
     }
   };
@@ -1393,7 +1400,11 @@ export default function PolicyReports() {
                 <Input
                   type="month"
                   value={renewalsMonth}
-                  onChange={(e) => { setRenewalsMonth(e.target.value); setRenewalsPage(0); }}
+                  onChange={(e) => {
+                    setRenewalsMonth(e.target.value);
+                    setRenewalsDaysFilter('month');
+                    setRenewalsPage(0);
+                  }}
                   className="w-[160px]"
                 />
 
