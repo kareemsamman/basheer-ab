@@ -195,7 +195,7 @@ export function RenewalAssistantDialog({
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/30">
-                  <TableHead className="text-right text-xs">رقم الوثيقة</TableHead>
+                  <TableHead className="text-right text-xs">رقم السيارة</TableHead>
                   <TableHead className="text-right text-xs">رقم السيارة</TableHead>
                   <TableHead className="text-right text-xs">النوع</TableHead>
                   <TableHead className="text-right text-xs">الشركة</TableHead>
