@@ -44,10 +44,10 @@ const POLICY_TYPE_LABELS: Record<string, string> = {
 };
 
 const PAYMENT_METHOD_MAP: Record<string, string> = {
-  cash: '1',
-  cheque: '2',
-  visa: '3',
-  transfer: '5',
+  cash: '5',
+  cheque: '3',
+  visa: '1',
+  transfer: '4',
 };
 
 async function callTranzilaApi(
