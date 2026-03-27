@@ -494,22 +494,24 @@ export function PolicySuccessDialog({
                 {receiptSmsSent ? "تم إرسال فاتورة الدفع SMS" : "إرسال فاتورة الدفع SMS"}
               </Button>
 
-              {/* Tranzila Invoice Button */}
-              <Button
-                variant="outline"
-                className="w-full gap-2 h-12 border-primary/30 text-primary hover:bg-primary/5"
-                onClick={handleTranzilaInvoice}
-                disabled={generatingTranzilaInvoice}
-              >
-                {generatingTranzilaInvoice ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : tranzilaInvoiceUrl ? (
-                  <Check className="h-5 w-5 text-success" />
-                ) : (
-                  <FileText className="h-5 w-5" />
-                )}
-                {tranzilaInvoiceUrl ? "فتح קבלה מ-Tranzila" : "הפקת קבלה מ-Tranzila"}
-              </Button>
+              {/* Tranzila Invoice Button - only for visa payments */}
+              {hasVisaPayment && (
+                <Button
+                  variant="outline"
+                  className="w-full gap-2 h-12 border-primary/30 text-primary hover:bg-primary/5"
+                  onClick={handleTranzilaInvoice}
+                  disabled={generatingTranzilaInvoice}
+                >
+                  {generatingTranzilaInvoice ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : tranzilaInvoiceUrl ? (
+                    <Check className="h-5 w-5 text-success" />
+                  ) : (
+                    <FileText className="h-5 w-5" />
+                  )}
+                  {tranzilaInvoiceUrl ? "فتح קבלה מ-Tranzila" : "הפקת קבלה מ-Tranzila"}
+                </Button>
+              )}
             </>
           )}
 
