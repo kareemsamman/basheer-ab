@@ -893,6 +893,27 @@ export function PolicyPaymentsSection({
                   )}
                 </div>
                 <div className="flex items-center gap-1">
+                  {payment.payment_type === 'visa' && !payment.refused && (
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className={cn(
+                        "h-8 w-8",
+                        payment.tranzila_receipt_url 
+                          ? "text-success hover:text-success hover:bg-success/10" 
+                          : "text-amber-600 hover:text-amber-600 hover:bg-amber-50"
+                      )}
+                      onClick={() => handleTranzilaReceipt(payment)}
+                      disabled={generatingTranzilaReceipt === payment.id}
+                      title={payment.tranzila_receipt_url ? "فتح קבלה من Tranzila" : "הפקת קבלה מ-Tranzila"}
+                    >
+                      {generatingTranzilaReceipt === payment.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <FileText className="h-4 w-4" />
+                      )}
+                    </Button>
+                  )}
                   <Button 
                     variant="ghost" 
                     size="icon" 
