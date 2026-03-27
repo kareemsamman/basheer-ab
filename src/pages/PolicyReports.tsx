@@ -2169,6 +2169,28 @@ export default function PolicyReports() {
         }}
         renewalData={renewalData ?? undefined}
       />
+
+      {/* Renewal Assistant Dialog */}
+      <RenewalAssistantDialog
+        open={assistantOpen}
+        onOpenChange={setAssistantOpen}
+        clients={renewalClients.map(c => ({
+          client_id: c.client_id,
+          client_name: c.client_name,
+          client_phone: c.client_phone,
+          policy_ids: c.policy_ids || [],
+        }))}
+        startDate={getRenewalDateRange().startDate}
+        endDate={getRenewalDateRange().endDate}
+        onComplete={() => {
+          setClientPolicies({});
+          setExpandedClientId(null);
+          fetchRenewals();
+          if (renewalsSubTab === 'declined') {
+            fetchDeclinedClients();
+          }
+        }}
+      />
     </MainLayout>
   );
 }
