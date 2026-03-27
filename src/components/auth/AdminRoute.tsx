@@ -1,21 +1,10 @@
-import { ReactNode, useState, useEffect } from 'react';
+import { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
 
 interface AdminRouteProps {
   children: ReactNode;
-}
-
-// Check if Supabase has a stored session (token may need refresh)
-function hasStoredSession(): boolean {
-  try {
-    const keys = Object.keys(localStorage);
-    return keys.some(key => key.startsWith('sb-') && key.endsWith('-auth-token'));
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -23,25 +12,12 @@ function hasStoredSession(): boolean {
  * Workers will be redirected to the dashboard.
  */
 export function AdminRoute({ children }: AdminRouteProps) {
-  const { user, loading, profileLoading, profile, isActive, isAdmin, isSuperAdmin } = useAuth();
-  const [sessionVerified, setSessionVerified] = useState(false);
+  const { user, loading, isReady, profileLoading, profile, isActive, isAdmin, isSuperAdmin } = useAuth();
 
-  // If auth says no user but localStorage has a session, re-verify once
-  useEffect(() => {
-    if (!loading && !user && hasStoredSession() && !sessionVerified) {
-      supabase.auth.getSession().then(() => {
-        setSessionVerified(true);
-      });
-    } else if (user) {
-      setSessionVerified(true);
-    }
-  }, [loading, user, sessionVerified]);
-
-  // Block during initial auth resolution
+  // Block until auth is fully initialized (getSession resolved)
   const needsProfileLoading = user && !isSuperAdmin && profileLoading && !profile;
 
-  // Show loading while auth is resolving or while re-verifying a stored session
-  if (loading || needsProfileLoading || (!user && hasStoredSession() && !sessionVerified)) {
+  if (loading || !isReady || needsProfileLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">

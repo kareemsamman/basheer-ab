@@ -140,7 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Keep session guard flag synced whenever a valid session exists
         if (session) {
-          sessionStorage.setItem('admin_session_active', 'true');
+          try { sessionStorage.setItem('admin_session_active', 'true'); } catch {}
         }
 
         setSession(session);
@@ -174,7 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
 
       if (session?.user) {
-        sessionStorage.setItem('admin_session_active', 'true');
+        try { sessionStorage.setItem('admin_session_active', 'true'); } catch {}
 
         // Only fetch if not already being fetched by onAuthStateChange
         if (!fetchingRef.current) {
@@ -202,13 +202,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const effectiveEmail = user?.email ?? profile?.email ?? null;
     const canEvaluateAdminGuard = Boolean(effectiveEmail);
     const isNonSuperAdmin = canEvaluateAdminGuard && !isSuperAdminEmail(effectiveEmail) && isAdmin;
-    
+
     if (!isReady || !session || !user || !isNonSuperAdmin) {
       return;
     }
 
-    const wasActive = sessionStorage.getItem(SESSION_KEY);
-    
+    // Skip guard if sessionStorage is not available (e.g. restricted iframe)
+    let wasActive: string | null = null;
+    try {
+      wasActive = sessionStorage.getItem(SESSION_KEY);
+    } catch {
+      // sessionStorage blocked (iframe restriction) - skip guard entirely
+      return;
+    }
+
     if (!wasActive) {
       // This is a new browser session after browser was closed - force logout
       console.log('[AdminSessionGuard] New browser session detected for admin, forcing logout');
@@ -219,7 +226,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     // Keep session flag active
-    sessionStorage.setItem(SESSION_KEY, 'true');
+    try { sessionStorage.setItem(SESSION_KEY, 'true'); } catch {}
   }, [isReady, session, user, profile?.email, isAdmin]);
 
   // CRITICAL: Super admin and admins bypass status checks entirely

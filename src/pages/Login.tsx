@@ -21,8 +21,8 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [isInIframe, setIsInIframe] = useState(false);
   const navigate = useNavigate();
-  const { user, isActive, loading: authLoading } = useAuth();
-  
+  const { user, isActive, isSuperAdmin, profileLoading, loading: authLoading } = useAuth();
+
   // OTP state
   const [authStep, setAuthStep] = useState<AuthStep>("method");
   const [authMethod, setAuthMethod] = useState<AuthMethod>("google");
@@ -42,15 +42,26 @@ export default function Login() {
   useEffect(() => {
     if (!authLoading && user) {
       // Set admin session flag for all authenticated users
-      sessionStorage.setItem('admin_session_active', 'true');
-      
+      try { sessionStorage.setItem('admin_session_active', 'true'); } catch {}
+
+      // Super admin can redirect immediately without waiting for profile
+      if (isSuperAdmin) {
+        navigate('/', { replace: true });
+        return;
+      }
+
+      // For other users, wait until profile has loaded before deciding
+      // This prevents premature redirect to /no-access when isActive
+      // depends on profile/admin role that hasn't loaded yet
+      if (profileLoading) return;
+
       if (isActive) {
         navigate('/', { replace: true });
       } else {
         navigate('/no-access', { replace: true });
       }
     }
-  }, [user, isActive, authLoading, navigate]);
+  }, [user, isActive, isSuperAdmin, profileLoading, authLoading, navigate]);
 
   // Countdown timer for resend
   useEffect(() => {

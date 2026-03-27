@@ -1,46 +1,20 @@
-import { ReactNode, useState, useEffect } from 'react';
+import { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
 
 interface ProtectedRouteProps {
   children: ReactNode;
 }
 
-// Check if Supabase has a stored session (token may need refresh)
-function hasStoredSession(): boolean {
-  try {
-    const keys = Object.keys(localStorage);
-    return keys.some(key => key.startsWith('sb-') && key.endsWith('-auth-token'));
-  } catch {
-    return false;
-  }
-}
-
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { user, loading, profileLoading, profile, isActive, isSuperAdmin } = useAuth();
-  const [sessionVerified, setSessionVerified] = useState(false);
+  const { user, loading, isReady, profileLoading, profile, isActive, isSuperAdmin } = useAuth();
 
-  // If auth says no user but localStorage has a session, re-verify once
-  useEffect(() => {
-    if (!loading && !user && hasStoredSession() && !sessionVerified) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        setSessionVerified(true);
-        // If getSession returns null, the stored session is truly invalid
-        // The redirect to login will proceed on next render
-      });
-    } else if (user) {
-      setSessionVerified(true);
-    }
-  }, [loading, user, sessionVerified]);
-
-  // CRITICAL: Block during initial auth resolution
+  // CRITICAL: Block until auth is fully initialized (getSession resolved)
   // Super admin bypasses profile loading requirement
   const needsProfileLoading = user && !isSuperAdmin && profileLoading && !profile;
 
-  // Show loading while auth is resolving or while re-verifying a stored session
-  if (loading || needsProfileLoading || (!user && hasStoredSession() && !sessionVerified)) {
+  if (loading || !isReady || needsProfileLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
