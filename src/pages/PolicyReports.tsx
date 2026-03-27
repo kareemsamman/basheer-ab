@@ -484,10 +484,10 @@ export default function PolicyReports() {
         }),
         // Pass the same filters to summary so numbers always match
         supabase.rpc('report_renewals_summary', {
-          ...(renewalsMonth ? { p_end_month: `${renewalsMonth}-01` } : {}),
-          ...(renewalsPolicyTypeFilter !== 'all' ? { p_policy_type: renewalsPolicyTypeFilter } : {}),
-          ...(renewalsCreatedByFilter !== 'all' ? { p_created_by: renewalsCreatedByFilter } : {}),
-          ...(renewalsSearch ? { p_search: renewalsSearch } : {})
+          p_end_month: renewalsMonth ? `${renewalsMonth}-01` : null,
+          p_policy_type: renewalsPolicyTypeFilter !== 'all' ? renewalsPolicyTypeFilter : null,
+          p_created_by: renewalsCreatedByFilter !== 'all' ? renewalsCreatedByFilter : null,
+          p_search: renewalsSearch || null,
         })
       ]);
 
