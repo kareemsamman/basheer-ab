@@ -190,7 +190,7 @@ Deno.serve(async (req) => {
         name: itemDescription,
         units: 1,
         price_inc_vat: Number(payment.amount),
-        is_taxable: true,
+        is_taxable: false,
       }],
       payments: [{
         payment_method: paymentMethod,
