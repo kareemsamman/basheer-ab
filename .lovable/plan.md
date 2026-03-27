@@ -1,38 +1,75 @@
 
-Goal: make “הפקת קבלה מ‑Tranzila” reliably return/open the Tranzila receipt link after a successful card payment.
 
-What is actually broken (from current logs/code):
-1) `tranzila-create-invoice` crashes on `response.json()` because Tranzila sometimes returns plain text (`"request too old"`), not JSON.  
-2) The function then returns HTTP 500/400, which causes the generic UI error: “Edge Function returned a non-2xx status code”.  
-3) `tranzila-webhook` often cannot map webhook callbacks to the payment (`Payment not found: <myid>`), so auto-creation of receipt links is skipped even when payment succeeded.
+## Fix Tranzila `create_document` Payload
 
-Implementation plan:
-1. Harden `supabase/functions/tranzila-create-invoice/index.ts`
-   - Parse Tranzila response safely: read `await response.text()` first, then JSON-parse conditionally.
-   - Handle non-JSON provider responses explicitly (especially `"request too old"`), and return a clear logical error object.
-   - Implement Tranzila-auth request freshness handling per API spec (timestamp/signature format), and add a one-time retry with a fresh signature when provider reports stale request.
-   - Stop returning 4xx/5xx for provider/business failures; return HTTP 200 with `{ success: false, error, provider_raw }` so frontend can show exact reason.
-   - Keep HTTP 500 only for true unexpected runtime crashes.
+The "Invalid item total sum value" error is caused by **wrong field names** in the payload. The current code uses invented field names that don't match the Tranzila Billing API schema. Here's what needs to change:
 
-2. Fix callback-to-payment correlation in `supabase/functions/tranzila-webhook/index.ts`
-   - Keep current `myid` lookup first.
-   - Add fallback resolution: parse `payment_id` from `success_url_address` / `fail_url_address` fields in webhook payload when `myid` lookup fails.
-   - If payment is found via fallback, proceed with payment update and non-blocking invoice creation.
-   - Add structured logs for which lookup path succeeded (`myid` vs `payment_id_fallback`) for future debugging.
+### Field Name Corrections
 
-3. Improve frontend handling in `src/components/policies/PolicySuccessDialog.tsx`
-   - In `handleTranzilaInvoice`, always prefer logical error text from `result.data.error` (and optional `provider_raw`) over generic invoke errors.
-   - After successful generation, persist `tranzilaInvoiceUrl` and open it immediately (existing behavior kept).
-   - On dialog open, refetch payments once after short delay (or after success callback) so newly written `tranzila_receipt_url` appears without manual refresh.
+| Current (Wrong) | Correct (Per Docs) |
+|---|---|
+| `customer_name` | `client_name` |
+| `vat_id` | `client_id` |
+| `currency_set` | `document_currency_code` |
+| `amount_type: 'G'` | Remove (use `price_type: 'G'` inside each item) |
+| `language` | `document_language` |
+| `quantity` | `units_number` |
+| `unit_type: '1'` | `unit_type: 1` (number) |
+| `price_per_unit` | `unit_price` |
+| `item_type` | `type` |
+| `credit_term` | `cc_credit_term` |
+| `installments_number` | `cc_installments_number` |
+| Missing `action` | Add `action: 1` |
+| Missing `price_type` in item | Add `price_type: 'G'` |
 
-4. Validation checklist (end-to-end)
-   - Complete a real card payment flow.
-   - Verify `policy_payments.tranzila_receipt_url` is written.
-   - Click “הפקת קבלה מ‑Tranzila” and confirm URL opens (no non-2xx toast).
-   - Simulate provider stale response and confirm UI shows specific message, not generic edge-function failure.
-   - Confirm webhook can recover via fallback when `myid` does not match.
+### Response Parsing Fix
 
-Technical details / scope:
-- No database migration required.
-- No queue table/worker as first fix: current failure is parsing/auth-response handling + webhook correlation, not confirmed execution timeout.
-- If provider timeouts persist after this fix, phase 2 can add queue-based async invoice generation (pending/completed job model) without changing UI contract.
+The response structure is `result.document.retrieval_key` and `result.document.id`, not `result.retrieval_key`.
+
+### Implementation
+
+**File: `supabase/functions/tranzila-create-invoice/index.ts`**
+
+Replace the payload construction (lines 183-209) with the correct schema:
+
+```typescript
+const invoicePayload: Record<string, any> = {
+  terminal_name: terminalName,
+  document_type: 'RE',
+  action: 1,
+  document_language: 'heb',
+  document_currency_code: 'ILS',
+  client_name: client?.full_name || '',
+  client_id: client?.id_number || '',
+  items: [{
+    type: 'I',
+    name: itemDescription,
+    unit_price: amt,
+    units_number: 1,
+    unit_type: 1,
+    price_type: 'G',
+    currency_code: 'ILS',
+  }],
+  payments: [{
+    payment_method: Number(paymentMethod),
+    payment_date: payment.payment_date,
+    amount: amt,
+    currency_code: 'ILS',
+    ...(payment.payment_type === 'visa' ? {
+      cc_last_4_digits: payment.card_last_four || '',
+      cc_credit_term: 1,
+      ...(payment.installments_count > 1 ? { cc_installments_number: payment.installments_count } : {}),
+    } : {}),
+  }],
+};
+```
+
+Fix response parsing (lines 233-236):
+```typescript
+const doc = result.document;
+const retrievalKey = doc.retrieval_key;
+const documentId = doc.id;
+```
+
+Then redeploy the edge function.
+
