@@ -633,7 +633,30 @@ export default function PolicyReports() {
     }
   }, [activeTab, createdPage, createdDatePreset, createdFromDate, createdToDate, createdByFilter, createdPolicyTypeFilter, createdCompanyFilter, createdSearch]);
 
-  useEffect(() => {
+  // Fetch declined renewals
+  const fetchDeclinedClients = async () => {
+    setDeclinedLoading(true);
+    try {
+      const { data, error } = await supabase.rpc('report_declined_renewals', {
+        p_end_month: renewalsMonth ? `${renewalsMonth}-01` : null,
+        p_policy_type: renewalsPolicyTypeFilter !== 'all' ? renewalsPolicyTypeFilter : null,
+        p_created_by: renewalsCreatedByFilter !== 'all' ? renewalsCreatedByFilter : null,
+        p_search: renewalsSearch || null,
+        p_page_size: PAGE_SIZE,
+        p_page: declinedPage + 1,
+      });
+      if (error) throw error;
+      const clientData = (data as unknown as DeclinedClient[]) || [];
+      setDeclinedClients(clientData);
+      setDeclinedTotalRows(clientData[0]?.total_count || 0);
+    } catch (err) {
+      console.error('Error fetching declined clients:', err);
+    } finally {
+      setDeclinedLoading(false);
+    }
+  };
+
+
     if (activeTab === 'renewals') {
       fetchRenewals();
       if (renewalsSubTab === 'declined') {
