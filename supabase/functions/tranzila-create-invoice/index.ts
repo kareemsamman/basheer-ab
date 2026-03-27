@@ -178,6 +178,8 @@ Deno.serve(async (req) => {
     const itemDescription = `${policyTypeLabel} - ${car?.car_number || ''} - ${policy?.policy_number || ''}`;
     const paymentMethod = PAYMENT_METHOD_MAP[payment.payment_type || 'visa'] || '3';
 
+    const amt = Number(payment.amount);
+
     const invoicePayload: Record<string, any> = {
       terminal_name: terminalName,
       document_type: 'RE',
@@ -186,15 +188,16 @@ Deno.serve(async (req) => {
       client_phone_1: client?.phone_number || '',
       client_email_1: '',
       currency_set: 'ILS',
+      total_amount: amt,
       items: [{
         name: itemDescription,
         units: 1,
-        price_inc_vat: Number(payment.amount),
+        price_exc_vat: amt,
         is_taxable: false,
       }],
       payments: [{
         payment_method: paymentMethod,
-        amount: Number(payment.amount),
+        amount: amt,
         payment_date: payment.payment_date,
         ...(payment.payment_type === 'visa' ? {
           cc_last_4_digits: payment.card_last_four || '',
@@ -202,6 +205,8 @@ Deno.serve(async (req) => {
         } : {}),
       }],
     };
+
+    console.log('[tranzila-create-invoice] Payload:', JSON.stringify(invoicePayload));
 
     // 3. Call Tranzila with retry on "request too old"
     console.log('[tranzila-create-invoice] Creating invoice for payment:', payment_id);
