@@ -91,7 +91,7 @@ interface LoginAttempt {
 }
 
 export default function AdminUsers() {
-  const { isAdmin, loading: authLoading } = useAuth();
+  const { isAdmin, loading: authLoading, session } = useAuth();
   const { branches, getBranchName } = useBranches();
   const { toast } = useToast();
   const [users, setUsers] = useState<UserWithRole[]>([]);
@@ -165,7 +165,11 @@ export default function AdminUsers() {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (profilesError) throw profilesError;
+      if (profilesError) {
+        console.error('Profiles fetch error:', profilesError);
+        throw profilesError;
+      }
+      console.log('Fetched profiles count:', profiles?.length);
 
       // Fetch all roles
       const { data: roles, error: rolesError } = await supabase
@@ -223,10 +227,10 @@ export default function AdminUsers() {
   };
 
   useEffect(() => {
-    if (isAdmin) {
+    if (isAdmin && session) {
       fetchUsers();
     }
-  }, [isAdmin]);
+  }, [isAdmin, session]);
 
   const handleApproveUser = async (userId: string) => {
     setActionLoading(userId);
