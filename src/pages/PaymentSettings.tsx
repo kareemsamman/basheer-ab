@@ -163,7 +163,7 @@ export default function PaymentSettings() {
   if (loading) {
     return (
       <MainLayout>
-        <div className="p-6 space-y-6">
+        <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
           <Skeleton className="h-8 w-64" />
           <Skeleton className="h-[400px] w-full" />
         </div>
@@ -173,15 +173,15 @@ export default function PaymentSettings() {
 
   return (
     <MainLayout>
-      <div className="p-6 space-y-6">
+      <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary/10 rounded-lg">
+          <div className="p-2 bg-primary/10 rounded-lg shrink-0">
             <CreditCard className="h-6 w-6 text-primary" />
           </div>
-          <div>
-            <h1 className="text-2xl font-bold">إعدادات الدفع</h1>
-            <p className="text-muted-foreground">إدارة إعدادات بوابة الدفع Tranzila</p>
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold">إعدادات الدفع</h1>
+            <p className="text-sm text-muted-foreground">إدارة إعدادات بوابة الدفع Tranzila</p>
           </div>
         </div>
 
@@ -198,14 +198,15 @@ export default function PaymentSettings() {
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Enable Toggle */}
-            <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
-              <div className="space-y-0.5">
+            <div className="flex items-center justify-between gap-4 p-3 sm:p-4 border rounded-lg bg-muted/30">
+              <div className="space-y-0.5 min-w-0">
                 <Label className="text-base font-medium">تفعيل Tranzila</Label>
                 <p className="text-sm text-muted-foreground">
                   السماح بالدفع عبر البطاقة الائتمانية
                 </p>
               </div>
               <Switch
+                className="shrink-0"
                 checked={formData.is_enabled}
                 onCheckedChange={(checked) => setFormData(f => ({ ...f, is_enabled: checked }))}
               />
@@ -214,17 +215,18 @@ export default function PaymentSettings() {
             {/* Test Mode Toggle - only visible for super admin */}
             {isSuperAdmin && (
               <>
-                <div className="flex items-center justify-between p-4 border rounded-lg bg-amber-500/10 border-amber-500/20">
-                  <div className="flex items-center gap-3">
-                    <TestTube className="h-5 w-5 text-amber-600" />
-                    <div className="space-y-0.5">
-                      <Label className="text-base font-medium">وضع Sandbox (تجريبي)</Label>
-                      <p className="text-sm text-muted-foreground">
-                        استخدام ترمينال تجريبي - لا يتم خصم أموال حقيقية (فقط لحسابك)
+                <div className="flex items-center justify-between gap-4 p-3 sm:p-4 border rounded-lg bg-amber-500/10 border-amber-500/20">
+                  <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                    <TestTube className="h-5 w-5 text-amber-600 shrink-0" />
+                    <div className="space-y-0.5 min-w-0">
+                      <Label className="text-sm sm:text-base font-medium">وضع Sandbox (تجريبي)</Label>
+                      <p className="text-xs sm:text-sm text-muted-foreground">
+                        استخدام ترمينال تجريبي - لا يتم خصم أموال حقيقية
                       </p>
                     </div>
                   </div>
                   <Switch
+                    className="shrink-0"
                     checked={formData.test_mode}
                     onCheckedChange={(checked) => setFormData(f => ({ ...f, test_mode: checked }))}
                   />
@@ -248,9 +250,9 @@ export default function PaymentSettings() {
                       </p>
                     </div>
 
-                    <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-700">
+                    <div className="flex items-start gap-2 p-2.5 sm:p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-700">
                       <AlertCircle className="h-5 w-5 mt-0.5 shrink-0" />
-                      <p className="text-sm">
+                      <p className="text-xs sm:text-sm">
                         وضع Sandbox يفتح نافذة الدفع الحقيقية لكن مع ترمينال تجريبي.
                         <br />
                         لا يتم خصم أموال حقيقية. استخدم بطاقات الاختبار أدناه.
@@ -261,13 +263,13 @@ export default function PaymentSettings() {
 
                 {/* Test Cards Info - show when sandbox mode is on */}
                 {formData.test_mode && (
-                  <div className="p-4 border rounded-lg bg-blue-500/10 border-blue-500/20">
-                    <h4 className="font-medium text-blue-700 mb-2 flex items-center gap-2">
-                      <CreditCard className="h-4 w-4" />
+                  <div className="p-3 sm:p-4 border rounded-lg bg-blue-500/10 border-blue-500/20">
+                    <h4 className="font-medium text-blue-700 mb-2 flex items-center gap-2 text-sm sm:text-base">
+                      <CreditCard className="h-4 w-4 shrink-0" />
                       بطاقات تجريبية للاختبار
                     </h4>
-                    <div className="text-sm text-blue-600 space-y-1 font-mono ltr-nums">
-                      <p>Card: <span className="bg-blue-100 px-2 py-0.5 rounded">4580 4580 4580 4580</span></p>
+                    <div className="text-xs sm:text-sm text-blue-600 space-y-1 font-mono ltr-nums overflow-x-auto">
+                      <p>Card: <span className="bg-blue-100 px-2 py-0.5 rounded whitespace-nowrap">4580 4580 4580 4580</span></p>
                       <p>Expiry: Any future date (e.g., 12/29)</p>
                       <p>CVV: <span className="bg-blue-100 px-2 py-0.5 rounded">123</span></p>
                     </div>
@@ -313,12 +315,13 @@ export default function PaymentSettings() {
 
             {/* URLs Section */}
             <div className="space-y-4 pt-4 border-t">
-              <div className="flex items-center justify-between">
-                <h3 className="font-medium">روابط الاستجابة</h3>
-                <Button 
-                  type="button" 
-                  variant="outline" 
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-medium text-sm sm:text-base">روابط الاستجابة</h3>
+                <Button
+                  type="button"
+                  variant="outline"
                   size="sm"
+                  className="shrink-0 text-xs sm:text-sm"
                   onClick={generateDefaultUrls}
                 >
                   توليد تلقائي
@@ -365,21 +368,22 @@ export default function PaymentSettings() {
             {/* Invoices API Section */}
             <div className="space-y-4 pt-4 border-t">
               <div className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                <h3 className="font-medium">Tranzila Invoices API (קבלות)</h3>
+                <FileText className="h-5 w-5 shrink-0" />
+                <h3 className="font-medium text-sm sm:text-base">Tranzila Invoices API (קבלות)</h3>
               </div>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs sm:text-sm text-muted-foreground">
                 הפקת קבלות אוטומטית לאחר תשלום בכרטיס אשראי
               </p>
 
-              <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
-                <div className="space-y-0.5">
+              <div className="flex items-center justify-between gap-4 p-3 sm:p-4 border rounded-lg bg-muted/30">
+                <div className="space-y-0.5 min-w-0">
                   <Label className="text-base font-medium">تفعيل הפقת קבלות</Label>
                   <p className="text-sm text-muted-foreground">
                     הפקה אוטומטית של קבלה דרך Tranzila לאחר כל תשלום מוצלח
                   </p>
                 </div>
                 <Switch
+                  className="shrink-0"
                   checked={formData.invoice_enabled}
                   onCheckedChange={(checked) => setFormData(f => ({ ...f, invoice_enabled: checked }))}
                 />
@@ -414,8 +418,8 @@ export default function PaymentSettings() {
             </div>
 
             {/* Save Button */}
-            <div className="flex justify-end pt-4 border-t">
-              <Button onClick={handleSave} disabled={saving}>
+            <div className="pt-4 border-t">
+              <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto">
                 {saving ? (
                   <Loader2 className="h-4 w-4 ml-2 animate-spin" />
                 ) : (
