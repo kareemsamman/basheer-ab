@@ -72,7 +72,7 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
 
       // Get clients with expiring policies that don't have a followup record yet
       // or have status = 'pending'
-      const { data: policies, error } = await supabase
+      const { data: policies, error } = await (supabase
         .from('policies')
         .select(`
           id,
@@ -90,7 +90,7 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
         .lte('end_date', endDate)
         .is('deleted_at', null)
         .neq('status', 'cancelled')
-        .order('client_id');
+        .order('client_id') as any);
 
       if (error) throw error;
 
