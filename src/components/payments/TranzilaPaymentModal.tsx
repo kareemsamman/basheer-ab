@@ -158,20 +158,8 @@ export function TranzilaPaymentModal({
 
       setPaymentId(data.payment_id);
 
-      // Check if test mode
-      if (data.test_mode) {
-        setStatus('test_success');
-        toast({
-          title: "وضع الاختبار",
-          description: "تم محاكاة الدفع بنجاح (وضع التجربة)",
-        });
-        // Auto-close after showing success
-        setTimeout(() => {
-          onSuccess();
-          onOpenChange(false);
-        }, 2000);
-        return;
-      }
+
+
 
       // Real payment - set iframe URL and form fields for POST
       setIframeUrl(data.iframe_url);
