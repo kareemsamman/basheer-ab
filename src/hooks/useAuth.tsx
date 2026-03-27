@@ -46,8 +46,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [branchName, setBranchName] = useState<string | null>(null);
 
+  const resolvedUserEmail = user?.email ?? profile?.email ?? null;
+
   // Super admin check based on email - this is the authoritative check
-  const isSuperAdmin = isSuperAdminEmail(user?.email);
+  const isSuperAdmin = isSuperAdminEmail(resolvedUserEmail);
 
   const fetchingRef = useRef<string | null>(null);
 
@@ -71,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // Check if user has admin role OR is super admin
-      const isSuperAdminUser = isSuperAdminEmail(userEmail);
+      const isSuperAdminUser = isSuperAdminEmail(userEmail || profileData?.email || null);
       
       if (isSuperAdminUser) {
         setIsAdmin(true);
@@ -137,8 +139,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         
+        const shouldRefetchProfile = event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED';
+
         // Defer profile fetch with setTimeout to avoid deadlock
-        if (session?.user) {
+        if (session?.user && shouldRefetchProfile) {
           setTimeout(() => {
             if (isMounted) {
               fetchUserProfile(session.user.id, session.user.email).then(p => {
@@ -146,7 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               });
             }
           }, 0);
-        } else {
+        } else if (!session?.user) {
           setProfile(null);
           setIsAdmin(false);
           setBranchName(null);
@@ -190,8 +194,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Admin session guard - force logout for non-super admins on new browser session
   useEffect(() => {
     const SESSION_KEY = 'admin_session_active';
-    const userEmail = user?.email;
-    const isNonSuperAdmin = !isSuperAdminEmail(userEmail) && isAdmin;
+    const effectiveEmail = user?.email ?? profile?.email ?? null;
+    const canEvaluateAdminGuard = Boolean(effectiveEmail);
+    const isNonSuperAdmin = canEvaluateAdminGuard && !isSuperAdminEmail(effectiveEmail) && isAdmin;
     
     if (!isReady || !session || !user || !isNonSuperAdmin) {
       return;
@@ -210,7 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Keep session flag active
     sessionStorage.setItem(SESSION_KEY, 'true');
-  }, [isReady, session, user, isAdmin]);
+  }, [isReady, session, user, profile?.email, isAdmin]);
 
   // CRITICAL: Super admin and admins bypass status checks entirely
   // Order: super admin → admin → active status
