@@ -1747,6 +1747,60 @@ export default function PolicyReports() {
                 </>
               )}
             </Card>
+            )}
+
+            {/* Declined Tab */}
+            {renewalSubTab === 'declined' && (
+              <Card className="overflow-hidden">
+                {declinedLoading ? (
+                  <div className="p-4 space-y-2">
+                    {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+                  </div>
+                ) : declinedClients.length === 0 ? (
+                  <div className="text-center py-12">
+                    <XCircle className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
+                    <p className="text-muted-foreground">لا يوجد عملاء رفضوا التجديد في هذا الشهر</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="text-right">العميل</TableHead>
+                        <TableHead className="text-right">الهاتف</TableHead>
+                        <TableHead className="text-right">سبب الرفض</TableHead>
+                        <TableHead className="text-right">تاريخ التحديث</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {declinedClients.map(item => {
+                        const client = item.clients as any;
+                        return (
+                          <TableRow key={item.id}>
+                            <TableCell>
+                              <div>
+                                <p className="font-medium">{client?.full_name || '-'}</p>
+                                {client?.file_number && (
+                                  <p className="text-xs text-muted-foreground">{client.file_number}</p>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <ClickablePhone phone={client?.phone_number} />
+                            </TableCell>
+                            <TableCell>
+                              <p className="text-sm text-destructive">{item.decline_reason || '-'}</p>
+                            </TableCell>
+                            <TableCell className="text-sm font-mono">
+                              {item.updated_at ? new Date(item.updated_at).toLocaleDateString('en-GB') : '-'}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </Card>
+            )}
           </TabsContent>
 
           {/* Renewed Clients Tab */}
