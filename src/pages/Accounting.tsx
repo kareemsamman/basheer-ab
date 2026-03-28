@@ -96,6 +96,7 @@ export default function Accounting() {
   const [selectedCompanyId, setSelectedCompanyId] = useState("all");
   const [selectedBrokerId, setSelectedBrokerId] = useState("all");
   const [otherName, setOtherName] = useState("");
+  const [savedContacts, setSavedContacts] = useState<string[]>([]);
   const [policyTypeFilter, setPolicyTypeFilter] = useState("all");
   const [dateMode, setDateMode] = useState<"month" | "range">("month");
   const [fromDate, setFromDate] = useState(def.from);
@@ -117,11 +118,8 @@ export default function Accounting() {
   const [mainReceiptImages, setMainReceiptImages] = useState<string[]>([]);
   const [mainNotes, setMainNotes] = useState("");
   const [saving, setSaving] = useState(false);
-  // For "other" entity type - simple mode
-  const [addOtherType, setAddOtherType] = useState<"income" | "expense">("income");
-  const [addOtherAmount, setAddOtherAmount] = useState("");
 
-  // Load reference data - exclude ELZAMI-only companies
+  // Load reference data
   useEffect(() => {
     supabase.from("insurance_companies").select("id, name, name_ar, category_parent").eq("active", true).order("name_ar").then(({ data }) => {
       const filtered = (data || []).filter(c => {
@@ -132,6 +130,11 @@ export default function Accounting() {
       setCompanies(filtered);
     });
     supabase.from("brokers").select("id, name").order("name").then(({ data }) => setBrokers(data || []));
+    // Load saved external contacts from previous entries
+    supabase.from("expenses").select("contact_name").eq("entity_type", "manual").not("contact_name", "is", null).then(({ data }) => {
+      const unique = [...new Set((data || []).map(e => e.contact_name).filter(Boolean))];
+      setSavedContacts(unique as string[]);
+    });
   }, []);
 
   // ─── Fetch data ──────────────────────────────────────
@@ -280,13 +283,36 @@ export default function Accounting() {
         }
 
       } else {
-        // OTHER: manual ledger
-        const { data: oData } = await supabase.from("ab_ledger")
-          .select("id, amount, transaction_date, description, category")
+        // OTHER: manual entries stored in expenses with entity_type = "manual"
+        let oq = supabase.from("expenses")
+          .select("id, amount, expense_date, created_at, description, contact_name, voucher_type, payment_method, reference_number, notes")
+          .eq("entity_type", "manual")
+          .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
+        if (otherName) oq = oq.eq("contact_name", otherName);
+        const { data: oData } = await oq.order("created_at", { ascending: false });
+
+        for (const e of oData || []) {
+          const isReceipt = e.voucher_type === "receipt";
+          results.push({
+            id: e.id, tab: isReceipt ? "receipt" : "payment", source: "expense",
+            client_name: "", car_number: null, types: [],
+            amount: e.amount || 0,
+            date: e.expense_date,
+            issue_date: e.created_at,
+            description: e.description || (isReceipt ? "سند قبض" : "سند صرف"),
+            company_name: e.contact_name || "",
+            payment_method: payMethodLabel[e.payment_method || ""] || e.payment_method || "",
+            extra: e.reference_number ? `#${e.reference_number}` : "",
+          });
+        }
+
+        // Also load legacy ab_ledger manual entries
+        const { data: legacyData } = await supabase.from("ab_ledger")
+          .select("id, amount, transaction_date, description")
           .eq("reference_type", "manual_adjustment").eq("status", "posted").eq("counterparty_type", "internal")
           .gte("transaction_date", fromDate).lte("transaction_date", toDate)
           .order("transaction_date", { ascending: false });
-        for (const tx of oData || []) {
+        for (const tx of legacyData || []) {
           results.push({ id: tx.id, tab: tx.amount >= 0 ? "receipt" : "payment", source: "ledger", client_name: "", car_number: null, types: [], amount: Math.abs(tx.amount), date: tx.transaction_date, issue_date: tx.transaction_date, description: tx.description || (tx.amount >= 0 ? "دخل" : "مصروف"), company_name: "", payment_method: "", extra: "" });
         }
       }
@@ -298,7 +324,7 @@ export default function Accounting() {
     } finally {
       setLoading(false);
     }
-  }, [entityType, selectedCompanyId, selectedBrokerId, policyTypeFilter, fromDate, toDate]);
+  }, [entityType, selectedCompanyId, selectedBrokerId, policyTypeFilter, fromDate, toDate, otherName]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -355,7 +381,7 @@ export default function Accounting() {
 
   const resetAddDialog = () => {
     setAddDesc(""); setMainNotes(""); setMainReceiptImages([]);
-    setPaymentLines([]); setAddOtherAmount(""); setAddOtherType("income");
+    setPaymentLines([]);
     setAddIssueDate(new Date().toISOString().split("T")[0]);
   };
 
@@ -363,17 +389,33 @@ export default function Accounting() {
     setSaving(true);
     try {
       if (entityType === "other") {
-        // Simple manual entry
-        const amt = parseFloat(addOtherAmount);
-        if (!amt || amt <= 0) { toast.error("يرجى إدخال مبلغ صحيح"); setSaving(false); return; }
-        if (!addDesc.trim()) { toast.error("يرجى إدخال الوصف"); setSaving(false); return; }
-        const sign = addOtherType === "expense" ? -1 : 1;
-        await supabase.from("ab_ledger").insert({
-          amount: amt * sign, transaction_date: addIssueDate, description: addDesc.trim(),
-          reference_type: "manual_adjustment" as any, reference_id: crypto.randomUUID(),
-          category: (sign > 0 ? "premium_income" : "commission_expense") as any,
-          counterparty_type: "internal" as any, status: "posted" as any, created_by_admin_id: user?.id,
-        });
+        // Save to expenses with entity_type = "manual"
+        if (paymentLines.length === 0) { toast.error("يرجى إضافة دفعة واحدة على الأقل"); setSaving(false); return; }
+        if (!otherName.trim()) { toast.error("يرجى إدخال اسم الجهة"); setSaving(false); return; }
+        for (const payment of paymentLines) {
+          const amount = payment.payment_type === "customer_cheque" && payment.selected_cheques
+            ? payment.selected_cheques.reduce((s, c) => s + c.amount, 0) : payment.amount;
+          const pm = payment.payment_type === "customer_cheque" ? "cheque" : payment.payment_type;
+          await supabase.from("expenses").insert({
+            amount,
+            expense_date: payment.payment_date,
+            description: addDesc.trim() || null,
+            voucher_type: addVoucherType,
+            category: "other",
+            entity_type: "manual",
+            entity_id: null,
+            contact_name: otherName.trim(),
+            payment_method: pm,
+            reference_number: payment.payment_type === "cheque" ? payment.cheque_number : payment.bank_reference || null,
+            notes: mainNotes || null,
+            created_by_admin_id: user?.id,
+            cheque_image_url: payment.cheque_image_url || null,
+          } as any);
+        }
+        // Refresh saved contacts
+        if (!savedContacts.includes(otherName.trim())) {
+          setSavedContacts(prev => [...prev, otherName.trim()]);
+        }
       } else if (entityType === "company") {
         // Company settlement entries
         if (paymentLines.length === 0) { toast.error("يرجى إضافة دفعة واحدة على الأقل"); setSaving(false); return; }
@@ -490,7 +532,17 @@ export default function Accounting() {
             </>)}
             {entityType === "other" && (
               <div className="space-y-1"><Label className="text-xs">اسم الجهة</Label>
-                <Input value={otherName} onChange={e => setOtherName(e.target.value)} placeholder="اسم الكراج / الجهة..." className="w-[200px]" />
+                {savedContacts.length > 0 ? (
+                  <Select value={otherName || "all"} onValueChange={v => { setOtherName(v === "all" ? "" : v); setPage(0); }}>
+                    <SelectTrigger className="w-[200px]"><SelectValue placeholder="اختر جهة..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">الكل</SelectItem>
+                      {savedContacts.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input value={otherName} onChange={e => setOtherName(e.target.value)} placeholder="اسم الكراج / الجهة..." className="w-[200px]" />
+                )}
               </div>
             )}
             {entityType !== "other" && (
@@ -679,77 +731,61 @@ export default function Accounting() {
 
       {/* Add Dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className={cn(entityType === "other" ? "max-w-md" : "max-w-2xl max-h-[90vh] overflow-y-auto")}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {entityType === "company" ? "سند جديد - شركة تأمين" : entityType === "broker" ? "سند جديد - وكيل" : "إضافة حركة يدوية"}
             </DialogTitle>
           </DialogHeader>
 
-          {entityType === "other" ? (
-            /* Simple mode for "other" entity */
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => setAddOtherType("income")}
-                  className={cn("rounded-lg border-2 p-3 text-center text-sm transition-all", addOtherType === "income" ? "border-green-500 bg-green-50" : "border-border")}>
-                  <ArrowDownLeft className={cn("h-5 w-5 mx-auto mb-1", addOtherType === "income" ? "text-green-600" : "text-muted-foreground")} />
-                  دخل
-                </button>
-                <button onClick={() => setAddOtherType("expense")}
-                  className={cn("rounded-lg border-2 p-3 text-center text-sm transition-all", addOtherType === "expense" ? "border-red-500 bg-red-50" : "border-border")}>
-                  <ArrowUpRight className={cn("h-5 w-5 mx-auto mb-1", addOtherType === "expense" ? "text-destructive" : "text-muted-foreground")} />
-                  مصروف
-                </button>
-              </div>
-              <div className="space-y-1"><Label>البيان *</Label><Input value={addDesc} onChange={e => setAddDesc(e.target.value)} placeholder="وصف الحركة..." /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1"><Label>المبلغ *</Label><Input type="number" min="0" step="0.01" value={addOtherAmount} onChange={e => setAddOtherAmount(e.target.value)} placeholder="0" /></div>
-                <div className="space-y-1"><Label>تاريخ الإصدار *</Label><ArabicDatePicker value={addIssueDate} onChange={d => setAddIssueDate(d)} compact /></div>
-              </div>
+          <div className="space-y-4">
+            {/* Voucher type selector */}
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => setAddVoucherType("payment")}
+                className={cn("rounded-xl border-2 p-4 text-center transition-all", addVoucherType === "payment" ? "border-red-400 bg-red-50" : "border-border")}>
+                <ArrowUpRight className={cn("h-6 w-6 mx-auto mb-1", addVoucherType === "payment" ? "text-red-500" : "text-muted-foreground")} />
+                <p className={cn("font-bold", addVoucherType === "payment" ? "text-red-600" : "")}>سند صرف</p>
+                <p className="text-xs text-muted-foreground">مبلغ خارج</p>
+              </button>
+              <button onClick={() => setAddVoucherType("receipt")}
+                className={cn("rounded-xl border-2 p-4 text-center transition-all", addVoucherType === "receipt" ? "border-primary bg-primary/5" : "border-border")}>
+                <ArrowDownLeft className={cn("h-6 w-6 mx-auto mb-1", addVoucherType === "receipt" ? "text-primary" : "text-muted-foreground")} />
+                <p className={cn("font-bold", addVoucherType === "receipt" ? "text-primary" : "")}>سند قبض</p>
+                <p className="text-xs text-muted-foreground">مبلغ داخل</p>
+              </button>
             </div>
-          ) : (
-            /* Full mode for company/broker with ExpensePaymentLines */
-            <div className="space-y-4">
-              {/* Voucher type selector */}
-              <div className="grid grid-cols-2 gap-3">
-                <button onClick={() => setAddVoucherType("payment")}
-                  className={cn("rounded-xl border-2 p-4 text-center transition-all", addVoucherType === "payment" ? "border-red-400 bg-red-50" : "border-border")}>
-                  <ArrowUpRight className={cn("h-6 w-6 mx-auto mb-1", addVoucherType === "payment" ? "text-red-500" : "text-muted-foreground")} />
-                  <p className={cn("font-bold", addVoucherType === "payment" ? "text-red-600" : "")}>سند صرف</p>
-                  <p className="text-xs text-muted-foreground">مبلغ خارج</p>
-                </button>
-                <button onClick={() => setAddVoucherType("receipt")}
-                  className={cn("rounded-xl border-2 p-4 text-center transition-all", addVoucherType === "receipt" ? "border-primary bg-primary/5" : "border-border")}>
-                  <ArrowDownLeft className={cn("h-6 w-6 mx-auto mb-1", addVoucherType === "receipt" ? "text-primary" : "text-muted-foreground")} />
-                  <p className={cn("font-bold", addVoucherType === "receipt" ? "text-primary" : "")}>سند قبض</p>
-                  <p className="text-xs text-muted-foreground">مبلغ داخل</p>
-                </button>
-              </div>
 
-              {/* Description */}
+            {/* Contact name for "other" */}
+            {entityType === "other" && (
               <div className="space-y-1">
-                <Label>الوصف</Label>
-                <Input value={addDesc} onChange={e => setAddDesc(e.target.value)} placeholder="وصف السند..." />
+                <Label>اسم الجهة *</Label>
+                <Input value={otherName} onChange={e => setOtherName(e.target.value)} placeholder="اسم الكراج / الشخص..." />
               </div>
+            )}
 
-              {/* Payment Lines - same component as expenses page */}
-              <ExpensePaymentLines
-                paymentLines={paymentLines}
-                setPaymentLines={setPaymentLines}
-                mainReceiptImages={mainReceiptImages}
-                setMainReceiptImages={setMainReceiptImages}
-                mainNotes={mainNotes}
-                setMainNotes={setMainNotes}
-                entityId={entityType === "company" ? (selectedCompanyId !== "all" ? selectedCompanyId : "") : (selectedBrokerId !== "all" ? selectedBrokerId : "")}
-                entityType={entityType === "company" ? "company" : "broker"}
-              />
+            {/* Description */}
+            <div className="space-y-1">
+              <Label>الوصف</Label>
+              <Input value={addDesc} onChange={e => setAddDesc(e.target.value)} placeholder="وصف السند..." />
             </div>
-          )}
+
+            {/* Payment Lines - same component as expenses page */}
+            <ExpensePaymentLines
+              paymentLines={paymentLines}
+              setPaymentLines={setPaymentLines}
+              mainReceiptImages={mainReceiptImages}
+              setMainReceiptImages={setMainReceiptImages}
+              mainNotes={mainNotes}
+              setMainNotes={setMainNotes}
+              entityId={entityType === "company" ? (selectedCompanyId !== "all" ? selectedCompanyId : "") : entityType === "broker" ? (selectedBrokerId !== "all" ? selectedBrokerId : "") : ""}
+              entityType={entityType === "company" ? "company" : "broker"}
+            />
+          </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)}>إلغاء</Button>
             <Button onClick={handleSave} disabled={saving} className="gap-2">
-              {saving ? "جاري الحفظ..." : entityType === "other" ? "إضافة" : `حفظ الدفعات (${paymentLines.length})`}
+              {saving ? "جاري الحفظ..." : `حفظ الدفعات (${paymentLines.length})`}
             </Button>
           </DialogFooter>
         </DialogContent>
