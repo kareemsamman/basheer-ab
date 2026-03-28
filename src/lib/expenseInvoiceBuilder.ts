@@ -31,6 +31,7 @@ const categoryLabelsHe: Record<string, string> = {
 const paymentMethodLabelsHe: Record<string, string> = {
   cash: 'מזומן',
   cheque: 'שיק',
+  customer_cheque: 'שיק',
   bank_transfer: 'העברה בנקאית',
   visa: 'ויזה',
 };

@@ -242,12 +242,12 @@ export default function Accounting() {
         // PAYMENTS: company settlements (from company wallet page)
         // Filter by created_at (issue date) not settlement_date (cheque date)
         let csq = supabase.from("company_settlements")
-          .select("id, total_amount, settlement_date, created_at, notes, payment_type, cheque_number, insurance_companies(name_ar, name)")
-          .eq("status", "completed")
+          .select("id, total_amount, settlement_date, created_at, notes, payment_type, cheque_number, status, insurance_companies(name_ar, name)")
           .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
         if (selectedCompanyId !== "all") csq = csq.eq("company_id", selectedCompanyId);
         const { data: settlements } = await csq;
         for (const s of settlements || []) {
+          if ((s as any).status === "refused") continue;
           const payMethodText = s.payment_type === "cheque" ? `شيك${s.cheque_number ? ` #${s.cheque_number}` : ""}` : payMethodLabel[s.payment_type || ""] || s.payment_type || "";
           results.push({ id: s.id, tab: "payment", source: "settlement", client_name: "", car_number: null, types: [], amount: s.total_amount || 0, date: s.settlement_date, issue_date: s.created_at, description: s.notes || "تسوية شركة", company_name: (s as any).insurance_companies?.name_ar || (s as any).insurance_companies?.name || "", payment_method: payMethodText, extra: "" });
         }
@@ -306,12 +306,13 @@ export default function Accounting() {
 
         // BROKER SETTLEMENTS (from broker wallet)
         let bsq = supabase.from("broker_settlements")
-          .select("id, total_amount, settlement_date, created_at, notes, payment_type, cheque_number, direction, brokers(name)")
-          .eq("status", "completed")
+          .select("id, total_amount, settlement_date, created_at, notes, payment_type, cheque_number, direction, status, brokers(name)")
           .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
         if (selectedBrokerId !== "all") bsq = bsq.eq("broker_id", selectedBrokerId);
-        const { data: bSettlements } = await bsq;
+        const { data: bSettlements, error: bsError } = await bsq;
+        if (bsError) console.error("Broker settlements error:", bsError);
         for (const s of bSettlements || []) {
+          if (s.status === "refused") continue; // skip refused
           const isReceipt = s.direction === "from_broker";
           const bPayMethod = s.payment_type === "cheque" ? `شيك${s.cheque_number ? ` #${s.cheque_number}` : ""}` : payMethodLabel[s.payment_type || ""] || s.payment_type || "";
           results.push({ id: s.id, tab: isReceipt ? "receipt" : "payment", source: "broker_settlement", client_name: "", car_number: null, types: [], amount: s.total_amount || 0, date: s.settlement_date, issue_date: s.created_at, description: s.notes || (isReceipt ? "سند قبض" : "سند صرف"), company_name: "", payment_method: bPayMethod, extra: (s as any).brokers?.name || "" });
@@ -581,7 +582,7 @@ export default function Accounting() {
           for (const payment of paymentLines) {
             const amount = payment.payment_type === "customer_cheque" && payment.selected_cheques
               ? payment.selected_cheques.reduce((s, c) => s + c.amount, 0) : payment.amount;
-          await supabase.from("broker_settlements").insert({
+          const { error: bsInsertErr } = await supabase.from("broker_settlements").insert({
             broker_id: brokerId,
             total_amount: amount,
             settlement_date: payment.payment_date,
@@ -594,6 +595,7 @@ export default function Accounting() {
             cheque_image_url: payment.cheque_image_url || null,
             bank_reference: payment.payment_type === "bank_transfer" ? payment.bank_reference : null,
           } as any);
+          if (bsInsertErr) { console.error("Broker settlement insert error:", bsInsertErr); throw bsInsertErr; }
           }
         }
       }
