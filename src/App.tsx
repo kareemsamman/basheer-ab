@@ -64,6 +64,7 @@ import ActivityLog from "./pages/ActivityLog";
 import BrandingSettings from "./pages/BrandingSettings";
 import XServiceSettings from "./pages/XServiceSettings";
 import Receipts from "./pages/Receipts";
+import Accounting from "./pages/Accounting";
 import { SiteHelmet } from "@/components/layout/SiteHelmet";
 
 const queryClient = new QueryClient({
@@ -365,6 +366,11 @@ const App = () => (
                 <ProtectedRoute>
                   <Receipts />
                 </ProtectedRoute>
+              } />
+              <Route path="/accounting" element={
+                <AdminRoute>
+                  <Accounting />
+                </AdminRoute>
               } />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
