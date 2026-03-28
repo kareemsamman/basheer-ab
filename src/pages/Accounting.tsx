@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -96,15 +96,14 @@ export default function Accounting() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
 
-  // Add dialog
+  const navigate = useNavigate();
+
+  // Add dialog (only for "other" entity type - manual entries)
   const [addOpen, setAddOpen] = useState(false);
-  const [addType, setAddType] = useState<"issuance" | "refund" | "payment" | "receipt">("payment");
+  const [addType, setAddType] = useState<"income" | "expense">("income");
   const [addAmount, setAddAmount] = useState("");
   const [addDate, setAddDate] = useState(new Date().toISOString().split("T")[0]);
   const [addDesc, setAddDesc] = useState("");
-  const [addMethod, setAddMethod] = useState("cash");
-  const [addRef, setAddRef] = useState("");
-  const [addNotes, setAddNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Load reference data
@@ -182,13 +181,25 @@ export default function Accounting() {
 
         // PAYMENTS: expenses to company
         let pq = supabase.from("expenses")
-          .select("id, amount, expense_date, description, reference_number, insurance_companies(name_ar, name)")
+          .select("id, amount, expense_date, description, reference_number, payment_method, insurance_companies(name_ar, name)")
           .eq("voucher_type", "payment").eq("entity_type", "company")
           .gte("expense_date", fromDate).lte("expense_date", toDate);
         if (selectedCompanyId !== "all") pq = pq.eq("entity_id", selectedCompanyId);
         const { data: pays } = await pq;
         for (const e of pays || []) {
           results.push({ id: e.id, tab: "payment", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, description: e.description || "سند صرف", company_name: (e as any).insurance_companies?.name_ar || (e as any).insurance_companies?.name || "", extra: e.reference_number ? `#${e.reference_number}` : "" });
+        }
+
+        // PAYMENTS: company settlements (from company wallet page)
+        let csq = supabase.from("company_settlements")
+          .select("id, total_amount, settlement_date, notes, payment_type, cheque_number, insurance_companies(name_ar, name)")
+          .eq("status", "completed")
+          .gte("settlement_date", fromDate).lte("settlement_date", toDate);
+        if (selectedCompanyId !== "all") csq = csq.eq("company_id", selectedCompanyId);
+        const { data: settlements } = await csq;
+        for (const s of settlements || []) {
+          const payMethod = s.payment_type === "cheque" ? `شيك${s.cheque_number ? ` #${s.cheque_number}` : ""}` : s.payment_type === "bank_transfer" ? "تحويل بنكي" : s.payment_type || "";
+          results.push({ id: s.id, tab: "payment", client_name: "", car_number: null, types: [], amount: s.total_amount || 0, date: s.settlement_date, description: s.notes || "تسوية شركة", company_name: (s as any).insurance_companies?.name_ar || (s as any).insurance_companies?.name || "", extra: payMethod });
         }
 
       } else if (entityType === "broker") {
@@ -277,34 +288,22 @@ export default function Accounting() {
 
   const showReceipt = entityType === "broker" || entityType === "other";
 
-  // Save entry
+  // Save manual entry (only for "other" entity type)
   const handleSave = async () => {
     const amt = parseFloat(addAmount);
     if (!amt || amt <= 0) { toast.error("يرجى إدخال مبلغ صحيح"); return; }
     if (!addDesc.trim()) { toast.error("يرجى إدخال الوصف"); return; }
     setSaving(true);
     try {
-      if (entityType === "other") {
-        const sign = (addType === "payment" || addType === "refund") ? -1 : 1;
-        await supabase.from("ab_ledger").insert({
-          amount: amt * sign, transaction_date: addDate, description: addDesc.trim() + (addNotes ? ` - ${addNotes}` : ""),
-          reference_type: "manual_adjustment" as any, reference_id: crypto.randomUUID(),
-          category: (sign > 0 ? "premium_income" : "commission_expense") as any,
-          counterparty_type: "internal" as any, status: "posted" as any, created_by_admin_id: user?.id,
-        });
-      } else {
-        const eType = entityType === "company" ? "company" : "broker";
-        const eId = entityType === "company" ? (selectedCompanyId !== "all" ? selectedCompanyId : null) : (selectedBrokerId !== "all" ? selectedBrokerId : null);
-        await supabase.from("expenses").insert({
-          amount: amt, expense_date: addDate, description: addDesc.trim(),
-          voucher_type: addType === "receipt" ? "receipt" : "payment",
-          category: "مستحق لشركة تأمين", entity_type: eType, entity_id: eId,
-          payment_method: addMethod, reference_number: addRef || null, notes: addNotes || null,
-          created_by_admin_id: user?.id,
-        } as any);
-      }
+      const sign = addType === "expense" ? -1 : 1;
+      await supabase.from("ab_ledger").insert({
+        amount: amt * sign, transaction_date: addDate, description: addDesc.trim(),
+        reference_type: "manual_adjustment" as any, reference_id: crypto.randomUUID(),
+        category: (sign > 0 ? "premium_income" : "commission_expense") as any,
+        counterparty_type: "internal" as any, status: "posted" as any, created_by_admin_id: user?.id,
+      });
       toast.success("تم الإضافة بنجاح");
-      setAddOpen(false); setAddAmount(""); setAddDesc(""); setAddRef(""); setAddNotes("");
+      setAddOpen(false); setAddAmount(""); setAddDesc("");
       fetchData();
     } catch { toast.error("فشل في الإضافة"); }
     finally { setSaving(false); }
@@ -477,7 +476,14 @@ export default function Accounting() {
               </button>
             ))}
           </div>
-          <Button onClick={() => setAddOpen(true)} className="gap-2 shrink-0"><PlusCircle className="h-4 w-4" />إضافة</Button>
+          <Button onClick={() => {
+            if (entityType === "other") {
+              setAddOpen(true);
+            } else {
+              // Navigate to expenses page - same full dialog with payment lines
+              navigate("/expenses");
+            }
+          }} className="gap-2 shrink-0"><PlusCircle className="h-4 w-4" />إضافة</Button>
         </div>
 
         {/* Table */}
@@ -530,32 +536,25 @@ export default function Accounting() {
 
       {/* Add Dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}><DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>إضافة حركة جديدة</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>إضافة حركة يدوية</DialogTitle></DialogHeader>
         <div className="space-y-4">
-          <div className={cn("grid gap-2", showReceipt ? "grid-cols-2" : "grid-cols-2")}>
-            {([
-              { v: "issuance" as const, l: "بوليصة تأمين", I: FileText },
-              { v: "refund" as const, l: "مرتجع / إلغاء", I: RotateCcw },
-              { v: "payment" as const, l: "سند صرف", I: ArrowUpRight },
-              ...(showReceipt ? [{ v: "receipt" as const, l: "سند قبض", I: ArrowDownLeft }] : []),
-            ]).map(t => (
-              <button key={t.v} onClick={() => setAddType(t.v)}
-                className={cn("rounded-lg border-2 p-3 text-center text-sm transition-all", addType === t.v ? "border-primary bg-primary/5" : "border-border")}>
-                <t.I className={cn("h-4 w-4 mx-auto mb-1", addType === t.v ? "text-primary" : "text-muted-foreground")} />{t.l}
-              </button>
-            ))}
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setAddType("income")}
+              className={cn("rounded-lg border-2 p-3 text-center text-sm transition-all", addType === "income" ? "border-green-500 bg-green-50" : "border-border")}>
+              <ArrowDownLeft className={cn("h-5 w-5 mx-auto mb-1", addType === "income" ? "text-green-600" : "text-muted-foreground")} />
+              دخل
+            </button>
+            <button onClick={() => setAddType("expense")}
+              className={cn("rounded-lg border-2 p-3 text-center text-sm transition-all", addType === "expense" ? "border-red-500 bg-red-50" : "border-border")}>
+              <ArrowUpRight className={cn("h-5 w-5 mx-auto mb-1", addType === "expense" ? "text-destructive" : "text-muted-foreground")} />
+              مصروف
+            </button>
           </div>
-          <div className="space-y-1"><Label>الوصف *</Label><Input value={addDesc} onChange={e => setAddDesc(e.target.value)} placeholder="وصف الحركة..." /></div>
+          <div className="space-y-1"><Label>البيان *</Label><Input value={addDesc} onChange={e => setAddDesc(e.target.value)} placeholder="وصف الحركة..." /></div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1"><Label>المبلغ *</Label><Input type="number" min="0" step="0.01" value={addAmount} onChange={e => setAddAmount(e.target.value)} placeholder="0" /></div>
-            <div className="space-y-1"><Label>التاريخ *</Label><Input type="date" value={addDate} onChange={e => setAddDate(e.target.value)} /></div>
+            <div className="space-y-1"><Label>التاريخ *</Label><ArabicDatePicker value={addDate} onChange={d => setAddDate(d)} compact /></div>
           </div>
-          {entityType !== "other" && <div className="space-y-1"><Label>طريقة الدفع</Label>
-            <Select value={addMethod} onValueChange={setAddMethod}><SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="cash">نقدي</SelectItem><SelectItem value="cheque">شيك</SelectItem><SelectItem value="transfer">حوالة بنكية</SelectItem><SelectItem value="visa">بطاقة ائتمان</SelectItem></SelectContent>
-            </Select></div>}
-          <div className="space-y-1"><Label>رقم مرجعي (اختياري)</Label><Input value={addRef} onChange={e => setAddRef(e.target.value)} placeholder="رقم الشيك أو الحوالة..." /></div>
-          <div className="space-y-1"><Label>ملاحظات</Label><Textarea value={addNotes} onChange={e => setAddNotes(e.target.value)} placeholder="ملاحظات إضافية..." rows={2} /></div>
         </div>
         <DialogFooter><Button variant="outline" onClick={() => setAddOpen(false)}>إلغاء</Button><Button onClick={handleSave} disabled={saving}>{saving ? "جاري الحفظ..." : "إضافة"}</Button></DialogFooter>
       </DialogContent></Dialog>
