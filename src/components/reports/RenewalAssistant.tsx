@@ -414,7 +414,7 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
                 </Button>
                 <Button
                   variant="ghost"
-                  className="gap-2"
+                  className="gap-2 flex-row-reverse"
                   onClick={() => handleAction('skip')}
                   disabled={saving}
                 >

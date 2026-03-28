@@ -100,11 +100,11 @@ const policyTypeFilterLabels: Record<string, string> = {
 };
 
 const renewalStatusLabels: Record<string, string> = {
-  not_contacted: 'لم يتم التواصل',
+  not_contacted: 'لم يجدد بعد',
   sms_sent: 'تم إرسال SMS',
   called: 'تم الاتصال',
   renewed: 'تم التجديد',
-  not_interested: 'غير مهتم',
+  not_interested: 'لا يريد التجديد',
 };
 
 const renewalStatusColors: Record<string, string> = {
@@ -1605,11 +1605,13 @@ export default function PolicyReports() {
                             <TableCell className="font-mono text-sm">{formatDate(client.earliest_end_date)}</TableCell>
                             <TableCell>
                               <Badge variant={
-                                client.days_remaining <= 0 ? 'destructive' : 
-                                client.days_remaining <= 7 ? 'destructive' : 
+                                client.days_remaining <= 0 ? 'destructive' :
+                                client.days_remaining <= 7 ? 'destructive' :
                                 client.days_remaining <= 14 ? 'warning' : 'secondary'
                               }>
-                                {client.days_remaining <= 0 ? 'اليوم!' : `${client.days_remaining} يوم`}
+                                {client.days_remaining === 0 ? 'اليوم!' :
+                                 client.days_remaining < 0 ? `متأخر ${Math.abs(client.days_remaining)} يوم` :
+                                 `${client.days_remaining} يوم`}
                               </Badge>
                             </TableCell>
                             <TableCell className="font-bold">₪{client.total_insurance_price.toLocaleString()}</TableCell>
