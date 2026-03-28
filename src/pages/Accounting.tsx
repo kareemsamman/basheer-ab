@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,6 +27,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
+import { ExpensePaymentLines, PaymentLine } from "@/components/expenses/ExpensePaymentLines";
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -96,15 +96,18 @@ export default function Accounting() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
 
-  const navigate = useNavigate();
-
-  // Add dialog (only for "other" entity type - manual entries)
+  // Add dialog
   const [addOpen, setAddOpen] = useState(false);
-  const [addType, setAddType] = useState<"income" | "expense">("income");
-  const [addAmount, setAddAmount] = useState("");
-  const [addDate, setAddDate] = useState(new Date().toISOString().split("T")[0]);
+  const [addVoucherType, setAddVoucherType] = useState<"payment" | "receipt">("payment");
   const [addDesc, setAddDesc] = useState("");
+  const [addIssueDate, setAddIssueDate] = useState(new Date().toISOString().split("T")[0]);
+  const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
+  const [mainReceiptImages, setMainReceiptImages] = useState<string[]>([]);
+  const [mainNotes, setMainNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  // For "other" entity type - simple mode
+  const [addOtherType, setAddOtherType] = useState<"income" | "expense">("income");
+  const [addOtherAmount, setAddOtherAmount] = useState("");
 
   // Load reference data
   useEffect(() => {
@@ -191,10 +194,11 @@ export default function Accounting() {
         }
 
         // PAYMENTS: company settlements (from company wallet page)
+        // Filter by created_at (issue date) not settlement_date (cheque date)
         let csq = supabase.from("company_settlements")
-          .select("id, total_amount, settlement_date, notes, payment_type, cheque_number, insurance_companies(name_ar, name)")
+          .select("id, total_amount, settlement_date, created_at, notes, payment_type, cheque_number, insurance_companies(name_ar, name)")
           .eq("status", "completed")
-          .gte("settlement_date", fromDate).lte("settlement_date", toDate);
+          .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
         if (selectedCompanyId !== "all") csq = csq.eq("company_id", selectedCompanyId);
         const { data: settlements } = await csq;
         for (const s of settlements || []) {
@@ -243,6 +247,19 @@ export default function Accounting() {
           results.push({ id: e.id, tab: e.voucher_type === "receipt" ? "receipt" : "payment", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, description: e.description || (e.voucher_type === "receipt" ? "سند قبض" : "سند صرف"), company_name: "", extra: (e as any).brokers?.name || "" });
         }
 
+        // BROKER SETTLEMENTS (from broker wallet)
+        let bsq = supabase.from("broker_settlements")
+          .select("id, total_amount, settlement_date, created_at, notes, payment_type, cheque_number, direction, brokers(name)")
+          .eq("status", "completed")
+          .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
+        if (selectedBrokerId !== "all") bsq = bsq.eq("broker_id", selectedBrokerId);
+        const { data: bSettlements } = await bsq;
+        for (const s of bSettlements || []) {
+          const isReceipt = s.direction === "from_broker";
+          const payMethod = s.payment_type === "cheque" ? `شيك${s.cheque_number ? ` #${s.cheque_number}` : ""}` : s.payment_type === "bank_transfer" ? "تحويل بنكي" : s.payment_type || "";
+          results.push({ id: s.id, tab: isReceipt ? "receipt" : "payment", client_name: "", car_number: null, types: [], amount: s.total_amount || 0, date: s.created_at, description: s.notes || (isReceipt ? "سند قبض" : "سند صرف"), company_name: "", extra: `${(s as any).brokers?.name || ""} ${payMethod}`.trim() });
+        }
+
       } else {
         // OTHER: manual ledger
         const { data: oData } = await supabase.from("ab_ledger")
@@ -288,24 +305,85 @@ export default function Accounting() {
 
   const showReceipt = entityType === "broker" || entityType === "other";
 
-  // Save manual entry (only for "other" entity type)
+  const resetAddDialog = () => {
+    setAddDesc(""); setMainNotes(""); setMainReceiptImages([]);
+    setPaymentLines([]); setAddOtherAmount(""); setAddOtherType("income");
+    setAddIssueDate(new Date().toISOString().split("T")[0]);
+  };
+
   const handleSave = async () => {
-    const amt = parseFloat(addAmount);
-    if (!amt || amt <= 0) { toast.error("يرجى إدخال مبلغ صحيح"); return; }
-    if (!addDesc.trim()) { toast.error("يرجى إدخال الوصف"); return; }
     setSaving(true);
     try {
-      const sign = addType === "expense" ? -1 : 1;
-      await supabase.from("ab_ledger").insert({
-        amount: amt * sign, transaction_date: addDate, description: addDesc.trim(),
-        reference_type: "manual_adjustment" as any, reference_id: crypto.randomUUID(),
-        category: (sign > 0 ? "premium_income" : "commission_expense") as any,
-        counterparty_type: "internal" as any, status: "posted" as any, created_by_admin_id: user?.id,
-      });
+      if (entityType === "other") {
+        // Simple manual entry
+        const amt = parseFloat(addOtherAmount);
+        if (!amt || amt <= 0) { toast.error("يرجى إدخال مبلغ صحيح"); setSaving(false); return; }
+        if (!addDesc.trim()) { toast.error("يرجى إدخال الوصف"); setSaving(false); return; }
+        const sign = addOtherType === "expense" ? -1 : 1;
+        await supabase.from("ab_ledger").insert({
+          amount: amt * sign, transaction_date: addIssueDate, description: addDesc.trim(),
+          reference_type: "manual_adjustment" as any, reference_id: crypto.randomUUID(),
+          category: (sign > 0 ? "premium_income" : "commission_expense") as any,
+          counterparty_type: "internal" as any, status: "posted" as any, created_by_admin_id: user?.id,
+        });
+      } else if (entityType === "company") {
+        // Company settlement entries
+        if (paymentLines.length === 0) { toast.error("يرجى إضافة دفعة واحدة على الأقل"); setSaving(false); return; }
+        const companyId = selectedCompanyId !== "all" ? selectedCompanyId : null;
+        if (!companyId) { toast.error("يرجى اختيار شركة تأمين"); setSaving(false); return; }
+        for (const payment of paymentLines) {
+          const amount = payment.payment_type === "customer_cheque" && payment.selected_cheques
+            ? payment.selected_cheques.reduce((s, c) => s + c.amount, 0)
+            : payment.amount;
+          const customerChequeIds = payment.payment_type === "customer_cheque" && payment.selected_cheques
+            ? payment.selected_cheques.map(c => c.id) : [];
+          await supabase.from("company_settlements").insert({
+            company_id: companyId,
+            total_amount: amount,
+            settlement_date: payment.payment_date,
+            notes: addDesc.trim() || mainNotes || null,
+            status: "completed",
+            created_by_admin_id: user?.id,
+            payment_type: payment.payment_type === "customer_cheque" ? "cheque" : payment.payment_type,
+            cheque_number: payment.payment_type === "cheque" ? payment.cheque_number : null,
+            cheque_image_url: payment.cheque_image_url || null,
+            bank_reference: payment.payment_type === "bank_transfer" ? payment.bank_reference : null,
+            customer_cheque_ids: customerChequeIds.length > 0 ? customerChequeIds : null,
+          } as any);
+          // Mark customer cheques as used
+          if (customerChequeIds.length > 0) {
+            await supabase.from("policy_payments").update({ refused: false } as any).in("id", customerChequeIds);
+          }
+        }
+      } else if (entityType === "broker") {
+        // Broker settlement entries
+        if (paymentLines.length === 0) { toast.error("يرجى إضافة دفعة واحدة على الأقل"); setSaving(false); return; }
+        const brokerId = selectedBrokerId !== "all" ? selectedBrokerId : null;
+        if (!brokerId) { toast.error("يرجى اختيار وكيل"); setSaving(false); return; }
+        const direction = addVoucherType === "receipt" ? "from_broker" : "to_broker";
+        for (const payment of paymentLines) {
+          const amount = payment.payment_type === "customer_cheque" && payment.selected_cheques
+            ? payment.selected_cheques.reduce((s, c) => s + c.amount, 0)
+            : payment.amount;
+          await supabase.from("broker_settlements").insert({
+            broker_id: brokerId,
+            total_amount: amount,
+            settlement_date: payment.payment_date,
+            notes: addDesc.trim() || mainNotes || null,
+            status: "completed",
+            direction,
+            created_by_admin_id: user?.id,
+            payment_type: payment.payment_type === "customer_cheque" ? "cheque" : payment.payment_type,
+            cheque_number: payment.payment_type === "cheque" ? payment.cheque_number : null,
+            cheque_image_url: payment.cheque_image_url || null,
+            bank_reference: payment.payment_type === "bank_transfer" ? payment.bank_reference : null,
+          } as any);
+        }
+      }
       toast.success("تم الإضافة بنجاح");
-      setAddOpen(false); setAddAmount(""); setAddDesc("");
+      setAddOpen(false); resetAddDialog();
       fetchData();
-    } catch { toast.error("فشل في الإضافة"); }
+    } catch (err) { console.error(err); toast.error("فشل في الإضافة"); }
     finally { setSaving(false); }
   };
 
@@ -476,14 +554,7 @@ export default function Accounting() {
               </button>
             ))}
           </div>
-          <Button onClick={() => {
-            if (entityType === "other") {
-              setAddOpen(true);
-            } else {
-              // Navigate to expenses page - same full dialog with payment lines
-              navigate("/expenses");
-            }
-          }} className="gap-2 shrink-0"><PlusCircle className="h-4 w-4" />إضافة</Button>
+          <Button onClick={() => { resetAddDialog(); setAddOpen(true); }} className="gap-2 shrink-0"><PlusCircle className="h-4 w-4" />إضافة</Button>
         </div>
 
         {/* Table */}
@@ -535,29 +606,82 @@ export default function Accounting() {
       </div>
 
       {/* Add Dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}><DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>إضافة حركة يدوية</DialogTitle></DialogHeader>
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => setAddType("income")}
-              className={cn("rounded-lg border-2 p-3 text-center text-sm transition-all", addType === "income" ? "border-green-500 bg-green-50" : "border-border")}>
-              <ArrowDownLeft className={cn("h-5 w-5 mx-auto mb-1", addType === "income" ? "text-green-600" : "text-muted-foreground")} />
-              دخل
-            </button>
-            <button onClick={() => setAddType("expense")}
-              className={cn("rounded-lg border-2 p-3 text-center text-sm transition-all", addType === "expense" ? "border-red-500 bg-red-50" : "border-border")}>
-              <ArrowUpRight className={cn("h-5 w-5 mx-auto mb-1", addType === "expense" ? "text-destructive" : "text-muted-foreground")} />
-              مصروف
-            </button>
-          </div>
-          <div className="space-y-1"><Label>البيان *</Label><Input value={addDesc} onChange={e => setAddDesc(e.target.value)} placeholder="وصف الحركة..." /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1"><Label>المبلغ *</Label><Input type="number" min="0" step="0.01" value={addAmount} onChange={e => setAddAmount(e.target.value)} placeholder="0" /></div>
-            <div className="space-y-1"><Label>التاريخ *</Label><ArabicDatePicker value={addDate} onChange={d => setAddDate(d)} compact /></div>
-          </div>
-        </div>
-        <DialogFooter><Button variant="outline" onClick={() => setAddOpen(false)}>إلغاء</Button><Button onClick={handleSave} disabled={saving}>{saving ? "جاري الحفظ..." : "إضافة"}</Button></DialogFooter>
-      </DialogContent></Dialog>
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className={cn(entityType === "other" ? "max-w-md" : "max-w-2xl max-h-[90vh] overflow-y-auto")}>
+          <DialogHeader>
+            <DialogTitle>
+              {entityType === "company" ? "سند جديد - شركة تأمين" : entityType === "broker" ? "سند جديد - وكيل" : "إضافة حركة يدوية"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {entityType === "other" ? (
+            /* Simple mode for "other" entity */
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => setAddOtherType("income")}
+                  className={cn("rounded-lg border-2 p-3 text-center text-sm transition-all", addOtherType === "income" ? "border-green-500 bg-green-50" : "border-border")}>
+                  <ArrowDownLeft className={cn("h-5 w-5 mx-auto mb-1", addOtherType === "income" ? "text-green-600" : "text-muted-foreground")} />
+                  دخل
+                </button>
+                <button onClick={() => setAddOtherType("expense")}
+                  className={cn("rounded-lg border-2 p-3 text-center text-sm transition-all", addOtherType === "expense" ? "border-red-500 bg-red-50" : "border-border")}>
+                  <ArrowUpRight className={cn("h-5 w-5 mx-auto mb-1", addOtherType === "expense" ? "text-destructive" : "text-muted-foreground")} />
+                  مصروف
+                </button>
+              </div>
+              <div className="space-y-1"><Label>البيان *</Label><Input value={addDesc} onChange={e => setAddDesc(e.target.value)} placeholder="وصف الحركة..." /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1"><Label>المبلغ *</Label><Input type="number" min="0" step="0.01" value={addOtherAmount} onChange={e => setAddOtherAmount(e.target.value)} placeholder="0" /></div>
+                <div className="space-y-1"><Label>تاريخ الإصدار *</Label><ArabicDatePicker value={addIssueDate} onChange={d => setAddIssueDate(d)} compact /></div>
+              </div>
+            </div>
+          ) : (
+            /* Full mode for company/broker with ExpensePaymentLines */
+            <div className="space-y-4">
+              {/* Voucher type selector */}
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => setAddVoucherType("payment")}
+                  className={cn("rounded-xl border-2 p-4 text-center transition-all", addVoucherType === "payment" ? "border-red-400 bg-red-50" : "border-border")}>
+                  <ArrowUpRight className={cn("h-6 w-6 mx-auto mb-1", addVoucherType === "payment" ? "text-red-500" : "text-muted-foreground")} />
+                  <p className={cn("font-bold", addVoucherType === "payment" ? "text-red-600" : "")}>سند صرف</p>
+                  <p className="text-xs text-muted-foreground">مبلغ خارج</p>
+                </button>
+                <button onClick={() => setAddVoucherType("receipt")}
+                  className={cn("rounded-xl border-2 p-4 text-center transition-all", addVoucherType === "receipt" ? "border-primary bg-primary/5" : "border-border")}>
+                  <ArrowDownLeft className={cn("h-6 w-6 mx-auto mb-1", addVoucherType === "receipt" ? "text-primary" : "text-muted-foreground")} />
+                  <p className={cn("font-bold", addVoucherType === "receipt" ? "text-primary" : "")}>سند قبض</p>
+                  <p className="text-xs text-muted-foreground">مبلغ داخل</p>
+                </button>
+              </div>
+
+              {/* Description */}
+              <div className="space-y-1">
+                <Label>الوصف</Label>
+                <Input value={addDesc} onChange={e => setAddDesc(e.target.value)} placeholder="وصف السند..." />
+              </div>
+
+              {/* Payment Lines - same component as expenses page */}
+              <ExpensePaymentLines
+                paymentLines={paymentLines}
+                setPaymentLines={setPaymentLines}
+                mainReceiptImages={mainReceiptImages}
+                setMainReceiptImages={setMainReceiptImages}
+                mainNotes={mainNotes}
+                setMainNotes={setMainNotes}
+                entityId={entityType === "company" ? (selectedCompanyId !== "all" ? selectedCompanyId : "") : (selectedBrokerId !== "all" ? selectedBrokerId : "")}
+                entityType={entityType === "company" ? "company" : "broker"}
+              />
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>إلغاء</Button>
+            <Button onClick={handleSave} disabled={saving} className="gap-2">
+              {saving ? "جاري الحفظ..." : entityType === "other" ? "إضافة" : `حفظ الدفعات (${paymentLines.length})`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 }
