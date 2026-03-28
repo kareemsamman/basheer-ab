@@ -246,7 +246,7 @@ export default function Accounting() {
         let pq = supabase.from("expenses")
           .select("id, amount, expense_date, created_at, description, reference_number, payment_method, voucher_type, insurance_companies(name_ar, name)")
           .eq("entity_type", "company")
-          .in("voucher_type", ["payment", "receipt", "sale"])
+          .in("voucher_type", ["payment", "receipt"])
           .gte("expense_date", fromDate).lte("expense_date", toDate);
         if (selectedCompanyIds.length > 0) pq = pq.in("entity_id", selectedCompanyIds);
         const { data: pays } = await pq;
@@ -323,7 +323,7 @@ export default function Accounting() {
         let beq = supabase.from("expenses")
           .select("id, amount, expense_date, created_at, description, reference_number, voucher_type, payment_method, brokers(name)")
           .eq("entity_type", "broker")
-          .in("voucher_type", ["payment", "receipt", "sale"])
+          .in("voucher_type", ["payment", "receipt"])
           .gte("expense_date", fromDate).lte("expense_date", toDate);
         if (selectedBrokerId !== "all") beq = beq.eq("entity_id", selectedBrokerId);
         const { data: bExps } = await beq;
@@ -531,14 +531,14 @@ export default function Accounting() {
         const { error: insertErr } = await supabase.from("expenses").insert({
           amount: amt,
           expense_date: saleDate,
-          description: addDesc.trim(),
-          voucher_type: "sale",
+          description: `[مبيعات] ${addDesc.trim()}`,
+          voucher_type: "payment",
           category: entityType === "company" ? "insurance_company" : entityType === "broker" ? "broker_payment" : "other",
           entity_type: eType,
           entity_id: eId,
           contact_name: entityType === "other" ? otherName.trim() || null : null,
-          payment_method: null,
-          notes: mainNotes || null,
+          payment_method: "cash",
+          notes: mainNotes || "مبيعات - بدون طريقة دفع",
           created_by_admin_id: user?.id,
         } as any);
         if (insertErr) { console.error("Sale insert error:", insertErr); throw insertErr; }
