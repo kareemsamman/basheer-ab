@@ -15,6 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -98,11 +99,11 @@ export default function Accounting() {
   const [entityType, setEntityType] = useState<EntityType>("company");
   const [companies, setCompanies] = useState<{ id: string; name: string; name_ar: string | null }[]>([]);
   const [brokers, setBrokers] = useState<{ id: string; name: string }[]>([]);
-  const [selectedCompanyId, setSelectedCompanyId] = useState("all");
+  const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
   const [selectedBrokerId, setSelectedBrokerId] = useState("all");
   const [otherName, setOtherName] = useState("");
   const [savedContacts, setSavedContacts] = useState<string[]>([]);
-  const [policyTypeFilter, setPolicyTypeFilter] = useState("all");
+  const [selectedPolicyTypes, setSelectedPolicyTypes] = useState<string[]>([]);
   const [dateMode, setDateMode] = useState<"month" | "range">("month");
   const [fromDate, setFromDate] = useState(def.from);
   const [toDate, setToDate] = useState(def.to);
@@ -164,11 +165,22 @@ export default function Accounting() {
           .gte("issue_date", fromDate).lte("issue_date", toDate)
           .is("deleted_at", null).eq("cancelled", false).eq("transferred", false)
           .neq("policy_type_parent", "ELZAMI");
-        if (selectedCompanyId !== "all") q = q.eq("company_id", selectedCompanyId);
-        if (policyTypeFilter !== "all") {
-          if (policyTypeFilter === "THIRD" || policyTypeFilter === "FULL")
-            q = q.eq("policy_type_parent", "THIRD_FULL").eq("policy_type_child", policyTypeFilter);
-          else q = q.eq("policy_type_parent", policyTypeFilter);
+        if (selectedCompanyIds.length > 0) q = q.in("company_id", selectedCompanyIds);
+        if (selectedPolicyTypes.length > 0) {
+          // Build OR conditions for mixed parent/child types
+          const parents = selectedPolicyTypes.filter(t => t !== "THIRD" && t !== "FULL");
+          const children = selectedPolicyTypes.filter(t => t === "THIRD" || t === "FULL");
+          if (children.length > 0 && parents.length === 0) {
+            q = q.eq("policy_type_parent", "THIRD_FULL").in("policy_type_child", children);
+          } else if (parents.length > 0 && children.length === 0) {
+            q = q.in("policy_type_parent", parents);
+          } else {
+            // Both: use or filter
+            const orParts: string[] = [];
+            if (parents.length > 0) orParts.push(`policy_type_parent.in.(${parents.join(",")})`);
+            if (children.length > 0) orParts.push(`and(policy_type_parent.eq.THIRD_FULL,policy_type_child.in.(${children.join(",")}))`);
+            q = q.or(orParts.join(","));
+          }
         }
         const { data: iss } = await q.order("created_at", { ascending: false });
 
@@ -192,7 +204,7 @@ export default function Accounting() {
           .select("id, insurance_price, cancellation_date, issue_date, created_at, clients(full_name), cars(car_number), insurance_companies(name_ar, name)")
           .eq("cancelled", true).neq("policy_type_parent", "ELZAMI").is("deleted_at", null)
           .gte("issue_date", fromDate).lte("issue_date", toDate);
-        if (selectedCompanyId !== "all") rq = rq.eq("company_id", selectedCompanyId);
+        if (selectedCompanyIds.length > 0) rq = rq.in("company_id", selectedCompanyIds);
         const { data: refs } = await rq;
         for (const p of refs || []) {
           results.push({ id: p.id, tab: "refund", source: "policy", client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: [], amount: p.insurance_price || 0, date: p.cancellation_date || p.created_at, issue_date: p.created_at, description: "إلغاء بوليصة", company_name: (p as any).insurance_companies?.name_ar || (p as any).insurance_companies?.name || "", payment_method: "", extra: "" });
@@ -205,7 +217,7 @@ export default function Accounting() {
           .gte("payment_date", fromDate).lte("payment_date", toDate);
         for (const c of chqs || []) {
           const pol = (c as any).policies;
-          if (selectedCompanyId !== "all" && pol?.company_id !== selectedCompanyId) continue;
+          if (selectedCompanyIds.length > 0 && !selectedCompanyIds.includes(pol?.company_id)) continue;
           results.push({ id: c.id, tab: "refund", source: "cheque", client_name: pol?.clients?.full_name || "-", car_number: pol?.cars?.car_number || null, types: [], amount: c.amount || 0, date: c.payment_date, issue_date: c.payment_date, description: `شيك مرتجع${c.cheque_number ? ` #${c.cheque_number}` : ""}`, company_name: pol?.insurance_companies?.name_ar || pol?.insurance_companies?.name || "", payment_method: "شيك", extra: "" });
         }
 
@@ -222,7 +234,7 @@ export default function Accounting() {
           .select("id, amount, expense_date, created_at, description, payment_method, reference_number, insurance_companies(name_ar, name)")
           .eq("voucher_type", "refund").eq("entity_type", "company")
           .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
-        if (selectedCompanyId !== "all") rfq = rfq.eq("entity_id", selectedCompanyId);
+        if (selectedCompanyIds.length > 0) rfq = rfq.in("entity_id", selectedCompanyIds);
         const { data: manualRefunds } = await rfq;
         for (const e of manualRefunds || []) {
           results.push({ id: e.id, tab: "refund", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: e.created_at, description: e.description || "مرتجع", company_name: (e as any).insurance_companies?.name_ar || (e as any).insurance_companies?.name || "", payment_method: payMethodLabel[(e as any).payment_method] || "", extra: e.reference_number ? `#${e.reference_number}` : "" });
@@ -234,7 +246,7 @@ export default function Accounting() {
           .eq("entity_type", "company")
           .in("voucher_type", ["payment", "receipt"])
           .gte("expense_date", fromDate).lte("expense_date", toDate);
-        if (selectedCompanyId !== "all") pq = pq.eq("entity_id", selectedCompanyId);
+        if (selectedCompanyIds.length > 0) pq = pq.in("entity_id", selectedCompanyIds);
         const { data: pays } = await pq;
         for (const e of pays || []) {
           const isReceipt = (e as any).voucher_type === "receipt";
@@ -246,7 +258,7 @@ export default function Accounting() {
         let csq = supabase.from("company_settlements")
           .select("id, total_amount, settlement_date, created_at, notes, payment_type, cheque_number, status, insurance_companies(name_ar, name)")
           .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
-        if (selectedCompanyId !== "all") csq = csq.eq("company_id", selectedCompanyId);
+        if (selectedCompanyIds.length > 0) csq = csq.in("company_id", selectedCompanyIds);
         const { data: settlements } = await csq;
         for (const s of settlements || []) {
           if ((s as any).status === "refused") continue;
@@ -262,11 +274,20 @@ export default function Accounting() {
           .is("deleted_at", null).eq("cancelled", false).eq("transferred", false)
           .neq("policy_type_parent", "ELZAMI").not("broker_id", "is", null);
         if (selectedBrokerId !== "all") bq = bq.eq("broker_id", selectedBrokerId);
-        if (selectedCompanyId !== "all") bq = bq.eq("company_id", selectedCompanyId);
-        if (policyTypeFilter !== "all") {
-          if (policyTypeFilter === "THIRD" || policyTypeFilter === "FULL")
-            bq = bq.eq("policy_type_parent", "THIRD_FULL").eq("policy_type_child", policyTypeFilter);
-          else bq = bq.eq("policy_type_parent", policyTypeFilter);
+        if (selectedCompanyIds.length > 0) bq = bq.in("company_id", selectedCompanyIds);
+        if (selectedPolicyTypes.length > 0) {
+          const parents = selectedPolicyTypes.filter(t => t !== "THIRD" && t !== "FULL");
+          const children = selectedPolicyTypes.filter(t => t === "THIRD" || t === "FULL");
+          if (children.length > 0 && parents.length === 0) {
+            bq = bq.eq("policy_type_parent", "THIRD_FULL").in("policy_type_child", children);
+          } else if (parents.length > 0 && children.length === 0) {
+            bq = bq.in("policy_type_parent", parents);
+          } else {
+            const orParts: string[] = [];
+            if (parents.length > 0) orParts.push(`policy_type_parent.in.(${parents.join(",")})`);
+            if (children.length > 0) orParts.push(`and(policy_type_parent.eq.THIRD_FULL,policy_type_child.in.(${children.join(",")}))`);
+            bq = bq.or(orParts.join(","));
+          }
         }
         const { data: bPols } = await bq.order("created_at", { ascending: false });
 
@@ -365,7 +386,7 @@ export default function Accounting() {
     } finally {
       setLoading(false);
     }
-  }, [entityType, selectedCompanyId, selectedBrokerId, policyTypeFilter, fromDate, toDate, otherName]);
+  }, [entityType, selectedCompanyIds, selectedBrokerId, selectedPolicyTypes, fromDate, toDate, otherName]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -376,7 +397,7 @@ export default function Accounting() {
     return rows.filter(r => r.tab === map[activeTab]);
   }, [rows, activeTab]);
 
-  useEffect(() => setPage(0), [activeTab, entityType, selectedCompanyId, selectedBrokerId, fromDate, toDate]);
+  useEffect(() => setPage(0), [activeTab, entityType, selectedCompanyIds, selectedBrokerId, fromDate, toDate]);
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE) || 1;
   const pageRows = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
@@ -524,8 +545,8 @@ export default function Accounting() {
         }
       } else if (entityType === "company") {
         if (paymentLines.length === 0) { toast.error("يرجى إضافة دفعة واحدة على الأقل"); setSaving(false); return; }
-        const companyId = selectedCompanyId !== "all" ? selectedCompanyId : null;
-        if (!companyId) { toast.error("يرجى اختيار شركة تأمين"); setSaving(false); return; }
+        const companyId = selectedCompanyIds.length === 1 ? selectedCompanyIds[0] : null;
+        if (!companyId) { toast.error("يرجى اختيار شركة تأمين واحدة للإضافة"); setSaving(false); return; }
 
         // All company entries save to expenses table
         const voucherType = addVoucherType === "refund" ? "refund" : addVoucherType;
@@ -605,7 +626,7 @@ export default function Accounting() {
             { t: "broker" as EntityType, l: "عن طريق وكيل", I: Users, d: "وسيط" },
             { t: "other" as EntityType, l: "شخص آخر", I: UserPlus, d: "كراج / جهة خارجية" },
           ]).map(e => (
-            <button key={e.t} onClick={() => { setEntityType(e.t); setActiveTab("all"); setPage(0); setPolicyTypeFilter("all"); setSelectedCompanyId("all"); setSelectedBrokerId("all"); }}
+            <button key={e.t} onClick={() => { setEntityType(e.t); setActiveTab("all"); setPage(0); setSelectedPolicyTypes([]); setSelectedCompanyIds([]); setSelectedBrokerId("all"); }}
               className={cn("rounded-xl border-2 p-4 text-center transition-all", entityType === e.t ? "border-primary bg-primary/5 shadow-md" : "border-border hover:border-primary/40")}>
               <e.I className={cn("h-6 w-6 mx-auto mb-2", entityType === e.t ? "text-primary" : "text-muted-foreground")} />
               <p className="font-bold text-sm">{e.l}</p>
@@ -617,28 +638,47 @@ export default function Accounting() {
         {/* Filters */}
         <Card className="p-4">
           <div className="flex flex-wrap gap-3 items-end">
-            {entityType === "company" && (
-              <div className="space-y-1"><Label className="text-xs">شركة التأمين</Label>
-                <Select value={selectedCompanyId} onValueChange={v => { setSelectedCompanyId(v); setPage(0); }}>
-                  <SelectTrigger className="w-[200px]"><SelectValue placeholder="اختر شركة..." /></SelectTrigger>
-                  <SelectContent><SelectItem value="all">كل الشركات</SelectItem>{companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name_ar || c.name}</SelectItem>)}</SelectContent>
-                </Select>
+            {(entityType === "company" || entityType === "broker") && (
+              <div className="space-y-1">
+                <Label className="text-xs">شركة التأمين</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-[220px] justify-between text-sm font-normal">
+                      {selectedCompanyIds.length === 0 ? "كل الشركات" : `${selectedCompanyIds.length} شركة محددة`}
+                      <ChevronLeft className="h-4 w-4 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[250px] p-2 max-h-[300px] overflow-y-auto" align="start">
+                    <button onClick={() => { setSelectedCompanyIds([]); setPage(0); }}
+                      className={cn("w-full text-right text-sm px-2 py-1.5 rounded hover:bg-muted", selectedCompanyIds.length === 0 && "bg-primary/10 font-medium")}>
+                      كل الشركات
+                    </button>
+                    {companies.map(c => {
+                      const selected = selectedCompanyIds.includes(c.id);
+                      return (
+                        <button key={c.id} onClick={() => {
+                          setSelectedCompanyIds(prev => selected ? prev.filter(id => id !== c.id) : [...prev, c.id]);
+                          setPage(0);
+                        }} className={cn("w-full text-right text-sm px-2 py-1.5 rounded hover:bg-muted flex items-center gap-2", selected && "bg-primary/10 font-medium")}>
+                          <div className={cn("h-4 w-4 rounded border flex items-center justify-center shrink-0", selected ? "bg-primary border-primary" : "border-muted-foreground/30")}>
+                            {selected && <span className="text-white text-xs">✓</span>}
+                          </div>
+                          {c.name_ar || c.name}
+                        </button>
+                      );
+                    })}
+                  </PopoverContent>
+                </Popover>
               </div>
             )}
-            {entityType === "broker" && (<>
+            {entityType === "broker" && (
               <div className="space-y-1"><Label className="text-xs">الوكيل</Label>
                 <Select value={selectedBrokerId} onValueChange={v => { setSelectedBrokerId(v); setPage(0); }}>
                   <SelectTrigger className="w-[180px]"><SelectValue placeholder="اختر وكيل..." /></SelectTrigger>
                   <SelectContent><SelectItem value="all">كل الوكلاء</SelectItem>{brokers.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1"><Label className="text-xs">شركة التأمين</Label>
-                <Select value={selectedCompanyId} onValueChange={v => { setSelectedCompanyId(v); setPage(0); }}>
-                  <SelectTrigger className="w-[180px]"><SelectValue placeholder="اختر شركة..." /></SelectTrigger>
-                  <SelectContent><SelectItem value="all">كل الشركات</SelectItem>{companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name_ar || c.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-            </>)}
+            )}
             {entityType === "other" && (
               <div className="space-y-1"><Label className="text-xs">اسم الجهة</Label>
                 {savedContacts.length > 0 ? (
@@ -655,17 +695,41 @@ export default function Accounting() {
               </div>
             )}
             {entityType !== "other" && (
-              <div className="space-y-1"><Label className="text-xs">نوع البوليصة</Label>
-                <Select value={policyTypeFilter} onValueChange={v => { setPolicyTypeFilter(v); setPage(0); }}>
-                  <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">كل الأنواع</SelectItem>
-                    <SelectItem value="THIRD">ثالث</SelectItem><SelectItem value="FULL">شامل</SelectItem>
-                    <SelectItem value="ROAD_SERVICE">خدمات الطريق</SelectItem>
-                    <SelectItem value="ACCIDENT_FEE_EXEMPTION">إعفاء رسوم حادث</SelectItem>
-                    <SelectItem value="HEALTH">تأمين صحي</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="space-y-1">
+                <Label className="text-xs">نوع البوليصة</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-[180px] justify-between text-sm font-normal">
+                      {selectedPolicyTypes.length === 0 ? "كل الأنواع" : `${selectedPolicyTypes.length} نوع محدد`}
+                      <ChevronLeft className="h-4 w-4 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[200px] p-2" align="start">
+                    <button onClick={() => { setSelectedPolicyTypes([]); setPage(0); }}
+                      className={cn("w-full text-right text-sm px-2 py-1.5 rounded hover:bg-muted", selectedPolicyTypes.length === 0 && "bg-primary/10 font-medium")}>
+                      كل الأنواع
+                    </button>
+                    {[
+                      { v: "THIRD", l: "ثالث" }, { v: "FULL", l: "شامل" },
+                      { v: "ROAD_SERVICE", l: "خدمات الطريق" },
+                      { v: "ACCIDENT_FEE_EXEMPTION", l: "إعفاء رسوم حادث" },
+                      { v: "HEALTH", l: "تأمين صحي" },
+                    ].map(t => {
+                      const sel = selectedPolicyTypes.includes(t.v);
+                      return (
+                        <button key={t.v} onClick={() => {
+                          setSelectedPolicyTypes(prev => sel ? prev.filter(x => x !== t.v) : [...prev, t.v]);
+                          setPage(0);
+                        }} className={cn("w-full text-right text-sm px-2 py-1.5 rounded hover:bg-muted flex items-center gap-2", sel && "bg-primary/10 font-medium")}>
+                          <div className={cn("h-4 w-4 rounded border flex items-center justify-center shrink-0", sel ? "bg-primary border-primary" : "border-muted-foreground/30")}>
+                            {sel && <span className="text-white text-xs">✓</span>}
+                          </div>
+                          {t.l}
+                        </button>
+                      );
+                    })}
+                  </PopoverContent>
+                </Popover>
               </div>
             )}
             {/* Date mode selector */}
@@ -895,7 +959,7 @@ export default function Accounting() {
               setMainReceiptImages={setMainReceiptImages}
               mainNotes={mainNotes}
               setMainNotes={setMainNotes}
-              entityId={entityType === "company" ? (selectedCompanyId !== "all" ? selectedCompanyId : "") : entityType === "broker" ? (selectedBrokerId !== "all" ? selectedBrokerId : "") : ""}
+              entityId={entityType === "company" ? (selectedCompanyIds.length === 1 ? selectedCompanyIds[0] : "") : entityType === "broker" ? (selectedBrokerId !== "all" ? selectedBrokerId : "") : ""}
               entityType={entityType === "company" ? "company" : "broker"}
             />
           </div>
