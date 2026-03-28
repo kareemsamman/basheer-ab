@@ -27,6 +27,7 @@ import {
   ArrowUpRight, ArrowDownLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -84,8 +85,10 @@ export default function Accounting() {
   const [selectedBrokerId, setSelectedBrokerId] = useState("all");
   const [otherName, setOtherName] = useState("");
   const [policyTypeFilter, setPolicyTypeFilter] = useState("all");
+  const [dateMode, setDateMode] = useState<"month" | "range">("month");
   const [fromDate, setFromDate] = useState(def.from);
   const [toDate, setToDate] = useState(def.to);
+  const [selectedMonth, setSelectedMonth] = useState(def.from.slice(0, 7));
   const [activeTab, setActiveTab] = useState<TabType>("all");
 
   // Data
@@ -379,11 +382,56 @@ export default function Accounting() {
                 </Select>
               </div>
             )}
-            <div className="space-y-1"><Label className="text-xs">من تاريخ</Label><Input type="date" value={fromDate} onChange={e => { setFromDate(e.target.value); setPage(0); }} className="w-[145px]" /></div>
-            <div className="space-y-1"><Label className="text-xs">إلى تاريخ</Label><Input type="date" value={toDate} onChange={e => { setToDate(e.target.value); setPage(0); }} className="w-[145px]" /></div>
-            <div className="space-y-1"><Label className="text-xs">شهر</Label>
-              <Input type="month" value={fromDate.slice(0, 7)} onChange={e => { const [y, m] = e.target.value.split("-").map(Number); setFromDate(`${e.target.value}-01`); setToDate(`${e.target.value}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`); setPage(0); }} className="w-[145px]" />
+            {/* Date mode selector */}
+            <div className="space-y-1">
+              <Label className="text-xs">الفترة</Label>
+              <Select value={dateMode} onValueChange={(v: "month" | "range") => setDateMode(v)}>
+                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="month">شهر محدد</SelectItem>
+                  <SelectItem value="range">من تاريخ إلى تاريخ</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+
+            {dateMode === "month" ? (
+              <div className="space-y-1">
+                <Label className="text-xs">الشهر</Label>
+                <Input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setSelectedMonth(val);
+                    const [y, m] = val.split("-").map(Number);
+                    setFromDate(`${val}-01`);
+                    setToDate(`${val}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`);
+                    setPage(0);
+                  }}
+                  className="w-[160px]"
+                />
+              </div>
+            ) : (
+              <>
+                <div className="space-y-1">
+                  <Label className="text-xs">من تاريخ</Label>
+                  <ArabicDatePicker
+                    value={fromDate}
+                    onChange={(date) => { setFromDate(date); setPage(0); }}
+                    compact
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">إلى تاريخ</Label>
+                  <ArabicDatePicker
+                    value={toDate}
+                    onChange={(date) => { setToDate(date); setPage(0); }}
+                    compact
+                  />
+                </div>
+              </>
+            )}
+
             <Button variant="outline" className="gap-2"><Download className="h-4 w-4" />تصدير</Button>
           </div>
         </Card>
