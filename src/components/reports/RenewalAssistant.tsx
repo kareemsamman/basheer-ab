@@ -60,6 +60,7 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
   const [saving, setSaving] = useState(false);
   const [showDeclineReason, setShowDeclineReason] = useState(false);
   const [declineReason, setDeclineReason] = useState('');
+  const [fetchError, setFetchError] = useState(false);
 
   const followUpMonth = `${month}-01`;
   const formatLocalDate = (date: Date) => {
@@ -71,6 +72,7 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
 
   const fetchPendingClients = useCallback(async () => {
     setLoading(true);
+    setFetchError(false);
     try {
       const [year, mo] = month.split('-').map(Number);
       const startDate = formatLocalDate(new Date(year, mo - 1, 1));
@@ -94,7 +96,8 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
         .gte('end_date', startDate)
         .lte('end_date', endDate)
         .is('deleted_at', null)
-        .neq('status', 'cancelled')
+        .eq('cancelled', false)
+        .eq('transferred', false)
         .order('client_id');
 
       if (error) throw error;
@@ -141,6 +144,7 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
     } catch (err) {
       console.error('Error fetching assistant clients:', err);
       toast.error('فشل في تحميل بيانات المتابعة');
+      setFetchError(true);
     } finally {
       setLoading(false);
     }
@@ -253,6 +257,13 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
             <Skeleton className="h-8 w-48" />
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-10 w-full" />
+          </div>
+        ) : fetchError ? (
+          <div className="text-center py-8 space-y-3">
+            <XCircle className="h-12 w-12 mx-auto text-destructive" />
+            <p className="text-lg font-medium">فشل في تحميل البيانات</p>
+            <p className="text-muted-foreground">حدث خطأ أثناء جلب بيانات المتابعة</p>
+            <Button variant="outline" onClick={fetchPendingClients}>إعادة المحاولة</Button>
           </div>
         ) : clients.length === 0 ? (
           <div className="text-center py-8">
