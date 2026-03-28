@@ -160,8 +160,8 @@ export default function Accounting() {
       if (entityType === "company") {
         // ISSUANCES
         let q = supabase.from("policies")
-          .select("id, insurance_price, policy_type_parent, policy_type_child, created_at, group_id, company_id, clients(full_name), cars(car_number), insurance_companies(name_ar, name)")
-          .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59")
+          .select("id, insurance_price, policy_type_parent, policy_type_child, issue_date, created_at, group_id, company_id, clients(full_name), cars(car_number), insurance_companies(name_ar, name)")
+          .gte("issue_date", fromDate).lte("issue_date", toDate)
           .is("deleted_at", null).eq("cancelled", false).eq("transferred", false)
           .neq("policy_type_parent", "ELZAMI");
         if (selectedCompanyId !== "all") q = q.eq("company_id", selectedCompanyId);
@@ -182,16 +182,16 @@ export default function Accounting() {
             e.amount += p.insurance_price || 0;
             if (lbl && !e.types.includes(lbl)) e.types.push(lbl);
           } else {
-            gMap.set(k, { id: k, tab: "issuance", source: "policy", client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: p.created_at, issue_date: p.created_at, description: "", company_name: co, payment_method: "", extra: "" });
+            gMap.set(k, { id: k, tab: "issuance", source: "policy", client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: (p as any).issue_date || p.created_at, issue_date: (p as any).issue_date || p.created_at, description: "", company_name: co, payment_method: "", extra: "" });
           }
         }
         results.push(...gMap.values());
 
         // REFUNDS: cancelled
         let rq = supabase.from("policies")
-          .select("id, insurance_price, cancellation_date, created_at, clients(full_name), cars(car_number), insurance_companies(name_ar, name)")
+          .select("id, insurance_price, cancellation_date, issue_date, created_at, clients(full_name), cars(car_number), insurance_companies(name_ar, name)")
           .eq("cancelled", true).neq("policy_type_parent", "ELZAMI").is("deleted_at", null)
-          .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
+          .gte("issue_date", fromDate).lte("issue_date", toDate);
         if (selectedCompanyId !== "all") rq = rq.eq("company_id", selectedCompanyId);
         const { data: refs } = await rq;
         for (const p of refs || []) {
@@ -255,8 +255,8 @@ export default function Accounting() {
       } else if (entityType === "broker") {
         // BROKER ISSUANCES
         let bq = supabase.from("policies")
-          .select("id, insurance_price, policy_type_parent, policy_type_child, created_at, group_id, broker_id, clients(full_name), cars(car_number), insurance_companies(name_ar, name), brokers(name)")
-          .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59")
+          .select("id, insurance_price, policy_type_parent, policy_type_child, issue_date, created_at, group_id, broker_id, clients(full_name), cars(car_number), insurance_companies(name_ar, name), brokers(name)")
+          .gte("issue_date", fromDate).lte("issue_date", toDate)
           .is("deleted_at", null).eq("cancelled", false).eq("transferred", false)
           .neq("policy_type_parent", "ELZAMI").not("broker_id", "is", null);
         if (selectedBrokerId !== "all") bq = bq.eq("broker_id", selectedBrokerId);
@@ -278,7 +278,7 @@ export default function Accounting() {
             e.amount += p.insurance_price || 0;
             if (lbl && !e.types.includes(lbl)) e.types.push(lbl);
           } else {
-            bMap.set(k, { id: k, tab: "issuance", source: "policy", client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: p.created_at, issue_date: p.created_at, description: "", company_name: co, payment_method: "", extra: (p as any).brokers?.name || "" });
+            bMap.set(k, { id: k, tab: "issuance", source: "policy", client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: (p as any).issue_date || p.created_at, issue_date: (p as any).issue_date || p.created_at, description: "", company_name: co, payment_method: "", extra: (p as any).brokers?.name || "" });
           }
         }
         results.push(...bMap.values());
