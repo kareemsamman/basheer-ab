@@ -144,6 +144,7 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
     } catch (err) {
       console.error('Error fetching assistant clients:', err);
       toast.error('فشل في تحميل بيانات المتابعة');
+      setFetchError(true);
     } finally {
       setLoading(false);
     }
