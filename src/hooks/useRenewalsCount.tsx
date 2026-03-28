@@ -17,9 +17,6 @@ export function useRenewalsCount() {
       const { data, error } = await supabase.rpc('report_renewals', {
         p_start_date: startDate,
         p_end_date: endDate,
-        p_policy_type: null,
-        p_created_by: null,
-        p_search: null,
         p_page_size: 1,
         p_page: 1
       });

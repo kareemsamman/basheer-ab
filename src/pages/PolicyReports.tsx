@@ -438,12 +438,12 @@ export default function PolicyReports() {
       const { data, error } = await supabase.rpc('report_created_policies', {
         p_start_date: fromDate,
         p_end_date: toDate,
-        p_created_by: effectiveCreatedBy,
-        p_policy_type: createdPolicyTypeFilter !== 'all' ? createdPolicyTypeFilter : null,
-        p_company_id: createdCompanyFilter !== 'all' ? createdCompanyFilter : null,
-        p_search: createdSearch || null,
         p_page_size: PAGE_SIZE,
-        p_page: createdPage + 1 // 1-indexed
+        p_page: createdPage + 1, // 1-indexed
+        ...(effectiveCreatedBy ? { p_created_by: effectiveCreatedBy } : {}),
+        ...(createdPolicyTypeFilter !== 'all' ? { p_policy_type: createdPolicyTypeFilter } : {}),
+        ...(createdCompanyFilter !== 'all' ? { p_company_id: createdCompanyFilter } : {}),
+        ...(createdSearch ? { p_search: createdSearch } : {})
       });
 
       if (error) throw error;
@@ -497,11 +497,11 @@ export default function PolicyReports() {
       const renewalsRes = await supabase.rpc('report_renewals', {
           p_start_date: startDate,
           p_end_date: endDate,
-          p_policy_type: renewalsPolicyTypeFilter !== 'all' ? renewalsPolicyTypeFilter : null,
-          p_created_by: renewalsCreatedByFilter !== 'all' ? renewalsCreatedByFilter : null,
-          p_search: renewalsSearch || null,
           p_page_size: PAGE_SIZE,
-          p_page: renewalsPage + 1
+          p_page: renewalsPage + 1,
+          ...(renewalsPolicyTypeFilter !== 'all' ? { p_policy_type: renewalsPolicyTypeFilter } : {}),
+          ...(renewalsCreatedByFilter !== 'all' ? { p_created_by: renewalsCreatedByFilter } : {}),
+          ...(renewalsSearch ? { p_search: renewalsSearch } : {})
         });
 
       if (renewalsRes.error) throw renewalsRes.error;
@@ -663,12 +663,12 @@ export default function PolicyReports() {
     setRenewedLoading(true);
     try {
       const { data, error } = await supabase.rpc('report_renewed_clients', {
-        p_end_month: renewedMonth ? `${renewedMonth}-01` : null,
-        p_policy_type: renewedPolicyTypeFilter !== 'all' ? renewedPolicyTypeFilter : null,
-        p_created_by: renewedCreatedByFilter !== 'all' ? renewedCreatedByFilter : null,
-        p_search: renewedSearch || null,
         p_limit: PAGE_SIZE,
-        p_offset: renewedPage * PAGE_SIZE
+        p_offset: renewedPage * PAGE_SIZE,
+        ...(renewedMonth ? { p_end_month: `${renewedMonth}-01` } : {}),
+        ...(renewedPolicyTypeFilter !== 'all' ? { p_policy_type: renewedPolicyTypeFilter } : {}),
+        ...(renewedCreatedByFilter !== 'all' ? { p_created_by: renewedCreatedByFilter } : {}),
+        ...(renewedSearch ? { p_search: renewedSearch } : {})
       });
 
       if (error) throw error;
