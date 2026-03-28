@@ -64,6 +64,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
+import { ArabicMonthPicker } from '@/components/ui/arabic-month-picker';
 import { useAuth } from '@/hooks/useAuth';
 import { ClickablePhone } from '@/components/shared/ClickablePhone';
 import { getInsuranceTypeLabel } from '@/lib/insuranceTypes';
@@ -1403,11 +1404,10 @@ export default function PolicyReports() {
             {/* Filters */}
             <Card className="p-4">
               <div className="flex flex-wrap gap-3">
-                <Input
-                  type="month"
+                <ArabicMonthPicker
                   value={renewalsMonth}
-                  onChange={(e) => {
-                    setRenewalsMonth(e.target.value);
+                  onChange={(val) => {
+                    setRenewalsMonth(val);
                     setRenewalsDaysFilter('month');
                     setRenewalsPage(0);
                   }}
@@ -1821,10 +1821,9 @@ export default function PolicyReports() {
               {/* Filters */}
               <Card className="p-4">
                 <div className="flex flex-wrap gap-3">
-                  <Input
-                    type="month"
+                  <ArabicMonthPicker
                     value={renewedMonth}
-                    onChange={(e) => { setRenewedMonth(e.target.value); setRenewedPage(0); }}
+                    onChange={(val) => { setRenewedMonth(val); setRenewedPage(0); }}
                     className="w-[160px]"
                   />
                   <Select value={renewedPolicyTypeFilter} onValueChange={(v) => { setRenewedPolicyTypeFilter(v); setRenewedPage(0); }}>
@@ -1967,10 +1966,9 @@ export default function PolicyReports() {
             {/* Filters */}
             <Card className="p-4">
               <div className="flex flex-wrap gap-3">
-                <Input
-                  type="month"
+                <ArabicMonthPicker
                   value={renewedMonth}
-                  onChange={(e) => { setRenewedMonth(e.target.value); setRenewedPage(0); }}
+                  onChange={(val) => { setRenewedMonth(val); setRenewedPage(0); }}
                   className="w-[160px]"
                 />
 

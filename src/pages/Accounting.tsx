@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
+import { ArabicMonthPicker } from "@/components/ui/arabic-month-picker";
 import { ExpensePaymentLines, PaymentLine } from "@/components/expenses/ExpensePaymentLines";
 
 // ─── Constants ───────────────────────────────────────────
@@ -474,11 +475,9 @@ export default function Accounting() {
             {dateMode === "month" ? (
               <div className="space-y-1">
                 <Label className="text-xs">الشهر</Label>
-                <Input
-                  type="month"
+                <ArabicMonthPicker
                   value={selectedMonth}
-                  onChange={e => {
-                    const val = e.target.value;
+                  onChange={val => {
                     setSelectedMonth(val);
                     const [y, m] = val.split("-").map(Number);
                     setFromDate(`${val}-01`);
