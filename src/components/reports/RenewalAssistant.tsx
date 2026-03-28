@@ -258,6 +258,13 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-10 w-full" />
           </div>
+        ) : fetchError ? (
+          <div className="text-center py-8 space-y-3">
+            <XCircle className="h-12 w-12 mx-auto text-destructive" />
+            <p className="text-lg font-medium">فشل في تحميل البيانات</p>
+            <p className="text-muted-foreground">حدث خطأ أثناء جلب بيانات المتابعة</p>
+            <Button variant="outline" onClick={fetchPendingClients}>إعادة المحاولة</Button>
+          </div>
         ) : clients.length === 0 ? (
           <div className="text-center py-8">
             <CheckCircle className="h-12 w-12 mx-auto mb-3 text-green-500" />
