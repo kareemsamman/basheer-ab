@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -409,13 +408,27 @@ export default function Accounting() {
 
         {/* Tabs + Add Button */}
         <div className="flex items-center gap-3">
-          <TabsList className={cn("grid flex-1", showReceipt ? "grid-cols-5" : "grid-cols-4")}>
-            <TabsTrigger value="all" onClick={() => { setActiveTab("all"); setPage(0); }} data-state={activeTab === "all" ? "active" : ""} className="text-xs sm:text-sm">الكل</TabsTrigger>
-            <TabsTrigger value="issuances" onClick={() => { setActiveTab("issuances"); setPage(0); }} data-state={activeTab === "issuances" ? "active" : ""} className="text-xs sm:text-sm gap-1"><FileText className="h-3.5 w-3.5 hidden sm:block" />إصدارات</TabsTrigger>
-            <TabsTrigger value="refunds" onClick={() => { setActiveTab("refunds"); setPage(0); }} data-state={activeTab === "refunds" ? "active" : ""} className="text-xs sm:text-sm gap-1"><RotateCcw className="h-3.5 w-3.5 hidden sm:block" />مرتجعات</TabsTrigger>
-            <TabsTrigger value="payment" onClick={() => { setActiveTab("payment"); setPage(0); }} data-state={activeTab === "payment" ? "active" : ""} className="text-xs sm:text-sm gap-1"><ArrowUpRight className="h-3.5 w-3.5 hidden sm:block" />سند صرف</TabsTrigger>
-            {showReceipt && <TabsTrigger value="receipt" onClick={() => { setActiveTab("receipt"); setPage(0); }} data-state={activeTab === "receipt" ? "active" : ""} className="text-xs sm:text-sm gap-1"><ArrowDownLeft className="h-3.5 w-3.5 hidden sm:block" />سند قبض</TabsTrigger>}
-          </TabsList>
+          <div className={cn("inline-flex items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground flex-1 grid", showReceipt ? "grid-cols-5" : "grid-cols-4")}>
+            {([
+              { v: "all" as TabType, l: "الكل", I: null },
+              { v: "issuances" as TabType, l: "إصدارات", I: FileText },
+              { v: "refunds" as TabType, l: "مرتجعات", I: RotateCcw },
+              { v: "payment" as TabType, l: "سند صرف", I: ArrowUpRight },
+              ...(showReceipt ? [{ v: "receipt" as TabType, l: "سند قبض", I: ArrowDownLeft }] : []),
+            ]).map(t => (
+              <button
+                key={t.v}
+                onClick={() => { setActiveTab(t.v); setPage(0); }}
+                className={cn(
+                  "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-xs sm:text-sm font-medium transition-all gap-1",
+                  activeTab === t.v ? "bg-background text-foreground shadow-sm" : "hover:bg-background/50"
+                )}
+              >
+                {t.I && <t.I className="h-3.5 w-3.5 hidden sm:block" />}
+                {t.l}
+              </button>
+            ))}
+          </div>
           <Button onClick={() => setAddOpen(true)} className="gap-2 shrink-0"><PlusCircle className="h-4 w-4" />إضافة</Button>
         </div>
 
