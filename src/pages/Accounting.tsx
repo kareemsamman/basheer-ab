@@ -109,6 +109,14 @@ export default function Accounting() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
 
+  // Edit dialog
+  const [editOpen, setEditOpen] = useState(false);
+  const [editRow, setEditRow] = useState<Row | null>(null);
+  const [editAmount, setEditAmount] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+
   // Add dialog
   const [addOpen, setAddOpen] = useState(false);
   const [addVoucherType, setAddVoucherType] = useState<"payment" | "receipt">("payment");
@@ -377,6 +385,44 @@ export default function Accounting() {
       toast.success("تم تسجيل الشيك كمرفوض");
       fetchData();
     } catch { toast.error("فشل في تحديث الحالة"); }
+  };
+
+  const openEdit = (row: Row) => {
+    setEditRow(row);
+    setEditAmount(String(row.amount));
+    setEditDate(row.date?.split("T")[0] || "");
+    setEditDesc(row.description);
+    setEditOpen(true);
+  };
+
+  const handleEditSave = async () => {
+    if (!editRow) return;
+    const amt = parseFloat(editAmount);
+    if (!amt || amt <= 0) { toast.error("يرجى إدخال مبلغ صحيح"); return; }
+    setEditSaving(true);
+    try {
+      if (editRow.source === "settlement") {
+        await supabase.from("company_settlements").update({
+          total_amount: amt, settlement_date: editDate, notes: editDesc || null,
+        } as any).eq("id", editRow.id);
+      } else if (editRow.source === "broker_settlement") {
+        await supabase.from("broker_settlements").update({
+          total_amount: amt, settlement_date: editDate, notes: editDesc || null,
+        } as any).eq("id", editRow.id);
+      } else if (editRow.source === "expense") {
+        await supabase.from("expenses").update({
+          amount: amt, expense_date: editDate, description: editDesc || null,
+        } as any).eq("id", editRow.id);
+      } else if (editRow.source === "ledger") {
+        await supabase.from("ab_ledger").update({
+          amount: editRow.tab === "payment" ? -amt : amt, transaction_date: editDate, description: editDesc || null,
+        } as any).eq("id", editRow.id);
+      }
+      toast.success("تم التعديل بنجاح");
+      setEditOpen(false); setEditRow(null);
+      fetchData();
+    } catch { toast.error("فشل في التعديل"); }
+    finally { setEditSaving(false); }
   };
 
   const resetAddDialog = () => {
@@ -703,6 +749,9 @@ export default function Accounting() {
                         <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEdit(r)}>
+                          <Pencil className="h-4 w-4 ml-2" />تعديل
+                        </DropdownMenuItem>
                         {isCheque && (
                           <DropdownMenuItem onClick={() => handleRefuseCheque(r)} className="text-destructive">
                             <XCircle className="h-4 w-4 ml-2" />شيك مرفوض
@@ -787,6 +836,38 @@ export default function Accounting() {
             <Button onClick={handleSave} disabled={saving} className="gap-2">
               {saving ? "جاري الحفظ..." : `حفظ الدفعات (${paymentLines.length})`}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>تعديل الحركة</DialogTitle></DialogHeader>
+          {editRow && (
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <Label>المبلغ *</Label>
+                <Input type="number" min="0" step="0.01" value={editAmount} onChange={e => setEditAmount(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label>التاريخ *</Label>
+                <ArabicDatePicker value={editDate} onChange={d => setEditDate(d)} />
+              </div>
+              <div className="space-y-1">
+                <Label>البيان</Label>
+                <Input value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="الوصف..." />
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
+                <p>النوع: <Badge variant={editRow.tab === "payment" ? "outline" : "secondary"} className="text-xs mr-1">{editRow.tab === "payment" ? "سند صرف" : editRow.tab === "receipt" ? "سند قبض" : editRow.tab === "refund" ? "مرتجع" : "إصدار"}</Badge></p>
+                {editRow.payment_method && <p className="mt-1">طريقة الدفع: {editRow.payment_method}</p>}
+                {editRow.company_name && <p className="mt-1">الجهة: {editRow.company_name}</p>}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>إلغاء</Button>
+            <Button onClick={handleEditSave} disabled={editSaving}>{editSaving ? "جاري الحفظ..." : "حفظ التعديلات"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
