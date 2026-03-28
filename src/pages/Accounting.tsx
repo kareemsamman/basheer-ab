@@ -32,6 +32,10 @@ import { cn } from "@/lib/utils";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { ArabicMonthPicker } from "@/components/ui/arabic-month-picker";
 import { ExpensePaymentLines, PaymentLine } from "@/components/expenses/ExpensePaymentLines";
+import { buildExpenseInvoiceHtml, openExpenseInvoicePrint } from "@/lib/expenseInvoiceBuilder";
+import { useSiteSettings } from "@/hooks/useSiteSettings";
+import { format } from "date-fns";
+import { he } from "date-fns/locale";
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -87,6 +91,7 @@ const payMethodLabel: Record<string, string> = {
 
 export default function Accounting() {
   const { user } = useAuth();
+  const { data: siteSettings } = useSiteSettings();
   const def = getDefaultRange();
 
   // Filters
@@ -357,6 +362,33 @@ export default function Accounting() {
   }, [rows]);
 
   const showReceipt = entityType === "broker" || entityType === "other";
+
+  // Export invoice (same as /expenses)
+  const handleExportInvoice = () => {
+    const data = filtered.length > 0 ? filtered : rows;
+    if (data.length === 0) { toast.error("لا توجد بيانات للتصدير"); return; }
+
+    // Convert Row[] to ExpenseRow format for the invoice builder
+    const expenseRows = data.map(r => ({
+      description: r.types.length > 0 ? r.types.join(" + ") : r.description || "-",
+      amount: r.amount,
+      expense_date: r.date,
+      category: r.tab === "issuance" ? "insurance_premium" : r.tab === "refund" ? "other" : r.tab === "receipt" ? "other_income" : "insurance_company",
+      contact_name: r.client_name || r.company_name || r.extra || null,
+      payment_method: r.payment_method ? Object.entries(payMethodLabel).find(([, v]) => v === r.payment_method)?.[0] || r.payment_method : "cash",
+      reference_number: null,
+    }));
+
+    const [y, m] = selectedMonth.split("-").map(Number);
+    const monthDate = new Date(y, m - 1, 1);
+    const monthLabel = format(monthDate, "MMMM yyyy", { locale: he });
+    const logoUrl = siteSettings?.logo_url || null;
+    const businessName = siteSettings?.site_title || "AB Insurance";
+    const type = activeTab === "receipt" ? "receipt" as const : "payment" as const;
+
+    const html = buildExpenseInvoiceHtml(expenseRows, type, monthLabel, logoUrl, businessName);
+    openExpenseInvoicePrint(html);
+  };
 
   // Delete settlement
   const handleDelete = async (row: Row) => {
@@ -653,7 +685,7 @@ export default function Accounting() {
               </>
             )}
 
-            <Button variant="outline" className="gap-2"><Download className="h-4 w-4" />تصدير</Button>
+            <Button variant="outline" className="gap-2" onClick={handleExportInvoice}><Download className="h-4 w-4" />تصدير קבלה</Button>
           </div>
         </Card>
 
