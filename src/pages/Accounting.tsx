@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -27,12 +27,38 @@ import {
   ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getInsuranceTypeLabel } from "@/lib/insuranceTypes";
+
+// ─── Constants ───────────────────────────────────────────
 
 const PAGE_SIZE = 25;
 
 const formatDate = (d: string | null) => d ? new Date(d).toLocaleDateString("en-GB") : "-";
-const formatCurrency = (n: number) => `₪${n.toLocaleString()}`;
+const formatCurrency = (n: number) => `₪${Math.abs(n).toLocaleString()}`;
+
+const typeLabel: Record<string, string> = {
+  THIRD: "ثالث",
+  FULL: "شامل",
+  THIRD_FULL: "ثالث/شامل",
+  ROAD_SERVICE: "خدمات الطريق",
+  ACCIDENT_FEE_EXEMPTION: "إعفاء رسوم حادث",
+  HEALTH: "تأمين صحي",
+  LIFE: "تأمين حياة",
+  PROPERTY: "تأمين ممتلكات",
+  TRAVEL: "تأمين سفر",
+  BUSINESS: "تأمين أعمال",
+  OTHER: "أخرى",
+};
+
+const carTypeLabel: Record<string, string> = {
+  car: "خصوصي", cargo: "شحن", small: "صغيرة",
+  taxi: "تاكسي", tjeradown4: "تجاري < 4 طن", tjeraup4: "تجاري > 4 طن",
+};
+
+function getPolicyTypeDisplay(parent: string, child: string | null): string {
+  if (parent === "ELZAMI") return ""; // excluded
+  if (parent === "THIRD_FULL" && child) return typeLabel[child] || child;
+  return typeLabel[parent] || parent;
+}
 
 function getDefaultDateRange() {
   const now = new Date();
@@ -46,22 +72,22 @@ function getDefaultDateRange() {
 
 // ─── Types ───────────────────────────────────────────────
 
-interface PolicyIssuance {
-  id: string;
+interface IssuanceRow {
+  key: string;
   client_name: string;
   car_number: string | null;
-  policy_type_parent: string;
-  policy_type_child: string | null;
-  insurance_price: number;
+  types: string[];
+  total_price: number;
   car_type: string | null;
   created_at: string;
 }
 
 interface RefundRow {
   id: string;
+  source: "cancelled" | "wallet" | "cheque";
   client_name: string;
   car_number: string | null;
-  insurance_price: number;
+  original_amount: number;
   refund_amount: number;
   reason: string;
   refund_date: string;
@@ -93,10 +119,10 @@ export default function Accounting() {
   const defaults = getDefaultDateRange();
   const [fromDate, setFromDate] = useState(defaults.from);
   const [toDate, setToDate] = useState(defaults.to);
-
-  // Tab data
   const [activeTab, setActiveTab] = useState("issuances");
-  const [issuances, setIssuances] = useState<PolicyIssuance[]>([]);
+
+  // Data
+  const [issuances, setIssuances] = useState<IssuanceRow[]>([]);
   const [refunds, setRefunds] = useState<RefundRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [manualTxs, setManualTxs] = useState<ManualTx[]>([]);
@@ -106,9 +132,9 @@ export default function Accounting() {
   const [refundsLoading, setRefundsLoading] = useState(true);
   const [paymentsLoading, setPaymentsLoading] = useState(true);
   const [manualLoading, setManualLoading] = useState(true);
+  const [summaryLoading, setSummaryLoading] = useState(true);
 
   // Summary
-  const [summaryLoading, setSummaryLoading] = useState(true);
   const [totalIssuances, setTotalIssuances] = useState(0);
   const [totalRefunds, setTotalRefunds] = useState(0);
   const [totalPayments, setTotalPayments] = useState(0);
@@ -123,7 +149,7 @@ export default function Accounting() {
   const [manualPage, setManualPage] = useState(0);
   const [manualTotal, setManualTotal] = useState(0);
 
-  // New transaction dialog
+  // New tx dialog
   const [newTxOpen, setNewTxOpen] = useState(false);
   const [newTxType, setNewTxType] = useState<"income" | "expense">("income");
   const [newTxAmount, setNewTxAmount] = useState("");
@@ -131,43 +157,63 @@ export default function Accounting() {
   const [newTxDesc, setNewTxDesc] = useState("");
   const [savingTx, setSavingTx] = useState(false);
 
-  // ─── Fetchers ────────────────────────────────────────
+  const resetPages = () => { setIssuancesPage(0); setRefundsPage(0); setPaymentsPage(0); setManualPage(0); };
+
+  // ─── Fetch Summary ───────────────────────────────────
 
   const fetchSummary = useCallback(async () => {
     setSummaryLoading(true);
     try {
-      // Issuances total
+      // Issuances: exclude ELZAMI, exclude cancelled/transferred
       const { data: iData } = await supabase
         .from("policies")
-        .select("insurance_price")
+        .select("insurance_price, policy_type_parent")
         .gte("created_at", fromDate)
         .lte("created_at", toDate + "T23:59:59")
         .is("deleted_at", null)
         .eq("cancelled", false)
-        .eq("transferred", false);
-      const isTotal = (iData || []).reduce((s, p) => s + (p.insurance_price || 0), 0);
-      setTotalIssuances(isTotal);
+        .eq("transferred", false)
+        .neq("policy_type_parent", "ELZAMI");
+      setTotalIssuances((iData || []).reduce((s, p) => s + (p.insurance_price || 0), 0));
 
-      // Refunds total
-      const { data: rData } = await supabase
+      // Refunds: cancelled policies (non-ELZAMI) + negative wallet txs + refused cheques
+      const { data: cancelledData } = await supabase
         .from("policies")
         .select("insurance_price")
         .gte("created_at", fromDate)
         .lte("created_at", toDate + "T23:59:59")
         .is("deleted_at", null)
-        .or("cancelled.eq.true,transferred.eq.true");
-      const refTotal = (rData || []).reduce((s, p) => s + (p.insurance_price || 0), 0);
-      setTotalRefunds(refTotal);
+        .eq("cancelled", true)
+        .neq("policy_type_parent", "ELZAMI");
+      const cancelledTotal = (cancelledData || []).reduce((s, p) => s + (p.insurance_price || 0), 0);
 
-      // Payments total
+      const { data: walletData } = await supabase
+        .from("customer_wallet_transactions")
+        .select("amount")
+        .lt("amount", 0)
+        .gte("created_at", fromDate)
+        .lte("created_at", toDate + "T23:59:59");
+      const walletTotal = (walletData || []).reduce((s, w) => s + Math.abs(w.amount || 0), 0);
+
+      const { data: refusedData } = await supabase
+        .from("policy_payments")
+        .select("amount")
+        .eq("refused", true)
+        .eq("payment_type", "cheque")
+        .gte("payment_date", fromDate)
+        .lte("payment_date", toDate);
+      const refusedTotal = (refusedData || []).reduce((s, c) => s + (c.amount || 0), 0);
+
+      setTotalRefunds(cancelledTotal + walletTotal + refusedTotal);
+
+      // Payments
       const { data: pData } = await supabase
         .from("expenses")
         .select("amount")
         .gte("expense_date", fromDate)
         .lte("expense_date", toDate)
         .eq("voucher_type", "payment");
-      const payTotal = (pData || []).reduce((s, e) => s + (e.amount || 0), 0);
-      setTotalPayments(payTotal);
+      setTotalPayments((pData || []).reduce((s, e) => s + (e.amount || 0), 0));
     } catch {
       toast.error("فشل في تحميل الملخص");
     } finally {
@@ -175,43 +221,65 @@ export default function Accounting() {
     }
   }, [fromDate, toDate]);
 
+  // ─── Fetch Issuances (grouped by package) ────────────
+
   const fetchIssuances = useCallback(async () => {
     setIssuancesLoading(true);
     try {
-      const { count } = await supabase
-        .from("policies")
-        .select("id", { count: "exact", head: true })
-        .gte("created_at", fromDate)
-        .lte("created_at", toDate + "T23:59:59")
-        .is("deleted_at", null)
-        .eq("cancelled", false)
-        .eq("transferred", false);
-      setIssuancesTotal(count || 0);
-
       const { data, error } = await supabase
         .from("policies")
-        .select("id, insurance_price, policy_type_parent, policy_type_child, created_at, client_id, car_id, clients(full_name), cars(car_number, car_type)")
+        .select("id, insurance_price, policy_type_parent, policy_type_child, created_at, group_id, clients(full_name), cars(car_number, car_type)")
         .gte("created_at", fromDate)
         .lte("created_at", toDate + "T23:59:59")
         .is("deleted_at", null)
         .eq("cancelled", false)
         .eq("transferred", false)
-        .order("created_at", { ascending: false })
-        .range(issuancesPage * PAGE_SIZE, (issuancesPage + 1) * PAGE_SIZE - 1);
+        .neq("policy_type_parent", "ELZAMI")
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setIssuances(
-        (data || []).map((p: any) => ({
-          id: p.id,
-          client_name: p.clients?.full_name || "-",
-          car_number: p.cars?.car_number || null,
-          policy_type_parent: p.policy_type_parent,
-          policy_type_child: p.policy_type_child,
-          insurance_price: p.insurance_price || 0,
-          car_type: p.cars?.car_type || null,
-          created_at: p.created_at,
-        }))
-      );
+      const raw = data || [];
+
+      // Group by group_id (packages) or individual policies
+      const groupMap = new Map<string, {
+        key: string;
+        client_name: string;
+        car_number: string | null;
+        types: string[];
+        total_price: number;
+        car_type: string | null;
+        created_at: string;
+      }>();
+
+      for (const p of raw) {
+        const groupKey = p.group_id || p.id; // ungrouped policies use their own id
+        const label = getPolicyTypeDisplay(p.policy_type_parent, p.policy_type_child);
+
+        if (groupMap.has(groupKey)) {
+          const existing = groupMap.get(groupKey)!;
+          existing.total_price += p.insurance_price || 0;
+          if (label && !existing.types.includes(label)) {
+            existing.types.push(label);
+          }
+        } else {
+          groupMap.set(groupKey, {
+            key: groupKey,
+            client_name: (p as any).clients?.full_name || "-",
+            car_number: (p as any).cars?.car_number || null,
+            types: label ? [label] : [],
+            total_price: p.insurance_price || 0,
+            car_type: (p as any).cars?.car_type || null,
+            created_at: p.created_at,
+          });
+        }
+      }
+
+      const grouped = Array.from(groupMap.values());
+      setIssuancesTotal(grouped.length);
+
+      // Client-side pagination on grouped results
+      const start = issuancesPage * PAGE_SIZE;
+      setIssuances(grouped.slice(start, start + PAGE_SIZE));
     } catch {
       toast.error("فشل في تحميل الإصدارات");
     } finally {
@@ -219,46 +287,96 @@ export default function Accounting() {
     }
   }, [fromDate, toDate, issuancesPage]);
 
+  // ─── Fetch Refunds ───────────────────────────────────
+
   const fetchRefunds = useCallback(async () => {
     setRefundsLoading(true);
     try {
-      const { count } = await supabase
+      const results: RefundRow[] = [];
+
+      // 1. Cancelled policies (exclude ELZAMI)
+      const { data: cancelled } = await supabase
         .from("policies")
-        .select("id", { count: "exact", head: true })
+        .select("id, insurance_price, cancellation_date, created_at, clients(full_name), cars(car_number)")
+        .eq("cancelled", true)
+        .neq("policy_type_parent", "ELZAMI")
+        .is("deleted_at", null)
         .gte("created_at", fromDate)
         .lte("created_at", toDate + "T23:59:59")
-        .is("deleted_at", null)
-        .or("cancelled.eq.true,transferred.eq.true");
-      setRefundsTotal(count || 0);
+        .order("created_at", { ascending: false });
 
-      const { data, error } = await supabase
-        .from("policies")
-        .select("id, insurance_price, cancelled, transferred, created_at, clients(full_name), cars(car_number)")
-        .gte("created_at", fromDate)
-        .lte("created_at", toDate + "T23:59:59")
-        .is("deleted_at", null)
-        .or("cancelled.eq.true,transferred.eq.true")
-        .order("created_at", { ascending: false })
-        .range(refundsPage * PAGE_SIZE, (refundsPage + 1) * PAGE_SIZE - 1);
-
-      if (error) throw error;
-      setRefunds(
-        (data || []).map((p: any) => ({
+      for (const p of cancelled || []) {
+        results.push({
           id: p.id,
-          client_name: p.clients?.full_name || "-",
-          car_number: p.cars?.car_number || null,
-          insurance_price: p.insurance_price || 0,
+          source: "cancelled",
+          client_name: (p as any).clients?.full_name || "-",
+          car_number: (p as any).cars?.car_number || null,
+          original_amount: p.insurance_price || 0,
           refund_amount: p.insurance_price || 0,
-          reason: p.cancelled ? "إلغاء" : "تحويل",
-          refund_date: p.created_at,
-        }))
-      );
+          reason: "إلغاء بوليصة",
+          refund_date: p.cancellation_date || p.created_at,
+        });
+      }
+
+      // 2. Negative wallet transactions (customer refunds)
+      const { data: walletTxs } = await supabase
+        .from("customer_wallet_transactions")
+        .select("id, amount, created_at, description, client_id, clients(full_name)")
+        .lt("amount", 0)
+        .gte("created_at", fromDate)
+        .lte("created_at", toDate + "T23:59:59")
+        .order("created_at", { ascending: false });
+
+      for (const w of walletTxs || []) {
+        results.push({
+          id: w.id,
+          source: "wallet",
+          client_name: (w as any).clients?.full_name || "-",
+          car_number: null,
+          original_amount: 0,
+          refund_amount: Math.abs(w.amount),
+          reason: w.description || "رصيد مستحق للعميل",
+          refund_date: w.created_at,
+        });
+      }
+
+      // 3. Refused cheques
+      const { data: refusedCheques } = await supabase
+        .from("policy_payments")
+        .select("id, amount, payment_date, cheque_number, notes, policies(clients(full_name), cars(car_number))")
+        .eq("refused", true)
+        .eq("payment_type", "cheque")
+        .gte("payment_date", fromDate)
+        .lte("payment_date", toDate)
+        .order("payment_date", { ascending: false });
+
+      for (const c of refusedCheques || []) {
+        results.push({
+          id: c.id,
+          source: "cheque",
+          client_name: (c as any).policies?.clients?.full_name || "-",
+          car_number: (c as any).policies?.cars?.car_number || null,
+          original_amount: c.amount || 0,
+          refund_amount: c.amount || 0,
+          reason: `شيك مرتجع${c.cheque_number ? ` #${c.cheque_number}` : ""}`,
+          refund_date: c.payment_date,
+        });
+      }
+
+      // Sort by date descending
+      results.sort((a, b) => b.refund_date.localeCompare(a.refund_date));
+
+      setRefundsTotal(results.length);
+      const start = refundsPage * PAGE_SIZE;
+      setRefunds(results.slice(start, start + PAGE_SIZE));
     } catch {
       toast.error("فشل في تحميل المرتجعات");
     } finally {
       setRefundsLoading(false);
     }
   }, [fromDate, toDate, refundsPage]);
+
+  // ─── Fetch Payments ──────────────────────────────────
 
   const fetchPayments = useCallback(async () => {
     setPaymentsLoading(true);
@@ -273,7 +391,7 @@ export default function Accounting() {
 
       const { data, error } = await supabase
         .from("expenses")
-        .select("id, amount, expense_date, description, reference_number, voucher_type, entity_type, entity_id, insurance_companies(name_ar, name), brokers(name)")
+        .select("id, amount, expense_date, description, reference_number, voucher_type, entity_type, insurance_companies(name_ar, name), brokers(name)")
         .gte("expense_date", fromDate)
         .lte("expense_date", toDate)
         .eq("voucher_type", "payment")
@@ -298,6 +416,8 @@ export default function Accounting() {
       setPaymentsLoading(false);
     }
   }, [fromDate, toDate, paymentsPage]);
+
+  // ─── Fetch Manual Transactions ───────────────────────
 
   const fetchManualTxs = useCallback(async () => {
     setManualLoading(true);
@@ -333,34 +453,16 @@ export default function Accounting() {
   // ─── Effects ─────────────────────────────────────────
 
   useEffect(() => { fetchSummary(); }, [fetchSummary]);
+  useEffect(() => { if (activeTab === "issuances") fetchIssuances(); }, [activeTab, fetchIssuances]);
+  useEffect(() => { if (activeTab === "refunds") fetchRefunds(); }, [activeTab, fetchRefunds]);
+  useEffect(() => { if (activeTab === "payments") fetchPayments(); }, [activeTab, fetchPayments]);
+  useEffect(() => { if (activeTab === "manual") fetchManualTxs(); }, [activeTab, fetchManualTxs]);
 
-  useEffect(() => {
-    if (activeTab === "issuances") fetchIssuances();
-  }, [activeTab, fetchIssuances]);
-
-  useEffect(() => {
-    if (activeTab === "refunds") fetchRefunds();
-  }, [activeTab, fetchRefunds]);
-
-  useEffect(() => {
-    if (activeTab === "payments") fetchPayments();
-  }, [activeTab, fetchPayments]);
-
-  useEffect(() => {
-    if (activeTab === "manual") fetchManualTxs();
-  }, [activeTab, fetchManualTxs]);
-
-  // ─── New Transaction ────────────────────────────────
+  // ─── Save Manual Transaction ─────────────────────────
 
   const handleSaveTx = async () => {
-    if (!newTxAmount || parseFloat(newTxAmount) <= 0) {
-      toast.error("يرجى إدخال مبلغ صحيح");
-      return;
-    }
-    if (!newTxDesc.trim()) {
-      toast.error("يرجى إدخال البيان");
-      return;
-    }
+    if (!newTxAmount || parseFloat(newTxAmount) <= 0) { toast.error("يرجى إدخال مبلغ صحيح"); return; }
+    if (!newTxDesc.trim()) { toast.error("يرجى إدخال البيان"); return; }
 
     setSavingTx(true);
     try {
@@ -369,21 +471,18 @@ export default function Accounting() {
         amount,
         transaction_date: newTxDate,
         description: newTxDesc.trim(),
-        reference_type: "manual_adjustment",
+        reference_type: "manual_adjustment" as any,
         reference_id: crypto.randomUUID(),
-        category: newTxType === "income" ? "premium_income" : "commission_expense",
-        counterparty_type: "internal",
-        status: "posted",
+        category: (newTxType === "income" ? "premium_income" : "commission_expense") as any,
+        counterparty_type: "internal" as any,
+        status: "posted" as any,
         created_by_admin_id: user?.id,
       });
-
       if (error) throw error;
 
       toast.success("تم إضافة الحركة بنجاح");
       setNewTxOpen(false);
-      setNewTxAmount("");
-      setNewTxDesc("");
-      setNewTxType("income");
+      setNewTxAmount(""); setNewTxDesc(""); setNewTxType("income");
       fetchManualTxs();
       fetchSummary();
     } catch {
@@ -394,15 +493,6 @@ export default function Accounting() {
   };
 
   // ─── Helpers ─────────────────────────────────────────
-
-  const carTypeLabels: Record<string, string> = {
-    car: "خصوصي",
-    cargo: "شحن",
-    small: "صغيرة",
-    taxi: "تاكسي",
-    tjeradown4: "تجاري < 4 طن",
-    tjeraup4: "تجاري > 4 طن",
-  };
 
   const netBalance = totalIssuances - totalRefunds - totalPayments;
 
@@ -424,13 +514,15 @@ export default function Accounting() {
     );
   }
 
-  function SkeletonRows({ cols }: { cols: number }) {
-    return (
-      <div className="p-4 space-y-3">
-        {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
-      </div>
-    );
+  function LoadingSkeleton() {
+    return <div className="p-4 space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>;
   }
+
+  const sourceLabel: Record<string, { text: string; variant: "destructive" | "secondary" | "outline" }> = {
+    cancelled: { text: "إلغاء بوليصة", variant: "destructive" },
+    wallet: { text: "رصيد مستحق", variant: "secondary" },
+    cheque: { text: "شيك مرتجع", variant: "outline" },
+  };
 
   // ─── Render ──────────────────────────────────────────
 
@@ -453,11 +545,11 @@ export default function Accounting() {
           <div className="flex flex-wrap gap-4 items-end">
             <div className="space-y-1">
               <Label className="text-xs">من تاريخ</Label>
-              <Input type="date" value={fromDate} onChange={e => { setFromDate(e.target.value); setIssuancesPage(0); setRefundsPage(0); setPaymentsPage(0); setManualPage(0); }} className="w-[160px]" />
+              <Input type="date" value={fromDate} onChange={e => { setFromDate(e.target.value); resetPages(); }} className="w-[160px]" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">إلى تاريخ</Label>
-              <Input type="date" value={toDate} onChange={e => { setToDate(e.target.value); setIssuancesPage(0); setRefundsPage(0); setPaymentsPage(0); setManualPage(0); }} className="w-[160px]" />
+              <Input type="date" value={toDate} onChange={e => { setToDate(e.target.value); resetPages(); }} className="w-[160px]" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">شهر</Label>
@@ -469,7 +561,7 @@ export default function Accounting() {
                   const lastDay = new Date(y, m, 0).getDate();
                   setFromDate(`${e.target.value}-01`);
                   setToDate(`${e.target.value}-${String(lastDay).padStart(2, "0")}`);
-                  setIssuancesPage(0); setRefundsPage(0); setPaymentsPage(0); setManualPage(0);
+                  resetPages();
                 }}
                 className="w-[160px]"
               />
@@ -483,60 +575,26 @@ export default function Accounting() {
 
         {/* Summary Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">إجمالي الإصدارات</p>
-                {summaryLoading ? <Skeleton className="h-8 w-24 mt-1" /> : (
-                  <p className="text-2xl font-bold text-primary">{formatCurrency(totalIssuances)}</p>
-                )}
+          {[
+            { label: "إجمالي الإصدارات", value: totalIssuances, color: "text-primary", bg: "bg-primary/10", icon: TrendingUp, iconColor: "text-primary" },
+            { label: "إجمالي المرتجعات", value: totalRefunds, color: "text-destructive", bg: "bg-destructive/10", icon: TrendingDown, iconColor: "text-destructive" },
+            { label: "إجمالي المدفوعات", value: totalPayments, color: "text-amber-600", bg: "bg-amber-100", icon: DollarSign, iconColor: "text-amber-600" },
+            { label: "صافي حساب الشركة", value: netBalance, color: netBalance >= 0 ? "text-green-600" : "text-destructive", bg: "bg-green-100", icon: Landmark, iconColor: "text-green-600" },
+          ].map((c, i) => (
+            <Card key={i} className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">{c.label}</p>
+                  {summaryLoading ? <Skeleton className="h-8 w-24 mt-1" /> : (
+                    <p className={cn("text-2xl font-bold", c.color)}>{formatCurrency(c.value)}</p>
+                  )}
+                </div>
+                <div className={cn("h-10 w-10 rounded-lg flex items-center justify-center", c.bg)}>
+                  <c.icon className={cn("h-5 w-5", c.iconColor)} />
+                </div>
               </div>
-              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <TrendingUp className="h-5 w-5 text-primary" />
-              </div>
-            </div>
-          </Card>
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">إجمالي المرتجعات</p>
-                {summaryLoading ? <Skeleton className="h-8 w-24 mt-1" /> : (
-                  <p className="text-2xl font-bold text-destructive">{formatCurrency(totalRefunds)}</p>
-                )}
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-destructive/10 flex items-center justify-center">
-                <TrendingDown className="h-5 w-5 text-destructive" />
-              </div>
-            </div>
-          </Card>
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">إجمالي المدفوعات</p>
-                {summaryLoading ? <Skeleton className="h-8 w-24 mt-1" /> : (
-                  <p className="text-2xl font-bold text-amber-600">{formatCurrency(totalPayments)}</p>
-                )}
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-amber-100 flex items-center justify-center">
-                <DollarSign className="h-5 w-5 text-amber-600" />
-              </div>
-            </div>
-          </Card>
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">صافي حساب الشركة</p>
-                {summaryLoading ? <Skeleton className="h-8 w-24 mt-1" /> : (
-                  <p className={cn("text-2xl font-bold", netBalance >= 0 ? "text-green-600" : "text-destructive")}>
-                    {formatCurrency(netBalance)}
-                  </p>
-                )}
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-green-100 flex items-center justify-center">
-                <Landmark className="h-5 w-5 text-green-600" />
-              </div>
-            </div>
-          </Card>
+            </Card>
+          ))}
         </div>
 
         {/* Tabs */}
@@ -560,10 +618,10 @@ export default function Accounting() {
             </TabsTrigger>
           </TabsList>
 
-          {/* ─── Tab 1: Issuances ─── */}
+          {/* ─── Tab 1: Issuances (packages grouped) ─── */}
           <TabsContent value="issuances">
             <Card className="overflow-hidden">
-              {issuancesLoading ? <SkeletonRows cols={6} /> : issuances.length === 0 ? (
+              {issuancesLoading ? <LoadingSkeleton /> : issuances.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">لا توجد إصدارات في هذه الفترة</div>
               ) : (
                 <>
@@ -581,19 +639,21 @@ export default function Accounting() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {issuances.map((p, i) => (
-                          <TableRow key={p.id}>
+                        {issuances.map((row, i) => (
+                          <TableRow key={row.key}>
                             <TableCell className="text-muted-foreground">{issuancesPage * PAGE_SIZE + i + 1}</TableCell>
-                            <TableCell className="font-medium">{p.client_name}</TableCell>
-                            <TableCell className="font-mono">{p.car_number || "-"}</TableCell>
+                            <TableCell className="font-medium">{row.client_name}</TableCell>
+                            <TableCell className="font-mono">{row.car_number || "-"}</TableCell>
                             <TableCell>
-                              <Badge variant="secondary" className="text-xs">
-                                {getInsuranceTypeLabel(p.policy_type_parent as any, p.policy_type_child as any)}
-                              </Badge>
+                              <div className="flex flex-wrap gap-1">
+                                {row.types.map(t => (
+                                  <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+                                ))}
+                              </div>
                             </TableCell>
-                            <TableCell className="font-bold">{formatCurrency(p.insurance_price)}</TableCell>
-                            <TableCell>{p.car_type ? carTypeLabels[p.car_type] || p.car_type : "-"}</TableCell>
-                            <TableCell className="font-mono">{formatDate(p.created_at)}</TableCell>
+                            <TableCell className="font-bold">{formatCurrency(row.total_price)}</TableCell>
+                            <TableCell>{row.car_type ? carTypeLabel[row.car_type] || row.car_type : "-"}</TableCell>
+                            <TableCell className="font-mono">{formatDate(row.created_at)}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -608,7 +668,7 @@ export default function Accounting() {
           {/* ─── Tab 2: Refunds ─── */}
           <TabsContent value="refunds">
             <Card className="overflow-hidden">
-              {refundsLoading ? <SkeletonRows cols={6} /> : refunds.length === 0 ? (
+              {refundsLoading ? <LoadingSkeleton /> : refunds.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">لا توجد مرتجعات في هذه الفترة</div>
               ) : (
                 <>
@@ -619,25 +679,27 @@ export default function Accounting() {
                           <TableHead className="text-right">#</TableHead>
                           <TableHead className="text-right">العميل</TableHead>
                           <TableHead className="text-right">رقم السيارة</TableHead>
-                          <TableHead className="text-right">مبلغ البوليصة</TableHead>
+                          <TableHead className="text-right">المبلغ الأصلي</TableHead>
                           <TableHead className="text-right">مبلغ الإرجاع</TableHead>
+                          <TableHead className="text-right">النوع</TableHead>
                           <TableHead className="text-right">السبب</TableHead>
                           <TableHead className="text-right">التاريخ</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {refunds.map((r, i) => (
-                          <TableRow key={r.id}>
+                          <TableRow key={`${r.source}-${r.id}`}>
                             <TableCell className="text-muted-foreground">{refundsPage * PAGE_SIZE + i + 1}</TableCell>
                             <TableCell className="font-medium">{r.client_name}</TableCell>
                             <TableCell className="font-mono">{r.car_number || "-"}</TableCell>
-                            <TableCell>{formatCurrency(r.insurance_price)}</TableCell>
+                            <TableCell>{r.original_amount > 0 ? formatCurrency(r.original_amount) : "-"}</TableCell>
                             <TableCell className="font-bold text-destructive">{formatCurrency(r.refund_amount)}</TableCell>
                             <TableCell>
-                              <Badge variant={r.reason === "إلغاء" ? "destructive" : "secondary"} className="text-xs">
-                                {r.reason}
+                              <Badge variant={sourceLabel[r.source]?.variant || "secondary"} className="text-xs">
+                                {sourceLabel[r.source]?.text || r.source}
                               </Badge>
                             </TableCell>
+                            <TableCell className="text-sm max-w-[200px] truncate">{r.reason}</TableCell>
                             <TableCell className="font-mono">{formatDate(r.refund_date)}</TableCell>
                           </TableRow>
                         ))}
@@ -653,7 +715,7 @@ export default function Accounting() {
           {/* ─── Tab 3: Payments ─── */}
           <TabsContent value="payments">
             <Card className="overflow-hidden">
-              {paymentsLoading ? <SkeletonRows cols={5} /> : payments.length === 0 ? (
+              {paymentsLoading ? <LoadingSkeleton /> : payments.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">لا توجد دفعات في هذه الفترة</div>
               ) : (
                 <>
@@ -674,9 +736,7 @@ export default function Accounting() {
                           <TableRow key={p.id}>
                             <TableCell className="text-muted-foreground">{paymentsPage * PAGE_SIZE + i + 1}</TableCell>
                             <TableCell className="font-medium">{p.entity_name}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="text-xs">{p.voucher_type}</Badge>
-                            </TableCell>
+                            <TableCell><Badge variant="outline" className="text-xs">{p.voucher_type}</Badge></TableCell>
                             <TableCell className="font-bold">{formatCurrency(p.amount)}</TableCell>
                             <TableCell className="font-mono">{formatDate(p.expense_date)}</TableCell>
                             <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
@@ -705,7 +765,7 @@ export default function Accounting() {
               </div>
 
               <Card className="overflow-hidden">
-                {manualLoading ? <SkeletonRows cols={5} /> : manualTxs.length === 0 ? (
+                {manualLoading ? <LoadingSkeleton /> : manualTxs.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground">لا توجد حركات يدوية في هذه الفترة</div>
                 ) : (
                   <>
@@ -724,13 +784,9 @@ export default function Accounting() {
                         <TableBody>
                           {(() => {
                             let runningBalance = 0;
-                            // Sort ascending for running balance, then display in table order
                             const sorted = [...manualTxs].sort((a, b) => a.transaction_date.localeCompare(b.transaction_date));
-                            const balances = sorted.map(tx => {
-                              runningBalance += tx.amount;
-                              return { id: tx.id, balance: runningBalance };
-                            });
-                            const balanceMap = Object.fromEntries(balances.map(b => [b.id, b.balance]));
+                            const balanceMap: Record<string, number> = {};
+                            for (const tx of sorted) { runningBalance += tx.amount; balanceMap[tx.id] = runningBalance; }
 
                             return manualTxs.map((tx, i) => (
                               <TableRow key={tx.id}>
@@ -741,7 +797,7 @@ export default function Accounting() {
                                   </Badge>
                                 </TableCell>
                                 <TableCell className={cn("font-bold", tx.amount >= 0 ? "text-green-600" : "text-destructive")}>
-                                  {formatCurrency(Math.abs(tx.amount))}
+                                  {formatCurrency(tx.amount)}
                                 </TableCell>
                                 <TableCell className="font-mono">{formatDate(tx.transaction_date)}</TableCell>
                                 <TableCell className="max-w-[300px]">{tx.description || "-"}</TableCell>
@@ -766,16 +822,12 @@ export default function Accounting() {
       {/* New Transaction Dialog */}
       <Dialog open={newTxOpen} onOpenChange={setNewTxOpen}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>إضافة حركة يدوية</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>إضافة حركة يدوية</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1">
               <Label>النوع</Label>
               <Select value={newTxType} onValueChange={(v: "income" | "expense") => setNewTxType(v)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="income">دخل</SelectItem>
                   <SelectItem value="expense">مصروف</SelectItem>
@@ -797,9 +849,7 @@ export default function Accounting() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewTxOpen(false)}>إلغاء</Button>
-            <Button onClick={handleSaveTx} disabled={savingTx}>
-              {savingTx ? "جاري الحفظ..." : "حفظ"}
-            </Button>
+            <Button onClick={handleSaveTx} disabled={savingTx}>{savingTx ? "جاري الحفظ..." : "حفظ"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
