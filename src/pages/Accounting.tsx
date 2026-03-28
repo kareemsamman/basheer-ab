@@ -20,8 +20,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { Helmet } from "react-helmet-async";
 import {
-  BookOpen, FileText, RotateCcw, PlusCircle,
-  Download, TrendingUp, TrendingDown, Landmark,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  BookOpen, FileText, RotateCcw, PlusCircle, MoreVertical,
+  Download, TrendingUp, TrendingDown, Landmark, Trash2, Pencil, XCircle,
   ChevronLeft, ChevronRight, Building2, Users, UserPlus,
   ArrowUpRight, ArrowDownLeft,
 } from "lucide-react";
@@ -62,15 +65,23 @@ type TabType = "all" | "issuances" | "refunds" | "payment" | "receipt";
 interface Row {
   id: string;
   tab: "issuance" | "refund" | "payment" | "receipt";
+  source: "policy" | "settlement" | "expense" | "cheque" | "wallet" | "ledger" | "broker_settlement";
   client_name: string;
   car_number: string | null;
   types: string[];
   amount: number;
   date: string;
+  issue_date: string;
   description: string;
   company_name: string;
+  payment_method: string;
   extra: string;
 }
+
+const payMethodLabel: Record<string, string> = {
+  cash: "نقدي", cheque: "شيك", bank_transfer: "تحويل بنكي",
+  visa: "فيزا", customer_cheque: "شيك عميل",
+};
 
 // ─── Component ───────────────────────────────────────────
 
@@ -110,9 +121,16 @@ export default function Accounting() {
   const [addOtherType, setAddOtherType] = useState<"income" | "expense">("income");
   const [addOtherAmount, setAddOtherAmount] = useState("");
 
-  // Load reference data
+  // Load reference data - exclude ELZAMI-only companies
   useEffect(() => {
-    supabase.from("insurance_companies").select("id, name, name_ar").eq("active", true).order("name_ar").then(({ data }) => setCompanies(data || []));
+    supabase.from("insurance_companies").select("id, name, name_ar, category_parent").eq("active", true).order("name_ar").then(({ data }) => {
+      const filtered = (data || []).filter(c => {
+        const cats = (c as any).category_parent as string[] | null;
+        if (!cats || cats.length === 0) return true;
+        return cats.some((cat: string) => cat !== "ELZAMI");
+      });
+      setCompanies(filtered);
+    });
     supabase.from("brokers").select("id, name").order("name").then(({ data }) => setBrokers(data || []));
   }, []);
 
@@ -148,7 +166,7 @@ export default function Accounting() {
             e.amount += p.insurance_price || 0;
             if (lbl && !e.types.includes(lbl)) e.types.push(lbl);
           } else {
-            gMap.set(k, { id: k, tab: "issuance", client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: p.created_at, description: "", company_name: co, extra: "" });
+            gMap.set(k, { id: k, tab: "issuance", source: "policy", client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: p.created_at, issue_date: p.created_at, description: "", company_name: co, payment_method: "", extra: "" });
           }
         }
         results.push(...gMap.values());
@@ -161,7 +179,7 @@ export default function Accounting() {
         if (selectedCompanyId !== "all") rq = rq.eq("company_id", selectedCompanyId);
         const { data: refs } = await rq;
         for (const p of refs || []) {
-          results.push({ id: p.id, tab: "refund", client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: [], amount: p.insurance_price || 0, date: p.cancellation_date || p.created_at, description: "إلغاء بوليصة", company_name: (p as any).insurance_companies?.name_ar || (p as any).insurance_companies?.name || "", extra: "" });
+          results.push({ id: p.id, tab: "refund", source: "policy", client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: [], amount: p.insurance_price || 0, date: p.cancellation_date || p.created_at, issue_date: p.created_at, description: "إلغاء بوليصة", company_name: (p as any).insurance_companies?.name_ar || (p as any).insurance_companies?.name || "", payment_method: "", extra: "" });
         }
 
         // REFUNDS: returned cheques
@@ -172,7 +190,7 @@ export default function Accounting() {
         for (const c of chqs || []) {
           const pol = (c as any).policies;
           if (selectedCompanyId !== "all" && pol?.company_id !== selectedCompanyId) continue;
-          results.push({ id: c.id, tab: "refund", client_name: pol?.clients?.full_name || "-", car_number: pol?.cars?.car_number || null, types: [], amount: c.amount || 0, date: c.payment_date, description: `شيك مرتجع${c.cheque_number ? ` #${c.cheque_number}` : ""}`, company_name: pol?.insurance_companies?.name_ar || pol?.insurance_companies?.name || "", extra: "" });
+          results.push({ id: c.id, tab: "refund", source: "cheque", client_name: pol?.clients?.full_name || "-", car_number: pol?.cars?.car_number || null, types: [], amount: c.amount || 0, date: c.payment_date, issue_date: c.payment_date, description: `شيك مرتجع${c.cheque_number ? ` #${c.cheque_number}` : ""}`, company_name: pol?.insurance_companies?.name_ar || pol?.insurance_companies?.name || "", payment_method: "شيك", extra: "" });
         }
 
         // REFUNDS: customer wallet (negative = money owed)
@@ -180,7 +198,7 @@ export default function Accounting() {
           .select("id, amount, created_at, description, clients(full_name)")
           .lt("amount", 0).gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
         for (const w of wallets || []) {
-          results.push({ id: w.id, tab: "refund", client_name: (w as any).clients?.full_name || "-", car_number: null, types: [], amount: Math.abs(w.amount), date: w.created_at, description: w.description || "رصيد مستحق للعميل", company_name: "", extra: "" });
+          results.push({ id: w.id, tab: "refund", source: "wallet", client_name: (w as any).clients?.full_name || "-", car_number: null, types: [], amount: Math.abs(w.amount), date: w.created_at, issue_date: w.created_at, description: w.description || "رصيد مستحق للعميل", company_name: "", payment_method: "", extra: "" });
         }
 
         // PAYMENTS: expenses to company
@@ -191,7 +209,7 @@ export default function Accounting() {
         if (selectedCompanyId !== "all") pq = pq.eq("entity_id", selectedCompanyId);
         const { data: pays } = await pq;
         for (const e of pays || []) {
-          results.push({ id: e.id, tab: "payment", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, description: e.description || "سند صرف", company_name: (e as any).insurance_companies?.name_ar || (e as any).insurance_companies?.name || "", extra: e.reference_number ? `#${e.reference_number}` : "" });
+          results.push({ id: e.id, tab: "payment", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: e.expense_date, description: e.description || "سند صرف", company_name: (e as any).insurance_companies?.name_ar || (e as any).insurance_companies?.name || "", payment_method: payMethodLabel[(e as any).payment_method] || "", extra: e.reference_number ? `#${e.reference_number}` : "" });
         }
 
         // PAYMENTS: company settlements (from company wallet page)
@@ -203,8 +221,8 @@ export default function Accounting() {
         if (selectedCompanyId !== "all") csq = csq.eq("company_id", selectedCompanyId);
         const { data: settlements } = await csq;
         for (const s of settlements || []) {
-          const payMethod = s.payment_type === "cheque" ? `شيك${s.cheque_number ? ` #${s.cheque_number}` : ""}` : s.payment_type === "bank_transfer" ? "تحويل بنكي" : s.payment_type || "";
-          results.push({ id: s.id, tab: "payment", client_name: "", car_number: null, types: [], amount: s.total_amount || 0, date: s.settlement_date, description: s.notes || "تسوية شركة", company_name: (s as any).insurance_companies?.name_ar || (s as any).insurance_companies?.name || "", extra: payMethod });
+          const payMethodText = s.payment_type === "cheque" ? `شيك${s.cheque_number ? ` #${s.cheque_number}` : ""}` : payMethodLabel[s.payment_type || ""] || s.payment_type || "";
+          results.push({ id: s.id, tab: "payment", source: "settlement", client_name: "", car_number: null, types: [], amount: s.total_amount || 0, date: s.settlement_date, issue_date: s.created_at, description: s.notes || "تسوية شركة", company_name: (s as any).insurance_companies?.name_ar || (s as any).insurance_companies?.name || "", payment_method: payMethodText, extra: "" });
         }
 
       } else if (entityType === "broker") {
@@ -233,7 +251,7 @@ export default function Accounting() {
             e.amount += p.insurance_price || 0;
             if (lbl && !e.types.includes(lbl)) e.types.push(lbl);
           } else {
-            bMap.set(k, { id: k, tab: "issuance", client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: p.created_at, description: "", company_name: co, extra: (p as any).brokers?.name || "" });
+            bMap.set(k, { id: k, tab: "issuance", source: "policy", client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: p.created_at, issue_date: p.created_at, description: "", company_name: co, payment_method: "", extra: (p as any).brokers?.name || "" });
           }
         }
         results.push(...bMap.values());
@@ -245,7 +263,7 @@ export default function Accounting() {
         if (selectedBrokerId !== "all") beq = beq.eq("entity_id", selectedBrokerId);
         const { data: bExps } = await beq;
         for (const e of bExps || []) {
-          results.push({ id: e.id, tab: e.voucher_type === "receipt" ? "receipt" : "payment", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, description: e.description || (e.voucher_type === "receipt" ? "سند قبض" : "سند صرف"), company_name: "", extra: (e as any).brokers?.name || "" });
+          results.push({ id: e.id, tab: e.voucher_type === "receipt" ? "receipt" : "payment", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: e.expense_date, description: e.description || (e.voucher_type === "receipt" ? "سند قبض" : "سند صرف"), company_name: "", payment_method: "", extra: (e as any).brokers?.name || "" });
         }
 
         // BROKER SETTLEMENTS (from broker wallet)
@@ -257,8 +275,8 @@ export default function Accounting() {
         const { data: bSettlements } = await bsq;
         for (const s of bSettlements || []) {
           const isReceipt = s.direction === "from_broker";
-          const payMethod = s.payment_type === "cheque" ? `شيك${s.cheque_number ? ` #${s.cheque_number}` : ""}` : s.payment_type === "bank_transfer" ? "تحويل بنكي" : s.payment_type || "";
-          results.push({ id: s.id, tab: isReceipt ? "receipt" : "payment", client_name: "", car_number: null, types: [], amount: s.total_amount || 0, date: s.created_at, description: s.notes || (isReceipt ? "سند قبض" : "سند صرف"), company_name: "", extra: `${(s as any).brokers?.name || ""} ${payMethod}`.trim() });
+          const bPayMethod = s.payment_type === "cheque" ? `شيك${s.cheque_number ? ` #${s.cheque_number}` : ""}` : payMethodLabel[s.payment_type || ""] || s.payment_type || "";
+          results.push({ id: s.id, tab: isReceipt ? "receipt" : "payment", source: "broker_settlement", client_name: "", car_number: null, types: [], amount: s.total_amount || 0, date: s.settlement_date, issue_date: s.created_at, description: s.notes || (isReceipt ? "سند قبض" : "سند صرف"), company_name: "", payment_method: bPayMethod, extra: (s as any).brokers?.name || "" });
         }
 
       } else {
@@ -269,7 +287,7 @@ export default function Accounting() {
           .gte("transaction_date", fromDate).lte("transaction_date", toDate)
           .order("transaction_date", { ascending: false });
         for (const tx of oData || []) {
-          results.push({ id: tx.id, tab: tx.amount >= 0 ? "receipt" : "payment", client_name: "", car_number: null, types: [], amount: Math.abs(tx.amount), date: tx.transaction_date, description: tx.description || (tx.amount >= 0 ? "دخل" : "مصروف"), company_name: "", extra: "" });
+          results.push({ id: tx.id, tab: tx.amount >= 0 ? "receipt" : "payment", source: "ledger", client_name: "", car_number: null, types: [], amount: Math.abs(tx.amount), date: tx.transaction_date, issue_date: tx.transaction_date, description: tx.description || (tx.amount >= 0 ? "دخل" : "مصروف"), company_name: "", payment_method: "", extra: "" });
         }
       }
 
@@ -305,6 +323,35 @@ export default function Accounting() {
   }, [rows]);
 
   const showReceipt = entityType === "broker" || entityType === "other";
+
+  // Delete settlement
+  const handleDelete = async (row: Row) => {
+    if (!confirm("هل أنت متأكد من الحذف؟")) return;
+    try {
+      if (row.source === "settlement") {
+        await supabase.from("company_settlements").delete().eq("id", row.id);
+      } else if (row.source === "broker_settlement") {
+        await supabase.from("broker_settlements").delete().eq("id", row.id);
+      } else if (row.source === "expense") {
+        await supabase.from("expenses").delete().eq("id", row.id);
+      } else if (row.source === "ledger") {
+        await supabase.from("ab_ledger").delete().eq("id", row.id);
+      }
+      toast.success("تم الحذف");
+      fetchData();
+    } catch { toast.error("فشل في الحذف"); }
+  };
+
+  // Mark cheque as refused
+  const handleRefuseCheque = async (row: Row) => {
+    if (row.source !== "settlement" && row.source !== "broker_settlement") return;
+    try {
+      const table = row.source === "settlement" ? "company_settlements" : "broker_settlements";
+      await supabase.from(table).update({ status: "refused" } as any).eq("id", row.id);
+      toast.success("تم تسجيل الشيك كمرفوض");
+      fetchData();
+    } catch { toast.error("فشل في تحديث الحالة"); }
+  };
 
   const resetAddDialog = () => {
     setAddDesc(""); setMainNotes(""); setMainReceiptImages([]);
@@ -568,10 +615,13 @@ export default function Accounting() {
               {entityType !== "other" && <TableHead className="text-right">رقم السيارة</TableHead>}
               {entityType !== "other" && <TableHead className="text-right">نوع البوليصة</TableHead>}
               <TableHead className="text-right">المبلغ</TableHead>
-              <TableHead className="text-right">التاريخ</TableHead>
+              <TableHead className="text-right">تاريخ الإصدار</TableHead>
+              <TableHead className="text-right">تاريخ الدفع</TableHead>
+              <TableHead className="text-right">طريقة الدفع</TableHead>
               <TableHead className="text-right">{entityType === "broker" ? "الشركة" : "الشركة"}</TableHead>
               {entityType === "broker" && <TableHead className="text-right">الوكيل</TableHead>}
               <TableHead className="text-right">البيان</TableHead>
+              <TableHead className="text-right w-10">إجراءات</TableHead>
             </TableRow></TableHeader>
             <TableBody>{pageRows.map((r, i) => {
               const badges: Record<string, { text: string; variant: "default" | "destructive" | "outline" | "secondary" }> = {
@@ -579,6 +629,8 @@ export default function Accounting() {
                 payment: { text: "سند صرف", variant: "outline" }, receipt: { text: "سند قبض", variant: "secondary" },
               };
               const b = badges[r.tab];
+              const canAct = r.source === "settlement" || r.source === "broker_settlement" || r.source === "expense" || r.source === "ledger";
+              const isCheque = r.payment_method.includes("شيك");
               return (<TableRow key={`${r.tab}-${r.id}-${i}`}>
                 <TableCell className="text-muted-foreground">{page * PAGE_SIZE + i + 1}</TableCell>
                 <TableCell><Badge variant={b.variant} className="text-xs">{b.text}</Badge></TableCell>
@@ -586,10 +638,31 @@ export default function Accounting() {
                 {entityType !== "other" && <TableCell className="font-mono">{r.car_number || "-"}</TableCell>}
                 {entityType !== "other" && <TableCell><div className="flex flex-wrap gap-1">{r.types.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}</div></TableCell>}
                 <TableCell className={cn("font-bold", r.tab === "refund" ? "text-destructive" : r.tab === "receipt" ? "text-green-600" : "")}>{r.tab === "refund" ? "-" : ""}{fmtCur(r.amount)}</TableCell>
-                <TableCell className="font-mono">{fmt(r.date)}</TableCell>
+                <TableCell className="font-mono text-xs">{fmt(r.issue_date)}</TableCell>
+                <TableCell className="font-mono text-xs">{r.date !== r.issue_date ? fmt(r.date) : "-"}</TableCell>
+                <TableCell className="text-xs">{r.payment_method || "-"}</TableCell>
                 <TableCell className="text-sm">{r.company_name || "-"}</TableCell>
                 {entityType === "broker" && <TableCell className="text-sm">{r.extra || "-"}</TableCell>}
                 <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{r.description || "-"}</TableCell>
+                <TableCell>
+                  {canAct && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {isCheque && (
+                          <DropdownMenuItem onClick={() => handleRefuseCheque(r)} className="text-destructive">
+                            <XCircle className="h-4 w-4 ml-2" />شيك مرفوض
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem onClick={() => handleDelete(r)} className="text-destructive">
+                          <Trash2 className="h-4 w-4 ml-2" />حذف
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </TableCell>
               </TableRow>);
             })}</TableBody></Table></div>
             <div className="flex items-center justify-between p-4 border-t">
