@@ -124,7 +124,7 @@ export default function Accounting() {
 
   // Add dialog
   const [addOpen, setAddOpen] = useState(false);
-  const [addVoucherType, setAddVoucherType] = useState<"payment" | "receipt">("payment");
+  const [addVoucherType, setAddVoucherType] = useState<"payment" | "receipt" | "refund">("payment");
   const [addDesc, setAddDesc] = useState("");
   const [addIssueDate, setAddIssueDate] = useState(new Date().toISOString().split("T")[0]);
   const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
@@ -217,6 +217,17 @@ export default function Accounting() {
           results.push({ id: w.id, tab: "refund", source: "wallet", client_name: (w as any).clients?.full_name || "-", car_number: null, types: [], amount: Math.abs(w.amount), date: w.created_at, issue_date: w.created_at, description: w.description || "رصيد مستحق للعميل", company_name: "", payment_method: "", extra: "" });
         }
 
+        // REFUNDS: manual refund entries (from expenses with voucher_type=refund)
+        let rfq = supabase.from("expenses")
+          .select("id, amount, expense_date, created_at, description, payment_method, reference_number, insurance_companies(name_ar, name)")
+          .eq("voucher_type", "refund").eq("entity_type", "company")
+          .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
+        if (selectedCompanyId !== "all") rfq = rfq.eq("entity_id", selectedCompanyId);
+        const { data: manualRefunds } = await rfq;
+        for (const e of manualRefunds || []) {
+          results.push({ id: e.id, tab: "refund", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: e.created_at, description: e.description || "مرتجع", company_name: (e as any).insurance_companies?.name_ar || (e as any).insurance_companies?.name || "", payment_method: payMethodLabel[(e as any).payment_method] || "", extra: e.reference_number ? `#${e.reference_number}` : "" });
+        }
+
         // PAYMENTS: expenses to company
         let pq = supabase.from("expenses")
           .select("id, amount, expense_date, description, reference_number, payment_method, insurance_companies(name_ar, name)")
@@ -271,6 +282,17 @@ export default function Accounting() {
           }
         }
         results.push(...bMap.values());
+
+        // BROKER REFUNDS (manual)
+        let brfq = supabase.from("expenses")
+          .select("id, amount, expense_date, created_at, description, payment_method, reference_number, brokers(name)")
+          .eq("voucher_type", "refund").eq("entity_type", "broker")
+          .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
+        if (selectedBrokerId !== "all") brfq = brfq.eq("entity_id", selectedBrokerId);
+        const { data: brokerRefunds } = await brfq;
+        for (const e of brokerRefunds || []) {
+          results.push({ id: e.id, tab: "refund", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: e.created_at, description: e.description || "مرتجع", company_name: "", payment_method: payMethodLabel[(e as any).payment_method] || "", extra: (e as any).brokers?.name || "" });
+        }
 
         // BROKER EXPENSES (payment + receipt)
         let beq = supabase.from("expenses")
@@ -495,44 +517,70 @@ export default function Accounting() {
           setSavedContacts(prev => [...prev, otherName.trim()]);
         }
       } else if (entityType === "company") {
-        // Company settlement entries
         if (paymentLines.length === 0) { toast.error("يرجى إضافة دفعة واحدة على الأقل"); setSaving(false); return; }
         const companyId = selectedCompanyId !== "all" ? selectedCompanyId : null;
         if (!companyId) { toast.error("يرجى اختيار شركة تأمين"); setSaving(false); return; }
-        for (const payment of paymentLines) {
-          const amount = payment.payment_type === "customer_cheque" && payment.selected_cheques
-            ? payment.selected_cheques.reduce((s, c) => s + c.amount, 0)
-            : payment.amount;
-          const customerChequeIds = payment.payment_type === "customer_cheque" && payment.selected_cheques
-            ? payment.selected_cheques.map(c => c.id) : [];
-          await supabase.from("company_settlements").insert({
-            company_id: companyId,
-            total_amount: amount,
-            settlement_date: payment.payment_date,
-            notes: addDesc.trim() || mainNotes || null,
-            status: "completed",
-            created_by_admin_id: user?.id,
-            payment_type: payment.payment_type === "customer_cheque" ? "cheque" : payment.payment_type,
-            cheque_number: payment.payment_type === "cheque" ? payment.cheque_number : null,
-            cheque_image_url: payment.cheque_image_url || null,
-            bank_reference: payment.payment_type === "bank_transfer" ? payment.bank_reference : null,
-            customer_cheque_ids: customerChequeIds.length > 0 ? customerChequeIds : null,
-          } as any);
-          // Mark customer cheques as used
-          if (customerChequeIds.length > 0) {
-            await supabase.from("policy_payments").update({ refused: false } as any).in("id", customerChequeIds);
+
+        if (addVoucherType === "refund") {
+          // Refund: save to expenses with entity_type=company, voucher_type=refund
+          for (const payment of paymentLines) {
+            const amount = payment.payment_type === "customer_cheque" && payment.selected_cheques
+              ? payment.selected_cheques.reduce((s, c) => s + c.amount, 0) : payment.amount;
+            await supabase.from("expenses").insert({
+              amount, expense_date: payment.payment_date,
+              description: addDesc.trim() || "مرتجع", voucher_type: "refund",
+              category: "insurance_company", entity_type: "company", entity_id: companyId,
+              payment_method: payment.payment_type === "customer_cheque" ? "cheque" : payment.payment_type,
+              reference_number: payment.payment_type === "cheque" ? payment.cheque_number : payment.bank_reference || null,
+              notes: mainNotes || null, created_by_admin_id: user?.id,
+            } as any);
+          }
+        } else {
+          // Payment/Receipt: save to company_settlements
+          for (const payment of paymentLines) {
+            const amount = payment.payment_type === "customer_cheque" && payment.selected_cheques
+              ? payment.selected_cheques.reduce((s, c) => s + c.amount, 0) : payment.amount;
+            const customerChequeIds = payment.payment_type === "customer_cheque" && payment.selected_cheques
+              ? payment.selected_cheques.map(c => c.id) : [];
+            await supabase.from("company_settlements").insert({
+              company_id: companyId, total_amount: amount, settlement_date: payment.payment_date,
+              notes: addDesc.trim() || mainNotes || null, status: "completed", created_by_admin_id: user?.id,
+              payment_type: payment.payment_type === "customer_cheque" ? "cheque" : payment.payment_type,
+              cheque_number: payment.payment_type === "cheque" ? payment.cheque_number : null,
+              cheque_image_url: payment.cheque_image_url || null,
+              bank_reference: payment.payment_type === "bank_transfer" ? payment.bank_reference : null,
+              customer_cheque_ids: customerChequeIds.length > 0 ? customerChequeIds : null,
+            } as any);
+            if (customerChequeIds.length > 0) {
+              await supabase.from("policy_payments").update({ refused: false } as any).in("id", customerChequeIds);
+            }
           }
         }
       } else if (entityType === "broker") {
-        // Broker settlement entries
         if (paymentLines.length === 0) { toast.error("يرجى إضافة دفعة واحدة على الأقل"); setSaving(false); return; }
         const brokerId = selectedBrokerId !== "all" ? selectedBrokerId : null;
         if (!brokerId) { toast.error("يرجى اختيار وكيل"); setSaving(false); return; }
-        const direction = addVoucherType === "receipt" ? "from_broker" : "to_broker";
-        for (const payment of paymentLines) {
-          const amount = payment.payment_type === "customer_cheque" && payment.selected_cheques
-            ? payment.selected_cheques.reduce((s, c) => s + c.amount, 0)
-            : payment.amount;
+
+        if (addVoucherType === "refund") {
+          // Refund: save to expenses with entity_type=broker, voucher_type=refund
+          for (const payment of paymentLines) {
+            const amount = payment.payment_type === "customer_cheque" && payment.selected_cheques
+              ? payment.selected_cheques.reduce((s, c) => s + c.amount, 0) : payment.amount;
+            await supabase.from("expenses").insert({
+              amount, expense_date: payment.payment_date,
+              description: addDesc.trim() || "مرتجع", voucher_type: "refund",
+              category: "broker_payment", entity_type: "broker", entity_id: brokerId,
+              payment_method: payment.payment_type === "customer_cheque" ? "cheque" : payment.payment_type,
+              reference_number: payment.payment_type === "cheque" ? payment.cheque_number : payment.bank_reference || null,
+              notes: mainNotes || null, created_by_admin_id: user?.id,
+            } as any);
+          }
+        } else {
+          // Payment/Receipt: save to broker_settlements
+          const direction = addVoucherType === "receipt" ? "from_broker" : "to_broker";
+          for (const payment of paymentLines) {
+            const amount = payment.payment_type === "customer_cheque" && payment.selected_cheques
+              ? payment.selected_cheques.reduce((s, c) => s + c.amount, 0) : payment.amount;
           await supabase.from("broker_settlements").insert({
             broker_id: brokerId,
             total_amount: amount,
@@ -546,6 +594,7 @@ export default function Accounting() {
             cheque_image_url: payment.cheque_image_url || null,
             bank_reference: payment.payment_type === "bank_transfer" ? payment.bank_reference : null,
           } as any);
+          }
         }
       }
       toast.success("تم الإضافة بنجاح");
@@ -821,18 +870,24 @@ export default function Accounting() {
 
           <div className="space-y-4">
             {/* Voucher type selector */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <button onClick={() => setAddVoucherType("payment")}
-                className={cn("rounded-xl border-2 p-4 text-center transition-all", addVoucherType === "payment" ? "border-red-400 bg-red-50" : "border-border")}>
-                <ArrowUpRight className={cn("h-6 w-6 mx-auto mb-1", addVoucherType === "payment" ? "text-red-500" : "text-muted-foreground")} />
-                <p className={cn("font-bold", addVoucherType === "payment" ? "text-red-600" : "")}>سند صرف</p>
-                <p className="text-xs text-muted-foreground">مبلغ خارج</p>
+                className={cn("rounded-xl border-2 p-3 text-center transition-all", addVoucherType === "payment" ? "border-red-400 bg-red-50" : "border-border")}>
+                <ArrowUpRight className={cn("h-5 w-5 mx-auto mb-1", addVoucherType === "payment" ? "text-red-500" : "text-muted-foreground")} />
+                <p className={cn("font-bold text-sm", addVoucherType === "payment" ? "text-red-600" : "")}>سند صرف</p>
+                <p className="text-[10px] text-muted-foreground">مبلغ خارج</p>
+              </button>
+              <button onClick={() => setAddVoucherType("refund")}
+                className={cn("rounded-xl border-2 p-3 text-center transition-all", addVoucherType === "refund" ? "border-amber-400 bg-amber-50" : "border-border")}>
+                <RotateCcw className={cn("h-5 w-5 mx-auto mb-1", addVoucherType === "refund" ? "text-amber-600" : "text-muted-foreground")} />
+                <p className={cn("font-bold text-sm", addVoucherType === "refund" ? "text-amber-700" : "")}>مرتجع</p>
+                <p className="text-[10px] text-muted-foreground">إلغاء / إرجاع</p>
               </button>
               <button onClick={() => setAddVoucherType("receipt")}
-                className={cn("rounded-xl border-2 p-4 text-center transition-all", addVoucherType === "receipt" ? "border-primary bg-primary/5" : "border-border")}>
-                <ArrowDownLeft className={cn("h-6 w-6 mx-auto mb-1", addVoucherType === "receipt" ? "text-primary" : "text-muted-foreground")} />
-                <p className={cn("font-bold", addVoucherType === "receipt" ? "text-primary" : "")}>سند قبض</p>
-                <p className="text-xs text-muted-foreground">مبلغ داخل</p>
+                className={cn("rounded-xl border-2 p-3 text-center transition-all", addVoucherType === "receipt" ? "border-primary bg-primary/5" : "border-border")}>
+                <ArrowDownLeft className={cn("h-5 w-5 mx-auto mb-1", addVoucherType === "receipt" ? "text-primary" : "text-muted-foreground")} />
+                <p className={cn("font-bold text-sm", addVoucherType === "receipt" ? "text-primary" : "")}>سند قبض</p>
+                <p className="text-[10px] text-muted-foreground">مبلغ داخل</p>
               </button>
             </div>
 
