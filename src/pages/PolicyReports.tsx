@@ -69,13 +69,6 @@ import { ClickablePhone } from '@/components/shared/ClickablePhone';
 import { getInsuranceTypeLabel } from '@/lib/insuranceTypes';
 import { ExpiryBadge } from '@/components/shared/ExpiryBadge';
 
-// Expand THIRD_FULL into child types for display
-// After DB migration applies, policy_types will already contain THIRD/FULL directly
-const expandPolicyTypes = (types: string[] | null): string[] => {
-  if (!types) return [];
-  return types.flatMap(t => t === 'THIRD_FULL' ? ['THIRD', 'FULL'] : [t]);
-};
-
 const policyTypeLabels: Record<string, string> = {
   ELZAMI: 'إلزامي',
   THIRD_FULL: 'ثالث/شامل',
@@ -816,7 +809,7 @@ export default function PolicyReports() {
     setSendingSingleSms(client.client_id);
     try {
       // Build message with all policy types
-      const typesText = expandPolicyTypes(client.policy_types).map(t => policyTypeLabels[t] || t).join(' و ');
+      const typesText = (client.policy_types || []).map(t => policyTypeLabels[t] || t).join(' و ');
       const endDate = formatDate(client.earliest_end_date);
       
       const message = `مرحباً ${client.client_name}، نذكرك بأن تأمين (${typesText}) سينتهي بتاريخ ${endDate}. يرجى التواصل معنا أو زيارة المكتب للتجديد.`;
@@ -1610,7 +1603,7 @@ export default function PolicyReports() {
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-wrap gap-1">
-                                {expandPolicyTypes(client.policy_types).map(type => (
+                                {(client.policy_types || []).map(type => (
                                   <Badge key={type} variant="secondary" className="text-xs">
                                     {policyTypeLabels[type] || type}
                                   </Badge>
@@ -2094,7 +2087,7 @@ export default function PolicyReports() {
                                 {client.policies_count} وثيقة
                               </Badge>
                               <div className="flex flex-wrap gap-1 mt-1">
-                                {expandPolicyTypes(client.policy_types).map(type => (
+                                {(client.policy_types || []).map(type => (
                                   <span key={type} className="text-[10px] text-muted-foreground">
                                     {policyTypeLabels[type] || type}
                                   </span>
@@ -2108,7 +2101,7 @@ export default function PolicyReports() {
                                 {client.new_policies_count} وثيقة
                               </Badge>
                               <div className="flex flex-wrap gap-1 mt-1">
-                                {expandPolicyTypes(client.new_policy_types).map(type => (
+                                {(client.new_policy_types || []).map(type => (
                                   <span key={type} className="text-[10px] text-green-600">
                                     {policyTypeLabels[type] || type}
                                   </span>
@@ -2149,7 +2142,7 @@ export default function PolicyReports() {
                                         </Badge>
                                       </div>
                                       <div className="space-y-2">
-                                        {expandPolicyTypes(client.policy_types).map((type, idx) => (
+                                        {(client.policy_types || []).map((type, idx) => (
                                           <div key={idx} className="flex items-center gap-2 p-2 rounded bg-background border text-sm">
                                             <Badge variant="secondary" className="text-xs">
                                               {policyTypeLabels[type] || type}
@@ -2170,7 +2163,7 @@ export default function PolicyReports() {
                                         </Badge>
                                       </div>
                                       <div className="space-y-2">
-                                        {expandPolicyTypes(client.new_policy_types).map((type, idx) => (
+                                        {(client.new_policy_types || []).map((type, idx) => (
                                           <div key={idx} className="flex items-center gap-2 p-2 rounded bg-green-50 border border-green-200 text-sm">
                                             <Badge className="text-xs bg-green-600">
                                               {policyTypeLabels[type] || type}
