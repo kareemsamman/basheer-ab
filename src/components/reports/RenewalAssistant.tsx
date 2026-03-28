@@ -60,6 +60,7 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
   const [saving, setSaving] = useState(false);
   const [showDeclineReason, setShowDeclineReason] = useState(false);
   const [declineReason, setDeclineReason] = useState('');
+  const [fetchError, setFetchError] = useState(false);
 
   const followUpMonth = `${month}-01`;
   const formatLocalDate = (date: Date) => {
