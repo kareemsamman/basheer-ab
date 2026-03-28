@@ -1,23 +1,39 @@
 
+Goal: fix the “failed to fetch” error in **/reports/policies → التجديدات** (Renewals), specifically in the **Renewal Assistant** popup.
 
-## Fix: `report_renewals_summary` Overload Ambiguity
+1) Root-cause fix in assistant data query
+- File: `src/components/reports/RenewalAssistant.tsx`
+- Replace the invalid filter:
+  - Current (broken): `.neq('status', 'cancelled')`
+  - Problem: `policies` table has no `status` column, so query fails and the popup shows “no customers”.
+- Use valid active-policy filters that match existing renewals logic:
+  - keep `.is('deleted_at', null)`
+  - exclude cancelled/transferred policies via the real boolean columns (e.g. `cancelled`, `transferred`).
 
-The database has two overloaded versions of `report_renewals_summary`. When only `p_end_month` is passed, PostgreSQL cannot determine which function to call. The fix is to explicitly pass all 4 parameters with `null` defaults.
+2) Align assistant eligibility with renewals page behavior
+- Ensure assistant pulls the same “pending follow-up” population as the renewals tab:
+  - same selected month range
+  - exclude clients already marked in `renewal_followups` as:
+    - `renewed`
+    - `declined_renewal`
+- Keep grouping by **client** and include all their month policies.
 
-### Change
+3) Improve error-state UX (to avoid false “completed” state)
+- In `RenewalAssistant.tsx`, add explicit error state:
+  - if fetch fails, show an error panel with retry button (instead of showing “تم الانتهاء” with empty list).
+  - keep toast, but make UI state accurate.
 
-**File: `src/hooks/useRenewalsCount.tsx`** (line 14-16)
+4) Validation pass after implementation
+- Open `/reports/policies` → `التجديدات` with month `2026-03` and `2026-02`.
+- Confirm:
+  - no “failed to fetch follow-up data” toast on load
+  - assistant lists customers (not empty when table has pending records)
+  - “نعم، تم التجديد” removes client from pending list
+  - “لا يريد التجديد” requires reason and moves client to declined tab
+  - “لا، لم يجدد بعد” keeps client pending
+  - “تخطي” changes nothing.
 
-Replace the RPC call to include all required parameters:
-
-```typescript
-const { data, error } = await supabase.rpc('report_renewals_summary', {
-  p_end_month: `${currentMonth}-01`,
-  p_policy_type: null,
-  p_created_by: null,
-  p_search: null
-});
-```
-
-This matches the 4-parameter function signature and resolves the `PGRST203` overload ambiguity error.
-
+Technical details
+- Confirmed from schema: `public.policies` has `cancelled` and `transferred` booleans, not `status`.
+- This is a frontend query bug (no DB migration required).
+- Main changes are isolated to: `src/components/reports/RenewalAssistant.tsx`.
