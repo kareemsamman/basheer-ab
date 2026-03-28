@@ -125,7 +125,9 @@ export default function Accounting() {
 
   // Add dialog
   const [addOpen, setAddOpen] = useState(false);
-  const [addVoucherType, setAddVoucherType] = useState<"payment" | "receipt" | "refund">("payment");
+  const [addVoucherType, setAddVoucherType] = useState<"payment" | "receipt" | "refund" | "sale">("payment");
+  const [saleAmount, setSaleAmount] = useState("");
+  const [saleDate, setSaleDate] = useState(new Date().toISOString().split("T")[0]);
   const [addDesc, setAddDesc] = useState("");
   const [addIssueDate, setAddIssueDate] = useState(new Date().toISOString().split("T")[0]);
   const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
@@ -244,7 +246,7 @@ export default function Accounting() {
         let pq = supabase.from("expenses")
           .select("id, amount, expense_date, created_at, description, reference_number, payment_method, voucher_type, insurance_companies(name_ar, name)")
           .eq("entity_type", "company")
-          .in("voucher_type", ["payment", "receipt"])
+          .in("voucher_type", ["payment", "receipt", "sale"])
           .gte("expense_date", fromDate).lte("expense_date", toDate);
         if (selectedCompanyIds.length > 0) pq = pq.in("entity_id", selectedCompanyIds);
         const { data: pays } = await pq;
@@ -321,7 +323,7 @@ export default function Accounting() {
         let beq = supabase.from("expenses")
           .select("id, amount, expense_date, created_at, description, reference_number, voucher_type, payment_method, brokers(name)")
           .eq("entity_type", "broker")
-          .in("voucher_type", ["payment", "receipt"])
+          .in("voucher_type", ["payment", "receipt", "sale"])
           .gte("expense_date", fromDate).lte("expense_date", toDate);
         if (selectedBrokerId !== "all") beq = beq.eq("entity_id", selectedBrokerId);
         const { data: bExps } = await beq;
@@ -508,13 +510,45 @@ export default function Accounting() {
 
   const resetAddDialog = () => {
     setAddDesc(""); setMainNotes(""); setMainReceiptImages([]);
-    setPaymentLines([]);
+    setPaymentLines([]); setSaleAmount(""); setSaleDate(new Date().toISOString().split("T")[0]);
     setAddIssueDate(new Date().toISOString().split("T")[0]);
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
+      // SALE: simple entry without payment method
+      if (addVoucherType === "sale") {
+        const amt = parseFloat(saleAmount);
+        if (!amt || amt <= 0) { toast.error("يرجى إدخال مبلغ صحيح"); setSaving(false); return; }
+        if (!addDesc.trim()) { toast.error("يرجى إدخال الوصف"); setSaving(false); return; }
+        const eType = entityType === "company" ? "company" : entityType === "broker" ? "broker" : "manual";
+        const eId = entityType === "company" ? (selectedCompanyIds.length === 1 ? selectedCompanyIds[0] : null)
+          : entityType === "broker" ? (selectedBrokerId !== "all" ? selectedBrokerId : null) : null;
+        if ((entityType === "company" || entityType === "broker") && !eId) {
+          toast.error("يرجى اختيار جهة واحدة"); setSaving(false); return;
+        }
+        const { error: insertErr } = await supabase.from("expenses").insert({
+          amount: amt,
+          expense_date: saleDate,
+          description: addDesc.trim(),
+          voucher_type: "sale",
+          category: entityType === "company" ? "insurance_company" : entityType === "broker" ? "broker_payment" : "other",
+          entity_type: eType,
+          entity_id: eId,
+          contact_name: entityType === "other" ? otherName.trim() || null : null,
+          payment_method: null,
+          notes: mainNotes || null,
+          created_by_admin_id: user?.id,
+        } as any);
+        if (insertErr) { console.error("Sale insert error:", insertErr); throw insertErr; }
+        toast.success("تم إضافة المبيعات بنجاح");
+        setAddOpen(false); resetAddDialog();
+        fetchData();
+        setSaving(false);
+        return;
+      }
+
       if (entityType === "other") {
         // Save to expenses with entity_type = "manual"
         if (paymentLines.length === 0) { toast.error("يرجى إضافة دفعة واحدة على الأقل"); setSaving(false); return; }
@@ -916,23 +950,29 @@ export default function Accounting() {
 
           <div className="space-y-4">
             {/* Voucher type selector */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-2">
               <button onClick={() => setAddVoucherType("payment")}
                 className={cn("rounded-xl border-2 p-3 text-center transition-all", addVoucherType === "payment" ? "border-red-400 bg-red-50" : "border-border")}>
                 <ArrowUpRight className={cn("h-5 w-5 mx-auto mb-1", addVoucherType === "payment" ? "text-red-500" : "text-muted-foreground")} />
-                <p className={cn("font-bold text-sm", addVoucherType === "payment" ? "text-red-600" : "")}>سند صرف</p>
+                <p className={cn("font-bold text-xs", addVoucherType === "payment" ? "text-red-600" : "")}>سند صرف</p>
                 <p className="text-[10px] text-muted-foreground">مبلغ خارج</p>
+              </button>
+              <button onClick={() => setAddVoucherType("sale")}
+                className={cn("rounded-xl border-2 p-3 text-center transition-all", addVoucherType === "sale" ? "border-blue-400 bg-blue-50" : "border-border")}>
+                <FileText className={cn("h-5 w-5 mx-auto mb-1", addVoucherType === "sale" ? "text-blue-600" : "text-muted-foreground")} />
+                <p className={cn("font-bold text-xs", addVoucherType === "sale" ? "text-blue-700" : "")}>مبيعات</p>
+                <p className="text-[10px] text-muted-foreground">بدون طريقة دفع</p>
               </button>
               <button onClick={() => setAddVoucherType("refund")}
                 className={cn("rounded-xl border-2 p-3 text-center transition-all", addVoucherType === "refund" ? "border-amber-400 bg-amber-50" : "border-border")}>
                 <RotateCcw className={cn("h-5 w-5 mx-auto mb-1", addVoucherType === "refund" ? "text-amber-600" : "text-muted-foreground")} />
-                <p className={cn("font-bold text-sm", addVoucherType === "refund" ? "text-amber-700" : "")}>مرتجع</p>
+                <p className={cn("font-bold text-xs", addVoucherType === "refund" ? "text-amber-700" : "")}>مرتجع</p>
                 <p className="text-[10px] text-muted-foreground">إلغاء / إرجاع</p>
               </button>
               <button onClick={() => setAddVoucherType("receipt")}
                 className={cn("rounded-xl border-2 p-3 text-center transition-all", addVoucherType === "receipt" ? "border-primary bg-primary/5" : "border-border")}>
                 <ArrowDownLeft className={cn("h-5 w-5 mx-auto mb-1", addVoucherType === "receipt" ? "text-primary" : "text-muted-foreground")} />
-                <p className={cn("font-bold text-sm", addVoucherType === "receipt" ? "text-primary" : "")}>سند قبض</p>
+                <p className={cn("font-bold text-xs", addVoucherType === "receipt" ? "text-primary" : "")}>سند قبض</p>
                 <p className="text-[10px] text-muted-foreground">مبلغ داخل</p>
               </button>
             </div>
@@ -947,11 +987,24 @@ export default function Accounting() {
 
             {/* Description */}
             <div className="space-y-1">
-              <Label>الوصف</Label>
+              <Label>الوصف{addVoucherType === "sale" ? " *" : ""}</Label>
               <Input value={addDesc} onChange={e => setAddDesc(e.target.value)} placeholder="وصف السند..." />
             </div>
 
-            {/* Payment Lines - same component as expenses page */}
+            {/* Sale: simple amount + date (no payment lines) */}
+            {addVoucherType === "sale" ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>المبلغ *</Label>
+                  <Input type="number" min="0" step="0.01" value={saleAmount} onChange={e => setSaleAmount(e.target.value)} placeholder="0" />
+                </div>
+                <div className="space-y-1">
+                  <Label>التاريخ *</Label>
+                  <ArabicDatePicker value={saleDate} onChange={d => setSaleDate(d)} compact />
+                </div>
+              </div>
+            ) : (
+            /* Payment Lines - same component as expenses page */
             <ExpensePaymentLines
               paymentLines={paymentLines}
               setPaymentLines={setPaymentLines}
@@ -962,12 +1015,13 @@ export default function Accounting() {
               entityId={entityType === "company" ? (selectedCompanyIds.length === 1 ? selectedCompanyIds[0] : "") : entityType === "broker" ? (selectedBrokerId !== "all" ? selectedBrokerId : "") : ""}
               entityType={entityType === "company" ? "company" : "broker"}
             />
+            )}
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)}>إلغاء</Button>
             <Button onClick={handleSave} disabled={saving} className="gap-2">
-              {saving ? "جاري الحفظ..." : `حفظ الدفعات (${paymentLines.length})`}
+              {saving ? "جاري الحفظ..." : addVoucherType === "sale" ? "حفظ المبيعات" : `حفظ الدفعات (${paymentLines.length})`}
             </Button>
           </DialogFooter>
         </DialogContent>
