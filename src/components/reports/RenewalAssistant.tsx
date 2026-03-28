@@ -72,6 +72,7 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
 
   const fetchPendingClients = useCallback(async () => {
     setLoading(true);
+    setFetchError(false);
     try {
       const [year, mo] = month.split('-').map(Number);
       const startDate = formatLocalDate(new Date(year, mo - 1, 1));
@@ -95,7 +96,8 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
         .gte('end_date', startDate)
         .lte('end_date', endDate)
         .is('deleted_at', null)
-        .neq('status', 'cancelled')
+        .eq('cancelled', false)
+        .eq('transferred', false)
         .order('client_id');
 
       if (error) throw error;
