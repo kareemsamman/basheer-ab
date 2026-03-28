@@ -50,7 +50,7 @@ interface RenewalAssistantProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   month: string; // YYYY-MM
-  onActionComplete: () => void;
+  onActionComplete: (action?: string) => void;
 }
 
 export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }: RenewalAssistantProps) {
@@ -215,7 +215,7 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
 
       setShowDeclineReason(false);
       setDeclineReason('');
-      onActionComplete();
+      onActionComplete(action);
     } catch (err) {
       console.error('Error saving followup:', err);
       toast.error('فشل في حفظ المتابعة');

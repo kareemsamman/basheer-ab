@@ -724,12 +724,18 @@ export default function PolicyReports() {
       toast.success(`تم تحديث الحالة لـ ${policyIds.length} وثيقة`);
       setUpdateStatusOpen(false);
       setSelectedRenewalClient(null);
+      const wasRenewed = newStatus === 'renewed';
       setNewStatus('');
       setStatusNotes('');
       // Clear cached policies
       setClientPolicies({});
       setExpandedClientId(null);
       fetchRenewals();
+      // Switch to renewed tab when marking as renewed
+      if (wasRenewed) {
+        setRenewalSubTab('renewed');
+        fetchRenewedClients();
+      }
     } catch (error) {
       console.error('Error updating status:', error);
       toast.error('فشل في تحديث الحالة');
@@ -2285,9 +2291,13 @@ export default function PolicyReports() {
         open={assistantOpen}
         onOpenChange={setAssistantOpen}
         month={renewalsMonth}
-        onActionComplete={() => {
+        onActionComplete={(action) => {
           fetchRenewals();
           if (renewalSubTab === 'declined') fetchDeclinedClients();
+          if (action === 'renewed') {
+            setRenewalSubTab('renewed');
+            fetchRenewedClients();
+          }
         }}
       />
     </MainLayout>
