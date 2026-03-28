@@ -308,7 +308,7 @@ export default function PolicyReports() {
   const [assistantOpen, setAssistantOpen] = useState(false);
   
   // Renewal sub-tab (pending / declined)
-  const [renewalSubTab, setRenewalSubTab] = useState<'pending' | 'declined'>('pending');
+  const [renewalSubTab, setRenewalSubTab] = useState<'pending' | 'declined' | 'renewed'>('pending');
   
   // Declined clients state
   const [declinedClients, setDeclinedClients] = useState<any[]>([]);
@@ -684,10 +684,10 @@ export default function PolicyReports() {
   };
 
   useEffect(() => {
-    if (activeTab === 'renewed') {
+    if (activeTab === 'renewed' || (activeTab === 'renewals' && renewalSubTab === 'renewed')) {
       fetchRenewedClients();
     }
-  }, [activeTab, renewedPage, renewedMonth, renewedPolicyTypeFilter, renewedCreatedByFilter, renewedSearch]);
+  }, [activeTab, renewalSubTab, renewedPage, renewedMonth, renewedPolicyTypeFilter, renewedCreatedByFilter, renewedSearch]);
 
   // Update renewal status for all policies of a client
   const handleUpdateStatus = async () => {
@@ -1496,6 +1496,15 @@ export default function PolicyReports() {
                 <XCircle className="h-4 w-4" />
                 لا يريدون التجديد
               </Button>
+              <Button
+                variant={renewalSubTab === 'renewed' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setRenewalSubTab('renewed')}
+                className={cn("gap-2", renewalSubTab === 'renewed' && "bg-green-600 hover:bg-green-700")}
+              >
+                <CheckCircle className="h-4 w-4" />
+                تم التجديد
+              </Button>
             </div>
 
             {/* Pending Table */}
@@ -1799,9 +1808,155 @@ export default function PolicyReports() {
                 )}
               </Card>
             )}
+
+            {/* Renewed Sub-tab */}
+            {renewalSubTab === 'renewed' && (
+              <div className="space-y-4">
+              {/* Filters */}
+              <Card className="p-4">
+                <div className="flex flex-wrap gap-3">
+                  <Input
+                    type="month"
+                    value={renewedMonth}
+                    onChange={(e) => { setRenewedMonth(e.target.value); setRenewedPage(0); }}
+                    className="w-[160px]"
+                  />
+                  <Select value={renewedPolicyTypeFilter} onValueChange={(v) => { setRenewedPolicyTypeFilter(v); setRenewedPage(0); }}>
+                    <SelectTrigger className="w-[140px]">
+                      <SelectValue placeholder="النوع" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">كل الأنواع</SelectItem>
+                      {Object.entries(policyTypeFilterLabels).map(([k, v]) => (
+                        <SelectItem key={k} value={k}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={renewedCreatedByFilter} onValueChange={(v) => { setRenewedCreatedByFilter(v); setRenewedPage(0); }}>
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue placeholder="أنشأه" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">كل المستخدمين</SelectItem>
+                      {users.map(u => (
+                        <SelectItem key={u.id} value={u.id}>{u.display_name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="relative flex-1 min-w-[200px]">
+                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="بحث..."
+                      value={renewedSearch}
+                      onChange={(e) => { setRenewedSearch(e.target.value); setRenewedPage(0); }}
+                      className="pr-10"
+                    />
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="overflow-hidden">
+                {renewedLoading ? (
+                  <div className="p-4 space-y-2">
+                    {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+                  </div>
+                ) : renewedClients.length === 0 ? (
+                  <div className="text-center py-12">
+                    <CheckCircle className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
+                    <p className="text-muted-foreground">لا يوجد عملاء قاموا بالتجديد في هذه الفترة</p>
+                  </div>
+                ) : (
+                  <>
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead className="w-10"></TableHead>
+                          <TableHead className="text-right">العميل</TableHead>
+                          <TableHead className="text-right">الهاتف</TableHead>
+                          <TableHead className="text-right">الوثائق القديمة</TableHead>
+                          <TableHead className="text-right">انتهت بتاريخ</TableHead>
+                          <TableHead className="text-right">السعر القديم</TableHead>
+                          <TableHead className="text-right">الوثائق الجديدة</TableHead>
+                          <TableHead className="text-right">بدأت بتاريخ</TableHead>
+                          <TableHead className="text-right">السعر الجديد</TableHead>
+                          <TableHead className="text-right">التجديد بواسطة</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {renewedClients.map(client => (
+                          <TableRow key={client.client_id} className="hover:bg-muted/30">
+                            <TableCell className="w-10"></TableCell>
+                            <TableCell>
+                              <button
+                                onClick={() => navigate(`/clients/${client.client_id}`, {
+                                  state: { from: '/reports/policies', tab: 'renewals' }
+                                })}
+                                className="font-medium hover:text-primary hover:underline transition-colors text-right"
+                              >
+                                {client.client_name}
+                              </button>
+                              {client.client_file_number && (
+                                <p className="text-xs text-muted-foreground">{client.client_file_number}</p>
+                              )}
+                              {client.has_package && (
+                                <Badge variant="default" className="text-xs gap-1 mt-1 bg-primary">
+                                  <Package className="h-3 w-3" />
+                                  باقة
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <ClickablePhone phone={client.client_phone} />
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="font-bold">
+                                {client.policies_count} وثيقة
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-mono">{formatDate(client.earliest_end_date)}</TableCell>
+                            <TableCell className="font-bold text-muted-foreground">₪{client.total_insurance_price.toLocaleString()}</TableCell>
+                            <TableCell>
+                              <Badge variant="default" className="font-bold bg-green-600">
+                                {client.new_policies_count} وثيقة
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-mono text-green-600">{formatDate(client.new_start_date)}</TableCell>
+                            <TableCell className="font-bold text-green-600">₪{client.new_total_price.toLocaleString()}</TableCell>
+                            <TableCell>
+                              {client.renewed_by_name ? (
+                                <span className="text-sm">{client.renewed_by_name}</span>
+                              ) : (
+                                <span className="text-muted-foreground text-sm">—</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+
+                    {/* Pagination */}
+                    <div className="flex items-center justify-between p-4 border-t">
+                      <p className="text-sm text-muted-foreground">
+                        إجمالي: {renewedTotalRows} عميل تم تجديد وثائقهم
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => setRenewedPage(p => Math.max(0, p - 1))} disabled={renewedPage === 0}>
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                        <span className="text-sm">{renewedPage + 1} / {renewedTotalPages || 1}</span>
+                        <Button variant="outline" size="sm" onClick={() => setRenewedPage(p => p + 1)} disabled={renewedPage >= renewedTotalPages - 1}>
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </Card>
+              </div>
+            )}
           </TabsContent>
 
-          {/* Renewed Clients Tab */}
+          {/* Renewed Clients Tab (kept for backward compatibility) */}
           <TabsContent value="renewed" className="space-y-4 mt-6">
             {/* Filters */}
             <Card className="p-4">
