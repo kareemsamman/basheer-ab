@@ -65,11 +65,11 @@ function getDefaultRange() {
 }
 
 type EntityType = "company" | "broker" | "other";
-type TabType = "all" | "issuances" | "refunds" | "payment" | "receipt";
+type TabType = "all" | "issuances" | "refunds" | "payment" | "sale" | "receipt";
 
 interface Row {
   id: string;
-  tab: "issuance" | "refund" | "payment" | "receipt";
+  tab: "issuance" | "refund" | "payment" | "sale" | "receipt";
   source: "policy" | "settlement" | "expense" | "cheque" | "wallet" | "ledger" | "broker_settlement";
   client_name: string;
   car_number: string | null;
@@ -251,8 +251,10 @@ export default function Accounting() {
         if (selectedCompanyIds.length > 0) pq = pq.in("entity_id", selectedCompanyIds);
         const { data: pays } = await pq;
         for (const e of pays || []) {
+          const isSale = (e.description || "").startsWith("[مبيعات]");
           const isReceipt = (e as any).voucher_type === "receipt";
-          results.push({ id: e.id, tab: isReceipt ? "receipt" : "payment", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: (e as any).created_at || e.expense_date, description: e.description || (isReceipt ? "سند قبض" : "سند صرف"), company_name: (e as any).insurance_companies?.name_ar || (e as any).insurance_companies?.name || "", payment_method: payMethodLabel[(e as any).payment_method] || "", extra: e.reference_number ? `#${e.reference_number}` : "" });
+          const tab = isSale ? "sale" : isReceipt ? "receipt" : "payment";
+          results.push({ id: e.id, tab, source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: (e as any).created_at || e.expense_date, description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"), company_name: (e as any).insurance_companies?.name_ar || (e as any).insurance_companies?.name || "", payment_method: payMethodLabel[(e as any).payment_method] || "", extra: e.reference_number ? `#${e.reference_number}` : "" });
         }
 
         // PAYMENTS: company settlements (from company wallet page)
@@ -330,9 +332,11 @@ export default function Accounting() {
         const { data: bExps, error: bExpsErr } = await beq;
         if (bExpsErr) console.error("Broker expenses error:", bExpsErr);
         for (const e of bExps || []) {
+          const isSale = (e.description || "").startsWith("[مبيعات]");
           const isReceipt = e.voucher_type === "receipt";
           const brokerName = brokers.find(b => b.id === e.entity_id)?.name || "";
-          results.push({ id: e.id, tab: isReceipt ? "receipt" : "payment", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: (e as any).created_at || e.expense_date, description: e.description || (isReceipt ? "سند قبض" : "سند صرف"), company_name: "", payment_method: payMethodLabel[(e as any).payment_method] || "", extra: brokerName });
+          const tab = isSale ? "sale" : isReceipt ? "receipt" : "payment";
+          results.push({ id: e.id, tab, source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: (e as any).created_at || e.expense_date, description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"), company_name: "", payment_method: payMethodLabel[(e as any).payment_method] || "", extra: brokerName });
         }
 
         // BROKER SETTLEMENTS (from broker wallet)
@@ -359,14 +363,16 @@ export default function Accounting() {
         const { data: oData } = await oq.order("created_at", { ascending: false });
 
         for (const e of oData || []) {
+          const isSale = (e.description || "").startsWith("[مبيعات]");
           const isReceipt = e.voucher_type === "receipt";
+          const tab = isSale ? "sale" as const : isReceipt ? "receipt" as const : "payment" as const;
           results.push({
-            id: e.id, tab: isReceipt ? "receipt" : "payment", source: "expense",
+            id: e.id, tab, source: "expense",
             client_name: "", car_number: null, types: [],
             amount: e.amount || 0,
             date: e.expense_date,
             issue_date: e.created_at,
-            description: e.description || (isReceipt ? "سند قبض" : "سند صرف"),
+            description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"),
             company_name: e.contact_name || "",
             payment_method: payMethodLabel[e.payment_method || ""] || e.payment_method || "",
             extra: e.reference_number ? `#${e.reference_number}` : "",
@@ -398,7 +404,7 @@ export default function Accounting() {
   // Filtered + paginated
   const filtered = useMemo(() => {
     if (activeTab === "all") return rows;
-    const map: Record<string, string> = { issuances: "issuance", refunds: "refund", payment: "payment", receipt: "receipt" };
+    const map: Record<string, string> = { issuances: "issuance", refunds: "refund", payment: "payment", sale: "sale", receipt: "receipt" };
     return rows.filter(r => r.tab === map[activeTab]);
   }, [rows, activeTab]);
 
@@ -411,8 +417,9 @@ export default function Accounting() {
     const i = rows.filter(r => r.tab === "issuance").reduce((s, r) => s + r.amount, 0);
     const rf = rows.filter(r => r.tab === "refund").reduce((s, r) => s + r.amount, 0);
     const p = rows.filter(r => r.tab === "payment").reduce((s, r) => s + r.amount, 0);
+    const sl = rows.filter(r => r.tab === "sale").reduce((s, r) => s + r.amount, 0);
     const rc = rows.filter(r => r.tab === "receipt").reduce((s, r) => s + r.amount, 0);
-    return { issuances: i, refunds: rf, payments: p, receipts: rc, net: i - rf - p + rc };
+    return { issuances: i, refunds: rf, payments: p, sales: sl, receipts: rc, net: i - rf - p - sl + rc };
   }, [rows]);
 
   const showReceipt = true; // All entity types support payment + receipt
@@ -427,6 +434,7 @@ export default function Accounting() {
       issuance: "הנפקה",
       refund: "מרתגעאת",
       payment: "סנד שרף",
+      sale: "מכירות",
       receipt: "סנד קבץ",
     };
 
@@ -833,12 +841,13 @@ export default function Accounting() {
         </Card>
 
         {/* Summary */}
-        <div className={cn("grid gap-4", showReceipt ? "md:grid-cols-2 lg:grid-cols-5" : "md:grid-cols-2 lg:grid-cols-4")}>
+        <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
           {[
             { l: "إجمالي الإصدارات", v: summary.issuances, c: "text-primary", bg: "bg-primary/10", I: TrendingUp },
             { l: "إجمالي المرتجعات", v: summary.refunds, c: "text-destructive", bg: "bg-destructive/10", I: TrendingDown },
             { l: "سندات الصرف", v: summary.payments, c: "text-amber-600", bg: "bg-amber-100", I: ArrowUpRight },
-            ...(showReceipt ? [{ l: "سندات القبض", v: summary.receipts, c: "text-blue-600", bg: "bg-blue-100", I: ArrowDownLeft }] : []),
+            { l: "مبيعات", v: summary.sales, c: "text-blue-700", bg: "bg-blue-50", I: FileText },
+            { l: "سندات القبض", v: summary.receipts, c: "text-blue-600", bg: "bg-blue-100", I: ArrowDownLeft },
             { l: "صافي الحساب", v: summary.net, c: summary.net >= 0 ? "text-green-600" : "text-destructive", bg: "bg-green-100", I: Landmark },
           ].map((s, i) => (
             <Card key={i} className="p-4"><div className="flex items-center justify-between">
@@ -852,13 +861,14 @@ export default function Accounting() {
 
         {/* Tabs + Add Button */}
         <div className="flex items-center gap-3">
-          <div className={cn("inline-flex items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground flex-1 grid", showReceipt ? "grid-cols-5" : "grid-cols-4")}>
+          <div className="inline-flex items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground flex-1 grid grid-cols-6">
             {([
               { v: "all" as TabType, l: "الكل", I: null },
               { v: "issuances" as TabType, l: "إصدارات", I: FileText },
               { v: "refunds" as TabType, l: "مرتجعات", I: RotateCcw },
               { v: "payment" as TabType, l: "سند صرف", I: ArrowUpRight },
-              ...(showReceipt ? [{ v: "receipt" as TabType, l: "سند قبض", I: ArrowDownLeft }] : []),
+              { v: "sale" as TabType, l: "مبيعات", I: FileText },
+              { v: "receipt" as TabType, l: "سند قبض", I: ArrowDownLeft },
             ]).map(t => (
               <button
                 key={t.v}
@@ -899,7 +909,8 @@ export default function Accounting() {
             <TableBody>{pageRows.map((r, i) => {
               const badges: Record<string, { text: string; variant: "default" | "destructive" | "outline" | "secondary" }> = {
                 issuance: { text: "إصدار", variant: "default" }, refund: { text: "مرتجع", variant: "destructive" },
-                payment: { text: "سند صرف", variant: "outline" }, receipt: { text: "سند قبض", variant: "secondary" },
+                payment: { text: "سند صرف", variant: "outline" }, sale: { text: "مبيعات", variant: "secondary" },
+                receipt: { text: "سند قبض", variant: "secondary" },
               };
               const b = badges[r.tab];
               const canAct = r.source === "settlement" || r.source === "broker_settlement" || r.source === "expense" || r.source === "ledger";
