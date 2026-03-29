@@ -274,6 +274,37 @@ export default function Accounting() {
           results.push({ id: s.id, tab: "payment", source: "settlement", client_name: "", car_number: null, types: [], amount: s.total_amount || 0, date: s.settlement_date, issue_date: s.created_at, description: s.notes || "تسوية شركة", company_name: (s as any).insurance_companies?.name_ar || (s as any).insurance_companies?.name || "", payment_method: payMethodText, extra: "" });
         }
 
+        // RECEIPTS: policy payments (collected from customers for policies)
+        let ppq = supabase.from("policy_payments")
+          .select("id, amount, payment_date, payment_type, cheque_number, refused, created_at, notes, policy_id, policies(company_id, policy_type_parent, clients(full_name), cars(car_number), insurance_companies(name_ar, name))")
+          .or("refused.eq.false,refused.is.null")
+          .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
+        const { data: policyPayments, error: ppErr } = await ppq;
+        if (ppErr) console.error("Policy payments error:", ppErr);
+        for (const pp of policyPayments || []) {
+          const pol = (pp as any).policies;
+          if (!pol) continue;
+          // Skip ELZAMI
+          if (pol.policy_type_parent === "ELZAMI") continue;
+          // Filter by selected companies
+          if (selectedCompanyIds.length > 0 && !selectedCompanyIds.includes(pol.company_id)) continue;
+          const pmType = (pp as any).payment_type;
+          const pmLabel = pmType === "cheque" ? `شيك${(pp as any).cheque_number ? ` #${(pp as any).cheque_number}` : ""}` : payMethodLabel[pmType] || pmType;
+          const compName = pol.insurance_companies?.name_ar || pol.insurance_companies?.name || "";
+          results.push({
+            id: (pp as any).id, tab: "receipt", source: "cheque",
+            client_name: pol.clients?.full_name || "-",
+            car_number: pol.cars?.car_number || null,
+            types: [], amount: (pp as any).amount || 0,
+            date: (pp as any).payment_date,
+            issue_date: (pp as any).created_at,
+            description: (pp as any).notes || "دفعة عميل",
+            company_name: compName,
+            payment_method: pmLabel,
+            extra: "",
+          });
+        }
+
       } else if (entityType === "broker") {
         // BROKER ISSUANCES
         let bq = supabase.from("policies")
