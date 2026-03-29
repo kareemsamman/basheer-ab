@@ -11,6 +11,8 @@ interface ExpenseRow {
   contact_name: string | null;
   payment_method: string;
   reference_number: string | null;
+  /** Override category with transaction type label (e.g. סנד קבض) */
+  transaction_type?: string | null;
 }
 
 const categoryLabelsHe: Record<string, string> = {
@@ -54,8 +56,11 @@ export function buildExpenseInvoiceHtml(
 
   const invoiceNumber = '01';
 
+  // Check if any row has transaction_type (accounting page export)
+  const hasTransactionTypes = filtered.some(r => r.transaction_type);
+
   const tableRows = filtered.map((r, i) => {
-    const cat = categoryLabelsHe[r.category] || r.category;
+    const cat = r.transaction_type || categoryLabelsHe[r.category] || r.category;
     const pm = paymentMethodLabelsHe[r.payment_method] || r.payment_method;
     const date = new Date(r.expense_date).toLocaleDateString('en-GB');
     const amt = r.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -267,7 +272,7 @@ export function buildExpenseInvoiceHtml(
         <th style="text-align:center;">שורה</th>
         <th>גורם</th>
         <th>פרטים</th>
-        <th>קטגוריה</th>
+        <th>${hasTransactionTypes ? 'תנועות' : 'קטגוריה'}</th>
         <th>אמצעי תשלום</th>
         <th style="text-align:center;">תאריך</th>
         <th style="text-align:left;">סכום ₪</th>

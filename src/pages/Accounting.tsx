@@ -422,6 +422,14 @@ export default function Accounting() {
     const data = filtered.length > 0 ? filtered : rows;
     if (data.length === 0) { toast.error("لا توجد بيانات للتصدير"); return; }
 
+    // Map tab types to Hebrew transaction labels
+    const txTypeLabels: Record<string, string> = {
+      issuance: "הנפקה",
+      refund: "מרתגעאת",
+      payment: "סנד שרף",
+      receipt: "סנד קבץ",
+    };
+
     // Convert Row[] to ExpenseRow format for the invoice builder
     const expenseRows = data.map(r => ({
       description: r.types.length > 0 ? r.types.join(" + ") : r.description || "-",
@@ -431,6 +439,7 @@ export default function Accounting() {
       contact_name: r.client_name || r.company_name || r.extra || null,
       payment_method: r.payment_method ? Object.entries(payMethodLabel).find(([, v]) => v === r.payment_method)?.[0] || r.payment_method : "cash",
       reference_number: null,
+      transaction_type: txTypeLabels[r.tab] || r.tab,
     }));
 
     const [y, m] = selectedMonth.split("-").map(Number);
