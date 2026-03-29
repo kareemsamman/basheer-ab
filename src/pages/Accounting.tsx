@@ -425,6 +425,8 @@ export default function Accounting() {
         }
       }
 
+      // Sort all results by date descending (newest first)
+      results.sort((a, b) => (b.issue_date || b.date).localeCompare(a.issue_date || a.date));
       setRows(results);
     } catch (err) {
       console.error("Error:", err);
