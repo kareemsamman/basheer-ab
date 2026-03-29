@@ -310,26 +310,29 @@ export default function Accounting() {
 
         // BROKER REFUNDS (manual)
         let brfq = supabase.from("expenses")
-          .select("id, amount, expense_date, created_at, description, payment_method, reference_number, brokers(name)")
+          .select("id, amount, expense_date, created_at, description, payment_method, reference_number, entity_id")
           .eq("voucher_type", "refund").eq("entity_type", "broker")
           .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
         if (selectedBrokerId !== "all") brfq = brfq.eq("entity_id", selectedBrokerId);
         const { data: brokerRefunds } = await brfq;
         for (const e of brokerRefunds || []) {
-          results.push({ id: e.id, tab: "refund", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: e.created_at, description: e.description || "مرتجع", company_name: "", payment_method: payMethodLabel[(e as any).payment_method] || "", extra: (e as any).brokers?.name || "" });
+          const bName = brokers.find(b => b.id === (e as any).entity_id)?.name || "";
+          results.push({ id: e.id, tab: "refund", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: e.created_at, description: e.description || "مرتجع", company_name: "", payment_method: payMethodLabel[(e as any).payment_method] || "", extra: bName });
         }
 
         // BROKER EXPENSES (payment + receipt)
         let beq = supabase.from("expenses")
-          .select("id, amount, expense_date, created_at, description, reference_number, voucher_type, payment_method, brokers(name)")
+          .select("id, amount, expense_date, created_at, description, reference_number, voucher_type, payment_method, entity_id")
           .eq("entity_type", "broker")
           .in("voucher_type", ["payment", "receipt"])
-          .gte("expense_date", fromDate).lte("expense_date", toDate);
+          .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
         if (selectedBrokerId !== "all") beq = beq.eq("entity_id", selectedBrokerId);
-        const { data: bExps } = await beq;
+        const { data: bExps, error: bExpsErr } = await beq;
+        if (bExpsErr) console.error("Broker expenses error:", bExpsErr);
         for (const e of bExps || []) {
           const isReceipt = e.voucher_type === "receipt";
-          results.push({ id: e.id, tab: isReceipt ? "receipt" : "payment", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: (e as any).created_at || e.expense_date, description: e.description || (isReceipt ? "سند قبض" : "سند صرف"), company_name: "", payment_method: payMethodLabel[(e as any).payment_method] || "", extra: (e as any).brokers?.name || "" });
+          const brokerName = brokers.find(b => b.id === e.entity_id)?.name || "";
+          results.push({ id: e.id, tab: isReceipt ? "receipt" : "payment", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: (e as any).created_at || e.expense_date, description: e.description || (isReceipt ? "سند قبض" : "سند صرف"), company_name: "", payment_method: payMethodLabel[(e as any).payment_method] || "", extra: brokerName });
         }
 
         // BROKER SETTLEMENTS (from broker wallet)
@@ -388,7 +391,7 @@ export default function Accounting() {
     } finally {
       setLoading(false);
     }
-  }, [entityType, selectedCompanyIds, selectedBrokerId, selectedPolicyTypes, fromDate, toDate, otherName]);
+  }, [entityType, selectedCompanyIds, selectedBrokerId, selectedPolicyTypes, fromDate, toDate, otherName, brokers]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -672,6 +675,16 @@ export default function Accounting() {
         {/* Filters */}
         <Card className="p-4">
           <div className="flex flex-wrap gap-3 items-end">
+            {/* Broker selector FIRST when in broker mode */}
+            {entityType === "broker" && (
+              <div className="space-y-1"><Label className="text-xs">الوكيل</Label>
+                <Select value={selectedBrokerId} onValueChange={v => { setSelectedBrokerId(v); setPage(0); }}>
+                  <SelectTrigger className="w-[180px]"><SelectValue placeholder="اختر وكيل..." /></SelectTrigger>
+                  <SelectContent><SelectItem value="all">كل الوكلاء</SelectItem>{brokers.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            )}
+            {/* Company multi-select for both company and broker views */}
             {(entityType === "company" || entityType === "broker") && (
               <div className="space-y-1">
                 <Label className="text-xs">شركة التأمين</Label>
@@ -703,14 +716,6 @@ export default function Accounting() {
                     })}
                   </PopoverContent>
                 </Popover>
-              </div>
-            )}
-            {entityType === "broker" && (
-              <div className="space-y-1"><Label className="text-xs">الوكيل</Label>
-                <Select value={selectedBrokerId} onValueChange={v => { setSelectedBrokerId(v); setPage(0); }}>
-                  <SelectTrigger className="w-[180px]"><SelectValue placeholder="اختر وكيل..." /></SelectTrigger>
-                  <SelectContent><SelectItem value="all">كل الوكلاء</SelectItem>{brokers.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
-                </Select>
               </div>
             )}
             {entityType === "other" && (
