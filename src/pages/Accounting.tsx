@@ -121,6 +121,10 @@ export default function Accounting() {
   const [editAmount, setEditAmount] = useState("");
   const [editDate, setEditDate] = useState("");
   const [editDesc, setEditDesc] = useState("");
+  const [editType, setEditType] = useState<"payment" | "receipt" | "refund" | "sale">("payment");
+  const [editPaymentLines, setEditPaymentLines] = useState<PaymentLine[]>([]);
+  const [editReceiptImages, setEditReceiptImages] = useState<string[]>([]);
+  const [editNotes, setEditNotes] = useState("");
   const [editSaving, setEditSaving] = useState(false);
 
   // Add dialog
@@ -254,7 +258,7 @@ export default function Accounting() {
           const isSale = (e.description || "").startsWith("[مبيعات]");
           const isReceipt = (e as any).voucher_type === "receipt";
           const tab = isSale ? "sale" : isReceipt ? "receipt" : "payment";
-          results.push({ id: e.id, tab, source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: (e as any).created_at || e.expense_date, description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"), company_name: (e as any).insurance_companies?.name_ar || (e as any).insurance_companies?.name || "", payment_method: payMethodLabel[(e as any).payment_method] || "", extra: e.reference_number ? `#${e.reference_number}` : "" });
+          results.push({ id: e.id, tab, source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: (e as any).created_at || e.expense_date, description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"), company_name: (e as any).insurance_companies?.name_ar || (e as any).insurance_companies?.name || "", payment_method: isSale ? "" : payMethodLabel[(e as any).payment_method] || "", extra: e.reference_number ? `#${e.reference_number}` : "" });
         }
 
         // PAYMENTS: company settlements (from company wallet page)
@@ -336,7 +340,7 @@ export default function Accounting() {
           const isReceipt = e.voucher_type === "receipt";
           const brokerName = brokers.find(b => b.id === e.entity_id)?.name || "";
           const tab = isSale ? "sale" : isReceipt ? "receipt" : "payment";
-          results.push({ id: e.id, tab, source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: (e as any).created_at || e.expense_date, description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"), company_name: "", payment_method: payMethodLabel[(e as any).payment_method] || "", extra: brokerName });
+          results.push({ id: e.id, tab, source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: (e as any).created_at || e.expense_date, description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"), company_name: "", payment_method: isSale ? "" : payMethodLabel[(e as any).payment_method] || "", extra: brokerName });
         }
 
         // BROKER SETTLEMENTS (from broker wallet)
@@ -495,28 +499,77 @@ export default function Accounting() {
     setEditAmount(String(row.amount));
     setEditDate(row.date?.split("T")[0] || "");
     setEditDesc(row.description);
+    setEditType(row.tab === "issuance" ? "payment" : row.tab as any);
+    setEditPaymentLines([]);
+    setEditReceiptImages([]);
+    setEditNotes("");
     setEditOpen(true);
   };
 
   const handleEditSave = async () => {
     if (!editRow) return;
-    const amt = parseFloat(editAmount);
-    if (!amt || amt <= 0) { toast.error("يرجى إدخال مبلغ صحيح"); return; }
     setEditSaving(true);
     try {
-      if (editRow.source === "settlement") {
+      if (editRow.source === "expense") {
+        // Determine new voucher_type and description based on editType
+        const isSale = editType === "sale";
+        const voucherType = editType === "receipt" ? "receipt" : editType === "refund" ? "refund" : "payment";
+        const desc = isSale ? `[مبيعات] ${editDesc}` : editDesc;
+
+        if (isSale || editPaymentLines.length === 0) {
+          // Simple update (sale or just editing existing)
+          const amt = parseFloat(editAmount);
+          if (!amt || amt <= 0) { toast.error("يرجى إدخال مبلغ صحيح"); setEditSaving(false); return; }
+          await supabase.from("expenses").update({
+            amount: amt, expense_date: editDate, description: desc || null,
+            voucher_type: voucherType,
+            payment_method: isSale ? "cash" : undefined,
+            notes: isSale ? "مبيعات - بدون طريقة دفع" : editNotes || undefined,
+          } as any).eq("id", editRow.id);
+        } else {
+          // Has payment lines: update the first entry and create new ones
+          const firstPayment = editPaymentLines[0];
+          const firstAmt = firstPayment.payment_type === "customer_cheque" && firstPayment.selected_cheques
+            ? firstPayment.selected_cheques.reduce((s, c) => s + c.amount, 0) : firstPayment.amount;
+          const pm = firstPayment.payment_type === "customer_cheque" ? "cheque" : firstPayment.payment_type;
+          await supabase.from("expenses").update({
+            amount: firstAmt, expense_date: firstPayment.payment_date, description: desc || null,
+            voucher_type: voucherType, payment_method: pm,
+            reference_number: firstPayment.payment_type === "cheque" ? firstPayment.cheque_number : firstPayment.bank_reference || null,
+            notes: editNotes || null,
+          } as any).eq("id", editRow.id);
+
+          // Create additional lines
+          for (let i = 1; i < editPaymentLines.length; i++) {
+            const payment = editPaymentLines[i];
+            const amount = payment.payment_type === "customer_cheque" && payment.selected_cheques
+              ? payment.selected_cheques.reduce((s, c) => s + c.amount, 0) : payment.amount;
+            await supabase.from("expenses").insert({
+              amount, expense_date: payment.payment_date, description: desc || null,
+              voucher_type: voucherType, category: (editRow as any).category || "other",
+              entity_type: entityType === "company" ? "company" : entityType === "broker" ? "broker" : "manual",
+              entity_id: entityType === "company" ? (selectedCompanyIds.length === 1 ? selectedCompanyIds[0] : null) : entityType === "broker" ? (selectedBrokerId !== "all" ? selectedBrokerId : null) : null,
+              payment_method: payment.payment_type === "customer_cheque" ? "cheque" : payment.payment_type,
+              reference_number: payment.payment_type === "cheque" ? payment.cheque_number : payment.bank_reference || null,
+              notes: editNotes || null, created_by_admin_id: user?.id,
+            } as any);
+          }
+        }
+      } else if (editRow.source === "settlement") {
+        const amt = parseFloat(editAmount);
+        if (!amt || amt <= 0) { toast.error("يرجى إدخال مبلغ صحيح"); setEditSaving(false); return; }
         await supabase.from("company_settlements").update({
           total_amount: amt, settlement_date: editDate, notes: editDesc || null,
         } as any).eq("id", editRow.id);
       } else if (editRow.source === "broker_settlement") {
+        const amt = parseFloat(editAmount);
+        if (!amt || amt <= 0) { toast.error("يرجى إدخال مبلغ صحيح"); setEditSaving(false); return; }
         await supabase.from("broker_settlements").update({
           total_amount: amt, settlement_date: editDate, notes: editDesc || null,
         } as any).eq("id", editRow.id);
-      } else if (editRow.source === "expense") {
-        await supabase.from("expenses").update({
-          amount: amt, expense_date: editDate, description: editDesc || null,
-        } as any).eq("id", editRow.id);
       } else if (editRow.source === "ledger") {
+        const amt = parseFloat(editAmount);
+        if (!amt || amt <= 0) { toast.error("يرجى إدخال مبلغ صحيح"); setEditSaving(false); return; }
         await supabase.from("ab_ledger").update({
           amount: editRow.tab === "payment" ? -amt : amt, transaction_date: editDate, description: editDesc || null,
         } as any).eq("id", editRow.id);
@@ -1054,27 +1107,64 @@ export default function Accounting() {
 
       {/* Edit Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className={editRow?.source === "expense" ? "max-w-2xl max-h-[90vh] overflow-y-auto" : "max-w-md"}>
           <DialogHeader><DialogTitle>تعديل الحركة</DialogTitle></DialogHeader>
           {editRow && (
             <div className="space-y-4">
-              <div className="space-y-1">
-                <Label>المبلغ *</Label>
-                <Input type="number" min="0" step="0.01" value={editAmount} onChange={e => setEditAmount(e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label>التاريخ *</Label>
-                <ArabicDatePicker value={editDate} onChange={d => setEditDate(d)} />
-              </div>
+              {/* Type changer (only for expense entries) */}
+              {editRow.source === "expense" && (
+                <div className="grid grid-cols-4 gap-2">
+                  {([
+                    { v: "payment" as const, l: "سند صرف", I: ArrowUpRight, bc: "border-red-400 bg-red-50", tc: "text-red-600" },
+                    { v: "sale" as const, l: "مبيعات", I: FileText, bc: "border-blue-400 bg-blue-50", tc: "text-blue-700" },
+                    { v: "refund" as const, l: "مرتجع", I: RotateCcw, bc: "border-amber-400 bg-amber-50", tc: "text-amber-700" },
+                    { v: "receipt" as const, l: "سند قبض", I: ArrowDownLeft, bc: "border-primary bg-primary/5", tc: "text-primary" },
+                  ]).map(t => (
+                    <button key={t.v} onClick={() => setEditType(t.v)}
+                      className={cn("rounded-lg border-2 p-2 text-center text-xs transition-all", editType === t.v ? t.bc : "border-border")}>
+                      <t.I className={cn("h-4 w-4 mx-auto mb-1", editType === t.v ? t.tc : "text-muted-foreground")} />
+                      <p className={cn("font-bold", editType === t.v ? t.tc : "")}>{t.l}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <div className="space-y-1">
                 <Label>البيان</Label>
                 <Input value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="الوصف..." />
               </div>
-              <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
-                <p>النوع: <Badge variant={editRow.tab === "payment" ? "outline" : "secondary"} className="text-xs mr-1">{editRow.tab === "payment" ? "سند صرف" : editRow.tab === "receipt" ? "سند قبض" : editRow.tab === "refund" ? "مرتجع" : "إصدار"}</Badge></p>
-                {editRow.payment_method && <p className="mt-1">طريقة الدفع: {editRow.payment_method}</p>}
-                {editRow.company_name && <p className="mt-1">الجهة: {editRow.company_name}</p>}
-              </div>
+
+              {/* Sale: simple amount + date */}
+              {(editType === "sale" || editRow.source !== "expense") && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label>المبلغ *</Label>
+                    <Input type="number" min="0" step="0.01" value={editAmount} onChange={e => setEditAmount(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>التاريخ *</Label>
+                    <ArabicDatePicker value={editDate} onChange={d => setEditDate(d)} compact />
+                  </div>
+                </div>
+              )}
+
+              {/* Payment lines for non-sale expense entries */}
+              {editType !== "sale" && editRow.source === "expense" && (
+                <ExpensePaymentLines
+                  paymentLines={editPaymentLines}
+                  setPaymentLines={setEditPaymentLines}
+                  mainReceiptImages={editReceiptImages}
+                  setMainReceiptImages={setEditReceiptImages}
+                  mainNotes={editNotes}
+                  setMainNotes={setEditNotes}
+                  entityId={entityType === "company" ? (selectedCompanyIds.length === 1 ? selectedCompanyIds[0] : "") : entityType === "broker" ? (selectedBrokerId !== "all" ? selectedBrokerId : "") : ""}
+                  entityType={entityType === "company" ? "company" : "broker"}
+                />
+              )}
+
+              {editRow.company_name && (
+                <p className="text-xs text-muted-foreground">الجهة: {editRow.company_name}</p>
+              )}
             </div>
           )}
           <DialogFooter>
