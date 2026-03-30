@@ -527,6 +527,38 @@ export default function CompanySettlement() {
     setDetailsDrawerOpen(true);
   };
 
+  const handleShowCalculation = async (policy: BrokerPolicyDetail) => {
+    // Fetch full policy data for the calculation modal
+    const { data: policyData } = await supabase
+      .from('policies')
+      .select(`
+        id, policy_type_parent, policy_type_child, insurance_price, payed_for_company, profit,
+        clients!inner(less_than_24),
+        cars(id, car_number, car_type, car_value, year)
+      `)
+      .eq('id', policy.id)
+      .single();
+
+    if (policyData) {
+      setSelectedPolicyForCalc({
+        id: policyData.id,
+        policy_type_parent: policyData.policy_type_parent,
+        policy_type_child: policyData.policy_type_child,
+        insurance_price: policyData.insurance_price,
+        payed_for_company: policyData.payed_for_company,
+        profit: policyData.profit,
+        is_under_24: policyData.clients?.less_than_24,
+        car: policyData.cars,
+      });
+      setSelectedCompanyForCalc({
+        id: policy.company_id || '',
+        name: policy.company_name || '',
+        name_ar: policy.company_name_ar || null,
+      });
+      setCalculationModalOpen(true);
+    }
+  };
+
   const handlePolicyUpdated = () => {
     if (isDetailMode) {
       fetchBrokerPolicies();
