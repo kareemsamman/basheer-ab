@@ -1188,7 +1188,7 @@ export default function CompanySettlement() {
                               {/* تاريخ الإصدار */}
                               <TableCell>
                                 {isEditing ? (
-                                  <Input className="w-28 h-8 text-sm" type="date" value={editValues.issue_date} onChange={e => setEditValues(v => ({ ...v, issue_date: e.target.value }))} />
+                                  <ArabicDatePicker compact value={editValues.issue_date} onChange={v => setEditValues(prev => ({ ...prev, issue_date: v }))} />
                                 ) : (
                                   policy.issue_date ? formatDate(policy.issue_date) : '-'
                                 )}
