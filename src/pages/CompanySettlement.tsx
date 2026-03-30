@@ -1204,7 +1204,7 @@ export default function CompanySettlement() {
                               {/* تاريخ النهاية */}
                               <TableCell>
                                 {isEditing ? (
-                                  <Input className="w-28 h-8 text-sm" type="date" value={editValues.end_date} onChange={e => setEditValues(v => ({ ...v, end_date: e.target.value }))} />
+                                  <ArabicDatePicker compact value={editValues.end_date} onChange={v => setEditValues(prev => ({ ...prev, end_date: v }))} />
                                 ) : (
                                   formatDate(policy.end_date)
                                 )}
