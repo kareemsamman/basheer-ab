@@ -141,6 +141,11 @@ export default function CompanySettlement() {
   const [editingSupplement, setEditingSupplement] = useState<any>(null);
   const [supplements, setSupplements] = useState<any[]>([]);
 
+  // Inline edit
+  const [editingPolicyId, setEditingPolicyId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState({ insurance_price: '', payed_for_company: '', profit: '' });
+  const [savingEdit, setSavingEdit] = useState(false);
+
   const isBrokerFiltered = selectedBrokers.length > 0;
   // Show flat policy table when any filter is active (not just broker)
   const isDetailMode = !showAllTime || selectedCompanies.length > 0 || selectedCategories.length > 0 || selectedBrokers.length > 0;
