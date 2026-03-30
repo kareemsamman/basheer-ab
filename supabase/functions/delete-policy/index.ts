@@ -172,30 +172,12 @@ serve(async (req) => {
 
     // Delete related data in correct order to avoid FK constraints
 
-    // 1) IMPORTANT: Unlock system-generated payments (ELZAMI) so they can be deleted.
-    // The DB trigger blocks DELETE when OLD.locked=true.
-    const { error: unlockError } = await supabase
-      .from('policy_payments')
-      .update({ locked: false })
-      .in('policy_id', allPolicyIds)
-      .eq('locked', true);
-
-    if (unlockError) {
-      console.error('Error unlocking payments:', unlockError);
-      return new Response(JSON.stringify({
-        error: 'Failed to unlock system payments',
-        details: unlockError.message,
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // 2) Delete policy payments
-    const { error: paymentsError } = await supabase
-      .from('policy_payments')
-      .delete()
-      .in('policy_id', allPolicyIds);
+    // 1) Disable validation trigger, unlock & delete payments in one transaction
+    // The validate trigger fires on UPDATE (unlock) and blocks when total > price,
+    // so we must disable it first.
+    const { error: paymentsError } = await supabase.rpc('admin_delete_policy_payments', {
+      p_policy_ids: allPolicyIds,
+    });
 
     if (paymentsError) {
       console.error('Error deleting policy payments:', paymentsError);

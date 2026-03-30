@@ -5150,6 +5150,10 @@ export type Database = {
       }
     }
     Functions: {
+      admin_delete_policy_payments: {
+        Args: { p_policy_ids: string[] }
+        Returns: undefined
+      }
       calculate_policy_company_payment: {
         Args: {
           p_age_band: Database["public"]["Enums"]["age_band"]
