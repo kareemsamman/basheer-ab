@@ -1173,8 +1173,8 @@ export default function CompanySettlement() {
                               {/* الشركة */}
                               <TableCell>
                                 {isEditing ? (
-                                  <Select value={editValues.company_id} onValueChange={v => setEditValues(prev => ({ ...prev, company_id: v }))}>
-                                    <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
+                                  <Select value={editValues.company_id || undefined} onValueChange={v => setEditValues(prev => ({ ...prev, company_id: v }))}>
+                                    <SelectTrigger className="w-28 h-8 text-xs"><SelectValue placeholder="اختر شركة" /></SelectTrigger>
                                     <SelectContent>
                                       {allCompanies.map(c => (
                                         <SelectItem key={c.company_id} value={c.company_id}>{c.company_name_ar || c.company_name}</SelectItem>
