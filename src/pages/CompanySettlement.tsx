@@ -590,6 +590,13 @@ export default function CompanySettlement() {
       insurance_price: String(policy.insurance_price || 0),
       payed_for_company: String(policy.payed_for_company || 0),
       profit: String(policy.profit || 0),
+      start_date: policy.start_date || '',
+      end_date: policy.end_date || '',
+      issue_date: policy.issue_date || '',
+      policy_type_parent: policy.policy_type_parent || '',
+      policy_type_child: policy.policy_type_child || '',
+      company_id: policy.company_id || '',
+      car_value: String(policy.car_value || ''),
     });
   };
 
