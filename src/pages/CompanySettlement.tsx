@@ -84,6 +84,7 @@ interface BrokerPolicyDetail {
   car_number: string | null;
   car_id: string | null;
   car_value: number | null;
+  car_type: string | null;
   company_id: string | null;
   company_name: string | null;
   company_name_ar: string | null;
