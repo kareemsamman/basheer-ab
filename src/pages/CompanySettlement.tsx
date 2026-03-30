@@ -429,7 +429,7 @@ export default function CompanySettlement() {
         client_name: p.clients?.full_name || null,
         car_number: p.cars?.car_number || null,
         car_id: p.cars?.id || null,
-        car_value: p.cars?.car_value || null,
+        car_value: p.cars?.car_value ?? null,
         company_name: p.insurance_companies?.name || null,
         company_name_ar: p.insurance_companies?.name_ar || null,
         company_id: p.company_id || null,
@@ -626,12 +626,15 @@ export default function CompanySettlement() {
 
       // Update car_value if car exists
       const editedPolicy = brokerPolicies.find(p => p.id === editingPolicyId);
-      if (editedPolicy?.car_id && editValues.car_value) {
+      if (editedPolicy?.car_id && editValues.car_value !== '') {
         const { error: carError } = await supabase
           .from('cars')
-          .update({ car_value: Number(editValues.car_value) })
+          .update({ car_value: Number(editValues.car_value) || 0 })
           .eq('id', editedPolicy.car_id);
-        if (carError) console.error('Error updating car value:', carError);
+        if (carError) {
+          console.error('Error updating car value:', carError);
+          toast({ title: 'تنبيه', description: 'فشل في تحديث قيمة السيارة', variant: 'destructive' });
+        }
       }
 
       toast({ title: 'تم الحفظ بنجاح' });
