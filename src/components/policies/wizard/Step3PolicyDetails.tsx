@@ -842,7 +842,7 @@ export function Step3PolicyDetails({
           <Label>تاريخ البداية *</Label>
           <ArabicDatePicker
             value={policy.start_date}
-            onChange={(date) => setPolicy({ ...policy, start_date: date, issue_date: policy.issue_date === policy.start_date ? date : policy.issue_date })}
+            onChange={(date) => setPolicy({ ...policy, start_date: date })}
             placeholder="اختر تاريخ البداية"
             className={errors.start_date ? "border-destructive" : ""}
           />
