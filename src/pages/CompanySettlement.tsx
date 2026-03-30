@@ -626,12 +626,15 @@ export default function CompanySettlement() {
 
       // Update car_value if car exists
       const editedPolicy = brokerPolicies.find(p => p.id === editingPolicyId);
-      if (editedPolicy?.car_id && editValues.car_value) {
+      if (editedPolicy?.car_id && editValues.car_value !== '') {
         const { error: carError } = await supabase
           .from('cars')
-          .update({ car_value: Number(editValues.car_value) })
+          .update({ car_value: Number(editValues.car_value) || 0 })
           .eq('id', editedPolicy.car_id);
-        if (carError) console.error('Error updating car value:', carError);
+        if (carError) {
+          console.error('Error updating car value:', carError);
+          toast({ title: 'تنبيه', description: 'فشل في تحديث قيمة السيارة', variant: 'destructive' });
+        }
       }
 
       toast({ title: 'تم الحفظ بنجاح' });
