@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Building2, Download, Wallet, FileText, ChevronLeft, Calendar, RotateCcw, AlertCircle, Printer, AlertTriangle, Eye, Pencil, Search, Receipt, Loader2, RefreshCw, Plus, Trash2, Copy } from 'lucide-react';
+import { Building2, Download, Wallet, FileText, ChevronLeft, Calendar, RotateCcw, AlertCircle, Printer, AlertTriangle, Eye, Pencil, Search, Receipt, Loader2, RefreshCw, Plus, Trash2, Copy, Calculator } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/integrations/supabase/client';
@@ -1058,8 +1058,11 @@ export default function CompanySettlement() {
                               <TableCell className="font-mono text-green-600">₪{Number(policy.profit || 0).toLocaleString('en-US')}</TableCell>
                               <TableCell onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center gap-1">
-                                  <Button variant="ghost" size="sm" onClick={() => handleShowCalculation(policy)} title="شرح الحسبة">
+                                  <Button variant="ghost" size="sm" onClick={() => handleViewPolicy(policy.id)} title="عرض التفاصيل">
                                     <Eye className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={() => handleShowCalculation(policy)} title="شرح الحسبة">
+                                    <Calculator className="h-4 w-4" />
                                   </Button>
                                 </div>
                               </TableCell>
