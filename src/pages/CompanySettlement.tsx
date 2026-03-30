@@ -575,6 +575,42 @@ export default function CompanySettlement() {
     fetchPoliciesWithoutCompany();
   };
 
+  const handleStartEdit = (policy: BrokerPolicyDetail) => {
+    setEditingPolicyId(policy.id);
+    setEditValues({
+      insurance_price: String(policy.insurance_price || 0),
+      payed_for_company: String(policy.payed_for_company || 0),
+      profit: String(policy.profit || 0),
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingPolicyId(null);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingPolicyId) return;
+    setSavingEdit(true);
+    try {
+      const { error } = await supabase
+        .from('policies')
+        .update({
+          insurance_price: Number(editValues.insurance_price),
+          payed_for_company: Number(editValues.payed_for_company),
+          profit: Number(editValues.profit),
+        })
+        .eq('id', editingPolicyId);
+      if (error) throw error;
+      toast({ title: 'تم الحفظ بنجاح' });
+      setEditingPolicyId(null);
+      await fetchBrokerPolicies();
+    } catch (err: any) {
+      toast({ title: 'خطأ', description: err.message, variant: 'destructive' });
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   const handleRecalculateProfits = async () => {
     const eligible = brokerPolicies.filter(p => !p.cancelled && !p.transferred);
     if (eligible.length === 0) return;
