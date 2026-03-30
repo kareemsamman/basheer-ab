@@ -1,23 +1,44 @@
 
 
-## Plan: Add Inline Edit (Pencil) Button to Main Company Settlement Page
+## Plan: Add Issue Date, Car Value, and Full Inline Editing to تفاصيل الوثائق Table
 
-### Problem
-The main `/reports/company-settlement` page (detail mode with company filter) has Eye and Calculator buttons but is missing the **Pencil (edit)** button that exists on the `/reports/company-settlement/:id` detail page. Users need to edit `insurance_price`, `payed_for_company`, and `profit` inline.
+### What Changes
 
-### Changes — Single File: `src/pages/CompanySettlement.tsx`
+The detail table in `/reports/company-settlement` needs:
+1. **Two new columns**: تاريخ الإصدار (issue_date) and قيمة السيارة (car_value)
+2. **All fields editable** except العميل (client name) and رقم السيارة (car number)
 
-1. **Add inline edit state** — Add `editingPolicyId`, `editValues`, `savingEdit` state variables (same pattern as `CompanySettlementDetail.tsx`).
+### Single File: `src/pages/CompanySettlement.tsx`
 
-2. **Add edit handlers** — `handleStartEdit(policy)`, `handleCancelEdit()`, `handleSaveEdit()` functions that update `insurance_price`, `payed_for_company`, `profit` in the `policies` table and refresh data.
+#### 1. Update `BrokerPolicyDetail` interface
+Add `car_value: number | null` field.
 
-3. **Make table cells editable** — For the المحصل (insurance_price), للشركة (payed_for_company), and الربح (profit) columns, show `Input` fields when `editingPolicyId` matches the row.
+#### 2. Update `fetchBrokerPolicies` query
+Add `cars (car_number, car_value)` to the select (currently only fetches `car_number`). Map `car_value` into the result.
 
-4. **Add Pencil button** — In the actions column, add a Pencil icon button between Eye and Calculator (when not editing). When editing, show Check (save) and X (cancel) buttons instead — matching the detail page pattern exactly.
+#### 3. Update `editValues` state
+Expand from `{ insurance_price, payed_for_company, profit }` to include `start_date`, `end_date`, `issue_date`, `policy_type_parent`, `policy_type_child`, `company_id`, `car_value`.
+
+#### 4. Update `handleStartEdit` 
+Populate all new edit fields from the policy.
+
+#### 5. Update `handleSaveEdit`
+Save all editable fields to `policies` table. For `car_value`, update the `cars` table separately using the car linked to the policy.
+
+#### 6. Update table header
+Add columns: تاريخ الإصدار (after تاريخ النهاية), قيمة السيارة (after رقم السيارة). Update skeleton column count.
+
+#### 7. Update table rows
+- **تاريخ الإصدار**: Show `issue_date`, editable with `ArabicDatePicker` or simple input
+- **قيمة السيارة**: Show `car_value`, editable with number input
+- **نوع التأمين**: Editable with Select dropdown (policy_type_parent + policy_type_child)
+- **الشركة**: Editable with Select dropdown (company list)
+- **تاريخ البداية / النهاية**: Editable with date inputs
+- **المحصل / للشركة / الربح**: Already editable (keep as-is)
+- **العميل / رقم السيارة**: Read-only (no edit)
 
 ### Technical Details
-- Reuses the existing `Pencil` import (already imported on line 27)
-- `Check` and `X` icons need to be added to the import
-- Save function updates Supabase `policies` table then calls `fetchBrokerPolicies()` to refresh
-- Edit inputs use `w-20 h-8 text-sm` styling for compact inline editing
+- `car_value` lives on `cars` table, so `handleSaveEdit` needs a second update call to `cars` when car_value changes
+- Company options already fetched via `filteredCompanies` state — reuse for the company dropdown
+- Column count increases from 10 to 12
 
