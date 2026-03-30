@@ -98,6 +98,7 @@ export default function CompanySettlement() {
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [companySearch, setCompanySearch] = useState('');
   const [filteredCompanies, setFilteredCompanies] = useState<CompanyOption[]>([]);
+  const [allCompanies, setAllCompanies] = useState<CompanyOption[]>([]);
   
   // Policies without company
   const [policiesWithoutCompany, setPoliciesWithoutCompany] = useState<PolicyWithoutCompany[]>([]);
@@ -187,6 +188,23 @@ export default function CompanySettlement() {
   useEffect(() => {
     fetchBrokers();
     fetchPoliciesWithoutCompany();
+    // Fetch all companies for edit dropdown
+    const fetchAllCompanies = async () => {
+      try {
+        const { data: companies } = await supabase
+          .from('insurance_companies')
+          .select('id, name, name_ar')
+          .order('name_ar');
+        setAllCompanies((companies || []).map(c => ({
+          company_id: c.id,
+          company_name: c.name,
+          company_name_ar: c.name_ar,
+        })));
+      } catch (err) {
+        console.error('Error fetching all companies:', err);
+      }
+    };
+    fetchAllCompanies();
   }, []);
 
   useEffect(() => {
@@ -1158,7 +1176,7 @@ export default function CompanySettlement() {
                                   <Select value={editValues.company_id} onValueChange={v => setEditValues(prev => ({ ...prev, company_id: v }))}>
                                     <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                      {filteredCompanies.map(c => (
+                                      {allCompanies.map(c => (
                                         <SelectItem key={c.company_id} value={c.company_id}>{c.company_name_ar || c.company_name}</SelectItem>
                                       ))}
                                     </SelectContent>
@@ -1170,7 +1188,7 @@ export default function CompanySettlement() {
                               {/* تاريخ الإصدار */}
                               <TableCell>
                                 {isEditing ? (
-                                  <Input className="w-28 h-8 text-sm" type="date" value={editValues.issue_date} onChange={e => setEditValues(v => ({ ...v, issue_date: e.target.value }))} />
+                                  <ArabicDatePicker compact value={editValues.issue_date} onChange={v => setEditValues(prev => ({ ...prev, issue_date: v }))} />
                                 ) : (
                                   policy.issue_date ? formatDate(policy.issue_date) : '-'
                                 )}
@@ -1178,7 +1196,7 @@ export default function CompanySettlement() {
                               {/* تاريخ البداية */}
                               <TableCell>
                                 {isEditing ? (
-                                  <Input className="w-28 h-8 text-sm" type="date" value={editValues.start_date} onChange={e => setEditValues(v => ({ ...v, start_date: e.target.value }))} />
+                                  <ArabicDatePicker compact value={editValues.start_date} onChange={v => setEditValues(prev => ({ ...prev, start_date: v }))} />
                                 ) : (
                                   formatDate(policy.start_date)
                                 )}
@@ -1186,7 +1204,7 @@ export default function CompanySettlement() {
                               {/* تاريخ النهاية */}
                               <TableCell>
                                 {isEditing ? (
-                                  <Input className="w-28 h-8 text-sm" type="date" value={editValues.end_date} onChange={e => setEditValues(v => ({ ...v, end_date: e.target.value }))} />
+                                  <ArabicDatePicker compact value={editValues.end_date} onChange={v => setEditValues(prev => ({ ...prev, end_date: v }))} />
                                 ) : (
                                   formatDate(policy.end_date)
                                 )}
