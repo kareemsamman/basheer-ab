@@ -418,6 +418,7 @@ export default function CompanySettlement() {
         car_number: p.cars?.car_number || null,
         company_name: p.insurance_companies?.name || null,
         company_name_ar: p.insurance_companies?.name_ar || null,
+        company_id: p.company_id || null,
       }));
 
       setBrokerPolicies(mapped);
