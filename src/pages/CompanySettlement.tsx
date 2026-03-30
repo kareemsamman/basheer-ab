@@ -1334,6 +1334,14 @@ export default function CompanySettlement() {
           onSaved={handleSupplementSaved}
         />
       )}
+
+      {/* Calculation Explanation Modal */}
+      <CalculationExplanationModal
+        open={calculationModalOpen}
+        onOpenChange={setCalculationModalOpen}
+        policy={selectedPolicyForCalc}
+        company={selectedCompanyForCalc}
+      />
     </MainLayout>
   );
 }
