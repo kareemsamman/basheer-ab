@@ -82,6 +82,8 @@ interface BrokerPolicyDetail {
   transferred: boolean | null;
   client_name: string | null;
   car_number: string | null;
+  car_id: string | null;
+  car_value: number | null;
   company_id: string | null;
   company_name: string | null;
   company_name_ar: string | null;
@@ -143,7 +145,12 @@ export default function CompanySettlement() {
 
   // Inline edit
   const [editingPolicyId, setEditingPolicyId] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState({ insurance_price: '', payed_for_company: '', profit: '' });
+  const [editValues, setEditValues] = useState({
+    insurance_price: '', payed_for_company: '', profit: '',
+    start_date: '', end_date: '', issue_date: '',
+    policy_type_parent: '', policy_type_child: '',
+    company_id: '', car_value: '',
+  });
   const [savingEdit, setSavingEdit] = useState(false);
 
   const isBrokerFiltered = selectedBrokers.length > 0;
@@ -374,7 +381,7 @@ export default function CompanySettlement() {
           cancelled,
           transferred,
           clients (full_name),
-          cars (car_number),
+          cars (id, car_number, car_value),
           insurance_companies (name, name_ar)
         `)
         .is('deleted_at', null)
@@ -421,6 +428,8 @@ export default function CompanySettlement() {
         transferred: p.transferred,
         client_name: p.clients?.full_name || null,
         car_number: p.cars?.car_number || null,
+        car_id: p.cars?.id || null,
+        car_value: p.cars?.car_value || null,
         company_name: p.insurance_companies?.name || null,
         company_name_ar: p.insurance_companies?.name_ar || null,
         company_id: p.company_id || null,
@@ -581,6 +590,13 @@ export default function CompanySettlement() {
       insurance_price: String(policy.insurance_price || 0),
       payed_for_company: String(policy.payed_for_company || 0),
       profit: String(policy.profit || 0),
+      start_date: policy.start_date || '',
+      end_date: policy.end_date || '',
+      issue_date: policy.issue_date || '',
+      policy_type_parent: policy.policy_type_parent || '',
+      policy_type_child: policy.policy_type_child || '',
+      company_id: policy.company_id || '',
+      car_value: String(policy.car_value || ''),
     });
   };
 
@@ -598,9 +614,26 @@ export default function CompanySettlement() {
           insurance_price: Number(editValues.insurance_price),
           payed_for_company: Number(editValues.payed_for_company),
           profit: Number(editValues.profit),
+          start_date: editValues.start_date,
+          end_date: editValues.end_date,
+          issue_date: editValues.issue_date || null,
+          policy_type_parent: editValues.policy_type_parent as Enums<'policy_type_parent'>,
+          policy_type_child: editValues.policy_type_child ? editValues.policy_type_child as Enums<'policy_type_child'> : null,
+          company_id: editValues.company_id || null,
         })
         .eq('id', editingPolicyId);
       if (error) throw error;
+
+      // Update car_value if car exists
+      const editedPolicy = brokerPolicies.find(p => p.id === editingPolicyId);
+      if (editedPolicy?.car_id && editValues.car_value) {
+        const { error: carError } = await supabase
+          .from('cars')
+          .update({ car_value: Number(editValues.car_value) })
+          .eq('id', editedPolicy.car_id);
+        if (carError) console.error('Error updating car value:', carError);
+      }
+
       toast({ title: 'تم الحفظ بنجاح' });
       setEditingPolicyId(null);
       await fetchBrokerPolicies();
@@ -1039,8 +1072,10 @@ export default function CompanySettlement() {
                         <TableRow>
                           <TableHead className="text-right">العميل</TableHead>
                           <TableHead className="text-right">رقم السيارة</TableHead>
+                          <TableHead className="text-right">قيمة السيارة</TableHead>
                           <TableHead className="text-right">نوع التأمين</TableHead>
                           <TableHead className="text-right">الشركة</TableHead>
+                          <TableHead className="text-right">تاريخ الإصدار</TableHead>
                           <TableHead className="text-right">تاريخ البداية</TableHead>
                           <TableHead className="text-right">تاريخ النهاية</TableHead>
                           <TableHead className="text-right">المحصل</TableHead>
@@ -1053,7 +1088,7 @@ export default function CompanySettlement() {
                         {loading || loadingBrokerPolicies ? (
                           Array.from({ length: 8 }).map((_, i) => (
                             <TableRow key={i}>
-                              {Array.from({ length: 10 }).map((_, j) => (
+                              {Array.from({ length: 12 }).map((_, j) => (
                                 <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
                               ))}
                             </TableRow>
@@ -1071,53 +1106,116 @@ export default function CompanySettlement() {
                           
                           return filtered.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                              <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
                                 لا توجد بيانات
                               </TableCell>
                             </TableRow>
-                          ) : filtered.map((policy) => (
+                          ) : filtered.map((policy) => {
+                            const isEditing = editingPolicyId === policy.id;
+                            return (
                             <TableRow
                               key={policy.id}
                               className={cn(
                                 "cursor-pointer transition-colors hover:bg-secondary/50",
                                 policy.cancelled && "opacity-50 line-through"
                               )}
-                              onClick={() => handleViewPolicy(policy.id)}
+                              onClick={() => !isEditing && handleViewPolicy(policy.id)}
                             >
+                              {/* العميل - read only */}
                               <TableCell className="font-medium">{policy.client_name || '-'}</TableCell>
+                              {/* رقم السيارة - read only */}
                               <TableCell className="font-mono"><bdi>{policy.car_number || '-'}</bdi></TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className={getInsuranceTypeBadgeClass(policy.policy_type_parent)}>
-                                  {getInsuranceTypeLabelBroker(policy)}
-                                </Badge>
+                              {/* قيمة السيارة */}
+                              <TableCell className="font-mono" onClick={e => isEditing && e.stopPropagation()}>
+                                {isEditing ? (
+                                  <Input className="w-24 h-8 text-sm" type="number" value={editValues.car_value} onChange={e => setEditValues(v => ({ ...v, car_value: e.target.value }))} />
+                                ) : (
+                                  policy.car_value ? `₪${Number(policy.car_value).toLocaleString('en-US')}` : '-'
+                                )}
                               </TableCell>
-                              <TableCell>{policy.company_name_ar || policy.company_name || '-'}</TableCell>
-                              <TableCell>{formatDate(policy.start_date)}</TableCell>
-                              <TableCell>{formatDate(policy.end_date)}</TableCell>
-                              <TableCell className="font-mono">
-                                {editingPolicyId === policy.id ? (
-                                  <Input className="w-20 h-8 text-sm" value={editValues.insurance_price} onChange={e => setEditValues(v => ({ ...v, insurance_price: e.target.value }))} />
+                              {/* نوع التأمين */}
+                              <TableCell onClick={e => isEditing && e.stopPropagation()}>
+                                {isEditing ? (
+                                  <Select value={editValues.policy_type_parent} onValueChange={v => setEditValues(prev => ({ ...prev, policy_type_parent: v, policy_type_child: '' }))}>
+                                    <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      {Object.entries(POLICY_TYPE_LABELS).map(([val, label]) => (
+                                        <SelectItem key={val} value={val}>{label}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                ) : (
+                                  <Badge variant="outline" className={getInsuranceTypeBadgeClass(policy.policy_type_parent)}>
+                                    {getInsuranceTypeLabelBroker(policy)}
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              {/* الشركة */}
+                              <TableCell onClick={e => isEditing && e.stopPropagation()}>
+                                {isEditing ? (
+                                  <Select value={editValues.company_id} onValueChange={v => setEditValues(prev => ({ ...prev, company_id: v }))}>
+                                    <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      {filteredCompanies.map(c => (
+                                        <SelectItem key={c.company_id} value={c.company_id}>{c.company_name_ar || c.company_name}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                ) : (
+                                  policy.company_name_ar || policy.company_name || '-'
+                                )}
+                              </TableCell>
+                              {/* تاريخ الإصدار */}
+                              <TableCell onClick={e => isEditing && e.stopPropagation()}>
+                                {isEditing ? (
+                                  <Input className="w-28 h-8 text-sm" type="date" value={editValues.issue_date} onChange={e => setEditValues(v => ({ ...v, issue_date: e.target.value }))} />
+                                ) : (
+                                  policy.issue_date ? formatDate(policy.issue_date) : '-'
+                                )}
+                              </TableCell>
+                              {/* تاريخ البداية */}
+                              <TableCell onClick={e => isEditing && e.stopPropagation()}>
+                                {isEditing ? (
+                                  <Input className="w-28 h-8 text-sm" type="date" value={editValues.start_date} onChange={e => setEditValues(v => ({ ...v, start_date: e.target.value }))} />
+                                ) : (
+                                  formatDate(policy.start_date)
+                                )}
+                              </TableCell>
+                              {/* تاريخ النهاية */}
+                              <TableCell onClick={e => isEditing && e.stopPropagation()}>
+                                {isEditing ? (
+                                  <Input className="w-28 h-8 text-sm" type="date" value={editValues.end_date} onChange={e => setEditValues(v => ({ ...v, end_date: e.target.value }))} />
+                                ) : (
+                                  formatDate(policy.end_date)
+                                )}
+                              </TableCell>
+                              {/* المحصل */}
+                              <TableCell className="font-mono" onClick={e => isEditing && e.stopPropagation()}>
+                                {isEditing ? (
+                                  <Input className="w-20 h-8 text-sm" type="number" value={editValues.insurance_price} onChange={e => setEditValues(v => ({ ...v, insurance_price: e.target.value }))} />
                                 ) : (
                                   <>₪{Number(policy.insurance_price).toLocaleString('en-US')}</>
                                 )}
                               </TableCell>
-                              <TableCell className="font-mono text-destructive">
-                                {editingPolicyId === policy.id ? (
-                                  <Input className="w-20 h-8 text-sm" value={editValues.payed_for_company} onChange={e => setEditValues(v => ({ ...v, payed_for_company: e.target.value }))} />
+                              {/* للشركة */}
+                              <TableCell className="font-mono text-destructive" onClick={e => isEditing && e.stopPropagation()}>
+                                {isEditing ? (
+                                  <Input className="w-20 h-8 text-sm" type="number" value={editValues.payed_for_company} onChange={e => setEditValues(v => ({ ...v, payed_for_company: e.target.value }))} />
                                 ) : (
                                   <>₪{Number(policy.payed_for_company || 0).toLocaleString('en-US')}</>
                                 )}
                               </TableCell>
-                              <TableCell className="font-mono text-green-600">
-                                {editingPolicyId === policy.id ? (
-                                  <Input className="w-20 h-8 text-sm" value={editValues.profit} onChange={e => setEditValues(v => ({ ...v, profit: e.target.value }))} />
+                              {/* الربح */}
+                              <TableCell className="font-mono text-green-600" onClick={e => isEditing && e.stopPropagation()}>
+                                {isEditing ? (
+                                  <Input className="w-20 h-8 text-sm" type="number" value={editValues.profit} onChange={e => setEditValues(v => ({ ...v, profit: e.target.value }))} />
                                 ) : (
                                   <>₪{Number(policy.profit || 0).toLocaleString('en-US')}</>
                                 )}
                               </TableCell>
                               <TableCell onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center gap-1">
-                                  {editingPolicyId === policy.id ? (
+                                  {isEditing ? (
                                     <>
                                       <Button variant="ghost" size="sm" onClick={handleSaveEdit} disabled={savingEdit} title="حفظ">
                                         <Check className="h-4 w-4 text-green-600" />
@@ -1142,7 +1240,7 @@ export default function CompanySettlement() {
                                 </div>
                               </TableCell>
                             </TableRow>
-                          ));
+                          )});
                         })()}
                         {/* Supplement rows */}
                         {supplements.map((s) => (
@@ -1153,9 +1251,11 @@ export default function CompanySettlement() {
                               {s.is_cancelled && <Badge variant="destructive" className="mr-2 text-xs">ملغية</Badge>}
                             </TableCell>
                             <TableCell className="font-mono"><bdi>{s.car_number || '-'}</bdi></TableCell>
+                            <TableCell>-</TableCell>
                             <TableCell>
                               {s.policy_type ? <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">{s.policy_type}</Badge> : '-'}
                             </TableCell>
+                            <TableCell>-</TableCell>
                             <TableCell>-</TableCell>
                             <TableCell>{s.start_date ? formatDate(s.start_date) : formatDate(s.settlement_date)}</TableCell>
                             <TableCell>{s.end_date ? formatDate(s.end_date) : '-'}</TableCell>
