@@ -1116,15 +1116,14 @@ export default function CompanySettlement() {
                             <TableRow
                               key={policy.id}
                               className={cn(
-                                "cursor-pointer transition-colors hover:bg-secondary/50",
+                                "transition-colors hover:bg-secondary/50",
                                 policy.cancelled && "opacity-50 line-through"
                               )}
-                              onClick={() => !isEditing && handleViewPolicy(policy.id)}
                             >
-                              {/* العميل - read only */}
-                              <TableCell className="font-medium">{policy.client_name || '-'}</TableCell>
-                              {/* رقم السيارة - read only */}
-                              <TableCell className="font-mono"><bdi>{policy.car_number || '-'}</bdi></TableCell>
+                              {/* العميل - clickable to open drawer */}
+                              <TableCell className="font-medium cursor-pointer hover:underline" onClick={() => handleViewPolicy(policy.id)}>{policy.client_name || '-'}</TableCell>
+                              {/* رقم السيارة - read only, selectable */}
+                              <TableCell className="font-mono select-text"><bdi>{policy.car_number || '-'}</bdi></TableCell>
                               {/* قيمة السيارة */}
                               <TableCell className="font-mono" onClick={e => isEditing && e.stopPropagation()}>
                                 {isEditing ? (
