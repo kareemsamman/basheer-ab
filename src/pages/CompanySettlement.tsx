@@ -381,7 +381,7 @@ export default function CompanySettlement() {
           cancelled,
           transferred,
           clients (full_name),
-          cars (car_number),
+          cars (id, car_number, car_value),
           insurance_companies (name, name_ar)
         `)
         .is('deleted_at', null)
