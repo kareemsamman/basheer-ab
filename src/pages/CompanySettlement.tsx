@@ -34,6 +34,7 @@ import { cn } from '@/lib/utils';
 import { POLICY_TYPE_LABELS, getInsuranceTypeBadgeClass, POLICY_CHILD_LABELS } from '@/lib/insuranceTypes';
 import { recalculatePolicyProfit } from '@/lib/pricingCalculator';
 import { SupplementFormDialog } from '@/components/reports/SupplementFormDialog';
+import { CalculationExplanationModal } from '@/components/reports/CalculationExplanationModal';
 import { PolicyDetailsDrawer } from '@/components/policies/PolicyDetailsDrawer';
 import { MultiSelectFilter } from '@/components/shared/MultiSelectFilter';
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
