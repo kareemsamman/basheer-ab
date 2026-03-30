@@ -1094,17 +1094,51 @@ export default function CompanySettlement() {
                               <TableCell>{policy.company_name_ar || policy.company_name || '-'}</TableCell>
                               <TableCell>{formatDate(policy.start_date)}</TableCell>
                               <TableCell>{formatDate(policy.end_date)}</TableCell>
-                              <TableCell className="font-mono">₪{Number(policy.insurance_price).toLocaleString('en-US')}</TableCell>
-                              <TableCell className="font-mono text-destructive">₪{Number(policy.payed_for_company || 0).toLocaleString('en-US')}</TableCell>
-                              <TableCell className="font-mono text-green-600">₪{Number(policy.profit || 0).toLocaleString('en-US')}</TableCell>
+                              <TableCell className="font-mono">
+                                {editingPolicyId === policy.id ? (
+                                  <Input className="w-20 h-8 text-sm" value={editValues.insurance_price} onChange={e => setEditValues(v => ({ ...v, insurance_price: e.target.value }))} />
+                                ) : (
+                                  <>₪{Number(policy.insurance_price).toLocaleString('en-US')}</>
+                                )}
+                              </TableCell>
+                              <TableCell className="font-mono text-destructive">
+                                {editingPolicyId === policy.id ? (
+                                  <Input className="w-20 h-8 text-sm" value={editValues.payed_for_company} onChange={e => setEditValues(v => ({ ...v, payed_for_company: e.target.value }))} />
+                                ) : (
+                                  <>₪{Number(policy.payed_for_company || 0).toLocaleString('en-US')}</>
+                                )}
+                              </TableCell>
+                              <TableCell className="font-mono text-green-600">
+                                {editingPolicyId === policy.id ? (
+                                  <Input className="w-20 h-8 text-sm" value={editValues.profit} onChange={e => setEditValues(v => ({ ...v, profit: e.target.value }))} />
+                                ) : (
+                                  <>₪{Number(policy.profit || 0).toLocaleString('en-US')}</>
+                                )}
+                              </TableCell>
                               <TableCell onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center gap-1">
-                                  <Button variant="ghost" size="sm" onClick={() => handleViewPolicy(policy.id)} title="عرض التفاصيل">
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                  <Button variant="ghost" size="sm" onClick={() => handleShowCalculation(policy)} title="شرح الحسبة">
-                                    <Calculator className="h-4 w-4" />
-                                  </Button>
+                                  {editingPolicyId === policy.id ? (
+                                    <>
+                                      <Button variant="ghost" size="sm" onClick={handleSaveEdit} disabled={savingEdit} title="حفظ">
+                                        <Check className="h-4 w-4 text-green-600" />
+                                      </Button>
+                                      <Button variant="ghost" size="sm" onClick={handleCancelEdit} disabled={savingEdit} title="إلغاء">
+                                        <X className="h-4 w-4 text-destructive" />
+                                      </Button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Button variant="ghost" size="sm" onClick={() => handleViewPolicy(policy.id)} title="عرض التفاصيل">
+                                        <Eye className="h-4 w-4" />
+                                      </Button>
+                                      <Button variant="ghost" size="sm" onClick={() => handleStartEdit(policy)} title="تعديل">
+                                        <Pencil className="h-4 w-4" />
+                                      </Button>
+                                      <Button variant="ghost" size="sm" onClick={() => handleShowCalculation(policy)} title="شرح الحسبة">
+                                        <Calculator className="h-4 w-4" />
+                                      </Button>
+                                    </>
+                                  )}
                                 </div>
                               </TableCell>
                             </TableRow>
