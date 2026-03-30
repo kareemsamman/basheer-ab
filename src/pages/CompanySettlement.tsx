@@ -1116,17 +1116,16 @@ export default function CompanySettlement() {
                             <TableRow
                               key={policy.id}
                               className={cn(
-                                "cursor-pointer transition-colors hover:bg-secondary/50",
+                                "transition-colors hover:bg-secondary/50",
                                 policy.cancelled && "opacity-50 line-through"
                               )}
-                              onClick={() => !isEditing && handleViewPolicy(policy.id)}
                             >
-                              {/* العميل - read only */}
-                              <TableCell className="font-medium">{policy.client_name || '-'}</TableCell>
-                              {/* رقم السيارة - read only */}
-                              <TableCell className="font-mono"><bdi>{policy.car_number || '-'}</bdi></TableCell>
+                              {/* العميل - clickable to open drawer */}
+                              <TableCell className="font-medium cursor-pointer hover:underline" onClick={() => handleViewPolicy(policy.id)}>{policy.client_name || '-'}</TableCell>
+                              {/* رقم السيارة - read only, selectable */}
+                              <TableCell className="font-mono select-text"><bdi>{policy.car_number || '-'}</bdi></TableCell>
                               {/* قيمة السيارة */}
-                              <TableCell className="font-mono" onClick={e => isEditing && e.stopPropagation()}>
+                              <TableCell className="font-mono">
                                 {isEditing ? (
                                   <Input className="w-24 h-8 text-sm" type="number" value={editValues.car_value} onChange={e => setEditValues(v => ({ ...v, car_value: e.target.value }))} />
                                 ) : (
@@ -1134,7 +1133,7 @@ export default function CompanySettlement() {
                                 )}
                               </TableCell>
                               {/* نوع التأمين */}
-                              <TableCell onClick={e => isEditing && e.stopPropagation()}>
+                              <TableCell>
                                 {isEditing ? (
                                   <Select value={editValues.policy_type_parent} onValueChange={v => setEditValues(prev => ({ ...prev, policy_type_parent: v, policy_type_child: '' }))}>
                                     <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
@@ -1151,7 +1150,7 @@ export default function CompanySettlement() {
                                 )}
                               </TableCell>
                               {/* الشركة */}
-                              <TableCell onClick={e => isEditing && e.stopPropagation()}>
+                              <TableCell>
                                 {isEditing ? (
                                   <Select value={editValues.company_id} onValueChange={v => setEditValues(prev => ({ ...prev, company_id: v }))}>
                                     <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
@@ -1166,7 +1165,7 @@ export default function CompanySettlement() {
                                 )}
                               </TableCell>
                               {/* تاريخ الإصدار */}
-                              <TableCell onClick={e => isEditing && e.stopPropagation()}>
+                              <TableCell>
                                 {isEditing ? (
                                   <Input className="w-28 h-8 text-sm" type="date" value={editValues.issue_date} onChange={e => setEditValues(v => ({ ...v, issue_date: e.target.value }))} />
                                 ) : (
@@ -1174,7 +1173,7 @@ export default function CompanySettlement() {
                                 )}
                               </TableCell>
                               {/* تاريخ البداية */}
-                              <TableCell onClick={e => isEditing && e.stopPropagation()}>
+                              <TableCell>
                                 {isEditing ? (
                                   <Input className="w-28 h-8 text-sm" type="date" value={editValues.start_date} onChange={e => setEditValues(v => ({ ...v, start_date: e.target.value }))} />
                                 ) : (
@@ -1182,7 +1181,7 @@ export default function CompanySettlement() {
                                 )}
                               </TableCell>
                               {/* تاريخ النهاية */}
-                              <TableCell onClick={e => isEditing && e.stopPropagation()}>
+                              <TableCell>
                                 {isEditing ? (
                                   <Input className="w-28 h-8 text-sm" type="date" value={editValues.end_date} onChange={e => setEditValues(v => ({ ...v, end_date: e.target.value }))} />
                                 ) : (
@@ -1190,7 +1189,7 @@ export default function CompanySettlement() {
                                 )}
                               </TableCell>
                               {/* المحصل */}
-                              <TableCell className="font-mono" onClick={e => isEditing && e.stopPropagation()}>
+                              <TableCell className="font-mono">
                                 {isEditing ? (
                                   <Input className="w-20 h-8 text-sm" type="number" value={editValues.insurance_price} onChange={e => setEditValues(v => ({ ...v, insurance_price: e.target.value }))} />
                                 ) : (
@@ -1198,7 +1197,7 @@ export default function CompanySettlement() {
                                 )}
                               </TableCell>
                               {/* للشركة */}
-                              <TableCell className="font-mono text-destructive" onClick={e => isEditing && e.stopPropagation()}>
+                              <TableCell className="font-mono text-destructive">
                                 {isEditing ? (
                                   <Input className="w-20 h-8 text-sm" type="number" value={editValues.payed_for_company} onChange={e => setEditValues(v => ({ ...v, payed_for_company: e.target.value }))} />
                                 ) : (
@@ -1206,14 +1205,14 @@ export default function CompanySettlement() {
                                 )}
                               </TableCell>
                               {/* الربح */}
-                              <TableCell className="font-mono text-green-600" onClick={e => isEditing && e.stopPropagation()}>
+                              <TableCell className="font-mono text-green-600">
                                 {isEditing ? (
                                   <Input className="w-20 h-8 text-sm" type="number" value={editValues.profit} onChange={e => setEditValues(v => ({ ...v, profit: e.target.value }))} />
                                 ) : (
                                   <>₪{Number(policy.profit || 0).toLocaleString('en-US')}</>
                                 )}
                               </TableCell>
-                              <TableCell onClick={e => e.stopPropagation()}>
+                              <TableCell>
                                 <div className="flex items-center gap-1">
                                   {isEditing ? (
                                     <>
