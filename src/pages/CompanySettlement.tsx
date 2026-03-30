@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Building2, Download, Wallet, FileText, ChevronLeft, Calendar, RotateCcw, AlertCircle, Printer, AlertTriangle, Eye, Pencil, Search, Receipt, Loader2, RefreshCw, Plus, Trash2, Copy, Calculator } from 'lucide-react';
+import { Building2, Download, Wallet, FileText, ChevronLeft, Calendar, RotateCcw, AlertCircle, Printer, AlertTriangle, Eye, Pencil, Search, Receipt, Loader2, RefreshCw, Plus, Trash2, Copy, Calculator, Check, X } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/integrations/supabase/client';
@@ -140,6 +140,11 @@ export default function CompanySettlement() {
   const [showSupplementForm, setShowSupplementForm] = useState(false);
   const [editingSupplement, setEditingSupplement] = useState<any>(null);
   const [supplements, setSupplements] = useState<any[]>([]);
+
+  // Inline edit
+  const [editingPolicyId, setEditingPolicyId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState({ insurance_price: '', payed_for_company: '', profit: '' });
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const isBrokerFiltered = selectedBrokers.length > 0;
   // Show flat policy table when any filter is active (not just broker)
@@ -568,6 +573,42 @@ export default function CompanySettlement() {
       fetchSettlementData();
     }
     fetchPoliciesWithoutCompany();
+  };
+
+  const handleStartEdit = (policy: BrokerPolicyDetail) => {
+    setEditingPolicyId(policy.id);
+    setEditValues({
+      insurance_price: String(policy.insurance_price || 0),
+      payed_for_company: String(policy.payed_for_company || 0),
+      profit: String(policy.profit || 0),
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingPolicyId(null);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingPolicyId) return;
+    setSavingEdit(true);
+    try {
+      const { error } = await supabase
+        .from('policies')
+        .update({
+          insurance_price: Number(editValues.insurance_price),
+          payed_for_company: Number(editValues.payed_for_company),
+          profit: Number(editValues.profit),
+        })
+        .eq('id', editingPolicyId);
+      if (error) throw error;
+      toast({ title: 'تم الحفظ بنجاح' });
+      setEditingPolicyId(null);
+      await fetchBrokerPolicies();
+    } catch (err: any) {
+      toast({ title: 'خطأ', description: err.message, variant: 'destructive' });
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const handleRecalculateProfits = async () => {
@@ -1053,17 +1094,51 @@ export default function CompanySettlement() {
                               <TableCell>{policy.company_name_ar || policy.company_name || '-'}</TableCell>
                               <TableCell>{formatDate(policy.start_date)}</TableCell>
                               <TableCell>{formatDate(policy.end_date)}</TableCell>
-                              <TableCell className="font-mono">₪{Number(policy.insurance_price).toLocaleString('en-US')}</TableCell>
-                              <TableCell className="font-mono text-destructive">₪{Number(policy.payed_for_company || 0).toLocaleString('en-US')}</TableCell>
-                              <TableCell className="font-mono text-green-600">₪{Number(policy.profit || 0).toLocaleString('en-US')}</TableCell>
+                              <TableCell className="font-mono">
+                                {editingPolicyId === policy.id ? (
+                                  <Input className="w-20 h-8 text-sm" value={editValues.insurance_price} onChange={e => setEditValues(v => ({ ...v, insurance_price: e.target.value }))} />
+                                ) : (
+                                  <>₪{Number(policy.insurance_price).toLocaleString('en-US')}</>
+                                )}
+                              </TableCell>
+                              <TableCell className="font-mono text-destructive">
+                                {editingPolicyId === policy.id ? (
+                                  <Input className="w-20 h-8 text-sm" value={editValues.payed_for_company} onChange={e => setEditValues(v => ({ ...v, payed_for_company: e.target.value }))} />
+                                ) : (
+                                  <>₪{Number(policy.payed_for_company || 0).toLocaleString('en-US')}</>
+                                )}
+                              </TableCell>
+                              <TableCell className="font-mono text-green-600">
+                                {editingPolicyId === policy.id ? (
+                                  <Input className="w-20 h-8 text-sm" value={editValues.profit} onChange={e => setEditValues(v => ({ ...v, profit: e.target.value }))} />
+                                ) : (
+                                  <>₪{Number(policy.profit || 0).toLocaleString('en-US')}</>
+                                )}
+                              </TableCell>
                               <TableCell onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center gap-1">
-                                  <Button variant="ghost" size="sm" onClick={() => handleViewPolicy(policy.id)} title="عرض التفاصيل">
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                  <Button variant="ghost" size="sm" onClick={() => handleShowCalculation(policy)} title="شرح الحسبة">
-                                    <Calculator className="h-4 w-4" />
-                                  </Button>
+                                  {editingPolicyId === policy.id ? (
+                                    <>
+                                      <Button variant="ghost" size="sm" onClick={handleSaveEdit} disabled={savingEdit} title="حفظ">
+                                        <Check className="h-4 w-4 text-green-600" />
+                                      </Button>
+                                      <Button variant="ghost" size="sm" onClick={handleCancelEdit} disabled={savingEdit} title="إلغاء">
+                                        <X className="h-4 w-4 text-destructive" />
+                                      </Button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Button variant="ghost" size="sm" onClick={() => handleViewPolicy(policy.id)} title="عرض التفاصيل">
+                                        <Eye className="h-4 w-4" />
+                                      </Button>
+                                      <Button variant="ghost" size="sm" onClick={() => handleStartEdit(policy)} title="تعديل">
+                                        <Pencil className="h-4 w-4" />
+                                      </Button>
+                                      <Button variant="ghost" size="sm" onClick={() => handleShowCalculation(policy)} title="شرح الحسبة">
+                                        <Calculator className="h-4 w-4" />
+                                      </Button>
+                                    </>
+                                  )}
                                 </div>
                               </TableCell>
                             </TableRow>
