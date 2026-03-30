@@ -84,6 +84,7 @@ interface BrokerPolicyDetail {
   car_number: string | null;
   car_id: string | null;
   car_value: number | null;
+  car_type: string | null;
   company_id: string | null;
   company_name: string | null;
   company_name_ar: string | null;
@@ -151,6 +152,7 @@ export default function CompanySettlement() {
     start_date: '', end_date: '', issue_date: '',
     policy_type_parent: '', policy_type_child: '',
     company_id: '', car_value: '',
+    car_type: '',
   });
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -400,7 +402,7 @@ export default function CompanySettlement() {
           cancelled,
           transferred,
           clients (full_name),
-          cars (id, car_number, car_value),
+          cars (id, car_number, car_value, car_type),
           insurance_companies (name, name_ar)
         `)
         .is('deleted_at', null)
@@ -449,6 +451,7 @@ export default function CompanySettlement() {
         car_number: p.cars?.car_number || null,
         car_id: p.cars?.id || null,
         car_value: p.cars?.car_value ?? null,
+        car_type: p.cars?.car_type || null,
         company_name: p.insurance_companies?.name || null,
         company_name_ar: p.insurance_companies?.name_ar || null,
         company_id: p.company_id || null,
@@ -616,6 +619,7 @@ export default function CompanySettlement() {
       policy_type_child: policy.policy_type_child || '',
       company_id: policy.company_id || '',
       car_value: String(policy.car_value || ''),
+      car_type: policy.car_type || '',
     });
   };
 
@@ -646,14 +650,19 @@ export default function CompanySettlement() {
       if (error) throw error;
 
       // Update car_value if car exists
-      if (editedPolicy?.car_id && editValues.car_value !== '') {
-        const { error: carError } = await supabase
-          .from('cars')
-          .update({ car_value: Number(editValues.car_value) || 0 })
-          .eq('id', editedPolicy.car_id);
-        if (carError) {
-          console.error('Error updating car value:', carError);
-          toast({ title: 'تنبيه', description: 'فشل في تحديث قيمة السيارة', variant: 'destructive' });
+      if (editedPolicy?.car_id) {
+        const carUpdate: Record<string, any> = {};
+        if (editValues.car_value !== '') carUpdate.car_value = Number(editValues.car_value) || 0;
+        if (editValues.car_type) carUpdate.car_type = editValues.car_type;
+        if (Object.keys(carUpdate).length > 0) {
+          const { error: carError } = await supabase
+            .from('cars')
+            .update(carUpdate)
+            .eq('id', editedPolicy.car_id);
+          if (carError) {
+            console.error('Error updating car:', carError);
+            toast({ title: 'تنبيه', description: 'فشل في تحديث بيانات السيارة', variant: 'destructive' });
+          }
         }
       }
 
@@ -1096,6 +1105,7 @@ export default function CompanySettlement() {
                           <TableHead className="text-right">العميل</TableHead>
                           <TableHead className="text-right">رقم السيارة</TableHead>
                           <TableHead className="text-right">قيمة السيارة</TableHead>
+                          <TableHead className="text-right">نوع المركبة</TableHead>
                           <TableHead className="text-right">نوع التأمين</TableHead>
                           <TableHead className="text-right">الشركة</TableHead>
                           <TableHead className="text-right">تاريخ الإصدار</TableHead>
@@ -1153,6 +1163,27 @@ export default function CompanySettlement() {
                                   <Input className="w-24 h-8 text-sm" type="number" value={editValues.car_value} onChange={e => setEditValues(v => ({ ...v, car_value: e.target.value }))} />
                                 ) : (
                                   policy.car_value ? `₪${Number(policy.car_value).toLocaleString('en-US')}` : '-'
+                                )}
+                              </TableCell>
+                              {/* نوع المركبة */}
+                              <TableCell>
+                                {isEditing ? (
+                                  <Select value={editValues.car_type || undefined} onValueChange={v => setEditValues(prev => ({ ...prev, car_type: v }))}>
+                                    <SelectTrigger className="w-28 h-8 text-xs"><SelectValue placeholder="نوع المركبة" /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="car">خصوصي</SelectItem>
+                                      <SelectItem value="cargo">تجاري</SelectItem>
+                                      <SelectItem value="taxi">مونيت</SelectItem>
+                                      <SelectItem value="small">اوتوبس زعير</SelectItem>
+                                      <SelectItem value="tjeradown4">تجارة أقل من 4 طن</SelectItem>
+                                      <SelectItem value="tjeraup4">تجارة أكثر من 4 طن</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                ) : (
+                                  (() => {
+                                    const labels: Record<string, string> = { car: 'خصوصي', cargo: 'تجاري', taxi: 'مونيت', small: 'اوتوبس زعير', tjeradown4: 'تجارة <4 طن', tjeraup4: 'تجارة >4 طن' };
+                                    return policy.car_type ? (labels[policy.car_type] || policy.car_type) : '-';
+                                  })()
                                 )}
                               </TableCell>
                               {/* نوع التأمين */}
