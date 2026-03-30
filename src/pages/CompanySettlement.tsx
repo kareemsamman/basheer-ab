@@ -1072,8 +1072,10 @@ export default function CompanySettlement() {
                         <TableRow>
                           <TableHead className="text-right">العميل</TableHead>
                           <TableHead className="text-right">رقم السيارة</TableHead>
+                          <TableHead className="text-right">قيمة السيارة</TableHead>
                           <TableHead className="text-right">نوع التأمين</TableHead>
                           <TableHead className="text-right">الشركة</TableHead>
+                          <TableHead className="text-right">تاريخ الإصدار</TableHead>
                           <TableHead className="text-right">تاريخ البداية</TableHead>
                           <TableHead className="text-right">تاريخ النهاية</TableHead>
                           <TableHead className="text-right">المحصل</TableHead>
@@ -1086,7 +1088,7 @@ export default function CompanySettlement() {
                         {loading || loadingBrokerPolicies ? (
                           Array.from({ length: 8 }).map((_, i) => (
                             <TableRow key={i}>
-                              {Array.from({ length: 10 }).map((_, j) => (
+                              {Array.from({ length: 12 }).map((_, j) => (
                                 <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
                               ))}
                             </TableRow>
@@ -1104,53 +1106,116 @@ export default function CompanySettlement() {
                           
                           return filtered.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                              <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
                                 لا توجد بيانات
                               </TableCell>
                             </TableRow>
-                          ) : filtered.map((policy) => (
+                          ) : filtered.map((policy) => {
+                            const isEditing = editingPolicyId === policy.id;
+                            return (
                             <TableRow
                               key={policy.id}
                               className={cn(
                                 "cursor-pointer transition-colors hover:bg-secondary/50",
                                 policy.cancelled && "opacity-50 line-through"
                               )}
-                              onClick={() => handleViewPolicy(policy.id)}
+                              onClick={() => !isEditing && handleViewPolicy(policy.id)}
                             >
+                              {/* العميل - read only */}
                               <TableCell className="font-medium">{policy.client_name || '-'}</TableCell>
+                              {/* رقم السيارة - read only */}
                               <TableCell className="font-mono"><bdi>{policy.car_number || '-'}</bdi></TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className={getInsuranceTypeBadgeClass(policy.policy_type_parent)}>
-                                  {getInsuranceTypeLabelBroker(policy)}
-                                </Badge>
+                              {/* قيمة السيارة */}
+                              <TableCell className="font-mono" onClick={e => isEditing && e.stopPropagation()}>
+                                {isEditing ? (
+                                  <Input className="w-24 h-8 text-sm" type="number" value={editValues.car_value} onChange={e => setEditValues(v => ({ ...v, car_value: e.target.value }))} />
+                                ) : (
+                                  policy.car_value ? `₪${Number(policy.car_value).toLocaleString('en-US')}` : '-'
+                                )}
                               </TableCell>
-                              <TableCell>{policy.company_name_ar || policy.company_name || '-'}</TableCell>
-                              <TableCell>{formatDate(policy.start_date)}</TableCell>
-                              <TableCell>{formatDate(policy.end_date)}</TableCell>
-                              <TableCell className="font-mono">
-                                {editingPolicyId === policy.id ? (
-                                  <Input className="w-20 h-8 text-sm" value={editValues.insurance_price} onChange={e => setEditValues(v => ({ ...v, insurance_price: e.target.value }))} />
+                              {/* نوع التأمين */}
+                              <TableCell onClick={e => isEditing && e.stopPropagation()}>
+                                {isEditing ? (
+                                  <Select value={editValues.policy_type_parent} onValueChange={v => setEditValues(prev => ({ ...prev, policy_type_parent: v, policy_type_child: '' }))}>
+                                    <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      {Object.entries(POLICY_TYPE_LABELS).map(([val, label]) => (
+                                        <SelectItem key={val} value={val}>{label}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                ) : (
+                                  <Badge variant="outline" className={getInsuranceTypeBadgeClass(policy.policy_type_parent)}>
+                                    {getInsuranceTypeLabelBroker(policy)}
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              {/* الشركة */}
+                              <TableCell onClick={e => isEditing && e.stopPropagation()}>
+                                {isEditing ? (
+                                  <Select value={editValues.company_id} onValueChange={v => setEditValues(prev => ({ ...prev, company_id: v }))}>
+                                    <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      {filteredCompanies.map(c => (
+                                        <SelectItem key={c.company_id} value={c.company_id}>{c.company_name_ar || c.company_name}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                ) : (
+                                  policy.company_name_ar || policy.company_name || '-'
+                                )}
+                              </TableCell>
+                              {/* تاريخ الإصدار */}
+                              <TableCell onClick={e => isEditing && e.stopPropagation()}>
+                                {isEditing ? (
+                                  <Input className="w-28 h-8 text-sm" type="date" value={editValues.issue_date} onChange={e => setEditValues(v => ({ ...v, issue_date: e.target.value }))} />
+                                ) : (
+                                  policy.issue_date ? formatDate(policy.issue_date) : '-'
+                                )}
+                              </TableCell>
+                              {/* تاريخ البداية */}
+                              <TableCell onClick={e => isEditing && e.stopPropagation()}>
+                                {isEditing ? (
+                                  <Input className="w-28 h-8 text-sm" type="date" value={editValues.start_date} onChange={e => setEditValues(v => ({ ...v, start_date: e.target.value }))} />
+                                ) : (
+                                  formatDate(policy.start_date)
+                                )}
+                              </TableCell>
+                              {/* تاريخ النهاية */}
+                              <TableCell onClick={e => isEditing && e.stopPropagation()}>
+                                {isEditing ? (
+                                  <Input className="w-28 h-8 text-sm" type="date" value={editValues.end_date} onChange={e => setEditValues(v => ({ ...v, end_date: e.target.value }))} />
+                                ) : (
+                                  formatDate(policy.end_date)
+                                )}
+                              </TableCell>
+                              {/* المحصل */}
+                              <TableCell className="font-mono" onClick={e => isEditing && e.stopPropagation()}>
+                                {isEditing ? (
+                                  <Input className="w-20 h-8 text-sm" type="number" value={editValues.insurance_price} onChange={e => setEditValues(v => ({ ...v, insurance_price: e.target.value }))} />
                                 ) : (
                                   <>₪{Number(policy.insurance_price).toLocaleString('en-US')}</>
                                 )}
                               </TableCell>
-                              <TableCell className="font-mono text-destructive">
-                                {editingPolicyId === policy.id ? (
-                                  <Input className="w-20 h-8 text-sm" value={editValues.payed_for_company} onChange={e => setEditValues(v => ({ ...v, payed_for_company: e.target.value }))} />
+                              {/* للشركة */}
+                              <TableCell className="font-mono text-destructive" onClick={e => isEditing && e.stopPropagation()}>
+                                {isEditing ? (
+                                  <Input className="w-20 h-8 text-sm" type="number" value={editValues.payed_for_company} onChange={e => setEditValues(v => ({ ...v, payed_for_company: e.target.value }))} />
                                 ) : (
                                   <>₪{Number(policy.payed_for_company || 0).toLocaleString('en-US')}</>
                                 )}
                               </TableCell>
-                              <TableCell className="font-mono text-green-600">
-                                {editingPolicyId === policy.id ? (
-                                  <Input className="w-20 h-8 text-sm" value={editValues.profit} onChange={e => setEditValues(v => ({ ...v, profit: e.target.value }))} />
+                              {/* الربح */}
+                              <TableCell className="font-mono text-green-600" onClick={e => isEditing && e.stopPropagation()}>
+                                {isEditing ? (
+                                  <Input className="w-20 h-8 text-sm" type="number" value={editValues.profit} onChange={e => setEditValues(v => ({ ...v, profit: e.target.value }))} />
                                 ) : (
                                   <>₪{Number(policy.profit || 0).toLocaleString('en-US')}</>
                                 )}
                               </TableCell>
                               <TableCell onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center gap-1">
-                                  {editingPolicyId === policy.id ? (
+                                  {isEditing ? (
                                     <>
                                       <Button variant="ghost" size="sm" onClick={handleSaveEdit} disabled={savingEdit} title="حفظ">
                                         <Check className="h-4 w-4 text-green-600" />
@@ -1175,7 +1240,7 @@ export default function CompanySettlement() {
                                 </div>
                               </TableCell>
                             </TableRow>
-                          ));
+                          )});
                         })()}
                         {/* Supplement rows */}
                         {supplements.map((s) => (
