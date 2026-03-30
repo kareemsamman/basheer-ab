@@ -388,6 +388,7 @@ export default function CompanySettlement() {
         .from('policies')
         .select(`
           id,
+          company_id,
           policy_type_parent,
           policy_type_child,
           insurance_price,
@@ -626,6 +627,8 @@ export default function CompanySettlement() {
     if (!editingPolicyId) return;
     setSavingEdit(true);
     try {
+      const editedPolicy = brokerPolicies.find(p => p.id === editingPolicyId);
+
       const { error } = await supabase
         .from('policies')
         .update({
@@ -637,13 +640,12 @@ export default function CompanySettlement() {
           issue_date: editValues.issue_date || null,
           policy_type_parent: editValues.policy_type_parent as Enums<'policy_type_parent'>,
           policy_type_child: editValues.policy_type_child ? editValues.policy_type_child as Enums<'policy_type_child'> : null,
-          company_id: editValues.company_id || null,
+          company_id: editValues.company_id || editedPolicy?.company_id || null,
         })
         .eq('id', editingPolicyId);
       if (error) throw error;
 
       // Update car_value if car exists
-      const editedPolicy = brokerPolicies.find(p => p.id === editingPolicyId);
       if (editedPolicy?.car_id && editValues.car_value !== '') {
         const { error: carError } = await supabase
           .from('cars')
