@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Building2, Download, Wallet, FileText, ChevronLeft, Calendar, RotateCcw, AlertCircle, Printer, AlertTriangle, Eye, Pencil, Search, Receipt, Loader2, RefreshCw, Plus, Trash2, Copy } from 'lucide-react';
+import { Building2, Download, Wallet, FileText, ChevronLeft, Calendar, RotateCcw, AlertCircle, Printer, AlertTriangle, Eye, Pencil, Search, Receipt, Loader2, RefreshCw, Plus, Trash2, Copy, Calculator } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/integrations/supabase/client';
