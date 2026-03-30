@@ -188,6 +188,23 @@ export default function CompanySettlement() {
   useEffect(() => {
     fetchBrokers();
     fetchPoliciesWithoutCompany();
+    // Fetch all companies for edit dropdown
+    const fetchAllCompanies = async () => {
+      try {
+        const { data: companies } = await supabase
+          .from('insurance_companies')
+          .select('id, name, name_ar')
+          .order('name_ar');
+        setAllCompanies((companies || []).map(c => ({
+          company_id: c.id,
+          company_name: c.name,
+          company_name_ar: c.name_ar,
+        })));
+      } catch (err) {
+        console.error('Error fetching all companies:', err);
+      }
+    };
+    fetchAllCompanies();
   }, []);
 
   useEffect(() => {
