@@ -41,6 +41,8 @@ interface PricingRule {
   value: number;
   age_band: Enums<'age_band'> | null;
   car_type: Enums<'car_type'> | null;
+  min_car_value?: number | null;
+  max_car_value?: number | null;
 }
 
 interface CalculationExplanationModalProps {
@@ -103,7 +105,7 @@ export function CalculationExplanationModal({
     try {
       const { data, error } = await supabase
         .from('pricing_rules')
-        .select('id, rule_type, value, age_band, car_type')
+        .select('id, rule_type, value, age_band, car_type, min_car_value, max_car_value')
         .eq('company_id', company.id)
         .eq('policy_type_parent', policy.policy_type_parent);
 
@@ -126,25 +128,49 @@ export function CalculationExplanationModal({
   const companyPayment = Number(policy.payed_for_company || 0);
   const profit = Number(policy.profit || 0);
 
-  // Find matching rules
-  const findRule = (ruleType: string) => {
-    // First try exact match
-    let rule = pricingRules.find(
-      r => r.rule_type === ruleType && 
-           (r.car_type === carType || r.car_type === null) &&
-           (r.age_band === ageBand || r.age_band === 'ANY')
+  // Find matching rules using the same specificity logic as the pricing calculator
+  const hasCarValueRange = (rule: PricingRule) => rule.min_car_value != null || rule.max_car_value != null;
+
+  const matchesCarValueRange = (rule: PricingRule, filterByCarValue = false) => {
+    if (!filterByCarValue || !carValue) return true;
+    if (rule.min_car_value != null && carValue < rule.min_car_value) return false;
+    if (rule.max_car_value != null && carValue > rule.max_car_value) return false;
+    return true;
+  };
+
+  const sortBySpecificity = (a: PricingRule, b: PricingRule) => {
+    const aScore = (a.car_type === carType ? 2 : 0) + (a.age_band === ageBand ? 1 : 0);
+    const bScore = (b.car_type === carType ? 2 : 0) + (b.age_band === ageBand ? 1 : 0);
+    const rangeScore = Number(hasCarValueRange(b)) - Number(hasCarValueRange(a));
+    if (rangeScore !== 0) return rangeScore;
+    return bScore - aScore;
+  };
+
+  const findRule = (ruleType: Enums<'pricing_rule_type'>, filterByCarValue = false) => {
+    const exactMatches = pricingRules.filter(
+      (r) =>
+        r.rule_type === ruleType &&
+        (r.car_type === carType || r.car_type === null) &&
+        (r.age_band === ageBand || r.age_band === 'ANY' || r.age_band === null) &&
+        matchesCarValueRange(r, filterByCarValue)
     );
-    
-    // Fallback to any matching rule type
-    if (!rule) {
-      rule = pricingRules.find(r => r.rule_type === ruleType);
-    }
-    
-    return rule;
+
+    exactMatches.sort(sortBySpecificity);
+    if (exactMatches.length > 0) return exactMatches[0];
+
+    const fallbackMatches = pricingRules.filter(
+      (r) =>
+        r.rule_type === ruleType &&
+        (r.age_band === ageBand || r.age_band === 'ANY' || r.age_band === null) &&
+        matchesCarValueRange(r, filterByCarValue)
+    );
+
+    fallbackMatches.sort(sortBySpecificity);
+    return fallbackMatches[0];
   };
 
   const thirdPriceRule = findRule('THIRD_PRICE');
-  const fullPercentRule = findRule('FULL_PERCENT');
+  const fullPercentRule = findRule('FULL_PERCENT', true);
   const discountRule = findRule('DISCOUNT');
   const minPriceRule = findRule('MIN_PRICE');
   const roadBaseRule = findRule('ROAD_SERVICE_BASE') || findRule('ROAD_SERVICE_PRICE');
@@ -184,7 +210,7 @@ export function CalculationExplanationModal({
                   </div>
                 )}
               </div>
-              
+
               <div className="bg-muted/50 p-4 rounded-lg space-y-2">
                 <h4 className="font-semibold text-sm">خطوات الحساب (ثالث):</h4>
                 <div className="text-sm space-y-1 font-mono">
@@ -199,23 +225,19 @@ export function CalculationExplanationModal({
             </div>
           );
         } else {
-          // FULL
           const thirdComponent = discountRule ? discountRule.value : (thirdPriceRule?.value || 0);
-          const useMinPrice = carValue < 60000;
-          const fullComponent = useMinPrice 
-            ? (minPriceRule?.value || 0)
-            : carValue * ((fullPercentRule?.value || 0) / 100);
-          
+          const rawFullComponent = carValue > 0 && fullPercentRule ? carValue * (fullPercentRule.value / 100) : 0;
+          const fullComponent = minPriceRule && rawFullComponent < minPriceRule.value
+            ? minPriceRule.value
+            : rawFullComponent;
+          const resolvedCompanyPayment = thirdComponent + fullComponent;
+          const resolvedProfit = insurancePrice - resolvedCompanyPayment;
+          const usesMinPriceFloor = !!minPriceRule && fullComponent === minPriceRule.value;
+
           return (
             <div className="space-y-4">
               <div className="bg-muted/50 p-4 rounded-lg space-y-3">
                 <h4 className="font-semibold text-sm">القواعد المستخدمة:</h4>
-                {thirdPriceRule && (
-                  <div className="flex justify-between items-center text-sm">
-                    <span>{RULE_TYPE_LABELS[thirdPriceRule.rule_type]}</span>
-                    <Badge variant="secondary">₪{thirdPriceRule.value.toLocaleString('en-US')}</Badge>
-                  </div>
-                )}
                 {discountRule && (
                   <div className="flex justify-between items-center text-sm">
                     <span>{RULE_TYPE_LABELS[discountRule.rule_type]} (يحل محل سعر الثالث)</span>
@@ -235,7 +257,7 @@ export function CalculationExplanationModal({
                   </div>
                 )}
               </div>
-              
+
               <div className="bg-muted/50 p-4 rounded-lg space-y-2">
                 <h4 className="font-semibold text-sm">خطوات الحساب (شامل):</h4>
                 <div className="text-sm space-y-1 font-mono">
@@ -245,35 +267,41 @@ export function CalculationExplanationModal({
                   ) : (
                     <p>مكون الثالث = سعر الثالث = ₪{(thirdPriceRule?.value || 0).toLocaleString('en-US')}</p>
                   )}
-                  
+
                   <Separator className="my-2" />
-                  
+
                   <p className="text-muted-foreground">// حساب مكون الشامل</p>
-                  {useMinPrice ? (
+                  <p>قيمة السيارة = ₪{carValue.toLocaleString('en-US')}</p>
+                  {fullPercentRule ? (
                     <>
-                      <p>قيمة السيارة = ₪{carValue.toLocaleString('en-US')} (أقل من ₪60,000)</p>
-                      <p>مكون الشامل = الحد الأدنى = ₪{(minPriceRule?.value || 0).toLocaleString('en-US')}</p>
+                      <p>الناتج حسب النسبة = ₪{carValue.toLocaleString('en-US')} × ({fullPercentRule.value}% / 100)</p>
+                      <p>الناتج حسب النسبة = ₪{rawFullComponent.toLocaleString('en-US')}</p>
                     </>
                   ) : (
+                    <p>لا توجد نسبة شامل مطابقة، يتم الاعتماد على القواعد الثابتة فقط</p>
+                  )}
+                  {usesMinPriceFloor && minPriceRule && (
                     <>
-                      <p>قيمة السيارة = ₪{carValue.toLocaleString('en-US')} (أكبر من أو يساوي ₪60,000)</p>
-                      <p>مكون الشامل = قيمة السيارة × (نسبة الشامل / 100)</p>
-                      <p>مكون الشامل = ₪{carValue.toLocaleString('en-US')} × ({fullPercentRule?.value || 0}% / 100)</p>
-                      <p>مكون الشامل = ₪{fullComponent.toLocaleString('en-US')}</p>
+                      <p>بما أن الناتج أقل من أو يساوي الحد الأدنى المطبق، يتم اعتماد الحد الأدنى</p>
+                      <p>مكون الشامل = الحد الأدنى = ₪{minPriceRule.value.toLocaleString('en-US')}</p>
                     </>
                   )}
-                  
+                  {!usesMinPriceFloor && (
+                    <p>مكون الشامل = ₪{fullComponent.toLocaleString('en-US')}</p>
+                  )}
+
                   <Separator className="my-2" />
-                  
+
                   <p className="text-muted-foreground">// المجموع</p>
                   <p>المستحق للشركة = مكون الشامل + مكون الثالث</p>
-                  <p className="text-primary">المستحق للشركة = ₪{companyPayment.toLocaleString('en-US')}</p>
-                  
+                  <p>المستحق للشركة = ₪{fullComponent.toLocaleString('en-US')} + ₪{thirdComponent.toLocaleString('en-US')}</p>
+                  <p className="text-primary">المستحق للشركة = ₪{resolvedCompanyPayment.toLocaleString('en-US')}</p>
+
                   <Separator className="my-2" />
-                  
+
                   <p>الربح = سعر التأمين - المستحق للشركة</p>
-                  <p>الربح = ₪{insurancePrice.toLocaleString('en-US')} - ₪{companyPayment.toLocaleString('en-US')}</p>
-                  <p className="text-success">الربح = ₪{profit.toLocaleString('en-US')}</p>
+                  <p>الربح = ₪{insurancePrice.toLocaleString('en-US')} - ₪{resolvedCompanyPayment.toLocaleString('en-US')}</p>
+                  <p className="text-success">الربح = ₪{resolvedProfit.toLocaleString('en-US')}</p>
                 </div>
               </div>
             </div>
