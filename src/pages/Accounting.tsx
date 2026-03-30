@@ -71,6 +71,7 @@ interface Row {
   id: string;
   tab: "issuance" | "refund" | "payment" | "sale" | "receipt";
   source: "policy" | "settlement" | "expense" | "cheque" | "wallet" | "ledger" | "broker_settlement";
+  policyIds?: string[];
   client_name: string;
   car_number: string | null;
   types: string[];
@@ -126,6 +127,9 @@ export default function Accounting() {
   const [editReceiptImages, setEditReceiptImages] = useState<string[]>([]);
   const [editNotes, setEditNotes] = useState("");
   const [editSaving, setEditSaving] = useState(false);
+  // Policy edit fields (for issuance rows)
+  const [editPolicies, setEditPolicies] = useState<{ id: string; policy_type_parent: string; policy_type_child: string | null; company_id: string | null; insurance_price: number }[]>([]);
+  const [editPoliciesLoading, setEditPoliciesLoading] = useState(false);
 
   // Add dialog
   const [addOpen, setAddOpen] = useState(false);
@@ -199,8 +203,9 @@ export default function Accounting() {
             const e = gMap.get(k)!;
             e.amount += p.insurance_price || 0;
             if (lbl && !e.types.includes(lbl)) e.types.push(lbl);
+            if (e.policyIds && !e.policyIds.includes(p.id)) e.policyIds.push(p.id);
           } else {
-            gMap.set(k, { id: k, tab: "issuance", source: "policy", client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: (p as any).issue_date || p.created_at, issue_date: (p as any).issue_date || p.created_at, description: "", company_name: co, payment_method: "", extra: "" });
+            gMap.set(k, { id: k, tab: "issuance", source: "policy", policyIds: [p.id], client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: (p as any).issue_date || p.created_at, issue_date: (p as any).issue_date || p.created_at, description: "", company_name: co, payment_method: "", extra: "" });
           }
         }
         results.push(...gMap.values());
@@ -339,8 +344,9 @@ export default function Accounting() {
             const e = bMap.get(k)!;
             e.amount += p.insurance_price || 0;
             if (lbl && !e.types.includes(lbl)) e.types.push(lbl);
+            if (e.policyIds && !e.policyIds.includes(p.id)) e.policyIds.push(p.id);
           } else {
-            bMap.set(k, { id: k, tab: "issuance", source: "policy", client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: (p as any).issue_date || p.created_at, issue_date: (p as any).issue_date || p.created_at, description: "", company_name: co, payment_method: "", extra: (p as any).brokers?.name || "" });
+            bMap.set(k, { id: k, tab: "issuance", source: "policy", policyIds: [p.id], client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: (p as any).issue_date || p.created_at, issue_date: (p as any).issue_date || p.created_at, description: "", company_name: co, payment_method: "", extra: (p as any).brokers?.name || "" });
           }
         }
         results.push(...bMap.values());
@@ -527,7 +533,7 @@ export default function Accounting() {
     } catch { toast.error("فشل في تحديث الحالة"); }
   };
 
-  const openEdit = (row: Row) => {
+  const openEdit = async (row: Row) => {
     setEditRow(row);
     setEditAmount(String(row.amount));
     setEditDate(row.date?.split("T")[0] || "");
@@ -536,13 +542,48 @@ export default function Accounting() {
     setEditPaymentLines([]);
     setEditReceiptImages([]);
     setEditNotes("");
+    setEditPolicies([]);
     setEditOpen(true);
+
+    // Load individual policies for issuance rows
+    if (row.source === "policy" && row.policyIds && row.policyIds.length > 0) {
+      setEditPoliciesLoading(true);
+      const { data } = await supabase
+        .from("policies")
+        .select("id, policy_type_parent, policy_type_child, company_id, insurance_price")
+        .in("id", row.policyIds);
+      setEditPolicies((data || []).map((p: any) => ({
+        id: p.id,
+        policy_type_parent: p.policy_type_parent,
+        policy_type_child: p.policy_type_child,
+        company_id: p.company_id,
+        insurance_price: p.insurance_price || 0,
+      })));
+      setEditPoliciesLoading(false);
+    }
   };
 
   const handleEditSave = async () => {
     if (!editRow) return;
     setEditSaving(true);
     try {
+      // Policy edits (issuance rows)
+      if (editRow.source === "policy" && editPolicies.length > 0) {
+        for (const pol of editPolicies) {
+          await supabase.from("policies").update({
+            policy_type_parent: pol.policy_type_parent,
+            policy_type_child: pol.policy_type_child,
+            company_id: pol.company_id,
+            insurance_price: pol.insurance_price,
+          } as any).eq("id", pol.id);
+        }
+        toast.success("تم تعديل الوثائق بنجاح");
+        setEditOpen(false); setEditRow(null);
+        fetchData();
+        setEditSaving(false);
+        return;
+      }
+
       if (editRow.source === "expense") {
         // Determine new voucher_type and description based on editType
         const isSale = editType === "sale";
@@ -1140,10 +1181,64 @@ export default function Accounting() {
 
       {/* Edit Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className={editRow?.source === "expense" ? "max-w-2xl max-h-[90vh] overflow-y-auto" : "max-w-md"}>
+        <DialogContent className={(editRow?.source === "expense" || editRow?.source === "policy") ? "max-w-2xl max-h-[90vh] overflow-y-auto" : "max-w-md"}>
           <DialogHeader><DialogTitle>تعديل الحركة</DialogTitle></DialogHeader>
           {editRow && (
             <div className="space-y-4">
+              {/* Policy fields (for issuance rows) */}
+              {editRow.source === "policy" && (
+                editPoliciesLoading ? (
+                  <div className="space-y-2">{[1,2].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium">الوثائق ({editPolicies.length})</p>
+                    {editPolicies.map((pol, idx) => (
+                      <div key={pol.id} className="rounded-lg border p-3 space-y-2">
+                        <p className="text-xs text-muted-foreground">وثيقة {idx + 1}</p>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-xs">نوع التأمين</Label>
+                            <Select
+                              value={pol.policy_type_parent === "THIRD_FULL" ? (pol.policy_type_child || "THIRD") : pol.policy_type_parent}
+                              onValueChange={v => {
+                                setEditPolicies(prev => prev.map((p, i) => i === idx ? {
+                                  ...p,
+                                  policy_type_parent: (v === "THIRD" || v === "FULL") ? "THIRD_FULL" : v,
+                                  policy_type_child: (v === "THIRD" || v === "FULL") ? v : null,
+                                } : p));
+                              }}
+                            >
+                              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="THIRD">ثالث</SelectItem>
+                                <SelectItem value="FULL">شامل</SelectItem>
+                                <SelectItem value="ROAD_SERVICE">خدمات الطريق</SelectItem>
+                                <SelectItem value="ACCIDENT_FEE_EXEMPTION">إعفاء رسوم حادث</SelectItem>
+                                <SelectItem value="HEALTH">تأمين صحي</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">الشركة</Label>
+                            <Select value={pol.company_id || ""} onValueChange={v => {
+                              setEditPolicies(prev => prev.map((p, i) => i === idx ? { ...p, company_id: v } : p));
+                            }}>
+                              <SelectTrigger className="h-9"><SelectValue placeholder="اختر..." /></SelectTrigger>
+                              <SelectContent>{companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name_ar || c.name}</SelectItem>)}</SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">سعر التأمين</Label>
+                            <Input type="number" min="0" step="0.01" className="h-9" value={pol.insurance_price}
+                              onChange={e => setEditPolicies(prev => prev.map((p, i) => i === idx ? { ...p, insurance_price: parseFloat(e.target.value) || 0 } : p))} />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+
               {/* Type changer (only for expense entries) */}
               {editRow.source === "expense" && (
                 <div className="grid grid-cols-4 gap-2">
