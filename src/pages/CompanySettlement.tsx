@@ -34,6 +34,7 @@ import { cn } from '@/lib/utils';
 import { POLICY_TYPE_LABELS, getInsuranceTypeBadgeClass, POLICY_CHILD_LABELS } from '@/lib/insuranceTypes';
 import { recalculatePolicyProfit } from '@/lib/pricingCalculator';
 import { SupplementFormDialog } from '@/components/reports/SupplementFormDialog';
+import { CalculationExplanationModal } from '@/components/reports/CalculationExplanationModal';
 import { PolicyDetailsDrawer } from '@/components/policies/PolicyDetailsDrawer';
 import { MultiSelectFilter } from '@/components/shared/MultiSelectFilter';
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
@@ -81,6 +82,7 @@ interface BrokerPolicyDetail {
   transferred: boolean | null;
   client_name: string | null;
   car_number: string | null;
+  company_id: string | null;
   company_name: string | null;
   company_name_ar: string | null;
 }
@@ -103,6 +105,11 @@ export default function CompanySettlement() {
   // Policy details drawer
   const [selectedPolicyId, setSelectedPolicyId] = useState<string | null>(null);
   const [detailsDrawerOpen, setDetailsDrawerOpen] = useState(false);
+  
+  // Calculation explanation modal
+  const [calculationModalOpen, setCalculationModalOpen] = useState(false);
+  const [selectedPolicyForCalc, setSelectedPolicyForCalc] = useState<any>(null);
+  const [selectedCompanyForCalc, setSelectedCompanyForCalc] = useState<any>(null);
   
   // Tax invoice
   const [profitPercent, setProfitPercent] = useState(10);
@@ -411,6 +418,7 @@ export default function CompanySettlement() {
         car_number: p.cars?.car_number || null,
         company_name: p.insurance_companies?.name || null,
         company_name_ar: p.insurance_companies?.name_ar || null,
+        company_id: p.company_id || null,
       }));
 
       setBrokerPolicies(mapped);
@@ -519,6 +527,38 @@ export default function CompanySettlement() {
   const handleViewPolicy = (policyId: string) => {
     setSelectedPolicyId(policyId);
     setDetailsDrawerOpen(true);
+  };
+
+  const handleShowCalculation = async (policy: BrokerPolicyDetail) => {
+    // Fetch full policy data for the calculation modal
+    const { data: policyData } = await supabase
+      .from('policies')
+      .select(`
+        id, policy_type_parent, policy_type_child, insurance_price, payed_for_company, profit,
+        clients!inner(less_than_24),
+        cars(id, car_number, car_type, car_value, year)
+      `)
+      .eq('id', policy.id)
+      .single();
+
+    if (policyData) {
+      setSelectedPolicyForCalc({
+        id: policyData.id,
+        policy_type_parent: policyData.policy_type_parent,
+        policy_type_child: policyData.policy_type_child,
+        insurance_price: policyData.insurance_price,
+        payed_for_company: policyData.payed_for_company,
+        profit: policyData.profit,
+        is_under_24: policyData.clients?.less_than_24,
+        car: policyData.cars,
+      });
+      setSelectedCompanyForCalc({
+        id: policy.company_id || '',
+        name: policy.company_name || '',
+        name_ar: policy.company_name_ar || null,
+      });
+      setCalculationModalOpen(true);
+    }
   };
 
   const handlePolicyUpdated = () => {
@@ -1018,7 +1058,7 @@ export default function CompanySettlement() {
                               <TableCell className="font-mono text-green-600">₪{Number(policy.profit || 0).toLocaleString('en-US')}</TableCell>
                               <TableCell onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center gap-1">
-                                  <Button variant="ghost" size="sm" onClick={() => handleViewPolicy(policy.id)} title="عرض التفاصيل">
+                                  <Button variant="ghost" size="sm" onClick={() => handleShowCalculation(policy)} title="شرح الحسبة">
                                     <Eye className="h-4 w-4" />
                                   </Button>
                                 </div>
@@ -1294,6 +1334,14 @@ export default function CompanySettlement() {
           onSaved={handleSupplementSaved}
         />
       )}
+
+      {/* Calculation Explanation Modal */}
+      <CalculationExplanationModal
+        open={calculationModalOpen}
+        onOpenChange={setCalculationModalOpen}
+        policy={selectedPolicyForCalc}
+        company={selectedCompanyForCalc}
+      />
     </MainLayout>
   );
 }
