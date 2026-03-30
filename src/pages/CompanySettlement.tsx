@@ -98,6 +98,7 @@ export default function CompanySettlement() {
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [companySearch, setCompanySearch] = useState('');
   const [filteredCompanies, setFilteredCompanies] = useState<CompanyOption[]>([]);
+  const [allCompanies, setAllCompanies] = useState<CompanyOption[]>([]);
   
   // Policies without company
   const [policiesWithoutCompany, setPoliciesWithoutCompany] = useState<PolicyWithoutCompany[]>([]);
