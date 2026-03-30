@@ -614,9 +614,26 @@ export default function CompanySettlement() {
           insurance_price: Number(editValues.insurance_price),
           payed_for_company: Number(editValues.payed_for_company),
           profit: Number(editValues.profit),
+          start_date: editValues.start_date,
+          end_date: editValues.end_date,
+          issue_date: editValues.issue_date || null,
+          policy_type_parent: editValues.policy_type_parent as Enums<'policy_type_parent'>,
+          policy_type_child: editValues.policy_type_child ? editValues.policy_type_child as Enums<'policy_type_child'> : null,
+          company_id: editValues.company_id || null,
         })
         .eq('id', editingPolicyId);
       if (error) throw error;
+
+      // Update car_value if car exists
+      const editedPolicy = brokerPolicies.find(p => p.id === editingPolicyId);
+      if (editedPolicy?.car_id && editValues.car_value) {
+        const { error: carError } = await supabase
+          .from('cars')
+          .update({ car_value: Number(editValues.car_value) })
+          .eq('id', editedPolicy.car_id);
+        if (carError) console.error('Error updating car value:', carError);
+      }
+
       toast({ title: 'تم الحفظ بنجاح' });
       setEditingPolicyId(null);
       await fetchBrokerPolicies();
