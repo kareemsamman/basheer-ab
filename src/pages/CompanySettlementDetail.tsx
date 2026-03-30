@@ -345,7 +345,7 @@ export default function CompanySettlementDetail() {
           transferred,
           transferred_to_car_number,
           created_by_admin_id,
-          clients!inner (
+          clients (
             id,
             full_name
           ),
