@@ -428,6 +428,8 @@ export default function CompanySettlement() {
         transferred: p.transferred,
         client_name: p.clients?.full_name || null,
         car_number: p.cars?.car_number || null,
+        car_id: p.cars?.id || null,
+        car_value: p.cars?.car_value || null,
         company_name: p.insurance_companies?.name || null,
         company_name_ar: p.insurance_companies?.name_ar || null,
         company_id: p.company_id || null,
