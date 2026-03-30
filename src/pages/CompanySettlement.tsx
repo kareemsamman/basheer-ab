@@ -1251,9 +1251,11 @@ export default function CompanySettlement() {
                               {s.is_cancelled && <Badge variant="destructive" className="mr-2 text-xs">ملغية</Badge>}
                             </TableCell>
                             <TableCell className="font-mono"><bdi>{s.car_number || '-'}</bdi></TableCell>
+                            <TableCell>-</TableCell>
                             <TableCell>
                               {s.policy_type ? <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">{s.policy_type}</Badge> : '-'}
                             </TableCell>
+                            <TableCell>-</TableCell>
                             <TableCell>-</TableCell>
                             <TableCell>{s.start_date ? formatDate(s.start_date) : formatDate(s.settlement_date)}</TableCell>
                             <TableCell>{s.end_date ? formatDate(s.end_date) : '-'}</TableCell>
