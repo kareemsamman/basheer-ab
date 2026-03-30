@@ -145,7 +145,12 @@ export default function CompanySettlement() {
 
   // Inline edit
   const [editingPolicyId, setEditingPolicyId] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState({ insurance_price: '', payed_for_company: '', profit: '' });
+  const [editValues, setEditValues] = useState({
+    insurance_price: '', payed_for_company: '', profit: '',
+    start_date: '', end_date: '', issue_date: '',
+    policy_type_parent: '', policy_type_child: '',
+    company_id: '', car_value: '',
+  });
   const [savingEdit, setSavingEdit] = useState(false);
 
   const isBrokerFiltered = selectedBrokers.length > 0;
