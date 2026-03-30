@@ -236,12 +236,13 @@ export async function calculatePolicyProfit(params: CalculateProfitParams): Prom
 
         // Calculate full component
         let fullComponent = 0;
-        if (carValue && carValue >= 60000 && fullPercent > 0) {
+        if (carValue && carValue > 0 && fullPercent > 0) {
           fullComponent = carValue * (fullPercent / 100);
-        } else if (minPrice > 0) {
+        }
+        // MIN_PRICE acts as a floor: if percentage result is below MIN_PRICE, use MIN_PRICE
+        if (minPrice > 0 && fullComponent < minPrice) {
           fullComponent = minPrice;
         }
-        // If no full percent and no min price, full component stays 0
 
         const companyPayment = fullComponent + thirdComponent;
         return { companyPayment, profit: insurancePrice - companyPayment };
