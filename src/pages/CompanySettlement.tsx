@@ -105,6 +105,11 @@ export default function CompanySettlement() {
   const [selectedPolicyId, setSelectedPolicyId] = useState<string | null>(null);
   const [detailsDrawerOpen, setDetailsDrawerOpen] = useState(false);
   
+  // Calculation explanation modal
+  const [calculationModalOpen, setCalculationModalOpen] = useState(false);
+  const [selectedPolicyForCalc, setSelectedPolicyForCalc] = useState<any>(null);
+  const [selectedCompanyForCalc, setSelectedCompanyForCalc] = useState<any>(null);
+  
   // Tax invoice
   const [profitPercent, setProfitPercent] = useState(10);
   const [generatingTaxInvoice, setGeneratingTaxInvoice] = useState(false);
