@@ -41,6 +41,8 @@ interface PricingRule {
   value: number;
   age_band: Enums<'age_band'> | null;
   car_type: Enums<'car_type'> | null;
+  min_car_value?: number | null;
+  max_car_value?: number | null;
 }
 
 interface CalculationExplanationModalProps {
