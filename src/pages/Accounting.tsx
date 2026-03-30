@@ -320,7 +320,7 @@ export default function Accounting() {
           if (children.length > 0 && parents.length === 0) {
             bq = bq.eq("policy_type_parent", "THIRD_FULL").in("policy_type_child", children);
           } else if (parents.length > 0 && children.length === 0) {
-            bq = bq.in("policy_type_parent", parents);
+            bq = bq.in("policy_type_parent", parents as any);
           } else {
             const orParts: string[] = [];
             if (parents.length > 0) orParts.push(`policy_type_parent.in.(${parents.join(",")})`);
