@@ -105,7 +105,7 @@ export function CalculationExplanationModal({
     try {
       const { data, error } = await supabase
         .from('pricing_rules')
-        .select('id, rule_type, value, age_band, car_type')
+        .select('id, rule_type, value, age_band, car_type, min_car_value, max_car_value')
         .eq('company_id', company.id)
         .eq('policy_type_parent', policy.policy_type_parent);
 
