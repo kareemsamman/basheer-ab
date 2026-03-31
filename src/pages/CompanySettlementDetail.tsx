@@ -766,9 +766,9 @@ export default function CompanySettlementDetail() {
         }}
       />
 
-      <div className="p-6 space-y-6 print:p-0">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6 print:p-0">
         {/* Back button and Wallet access */}
-        <div className="flex items-center justify-between flex-wrap gap-4 print:hidden">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 print:hidden">
           <Button
             variant="ghost"
             onClick={() => navigate('/reports/company-settlement')}
@@ -849,7 +849,7 @@ export default function CompanySettlementDetail() {
             </div>
 
             {/* Action buttons row */}
-            <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-border">
+            <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-border text-xs sm:text-sm">
               <Button 
                 variant="default" 
                 onClick={handleGenerateReport}
@@ -936,7 +936,7 @@ export default function CompanySettlementDetail() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
@@ -997,17 +997,17 @@ export default function CompanySettlementDetail() {
         {/* Policies Table */}
         <Card>
           <CardHeader className="print:pb-2">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <CardTitle>الوثائق ({filteredPolicies.length})</CardTitle>
-              <div className="flex items-center gap-2 flex-1 max-w-md print:hidden">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <CardTitle className="text-base md:text-lg">الوثائق ({filteredPolicies.length})</CardTitle>
+              <div className="flex items-center gap-2 w-full sm:w-auto sm:flex-1 sm:max-w-md print:hidden">
                 <Button size="sm" variant="outline" onClick={() => { setEditingSupplement(null); setShowSupplementForm(true); }}>
                   <Plus className="h-4 w-4 ml-1" />
-                  ملحق
+                  <span className="hidden sm:inline">ملحق</span>
                 </Button>
                 <div className="relative flex-1">
                   <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="بحث: اسم، رقم سيارة، مبلغ..."
+                    placeholder="بحث بالاسم أو رقم السيارة..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pr-10"
@@ -1017,17 +1017,16 @@ export default function CompanySettlementDetail() {
                   variant="outline"
                   size="sm"
                   onClick={() => setSortAsc(!sortAsc)}
-                  className="gap-2"
+                  className="shrink-0"
                 >
                   <ArrowUpDown className="h-4 w-4" />
-                  {sortAsc ? 'من الأقدم للأحدث' : 'من الأحدث للأقدم'}
                 </Button>
               </div>
             </div>
           </CardHeader>
           <CardContent>
-             <div className="rounded-lg border max-h-[70vh] overflow-y-auto overflow-x-scroll scrollbar-always-visible-grey">
-              <Table>
+             <div className="rounded-lg border max-h-[70vh] overflow-y-auto overflow-x-auto scrollbar-always-visible-grey -mx-4 md:mx-0">
+              <Table className="min-w-[1200px]">
                 <TableHeader>
                     <TableRow>
                      <TableHead className="text-right">العميل</TableHead>
