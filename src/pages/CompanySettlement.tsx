@@ -876,7 +876,17 @@ export default function CompanySettlement() {
                     <Label className="text-xs text-muted-foreground">من تاريخ</Label>
                     <ArabicDatePicker
                       value={dateFrom}
-                      onChange={(v) => { setDateFrom(v); if (v) setShowAllTime(false); }}
+                      onChange={(v) => {
+                        setDateFrom(v);
+                        if (v) {
+                          setShowAllTime(false);
+                          // Auto-set end date to last day of same month
+                          const d = new Date(v);
+                          const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+                          const endStr = lastDay.toISOString().split('T')[0];
+                          if (!dateTo || dateTo < v) setDateTo(endStr);
+                        }
+                      }}
                       placeholder="DD/MM/YYYY"
                       compact
                     />
