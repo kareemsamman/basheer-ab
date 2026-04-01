@@ -1303,18 +1303,30 @@ export default function CompanySettlement() {
                               {s.customer_name && <Badge variant="outline" className="mr-2 text-xs bg-amber-100 text-amber-800 border-amber-300">يدوي</Badge>}
                               {s.is_cancelled && <Badge variant="destructive" className="mr-2 text-xs">ملغية</Badge>}
                             </TableCell>
+                            {/* رقم السيارة */}
                             <TableCell className="font-mono"><bdi>{s.car_number || '-'}</bdi></TableCell>
+                            {/* قيمة السيارة */}
+                            <TableCell className="font-mono">{s.car_value ? `₪${Number(s.car_value).toLocaleString('en-US')}` : '-'}</TableCell>
+                            {/* نوع المركبة */}
                             <TableCell>-</TableCell>
+                            {/* نوع التأمين */}
                             <TableCell>
                               {s.policy_type ? <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">{s.policy_type}</Badge> : '-'}
                             </TableCell>
+                            {/* الشركة */}
                             <TableCell>-</TableCell>
-                            <TableCell>-</TableCell>
+                            {/* تاريخ الإصدار */}
                             <TableCell>{s.start_date ? formatDate(s.start_date) : formatDate(s.settlement_date)}</TableCell>
+                            {/* تاريخ البداية */}
+                            <TableCell>{s.start_date ? formatDate(s.start_date) : formatDate(s.settlement_date)}</TableCell>
+                            {/* تاريخ النهاية */}
                             <TableCell>{s.end_date ? formatDate(s.end_date) : '-'}</TableCell>
+                            {/* المحصل */}
                             <TableCell className="font-mono">₪{Number(s.insurance_price).toLocaleString('en-US')}</TableCell>
+                            {/* للشركة */}
                             <TableCell className="font-mono text-destructive">₪{Number(s.company_payment).toLocaleString('en-US')}</TableCell>
-                            <TableCell className="font-mono text-green-600">₪{Number(s.profit).toLocaleString('en-US')}</TableCell>
+                            {/* الربح */}
+                            <TableCell className="font-mono text-success">₪{Number(s.profit).toLocaleString('en-US')}</TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1">
                                 <Button variant="ghost" size="sm" onClick={() => { setEditingSupplement(s); setShowSupplementForm(true); }} title="تعديل">
