@@ -181,7 +181,7 @@ export default function CompanySettlement() {
       return {
         totalPolicies: acc.totalPolicies + 1,
         totalInsurancePrice: acc.totalInsurancePrice + (Number(p.insurance_price) || 0),
-        totalCompanyPayment: acc.totalCompanyPayment + (isTransferred ? 0 : (Number(p.payed_for_company) || 0)),
+        totalCompanyPayment: acc.totalCompanyPayment + (Number(p.payed_for_company) || 0),
         totalProfit: acc.totalProfit + (isTransferred ? 0 : (Number(p.profit) || 0)),
       };
     }, { totalPolicies: 0, totalInsurancePrice: 0, totalCompanyPayment: 0, totalProfit: 0 });
@@ -483,7 +483,7 @@ export default function CompanySettlement() {
           return {
             totalPolicies: acc.totalPolicies + 1,
             totalInsurancePrice: acc.totalInsurancePrice + (Number(p.insurance_price) || 0),
-            totalCompanyPayment: acc.totalCompanyPayment + (isTransferred ? 0 : (Number(p.payed_for_company) || 0)),
+            totalCompanyPayment: acc.totalCompanyPayment + (Number(p.payed_for_company) || 0),
           };
         },
         { totalPolicies: 0, totalInsurancePrice: 0, totalCompanyPayment: 0 }
