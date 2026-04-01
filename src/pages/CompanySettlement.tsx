@@ -1322,7 +1322,13 @@ export default function CompanySettlement() {
                           )});
                         })()}
                         {/* Supplement rows */}
-                        {supplements.map((s) => (
+                        {supplements.filter((s) => {
+                          if (!q) return true;
+                          return (s.customer_name || '').toLowerCase().includes(q) ||
+                            (s.car_number || '').includes(q) ||
+                            (s.description || '').toLowerCase().includes(q) ||
+                            (s.policy_type || '').toLowerCase().includes(q);
+                        }).map((s) => (
                           <TableRow key={`supp-${s.id}`} className={cn("border-amber-200", s.is_cancelled && "opacity-50 bg-muted/30", !s.is_cancelled && "bg-amber-50/50")}>
                             <TableCell className="font-medium">
                               {s.customer_name || <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">ملحق</Badge>}
