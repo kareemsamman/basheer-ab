@@ -1372,7 +1372,8 @@ export default function CompanySettlement() {
                               </div>
                             </TableCell>
                           </TableRow>
-                        ))}
+                        ));
+                        })()}
                       </TableBody>
                     </Table>
                   ) : (
