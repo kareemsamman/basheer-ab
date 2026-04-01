@@ -126,8 +126,22 @@ serve(async (req) => {
       });
     }
 
-    // Calculate summary
-    const summary = (policies || []).reduce(
+    // Fetch supplements
+    let suppQuery = supabase
+      .from("settlement_supplements")
+      .select("*")
+      .eq("company_id", company_id);
+    if (start_date) {
+      suppQuery = suppQuery.gte("settlement_date", start_date);
+    }
+    if (end_date) {
+      suppQuery = suppQuery.lte("settlement_date", end_date);
+    }
+    const { data: supplements } = await suppQuery.order("created_at", { ascending: true });
+    const activeSupplements = (supplements || []).filter((s: any) => !s.is_cancelled);
+
+    // Calculate summary (policies + supplements)
+    const policySums = (policies || []).reduce(
       (acc: any, p: any) => ({
         totalPolicies: acc.totalPolicies + 1,
         totalInsurancePrice: acc.totalInsurancePrice + (Number(p.insurance_price) || 0),
@@ -136,6 +150,21 @@ serve(async (req) => {
       }),
       { totalPolicies: 0, totalInsurancePrice: 0, totalCompanyPayment: 0, totalProfit: 0 }
     );
+    const suppSums = activeSupplements.reduce(
+      (acc: any, s: any) => ({
+        totalPolicies: acc.totalPolicies + 1,
+        totalInsurancePrice: acc.totalInsurancePrice + (Number(s.insurance_price) || 0),
+        totalCompanyPayment: acc.totalCompanyPayment + (Number(s.company_payment) || 0),
+        totalProfit: acc.totalProfit + (Number(s.profit) || 0),
+      }),
+      { totalPolicies: 0, totalInsurancePrice: 0, totalCompanyPayment: 0, totalProfit: 0 }
+    );
+    const summary = {
+      totalPolicies: policySums.totalPolicies + suppSums.totalPolicies,
+      totalInsurancePrice: policySums.totalInsurancePrice + suppSums.totalInsurancePrice,
+      totalCompanyPayment: policySums.totalCompanyPayment + suppSums.totalCompanyPayment,
+      totalProfit: policySums.totalProfit + suppSums.totalProfit,
+    };
 
     // Generate HTML report
     const html = generateReportHtml(company, policies || [], summary, {
@@ -143,7 +172,7 @@ serve(async (req) => {
       end_date,
       policy_type,
       include_cancelled,
-    });
+    }, activeSupplements);
 
     // Upload to Bunny CDN
     if (bunnyApiKey) {
