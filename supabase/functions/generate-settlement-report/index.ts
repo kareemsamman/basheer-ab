@@ -126,8 +126,22 @@ serve(async (req) => {
       });
     }
 
-    // Calculate summary
-    const summary = (policies || []).reduce(
+    // Fetch supplements
+    let suppQuery = supabase
+      .from("settlement_supplements")
+      .select("*")
+      .eq("company_id", company_id);
+    if (start_date) {
+      suppQuery = suppQuery.gte("settlement_date", start_date);
+    }
+    if (end_date) {
+      suppQuery = suppQuery.lte("settlement_date", end_date);
+    }
+    const { data: supplements } = await suppQuery.order("created_at", { ascending: true });
+    const activeSupplements = (supplements || []).filter((s: any) => !s.is_cancelled);
+
+    // Calculate summary (policies + supplements)
+    const policySums = (policies || []).reduce(
       (acc: any, p: any) => ({
         totalPolicies: acc.totalPolicies + 1,
         totalInsurancePrice: acc.totalInsurancePrice + (Number(p.insurance_price) || 0),
@@ -136,6 +150,21 @@ serve(async (req) => {
       }),
       { totalPolicies: 0, totalInsurancePrice: 0, totalCompanyPayment: 0, totalProfit: 0 }
     );
+    const suppSums = activeSupplements.reduce(
+      (acc: any, s: any) => ({
+        totalPolicies: acc.totalPolicies + 1,
+        totalInsurancePrice: acc.totalInsurancePrice + (Number(s.insurance_price) || 0),
+        totalCompanyPayment: acc.totalCompanyPayment + (Number(s.company_payment) || 0),
+        totalProfit: acc.totalProfit + (Number(s.profit) || 0),
+      }),
+      { totalPolicies: 0, totalInsurancePrice: 0, totalCompanyPayment: 0, totalProfit: 0 }
+    );
+    const summary = {
+      totalPolicies: policySums.totalPolicies + suppSums.totalPolicies,
+      totalInsurancePrice: policySums.totalInsurancePrice + suppSums.totalInsurancePrice,
+      totalCompanyPayment: policySums.totalCompanyPayment + suppSums.totalCompanyPayment,
+      totalProfit: policySums.totalProfit + suppSums.totalProfit,
+    };
 
     // Generate HTML report
     const html = generateReportHtml(company, policies || [], summary, {
@@ -143,7 +172,7 @@ serve(async (req) => {
       end_date,
       policy_type,
       include_cancelled,
-    });
+    }, activeSupplements);
 
     // Upload to Bunny CDN
     if (bunnyApiKey) {
@@ -244,7 +273,8 @@ function generateReportHtml(
   company: any,
   policies: any[],
   summary: any,
-  filters: any
+  filters: any,
+  supplements: any[] = []
 ): string {
   const companyName = company.name_ar || company.name;
   const today = formatDate(new Date().toISOString());
@@ -280,6 +310,24 @@ function generateReportHtml(
       <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: left; direction: ltr; color: #dc2626;">₪${formatNumber(p.payed_for_company || 0)}</td>
       <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: left; direction: ltr; color: #16a34a;">₪${formatNumber(p.profit || 0)}</td>
       <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${p.cancelled ? '<span style="color: #dc2626;">ملغية</span>' : p.transferred ? `<span style="color: #f59e0b;">محولة ← ${p.transferred_to_car_number || ''}</span>` : '<span style="color: #16a34a;">فعالة</span>'}</td>
+    </tr>
+  `).join("");
+
+  const supplementRows = supplements.map((s: any, index: number) => `
+    <tr style="background: #fffbeb;">
+      <td style="text-align: center; border: 1px solid #e2e8f0; padding: 8px;">${policies.length + index + 1}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px;">${s.customer_name || '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-size:11px;">ملحق يدوي</span>'}${s.customer_name ? ' <span style="background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:4px;font-size:10px;">يدوي</span>' : ''}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; direction: ltr; text-align: center;">${s.car_number || "-"}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center;">-</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center;">-</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${s.policy_type || (s.description || '-')}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: left; direction: ltr;">${s.car_value ? `₪${formatNumber(Number(s.car_value))}` : '-'}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center; direction: ltr;">${formatDateShort(s.start_date || s.settlement_date)}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center; direction: ltr;">${s.end_date ? formatDateShort(s.end_date) : '-'}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: left; direction: ltr;">₪${formatNumber(Number(s.insurance_price) || 0)}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: left; direction: ltr; color: #dc2626;">₪${formatNumber(Number(s.company_payment) || 0)}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: left; direction: ltr; color: #16a34a;">₪${formatNumber(Number(s.profit) || 0)}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center;"><span style="color: #d97706;">ملحق</span></td>
     </tr>
   `).join("");
 
@@ -497,7 +545,9 @@ function generateReportHtml(
             </tr>
           </thead>
           <tbody>
-            ${policyRows || '<tr><td colspan="13" style="text-align: center; padding: 30px;">لا توجد وثائق</td></tr>'}
+            ${policyRows || ''}
+            ${supplementRows || ''}
+            ${!policyRows && !supplementRows ? '<tr><td colspan="13" style="text-align: center; padding: 30px;">لا توجد وثائق</td></tr>' : ''}
           </tbody>
         </table>
       </div>
