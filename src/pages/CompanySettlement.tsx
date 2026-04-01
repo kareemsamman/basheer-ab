@@ -1322,7 +1322,15 @@ export default function CompanySettlement() {
                           )});
                         })()}
                         {/* Supplement rows */}
-                        {supplements.map((s) => (
+                        {(() => {
+                          const sq = companySearch.toLowerCase().trim();
+                          return supplements.filter((s) => {
+                            if (!sq) return true;
+                            return (s.customer_name || '').toLowerCase().includes(sq) ||
+                              (s.car_number || '').includes(sq) ||
+                              (s.description || '').toLowerCase().includes(sq) ||
+                              (s.policy_type || '').toLowerCase().includes(sq);
+                          }).map((s) => (
                           <TableRow key={`supp-${s.id}`} className={cn("border-amber-200", s.is_cancelled && "opacity-50 bg-muted/30", !s.is_cancelled && "bg-amber-50/50")}>
                             <TableCell className="font-medium">
                               {s.customer_name || <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">ملحق</Badge>}
@@ -1364,7 +1372,8 @@ export default function CompanySettlement() {
                               </div>
                             </TableCell>
                           </TableRow>
-                        ))}
+                        ));
+                        })()}
                       </TableBody>
                     </Table>
                   ) : (
