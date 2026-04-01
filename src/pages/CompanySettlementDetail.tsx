@@ -1338,6 +1338,7 @@ export default function CompanySettlementDetail() {
                     const isRich = !!(s.customer_name || s.car_number);
                     return (
                     <TableRow key={`supp-${s.id}`} className={cn("border-amber-200", s.is_cancelled && "opacity-50 bg-muted/30", !s.is_cancelled && "bg-amber-50/50")}>
+                      {/* العميل */}
                       <TableCell className="font-medium">
                         {isRich ? (
                           <span>{s.customer_name || '-'}</span>
@@ -1351,11 +1352,15 @@ export default function CompanySettlementDetail() {
                           <Badge variant="destructive" className="mr-2 text-xs">ملغية</Badge>
                         )}
                       </TableCell>
+                      {/* السيارة */}
                       <TableCell className="font-mono">
                         {isRich ? <bdi>{s.car_number || '-'}</bdi> : '-'}
                       </TableCell>
-                      <TableCell>{isRich ? '-' : ''}</TableCell>
-                      <TableCell>{isRich ? '-' : ''}</TableCell>
+                      {/* الشركة المصنعة */}
+                      <TableCell>-</TableCell>
+                      {/* تصنيف السيارة */}
+                      <TableCell>{isRich ? (s as any).car_type_label || '-' : '-'}</TableCell>
+                      {/* نوع التأمين */}
                       <TableCell>
                         {s.policy_type ? (
                           <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">{s.policy_type}</Badge>
@@ -1363,19 +1368,28 @@ export default function CompanySettlementDetail() {
                           <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">ملحق</Badge>
                         )}
                       </TableCell>
+                      {/* الشركة */}
                       <TableCell><span className="text-xs">{company?.name_ar || company?.name || '-'}</span></TableCell>
+                      {/* قيمة السيارة */}
                       <TableCell className="font-mono">
                         {s.car_value ? `₪${Number(s.car_value).toLocaleString('en-US')}` : '-'}
                       </TableCell>
+                      {/* تاريخ البداية */}
                       <TableCell>{s.start_date ? formatDate(s.start_date) : formatDate(s.settlement_date)}</TableCell>
+                      {/* تاريخ النهاية */}
                       <TableCell>{s.end_date ? formatDate(s.end_date) : '-'}</TableCell>
-                      <TableCell>{s.end_date ? formatDate(s.end_date) : '-'}</TableCell>
+                      {/* تاريخ الإصدار */}
+                      <TableCell>{s.start_date ? formatDate(s.start_date) : '-'}</TableCell>
+                      {/* سعر التأمين */}
                       <TableCell className="font-mono">₪{Number(s.insurance_price).toLocaleString('en-US')}</TableCell>
+                      {/* المستحق للشركة */}
                       <TableCell className="font-mono text-destructive">₪{Number(s.company_payment).toLocaleString('en-US')}</TableCell>
+                      {/* الربح */}
                       <TableCell className="font-mono text-success">₪{Number(s.profit).toLocaleString('en-US')}</TableCell>
-                      <TableCell className="print:hidden">
+                      {/* إجراءات */}
+                      <TableCell className="print:hidden sticky left-0 bg-background z-10">
                         <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => handleDuplicateSupplement(s)} title="نسخ"><Copy className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleViewPolicy((s as any).policy_id)} title="عرض التفاصيل"><Eye className="h-4 w-4" /></Button>
                           <Button variant="ghost" size="sm" onClick={() => handleEditSupplement(s)} title="تعديل"><Pencil className="h-4 w-4" /></Button>
                           <Button variant="ghost" size="sm" onClick={() => handleDeleteSupplement(s.id)} title="حذف"><Trash2 className="h-4 w-4 text-destructive" /></Button>
                         </div>
