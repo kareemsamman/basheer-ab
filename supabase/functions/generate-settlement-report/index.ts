@@ -273,7 +273,8 @@ function generateReportHtml(
   company: any,
   policies: any[],
   summary: any,
-  filters: any
+  filters: any,
+  supplements: any[] = []
 ): string {
   const companyName = company.name_ar || company.name;
   const today = formatDate(new Date().toISOString());
