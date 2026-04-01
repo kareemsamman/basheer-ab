@@ -313,6 +313,24 @@ function generateReportHtml(
     </tr>
   `).join("");
 
+  const supplementRows = supplements.map((s: any, index: number) => `
+    <tr style="background: #fffbeb;">
+      <td style="text-align: center; border: 1px solid #e2e8f0; padding: 8px;">${policies.length + index + 1}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px;">${s.customer_name || '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-size:11px;">ملحق يدوي</span>'}${s.customer_name ? ' <span style="background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:4px;font-size:10px;">يدوي</span>' : ''}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; direction: ltr; text-align: center;">${s.car_number || "-"}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center;">-</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center;">-</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${s.policy_type || (s.description || '-')}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: left; direction: ltr;">${s.car_value ? `₪${formatNumber(Number(s.car_value))}` : '-'}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center; direction: ltr;">${formatDateShort(s.start_date || s.settlement_date)}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center; direction: ltr;">${s.end_date ? formatDateShort(s.end_date) : '-'}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: left; direction: ltr;">₪${formatNumber(Number(s.insurance_price) || 0)}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: left; direction: ltr; color: #dc2626;">₪${formatNumber(Number(s.company_payment) || 0)}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: left; direction: ltr; color: #16a34a;">₪${formatNumber(Number(s.profit) || 0)}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center;"><span style="color: #d97706;">ملحق</span></td>
+    </tr>
+  `).join("");
+
   return `
 <!DOCTYPE html>
 <html dir="rtl" lang="ar">
