@@ -167,7 +167,7 @@ export default function CompanySettlement() {
     totalCompanyPayment: 0,
   });
 
-  // Detail mode summary (policies flat view)
+  // Detail mode summary (policies flat view + supplements)
   const brokerSummary = useMemo(() => {
     if (!isDetailMode) return null;
     const filtered = brokerPolicies.filter(p => {
@@ -176,7 +176,7 @@ export default function CompanySettlement() {
     });
     // Exclude ELZAMI from totals
     const settlement = filtered.filter(p => p.policy_type_parent !== 'ELZAMI');
-    return settlement.reduce((acc, p) => {
+    const policySums = settlement.reduce((acc, p) => {
       const isTransferred = p.transferred === true;
       return {
         totalPolicies: acc.totalPolicies + 1,
@@ -185,7 +185,23 @@ export default function CompanySettlement() {
         totalProfit: acc.totalProfit + (isTransferred ? 0 : (Number(p.profit) || 0)),
       };
     }, { totalPolicies: 0, totalInsurancePrice: 0, totalCompanyPayment: 0, totalProfit: 0 });
-  }, [brokerPolicies, includeCancelled, isDetailMode]);
+
+    // Add supplements to totals
+    const activeSupplements = supplements.filter(s => !s.is_cancelled);
+    const suppSums = activeSupplements.reduce((acc, s) => ({
+      totalPolicies: acc.totalPolicies + 1,
+      totalInsurancePrice: acc.totalInsurancePrice + (Number(s.insurance_price) || 0),
+      totalCompanyPayment: acc.totalCompanyPayment + (Number(s.company_payment) || 0),
+      totalProfit: acc.totalProfit + (Number(s.profit) || 0),
+    }), { totalPolicies: 0, totalInsurancePrice: 0, totalCompanyPayment: 0, totalProfit: 0 });
+
+    return {
+      totalPolicies: policySums.totalPolicies + suppSums.totalPolicies,
+      totalInsurancePrice: policySums.totalInsurancePrice + suppSums.totalInsurancePrice,
+      totalCompanyPayment: policySums.totalCompanyPayment + suppSums.totalCompanyPayment,
+      totalProfit: policySums.totalProfit + suppSums.totalProfit,
+    };
+  }, [brokerPolicies, includeCancelled, isDetailMode, supplements]);
 
   useEffect(() => {
     fetchBrokers();
