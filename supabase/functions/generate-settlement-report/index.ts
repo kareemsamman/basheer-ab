@@ -545,7 +545,9 @@ function generateReportHtml(
             </tr>
           </thead>
           <tbody>
-            ${policyRows || '<tr><td colspan="13" style="text-align: center; padding: 30px;">لا توجد وثائق</td></tr>'}
+            ${policyRows || ''}
+            ${supplementRows || ''}
+            ${!policyRows && !supplementRows ? '<tr><td colspan="13" style="text-align: center; padding: 30px;">لا توجد وثائق</td></tr>' : ''}
           </tbody>
         </table>
       </div>
