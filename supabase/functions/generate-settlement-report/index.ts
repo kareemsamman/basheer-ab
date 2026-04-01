@@ -140,14 +140,19 @@ serve(async (req) => {
     const { data: supplements } = await suppQuery.order("created_at", { ascending: true });
     const activeSupplements = (supplements || []).filter((s: any) => !s.is_cancelled);
 
-    // Calculate summary (policies + supplements)
-    const policySums = (policies || []).reduce(
-      (acc: any, p: any) => ({
-        totalPolicies: acc.totalPolicies + 1,
-        totalInsurancePrice: acc.totalInsurancePrice + (Number(p.insurance_price) || 0),
-        totalCompanyPayment: acc.totalCompanyPayment + (Number(p.payed_for_company) || 0),
-        totalProfit: acc.totalProfit + (Number(p.profit) || 0),
-      }),
+    // Calculate summary (policies + supplements) — match UI logic
+    // Exclude ELZAMI from totals; transferred policies have 0 company/profit
+    const settlementPolicies = (policies || []).filter((p: any) => p.policy_type_parent !== 'ELZAMI');
+    const policySums = settlementPolicies.reduce(
+      (acc: any, p: any) => {
+        const isTransferred = p.transferred === true;
+        return {
+          totalPolicies: acc.totalPolicies + 1,
+          totalInsurancePrice: acc.totalInsurancePrice + (Number(p.insurance_price) || 0),
+          totalCompanyPayment: acc.totalCompanyPayment + (isTransferred ? 0 : (Number(p.payed_for_company) || 0)),
+          totalProfit: acc.totalProfit + (isTransferred ? 0 : (Number(p.profit) || 0)),
+        };
+      },
       { totalPolicies: 0, totalInsurancePrice: 0, totalCompanyPayment: 0, totalProfit: 0 }
     );
     const suppSums = activeSupplements.reduce(
