@@ -65,6 +65,7 @@ import BrandingSettings from "./pages/BrandingSettings";
 import XServiceSettings from "./pages/XServiceSettings";
 import Receipts from "./pages/Receipts";
 import Accounting from "./pages/Accounting";
+import CardSearch from "./pages/CardSearch";
 import { SiteHelmet } from "@/components/layout/SiteHelmet";
 
 const queryClient = new QueryClient({

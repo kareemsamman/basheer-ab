@@ -197,7 +197,7 @@ export default function CardSearch() {
                                 {r.refused ? (
                                   <Badge variant="destructive" className="text-xs">مرفوض</Badge>
                                 ) : (
-                                  <Badge className="bg-green-500/10 text-green-700 text-xs">ناجح</Badge>
+                                  <Badge variant="secondary" className="text-xs">ناجح</Badge>
                                 )}
                               </TableCell>
                             </TableRow>
