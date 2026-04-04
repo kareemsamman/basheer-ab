@@ -1364,6 +1364,7 @@ export type Database = {
         Row: {
           amount: number
           branch_id: string | null
+          card_last_four: string | null
           cheque_image_url: string | null
           cheque_number: string | null
           client_id: string
@@ -1380,6 +1381,7 @@ export type Database = {
         Insert: {
           amount: number
           branch_id?: string | null
+          card_last_four?: string | null
           cheque_image_url?: string | null
           cheque_number?: string | null
           client_id: string
@@ -1396,6 +1398,7 @@ export type Database = {
         Update: {
           amount?: number
           branch_id?: string | null
+          card_last_four?: string | null
           cheque_image_url?: string | null
           cheque_number?: string | null
           client_id?: string
