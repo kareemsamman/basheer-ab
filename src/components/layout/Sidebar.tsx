@@ -99,6 +99,7 @@ export const navigationGroups: NavGroup[] = [
     icon: Wallet,
     items: [
       { name: "الشيكات", href: "/cheques", icon: CreditCard },
+      { name: "بحث برقم البطاقة", href: "/card-search", icon: CreditCard, adminOnly: true },
       { name: "متابعة الديون", href: "/debt-tracking", icon: DollarSign, badge: 'debt' },
       { name: "شركات التأمين", href: "/companies", icon: Building2, adminOnly: true },
       { name: "الوسطاء", href: "/brokers", icon: Wallet, adminOnly: true },

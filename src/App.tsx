@@ -65,6 +65,7 @@ import BrandingSettings from "./pages/BrandingSettings";
 import XServiceSettings from "./pages/XServiceSettings";
 import Receipts from "./pages/Receipts";
 import Accounting from "./pages/Accounting";
+import CardSearch from "./pages/CardSearch";
 import { SiteHelmet } from "@/components/layout/SiteHelmet";
 
 const queryClient = new QueryClient({
@@ -372,6 +373,12 @@ const App = () => (
                   <Accounting />
                 </AdminRoute>
               } />
+              <Route path="/card-search" element={
+                <AdminRoute>
+                  <CardSearch />
+                </AdminRoute>
+              } />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
