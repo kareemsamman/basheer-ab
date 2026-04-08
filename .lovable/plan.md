@@ -1,36 +1,44 @@
 
 
-## Plan: Fix Company Select Not Showing Pre-selected Value
+## Understanding: Receipts vs Accounting & The Duplicate Issue
 
-### Problem
-When clicking the edit (pencil) button, the company dropdown appears empty even though the policy has a company assigned. The `Select` component's value doesn't match any option.
+### Receipts (`/receipts`)
+A dedicated Hebrew receipt system using the `receipts` table. Auto-generates receipt numbers for policy payments, supports manual creation, groups by client/car/minute, and prints professional A4 Hebrew receipts.
 
-### Root Cause
-Two possible issues:
-1. The `allCompanies` array may not be loaded yet when the user clicks edit (async race condition)
-2. The `SelectValue` component needs a `placeholder` prop as fallback
+### Accounting (`/accounting`)
+An Arabic accounting ledger that **aggregates data from 6+ tables** into one unified view:
 
-### Fix in `src/pages/CompanySettlement.tsx`
-
-**1. Add placeholder to SelectValue (line ~1177)**
-```tsx
-<SelectValue placeholder="اختر شركة" />
+```text
+┌─────────────────────────────────────────────────┐
+│              ACCOUNTING DATA SOURCES             │
+├──────────────┬──────────────────────────────────┤
+│ Tab          │ Sources                          │
+├──────────────┼──────────────────────────────────┤
+│ Issuances    │ policies (grouped by group_id)   │
+│ Refunds      │ policies (cancelled)             │
+│              │ policy_payments (refused cheques) │
+│              │ customer_wallet_transactions      │
+│              │ expenses (voucher_type=refund)    │
+│ Payments     │ expenses (voucher_type=payment)   │
+│              │ company_settlements               │
+│ Receipts     │ expenses (voucher_type=receipt)   │
+│              │ policy_payments (customer pays)   │
+│ Sales        │ expenses (desc starts [مبيعات])   │
+└──────────────┴──────────────────────────────────┘
 ```
 
-**2. Add the current policy's company to editValues even if allCompanies hasn't loaded**
-No change needed — `allCompanies` fetches on mount, so it should be available. But add a debug safeguard.
+### The Duplicate Issue
+The Accounting page can show the same transaction twice if:
+1. A company settlement was created via the **Company Wallet** page (saved to `company_settlements`)
+2. AND the same payment was also recorded as an **expense** (saved to `expenses` with entity_type=company)
 
-**3. Ensure value matching works — check if `company_id` from policy is actually populated**
-In `handleStartEdit` (line 616), `policy.company_id || ''` produces `''` if null. The `Select` component in Radix won't match `''` to any `SelectItem`. 
+Both get pulled into the "payment" tab independently.
 
-Fix: Only render the `Select` with a value when `editValues.company_id` is truthy, otherwise show a placeholder-only select. Or better: always pass a valid value by defaulting to the first company.
+### Clarification Needed
+Before planning a fix, I need to understand: what specifically are you seeing duplicated? For example:
+- Company settlements appearing twice (once from `company_settlements`, once from `expenses`)?
+- Policy payments showing in both Receipts page AND Accounting page?
+- Something else?
 
-**Actual fix**: The Radix Select requires the `value` to exactly match one of the `SelectItem` values. If `editValues.company_id` is `''`, no item matches. Solution: use `value={editValues.company_id || undefined}` so Radix treats it as "no selection" and shows the placeholder instead of a broken empty state.
-
-### Changes
-- Line ~1176: Change `value={editValues.company_id}` to `value={editValues.company_id || undefined}`
-- Line ~1177: Add `placeholder="اختر شركة"` to `SelectValue`
-- Same pattern for policy_type_parent Select if it exists
-
-This is a one-line fix that ensures the Select correctly shows the pre-selected company name when editing.
+Could you show me an example of the duplicate entries, or tell me which entity type (company/broker/other) and which tab (payments/receipts) has the duplicates?
 
