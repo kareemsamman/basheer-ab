@@ -242,18 +242,19 @@ export default function Accounting() {
 
         // REFUNDS: manual refund entries (from expenses with voucher_type=refund)
         let rfq = supabase.from("expenses")
-          .select("id, amount, expense_date, created_at, description, payment_method, reference_number, insurance_companies(name_ar, name)")
+          .select("id, amount, expense_date, created_at, description, payment_method, reference_number, entity_id")
           .eq("voucher_type", "refund").eq("entity_type", "company")
           .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
         if (selectedCompanyIds.length > 0) rfq = rfq.in("entity_id", selectedCompanyIds);
         const { data: manualRefunds } = await rfq;
         for (const e of manualRefunds || []) {
-          results.push({ id: e.id, tab: "refund", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: e.created_at, description: e.description || "مرتجع", company_name: (e as any).insurance_companies?.name_ar || (e as any).insurance_companies?.name || "", payment_method: payMethodLabel[(e as any).payment_method] || "", extra: e.reference_number ? `#${e.reference_number}` : "" });
+          const co = companies.find(c => c.id === (e as any).entity_id);
+          results.push({ id: e.id, tab: "refund", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: e.created_at, description: e.description || "مرتجع", company_name: co?.name_ar || co?.name || "", payment_method: payMethodLabel[(e as any).payment_method] || "", extra: e.reference_number ? `#${e.reference_number}` : "" });
         }
 
         // PAYMENTS + RECEIPTS: expenses for company (payment, receipt)
         let pq = supabase.from("expenses")
-          .select("id, amount, expense_date, created_at, description, reference_number, payment_method, voucher_type, insurance_companies(name_ar, name)")
+          .select("id, amount, expense_date, created_at, description, reference_number, payment_method, voucher_type, entity_id")
           .eq("entity_type", "company")
           .in("voucher_type", ["payment", "receipt"])
           .gte("expense_date", fromDate).lte("expense_date", toDate);
@@ -263,7 +264,8 @@ export default function Accounting() {
           const isSale = (e.description || "").startsWith("[مبيعات]");
           const isReceipt = (e as any).voucher_type === "receipt";
           const tab = isSale ? "sale" : isReceipt ? "receipt" : "payment";
-          results.push({ id: e.id, tab, source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: (e as any).created_at || e.expense_date, description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"), company_name: (e as any).insurance_companies?.name_ar || (e as any).insurance_companies?.name || "", payment_method: isSale ? "" : payMethodLabel[(e as any).payment_method] || "", extra: e.reference_number ? `#${e.reference_number}` : "" });
+          const co = companies.find(c => c.id === (e as any).entity_id);
+          results.push({ id: e.id, tab, source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: (e as any).created_at || e.expense_date, description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"), company_name: co?.name_ar || co?.name || "", payment_method: isSale ? "" : payMethodLabel[(e as any).payment_method] || "", extra: e.reference_number ? `#${e.reference_number}` : "" });
         }
 
         // PAYMENTS: company settlements (from company wallet page)
