@@ -75,14 +75,14 @@ interface AccidentReport {
 }
 
 const statusLabels: Record<string, string> = {
-  draft: "مسودة",
-  submitted: "مُقدَّم",
+  open: "مفتوح",
+  in_progress: "قيد المتابعة",
   closed: "مُغلق",
 };
 
 const statusColors: Record<string, string> = {
-  draft: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20",
-  submitted: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+  open: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20",
+  in_progress: "bg-blue-500/10 text-blue-700 border-blue-500/20",
   closed: "bg-green-500/10 text-green-700 border-green-500/20",
 };
 
@@ -136,7 +136,7 @@ export default function AccidentReports() {
 
       // Search
       if (search.trim()) {
-        query = query.or(`clients.full_name.ilike.%${search}%,cars.car_number.ilike.%${search}%,policies.policy_number.ilike.%${search}%`);
+        query = query.or(`clients.full_name.ilike.%${search}%,clients.file_number.ilike.%${search}%,cars.car_number.ilike.%${search}%,policies.policy_number.ilike.%${search}%`);
       }
 
       // Status filter
@@ -238,7 +238,7 @@ export default function AccidentReports() {
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="بحث بالعميل، رقم السيارة، رقم الوثيقة..."
+              placeholder="بحث بالعميل، رقم الملف، رقم السيارة، رقم الوثيقة..."
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -254,8 +254,8 @@ export default function AccidentReports() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">جميع الحالات</SelectItem>
-              <SelectItem value="draft">مسودة</SelectItem>
-              <SelectItem value="submitted">مُقدَّم</SelectItem>
+              <SelectItem value="open">مفتوح</SelectItem>
+              <SelectItem value="in_progress">قيد المتابعة</SelectItem>
               <SelectItem value="closed">مُغلق</SelectItem>
             </SelectContent>
           </Select>
@@ -278,10 +278,10 @@ export default function AccidentReports() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="text-right">رقم الملف</TableHead>
                 <TableHead className="text-right">تاريخ الحادث</TableHead>
                 <TableHead className="text-right">العميل</TableHead>
                 <TableHead className="text-right">رقم السيارة</TableHead>
-                <TableHead className="text-right">رقم الوثيقة</TableHead>
                 <TableHead className="text-right">الشركة</TableHead>
                 <TableHead className="text-right">الحالة</TableHead>
                 <TableHead className="text-right">أنشئ بواسطة</TableHead>
@@ -310,6 +310,9 @@ export default function AccidentReports() {
                     className="cursor-pointer hover:bg-muted/50"
                     onClick={() => navigate(`/policies/${report.policies.id}/accident/${report.id}`)}
                   >
+                    <TableCell className="font-mono text-sm">
+                      {report.clients.file_number || "-"}
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -317,21 +320,10 @@ export default function AccidentReports() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div>
-                        <p className="font-medium">{report.clients.full_name}</p>
-                        {report.clients.file_number && (
-                          <p className="text-xs text-muted-foreground">#{report.clients.file_number}</p>
-                        )}
-                      </div>
+                      <p className="font-medium">{report.clients.full_name}</p>
                     </TableCell>
                     <TableCell className="font-mono">
                       {report.cars?.car_number || "-"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <FileText className="h-4 w-4 text-muted-foreground" />
-                        {report.policies.policy_number || "-"}
-                      </div>
                     </TableCell>
                     <TableCell>
                       {report.insurance_companies ? (
@@ -342,8 +334,8 @@ export default function AccidentReports() {
                       ) : "-"}
                     </TableCell>
                     <TableCell>
-                      <Badge className={statusColors[report.status]}>
-                        {statusLabels[report.status]}
+                      <Badge className={statusColors[report.status] || statusColors.open}>
+                        {statusLabels[report.status] || report.status}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">

@@ -162,8 +162,8 @@ export function AccidentFilesSection({ accidentReportId, onFilesChange, policyNu
       : "-";
 
     const infoRows = [
-      reportNumber ? { label: "رقم البلاغ", value: String(reportNumber) } : null,
-      { label: "رقم البوليصة", value: policyNumber || "-" },
+      reportNumber ? { label: "رقم الملف", value: String(reportNumber) } : null,
+      { label: "رقم الملف", value: policyNumber || "-" },
       { label: "تاريخ الحادث", value: formattedDate },
       clientName ? { label: "العميل", value: clientName } : null,
       carNumber ? { label: "المركبة", value: carNumber } : null,
@@ -390,7 +390,7 @@ export function AccidentFilesSection({ accidentReportId, onFilesChange, policyNu
             entityId={accidentReportId}
             onUploadComplete={handleUploadComplete}
             accept="image/*,application/pdf,video/mp4,video/webm,video/quicktime"
-            maxFiles={20}
+            maxFiles={999}
           />
 
           {/* Files Grid */}

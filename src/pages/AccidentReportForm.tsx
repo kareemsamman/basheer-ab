@@ -84,6 +84,7 @@ interface AccidentReport {
   status: string;
   accident_date: string;
   report_number: number;
+  garage_name: string | null;
 }
 
 interface AccidentNote {
@@ -101,14 +102,14 @@ interface AccidentReminder {
 }
 
 const statusLabels: Record<string, string> = {
-  draft: "مسودة",
-  submitted: "مُقدَّم",
+  open: "مفتوح",
+  in_progress: "قيد المتابعة",
   closed: "مُغلق",
 };
 
 const statusColors: Record<string, string> = {
-  draft: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20",
-  submitted: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+  open: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20",
+  in_progress: "bg-blue-500/10 text-blue-700 border-blue-500/20",
   closed: "bg-green-500/10 text-green-700 border-green-500/20",
 };
 
@@ -241,7 +242,7 @@ export default function AccidentReportForm() {
   const fetchReportById = useCallback(async (rid: string) => {
     const { data, error } = await supabase
       .from("accident_reports")
-      .select("id, policy_id, client_id, car_id, company_id, branch_id, status, accident_date, report_number")
+      .select("id, policy_id, client_id, car_id, company_id, branch_id, status, accident_date, report_number, garage_name")
       .eq("id", rid)
       .single();
 
@@ -427,9 +428,9 @@ export default function AccidentReportForm() {
                 branch_id: branchId || null,
                 accident_date: format(new Date(), "yyyy-MM-dd"),
                 created_by_admin_id: profile?.id,
-                status: "draft",
+                status: "open",
               })
-              .select("id, policy_id, client_id, car_id, company_id, branch_id, status, accident_date, report_number")
+              .select("id, policy_id, client_id, car_id, company_id, branch_id, status, accident_date, report_number, garage_name")
               .single();
 
             if (error) throw error;
@@ -486,7 +487,7 @@ export default function AccidentReportForm() {
               <h1 className="text-xl font-bold">بلاغ حادث</h1>
               {report && (
                 <p className="text-sm text-muted-foreground">
-                  رقم البلاغ: {report.report_number}
+                  رقم الملف: {report.report_number}
                 </p>
               )}
             </div>
@@ -587,9 +588,9 @@ export default function AccidentReportForm() {
 
             {/* Editable Policy Number & Accident Date */}
             {report && (
-              <div className="border-t pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="border-t pt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
                 <EditableField
-                  label="رقم البوليصة"
+                  label="رقم الملف"
                   value={policy.policy_number || ""}
                   onSave={async (val) => {
                     const { error } = await supabase
@@ -611,6 +612,19 @@ export default function AccidentReportForm() {
                       .eq("id", report.id);
                     if (error) throw error;
                     setReport({ ...report, accident_date: val });
+                  }}
+                  toast={toast}
+                />
+                <EditableField
+                  label="الكراج"
+                  value={report.garage_name || ""}
+                  onSave={async (val) => {
+                    const { error } = await supabase
+                      .from("accident_reports")
+                      .update({ garage_name: val || null })
+                      .eq("id", report.id);
+                    if (error) throw error;
+                    setReport({ ...report, garage_name: val || null });
                   }}
                   toast={toast}
                 />

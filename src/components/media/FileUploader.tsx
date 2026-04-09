@@ -58,7 +58,12 @@ export function FileUploader({
   };
 
   const addFiles = useCallback((newFiles: FileList | File[]) => {
-    const fileArray = Array.from(newFiles).slice(0, maxFiles - files.length);
+    const remaining = maxFiles - files.length;
+    let fileArray: File[] = [];
+    
+    // Support folder uploads - flatten all files from entries
+    const items = Array.from(newFiles);
+    fileArray = items.slice(0, remaining > 0 ? remaining : items.length);
     
     const uploadFiles: UploadFile[] = fileArray.map(file => {
       const error = validateFile(file);
@@ -165,7 +170,53 @@ export function FileUploader({
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    if (e.dataTransfer.files.length > 0) {
+    
+    // Support folder drops via webkitGetAsEntry
+    const items = e.dataTransfer.items;
+    if (items && items.length > 0) {
+      const allFiles: File[] = [];
+      let pending = 0;
+      
+      const checkDone = () => {
+        if (pending === 0 && allFiles.length > 0) {
+          addFiles(allFiles);
+        }
+      };
+      
+      const traverseEntry = (entry: any) => {
+        if (entry.isFile) {
+          pending++;
+          entry.file((file: File) => {
+            allFiles.push(file);
+            pending--;
+            checkDone();
+          });
+        } else if (entry.isDirectory) {
+          pending++;
+          const reader = entry.createReader();
+          reader.readEntries((entries: any[]) => {
+            for (const e of entries) {
+              traverseEntry(e);
+            }
+            pending--;
+            checkDone();
+          });
+        }
+      };
+      
+      let hasEntries = false;
+      for (let i = 0; i < items.length; i++) {
+        const entry = items[i].webkitGetAsEntry?.();
+        if (entry) {
+          hasEntries = true;
+          traverseEntry(entry);
+        }
+      }
+      
+      if (!hasEntries && e.dataTransfer.files.length > 0) {
+        addFiles(e.dataTransfer.files);
+      }
+    } else if (e.dataTransfer.files.length > 0) {
       addFiles(e.dataTransfer.files);
     }
   }, [addFiles]);
@@ -214,7 +265,7 @@ export function FileUploader({
           </div>
           
           <p className="text-sm font-medium mb-1">
-            اسحب الملفات هنا أو انقر للاختيار
+            اسحب الملفات أو المجلدات هنا أو انقر للاختيار
           </p>
           <p className="text-xs text-muted-foreground">
             صور، PDF، Word، فيديو • حد أقصى 50MB لكل ملف

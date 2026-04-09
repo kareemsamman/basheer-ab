@@ -80,14 +80,14 @@ interface ClientAccidentsTabProps {
 }
 
 const statusLabels: Record<string, string> = {
-  draft: 'مسودة',
-  submitted: 'مُقدَّم',
+  open: 'مفتوح',
+  in_progress: 'قيد المتابعة',
   closed: 'مُغلق',
 };
 
 const statusColors: Record<string, string> = {
-  draft: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20',
-  submitted: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+  open: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20',
+  in_progress: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
   closed: 'bg-gray-500/10 text-gray-600 border-gray-500/20',
 };
 
@@ -408,7 +408,7 @@ export function ClientAccidentsTab({ clientId, accidentNotes, onAccidentNotesUpd
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
-                <TableHead className="text-right">رقم البلاغ</TableHead>
+                <TableHead className="text-right">رقم الملف</TableHead>
                 <TableHead className="text-right">تاريخ الحادث</TableHead>
                 <TableHead className="text-right">السيارة</TableHead>
                 <TableHead className="text-right">الشركة</TableHead>
@@ -448,8 +448,8 @@ export function ClientAccidentsTab({ clientId, accidentNotes, onAccidentNotesUpd
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="draft">مسودة</SelectItem>
-                        <SelectItem value="submitted">مُقدَّم</SelectItem>
+                        <SelectItem value="open">مفتوح</SelectItem>
+                        <SelectItem value="in_progress">قيد المتابعة</SelectItem>
                         <SelectItem value="closed">مُغلق</SelectItem>
                       </SelectContent>
                     </Select>

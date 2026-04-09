@@ -337,6 +337,7 @@ export type Database = {
           employee_notes: string | null
           employee_signature_date: string | null
           first_license_date: string | null
+          garage_name: string | null
           generated_pdf_url: string | null
           id: string
           injuries_description: string | null
@@ -398,6 +399,7 @@ export type Database = {
           employee_notes?: string | null
           employee_signature_date?: string | null
           first_license_date?: string | null
+          garage_name?: string | null
           generated_pdf_url?: string | null
           id?: string
           injuries_description?: string | null
@@ -459,6 +461,7 @@ export type Database = {
           employee_notes?: string | null
           employee_signature_date?: string | null
           first_license_date?: string | null
+          garage_name?: string | null
           generated_pdf_url?: string | null
           id?: string
           injuries_description?: string | null
