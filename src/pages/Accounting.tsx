@@ -83,6 +83,7 @@ interface Row {
   payment_method: string;
   cheque_number?: string | null;
   extra: string;
+  is_split?: boolean;
 }
 
 const payMethodLabel: Record<string, string> = {
@@ -97,6 +98,140 @@ interface ExpandedExpenseEntry {
   reference_number: string | null;
   cheque_image_url: string | null;
   customer_cheque_ids: string[] | null;
+}
+
+interface ExpenseChequeDetail {
+  id: string;
+  amount: number;
+  payment_date: string;
+  cheque_number: string | null;
+  client_name: string;
+  car_number: string | null;
+}
+
+interface ExpenseRowLike {
+  id: string;
+  amount: number | null;
+  expense_date: string;
+  created_at: string | null;
+  description: string | null;
+  payment_method: string | null;
+  reference_number: string | null;
+  customer_cheque_ids?: string[] | null;
+}
+
+async function fetchExpenseChequeDetails(expenses: ExpenseRowLike[]) {
+  const chequeIds = [...new Set(
+    expenses.flatMap((expense) =>
+      Array.isArray(expense.customer_cheque_ids)
+        ? expense.customer_cheque_ids.filter((id): id is string => typeof id === "string" && id.length > 0)
+        : []
+    )
+  )];
+
+  if (chequeIds.length === 0) return new Map<string, ExpenseChequeDetail>();
+
+  const { data, error } = await supabase
+    .from("policy_payments")
+    .select("id, amount, payment_date, cheque_number, policies(clients(full_name), cars(car_number))")
+    .in("id", chequeIds);
+
+  if (error) throw error;
+
+  return new Map<string, ExpenseChequeDetail>(
+    (data || []).map((cheque: any) => [
+      cheque.id,
+      {
+        id: cheque.id,
+        amount: Number(cheque.amount) || 0,
+        payment_date: cheque.payment_date,
+        cheque_number: cheque.cheque_number || null,
+        client_name: cheque.policies?.clients?.full_name || "-",
+        car_number: cheque.policies?.cars?.car_number || null,
+      },
+    ])
+  );
+}
+
+function buildExpenseLedgerRows({
+  expense,
+  tab,
+  description,
+  company_name,
+  payment_method,
+  extra,
+  chequeDetailsMap,
+}: {
+  expense: ExpenseRowLike;
+  tab: Row["tab"];
+  description: string;
+  company_name: string;
+  payment_method: string;
+  extra: string;
+  chequeDetailsMap: Map<string, ExpenseChequeDetail>;
+}): Row[] {
+  const issueDate = expense.created_at || expense.expense_date;
+  const chequeIds = Array.isArray(expense.customer_cheque_ids) ? expense.customer_cheque_ids : [];
+  const chequeDetails = chequeIds
+    .map((id) => chequeDetailsMap.get(id))
+    .filter((detail): detail is ExpenseChequeDetail => Boolean(detail));
+
+  if (chequeDetails.length === 0) {
+    return [{
+      id: expense.id,
+      tab,
+      source: "expense",
+      client_name: "",
+      car_number: null,
+      types: [],
+      amount: expense.amount || 0,
+      date: expense.expense_date,
+      issue_date: issueDate,
+      description,
+      company_name,
+      payment_method,
+      cheque_number: expense.payment_method === "cheque" ? expense.reference_number || null : null,
+      extra,
+    }];
+  }
+
+  if (chequeDetails.length === 1) {
+    const [detail] = chequeDetails;
+    return [{
+      id: expense.id,
+      tab,
+      source: "expense",
+      client_name: detail.client_name,
+      car_number: detail.car_number,
+      types: [],
+      amount: detail.amount || expense.amount || 0,
+      date: detail.payment_date || expense.expense_date,
+      issue_date: issueDate,
+      description,
+      company_name,
+      payment_method,
+      cheque_number: detail.cheque_number || expense.reference_number || null,
+      extra,
+    }];
+  }
+
+  return chequeDetails.map((detail) => ({
+    id: `${expense.id}:${detail.id}`,
+    tab,
+    source: "expense",
+    client_name: detail.client_name,
+    car_number: detail.car_number,
+    types: [],
+    amount: detail.amount,
+    date: detail.payment_date || expense.expense_date,
+    issue_date: issueDate,
+    description,
+    company_name,
+    payment_method,
+    cheque_number: detail.cheque_number,
+    extra,
+    is_split: true,
+  }));
 }
 
 function expandPaymentLineEntries(payment: PaymentLine): ExpandedExpenseEntry[] {
@@ -276,30 +411,48 @@ export default function Accounting() {
 
         // REFUNDS: manual refund entries (from expenses with voucher_type=refund)
         let rfq = supabase.from("expenses")
-          .select("id, amount, expense_date, created_at, description, payment_method, reference_number, entity_id")
+          .select("id, amount, expense_date, created_at, description, payment_method, reference_number, entity_id, customer_cheque_ids")
           .eq("voucher_type", "refund").eq("entity_type", "company")
           .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
         if (selectedCompanyIds.length > 0) rfq = rfq.in("entity_id", selectedCompanyIds);
         const { data: manualRefunds } = await rfq;
+        const companyRefundChequeMap = await fetchExpenseChequeDetails((manualRefunds || []) as ExpenseRowLike[]);
         for (const e of manualRefunds || []) {
           const co = companies.find(c => c.id === (e as any).entity_id);
-          results.push({ id: e.id, tab: "refund", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: e.created_at, description: e.description || "مرتجع", company_name: co?.name_ar || co?.name || "", payment_method: payMethodLabel[(e as any).payment_method] || "", cheque_number: (e as any).payment_method === "cheque" ? e.reference_number || null : null, extra: e.reference_number ? `#${e.reference_number}` : "" });
+          results.push(...buildExpenseLedgerRows({
+            expense: e as ExpenseRowLike,
+            tab: "refund",
+            description: e.description || "مرتجع",
+            company_name: co?.name_ar || co?.name || "",
+            payment_method: payMethodLabel[(e as any).payment_method] || "",
+            extra: e.reference_number ? `#${e.reference_number}` : "",
+            chequeDetailsMap: companyRefundChequeMap,
+          }));
         }
 
         // PAYMENTS + RECEIPTS: expenses for company (payment, receipt)
         let pq = supabase.from("expenses")
-          .select("id, amount, expense_date, created_at, description, reference_number, payment_method, voucher_type, entity_id")
+          .select("id, amount, expense_date, created_at, description, reference_number, payment_method, voucher_type, entity_id, customer_cheque_ids")
           .eq("entity_type", "company")
           .in("voucher_type", ["payment", "receipt"])
           .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
         if (selectedCompanyIds.length > 0) pq = pq.in("entity_id", selectedCompanyIds);
         const { data: pays } = await pq;
+        const companyExpenseChequeMap = await fetchExpenseChequeDetails((pays || []) as ExpenseRowLike[]);
         for (const e of pays || []) {
           const isSale = (e.description || "").startsWith("[مبيعات]");
           const isReceipt = (e as any).voucher_type === "receipt";
           const tab = isSale ? "sale" : isReceipt ? "receipt" : "payment";
           const co = companies.find(c => c.id === (e as any).entity_id);
-          results.push({ id: e.id, tab, source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: (e as any).created_at || e.expense_date, description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"), company_name: co?.name_ar || co?.name || "", payment_method: isSale ? "" : payMethodLabel[(e as any).payment_method] || "", cheque_number: (e as any).payment_method === "cheque" ? e.reference_number || null : null, extra: e.reference_number ? `#${e.reference_number}` : "" });
+          results.push(...buildExpenseLedgerRows({
+            expense: e as ExpenseRowLike,
+            tab,
+            description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"),
+            company_name: co?.name_ar || co?.name || "",
+            payment_method: isSale ? "" : payMethodLabel[(e as any).payment_method] || "",
+            extra: e.reference_number ? `#${e.reference_number}` : "",
+            chequeDetailsMap: companyExpenseChequeMap,
+          }));
         }
 
         // PAYMENTS: company settlements (from company wallet page)
@@ -362,31 +515,49 @@ export default function Accounting() {
 
         // BROKER REFUNDS (manual)
         let brfq = supabase.from("expenses")
-          .select("id, amount, expense_date, created_at, description, payment_method, reference_number, entity_id")
+          .select("id, amount, expense_date, created_at, description, payment_method, reference_number, entity_id, customer_cheque_ids")
           .eq("voucher_type", "refund").eq("entity_type", "broker")
           .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
         if (selectedBrokerId !== "all") brfq = brfq.eq("entity_id", selectedBrokerId);
         const { data: brokerRefunds } = await brfq;
+        const brokerRefundChequeMap = await fetchExpenseChequeDetails((brokerRefunds || []) as ExpenseRowLike[]);
         for (const e of brokerRefunds || []) {
           const bName = brokers.find(b => b.id === (e as any).entity_id)?.name || "";
-          results.push({ id: e.id, tab: "refund", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: e.created_at, description: e.description || "مرتجع", company_name: "", payment_method: payMethodLabel[(e as any).payment_method] || "", cheque_number: null, extra: bName });
+          results.push(...buildExpenseLedgerRows({
+            expense: e as ExpenseRowLike,
+            tab: "refund",
+            description: e.description || "مرتجع",
+            company_name: "",
+            payment_method: payMethodLabel[(e as any).payment_method] || "",
+            extra: bName,
+            chequeDetailsMap: brokerRefundChequeMap,
+          }));
         }
 
         // BROKER EXPENSES (payment + receipt)
         let beq = supabase.from("expenses")
-          .select("id, amount, expense_date, created_at, description, reference_number, voucher_type, payment_method, entity_id")
+          .select("id, amount, expense_date, created_at, description, reference_number, voucher_type, payment_method, entity_id, customer_cheque_ids")
           .eq("entity_type", "broker")
           .in("voucher_type", ["payment", "receipt"])
           .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
         if (selectedBrokerId !== "all") beq = beq.eq("entity_id", selectedBrokerId);
         const { data: bExps, error: bExpsErr } = await beq;
         if (bExpsErr) console.error("Broker expenses error:", bExpsErr);
+        const brokerExpenseChequeMap = await fetchExpenseChequeDetails((bExps || []) as ExpenseRowLike[]);
         for (const e of bExps || []) {
           const isSale = (e.description || "").startsWith("[مبيعات]");
           const isReceipt = e.voucher_type === "receipt";
           const brokerName = brokers.find(b => b.id === e.entity_id)?.name || "";
           const tab = isSale ? "sale" : isReceipt ? "receipt" : "payment";
-          results.push({ id: e.id, tab, source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: (e as any).created_at || e.expense_date, description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"), company_name: "", payment_method: isSale ? "" : payMethodLabel[(e as any).payment_method] || "", cheque_number: (e as any).payment_method === "cheque" ? e.reference_number || null : null, extra: brokerName });
+          results.push(...buildExpenseLedgerRows({
+            expense: e as ExpenseRowLike,
+            tab,
+            description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"),
+            company_name: "",
+            payment_method: isSale ? "" : payMethodLabel[(e as any).payment_method] || "",
+            extra: brokerName,
+            chequeDetailsMap: brokerExpenseChequeMap,
+          }));
         }
 
         // BROKER SETTLEMENTS (from broker wallet)
@@ -406,28 +577,26 @@ export default function Accounting() {
       } else {
         // OTHER: manual entries stored in expenses with entity_type = "manual"
         let oq = supabase.from("expenses")
-          .select("id, amount, expense_date, created_at, description, contact_name, voucher_type, payment_method, reference_number, notes")
+          .select("id, amount, expense_date, created_at, description, contact_name, voucher_type, payment_method, reference_number, notes, customer_cheque_ids")
           .eq("entity_type", "manual")
           .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
         if (otherName) oq = oq.eq("contact_name", otherName);
         const { data: oData } = await oq.order("created_at", { ascending: false });
+        const otherExpenseChequeMap = await fetchExpenseChequeDetails((oData || []) as ExpenseRowLike[]);
 
         for (const e of oData || []) {
           const isSale = (e.description || "").startsWith("[مبيعات]");
           const isReceipt = e.voucher_type === "receipt";
           const tab = isSale ? "sale" as const : isReceipt ? "receipt" as const : "payment" as const;
-          results.push({
-            id: e.id, tab, source: "expense",
-            client_name: "", car_number: null, types: [],
-            amount: e.amount || 0,
-            date: e.expense_date,
-            issue_date: e.created_at,
+          results.push(...buildExpenseLedgerRows({
+            expense: e as ExpenseRowLike,
+            tab,
             description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"),
             company_name: e.contact_name || "",
             payment_method: payMethodLabel[e.payment_method || ""] || e.payment_method || "",
-            cheque_number: e.payment_method === "cheque" ? e.reference_number || null : null,
             extra: e.reference_number ? `#${e.reference_number}` : "",
-          });
+            chequeDetailsMap: otherExpenseChequeMap,
+          }));
         }
 
         // Also load legacy ab_ledger manual entries
@@ -1062,7 +1231,7 @@ export default function Accounting() {
                 receipt: { text: "سند قبض", variant: "secondary" },
               };
               const b = badges[r.tab];
-              const canAct = r.source === "settlement" || r.source === "broker_settlement" || r.source === "expense" || r.source === "ledger";
+              const canAct = !r.is_split && (r.source === "settlement" || r.source === "broker_settlement" || r.source === "expense" || r.source === "ledger");
               const isCheque = r.payment_method.includes("شيك");
               return (<TableRow key={`${r.tab}-${r.id}-${i}`}>
                 <TableCell className="text-muted-foreground">{page * PAGE_SIZE + i + 1}</TableCell>
