@@ -1,0 +1,1 @@
+ALTER TABLE public.accident_reports ADD COLUMN garage_name text;
