@@ -25,10 +25,11 @@ export interface SelectableCheque {
   payment_date: string;
   cheque_number: string | null;
   cheque_image_url: string | null;
-  policy_id: string;
+  policy_id?: string | null;
   client_name: string;
   client_phone: string | null;
   car_number: string | null;
+  source_type?: 'policy' | 'outside';
 }
 
 interface CustomerChequeSelectorProps {
@@ -53,7 +54,6 @@ export function CustomerChequeSelector({
   const fetchAvailableCheques = async () => {
     setLoading(true);
     try {
-      // Fetch only waiting cheques (pending status, not transferred, not refused)
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('policy_payments')
         .select('id, amount, payment_date, cheque_number, cheque_image_url, policy_id')
@@ -70,41 +70,43 @@ export function CustomerChequeSelector({
       }
 
       const waitingPayments = paymentsData || [];
-
-      if (waitingPayments.length === 0) {
-        setAvailableCheques([]);
-        setLoading(false);
-        return;
-      }
-
-      // Get policy IDs to fetch client/car info
       const policyIds = [...new Set(waitingPayments.map((p: any) => p.policy_id))];
-      
-      const { data: policiesData } = await supabase
-        .from('policies')
-        .select('id, client_id, car_id')
-        .in('id', policyIds);
+
+      const [{ data: policiesData }, { data: outsideChequesData, error: outsideError }] = await Promise.all([
+        policyIds.length > 0
+          ? supabase.from('policies').select('id, client_id, car_id').in('id', policyIds)
+          : Promise.resolve({ data: [] as any[] }),
+        supabase
+          .from('outside_cheques')
+          .select('id, amount, cheque_date, cheque_number, cheque_image_url, name, used, refused, transferred_to_type')
+          .or('used.is.null,used.eq.false')
+          .or('refused.is.null,refused.eq.false')
+          .is('transferred_to_type', null)
+          .order('cheque_date', { ascending: true }),
+      ]);
+
+      if (outsideError) {
+        console.error('Error fetching outside cheques:', outsideError);
+        throw outsideError;
+      }
 
       const clientIds = [...new Set((policiesData || []).map((p: any) => p.client_id).filter(Boolean))];
       const carIds = [...new Set((policiesData || []).map((p: any) => p.car_id).filter(Boolean))];
 
-      const { data: clientsData } = await supabase
-        .from('clients')
-        .select('id, full_name, phone_number')
-        .in('id', clientIds);
+      const [{ data: clientsData }, { data: carsData }] = await Promise.all([
+        clientIds.length > 0
+          ? supabase.from('clients').select('id, full_name, phone_number').in('id', clientIds)
+          : Promise.resolve({ data: [] as any[] }),
+        carIds.length > 0
+          ? supabase.from('cars').select('id, car_number').in('id', carIds)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
 
-      const { data: carsData } = await supabase
-        .from('cars')
-        .select('id, car_number')
-        .in('id', carIds);
-
-      // Build lookup maps
       const clientsMap = new Map((clientsData || []).map((c: any) => [c.id, c]));
       const carsMap = new Map((carsData || []).map((c: any) => [c.id, c]));
       const policiesMap = new Map((policiesData || []).map((p: any) => [p.id, p]));
 
-      // Format the cheques
-      const formattedCheques: SelectableCheque[] = waitingPayments.map((p: any) => {
+      const formattedPolicyCheques: SelectableCheque[] = waitingPayments.map((p: any) => {
         const policy = policiesMap.get(p.policy_id);
         const client = policy ? clientsMap.get(policy.client_id) : null;
         const car = policy?.car_id ? carsMap.get(policy.car_id) : null;
@@ -119,10 +121,24 @@ export function CustomerChequeSelector({
           client_name: client?.full_name || 'غير معروف',
           client_phone: client?.phone_number || null,
           car_number: car?.car_number || null,
+          source_type: 'policy',
         };
       });
 
-      setAvailableCheques(formattedCheques);
+      const formattedOutsideCheques: SelectableCheque[] = (outsideChequesData || []).map((c: any) => ({
+        id: c.id,
+        amount: Number(c.amount) || 0,
+        payment_date: c.cheque_date,
+        cheque_number: c.cheque_number,
+        cheque_image_url: c.cheque_image_url,
+        policy_id: null,
+        client_name: c.name || 'شيك خارجي',
+        client_phone: null,
+        car_number: null,
+        source_type: 'outside',
+      }));
+
+      setAvailableCheques([...formattedPolicyCheques, ...formattedOutsideCheques]);
     } catch (error) {
       console.error('Error fetching cheques:', error);
     } finally {
@@ -219,7 +235,7 @@ export function CustomerChequeSelector({
           <div className="p-8 text-center text-muted-foreground">
             <Receipt className="h-10 w-10 mx-auto mb-2 opacity-50" />
             <p>لا توجد شيكات متاحة</p>
-            <p className="text-xs mt-1">فقط الشيكات بحالة "قيد الانتظار" يمكن اختيارها</p>
+            <p className="text-xs mt-1">تظهر هنا شيكات العملاء والشيكات الخارجية المتاحة للاختيار</p>
           </div>
         ) : (
           <Table>
