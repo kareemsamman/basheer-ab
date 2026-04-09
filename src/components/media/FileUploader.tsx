@@ -265,7 +265,7 @@ export function FileUploader({
           </div>
           
           <p className="text-sm font-medium mb-1">
-            اسحب الملفات هنا أو انقر للاختيار
+            اسحب الملفات أو المجلدات هنا أو انقر للاختيار
           </p>
           <p className="text-xs text-muted-foreground">
             صور، PDF، Word، فيديو • حد أقصى 50MB لكل ملف
@@ -278,9 +278,6 @@ export function FileUploader({
           type="file"
           multiple
           accept={accept}
-          // @ts-ignore - webkitdirectory is not in standard types
-          webkitdirectory=""
-          directory=""
           className="hidden"
           onChange={(e) => e.target.files && addFiles(e.target.files)}
         />
