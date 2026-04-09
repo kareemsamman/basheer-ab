@@ -534,6 +534,30 @@ export function Step4Payments({
                     </div>
                   </div>
                   
+                  {/* Duplicate Cheque Warning */}
+                  {payment.payment_type === 'cheque' && chequeDuplicates[payment.id] && (
+                    <div className="mt-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-700 flex items-start gap-3">
+                      <Info className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                      <div className="flex-1 space-y-1">
+                        <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                          شيك موجود مسبقاً!
+                        </p>
+                        <p className="text-xs text-amber-700 dark:text-amber-300">
+                          الشيك رقم {payment.cheque_number} موجود للعميل: <strong>{chequeDuplicates[payment.id]!.clientName}</strong> بمبلغ ₪{chequeDuplicates[payment.id]!.amount.toLocaleString()}
+                        </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="mt-1 h-7 text-xs border-amber-300 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                          onClick={() => handleSwitchToCustomerCheque(payment.id)}
+                        >
+                          استخدام كشيك عميل موجود
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Image Upload Section for Cash/Cheque/Transfer */}
                   {(payment.payment_type === 'cash' || payment.payment_type === 'cheque' || payment.payment_type === 'transfer') && !visaPaid && (
                     <div className="mt-3 pt-3 border-t border-border/50">
