@@ -81,6 +81,7 @@ interface Row {
   description: string;
   company_name: string;
   payment_method: string;
+  cheque_number?: string | null;
   extra: string;
 }
 
@@ -231,7 +232,7 @@ export default function Accounting() {
         for (const c of chqs || []) {
           const pol = (c as any).policies;
           if (selectedCompanyIds.length > 0 && !selectedCompanyIds.includes(pol?.company_id)) continue;
-          results.push({ id: c.id, tab: "refund", source: "cheque", client_name: pol?.clients?.full_name || "-", car_number: pol?.cars?.car_number || null, types: [], amount: c.amount || 0, date: c.payment_date, issue_date: c.payment_date, description: `شيك مرتجع${c.cheque_number ? ` #${c.cheque_number}` : ""}`, company_name: pol?.insurance_companies?.name_ar || pol?.insurance_companies?.name || "", payment_method: "شيك", extra: "" });
+          results.push({ id: c.id, tab: "refund", source: "cheque", client_name: pol?.clients?.full_name || "-", car_number: pol?.cars?.car_number || null, types: [], amount: c.amount || 0, date: c.payment_date, issue_date: c.payment_date, description: `شيك مرتجع${c.cheque_number ? ` #${c.cheque_number}` : ""}`, company_name: pol?.insurance_companies?.name_ar || pol?.insurance_companies?.name || "", payment_method: "شيك", cheque_number: c.cheque_number || null, extra: "" });
         }
 
         // REFUNDS: customer wallet (negative = money owed)
@@ -251,7 +252,7 @@ export default function Accounting() {
         const { data: manualRefunds } = await rfq;
         for (const e of manualRefunds || []) {
           const co = companies.find(c => c.id === (e as any).entity_id);
-          results.push({ id: e.id, tab: "refund", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: e.created_at, description: e.description || "مرتجع", company_name: co?.name_ar || co?.name || "", payment_method: payMethodLabel[(e as any).payment_method] || "", extra: e.reference_number ? `#${e.reference_number}` : "" });
+          results.push({ id: e.id, tab: "refund", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: e.created_at, description: e.description || "مرتجع", company_name: co?.name_ar || co?.name || "", payment_method: payMethodLabel[(e as any).payment_method] || "", cheque_number: (e as any).payment_method === "cheque" ? e.reference_number || null : null, extra: e.reference_number ? `#${e.reference_number}` : "" });
         }
 
         // PAYMENTS + RECEIPTS: expenses for company (payment, receipt)
@@ -267,7 +268,7 @@ export default function Accounting() {
           const isReceipt = (e as any).voucher_type === "receipt";
           const tab = isSale ? "sale" : isReceipt ? "receipt" : "payment";
           const co = companies.find(c => c.id === (e as any).entity_id);
-          results.push({ id: e.id, tab, source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: (e as any).created_at || e.expense_date, description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"), company_name: co?.name_ar || co?.name || "", payment_method: isSale ? "" : payMethodLabel[(e as any).payment_method] || "", extra: e.reference_number ? `#${e.reference_number}` : "" });
+          results.push({ id: e.id, tab, source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: (e as any).created_at || e.expense_date, description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"), company_name: co?.name_ar || co?.name || "", payment_method: isSale ? "" : payMethodLabel[(e as any).payment_method] || "", cheque_number: (e as any).payment_method === "cheque" ? e.reference_number || null : null, extra: e.reference_number ? `#${e.reference_number}` : "" });
         }
 
         // PAYMENTS: company settlements (from company wallet page)
@@ -279,8 +280,8 @@ export default function Accounting() {
         const { data: settlements } = await csq;
         for (const s of settlements || []) {
           if ((s as any).status === "refused") continue;
-          const payMethodText = s.payment_type === "cheque" ? `شيك${s.cheque_number ? ` #${s.cheque_number}` : ""}` : payMethodLabel[s.payment_type || ""] || s.payment_type || "";
-          results.push({ id: s.id, tab: "payment", source: "settlement", client_name: "", car_number: null, types: [], amount: s.total_amount || 0, date: s.settlement_date, issue_date: s.created_at, description: s.notes || "تسوية شركة", company_name: (s as any).insurance_companies?.name_ar || (s as any).insurance_companies?.name || "", payment_method: payMethodText, extra: "" });
+          const payMethodText = payMethodLabel[s.payment_type || ""] || s.payment_type || "";
+          results.push({ id: s.id, tab: "payment", source: "settlement", client_name: "", car_number: null, types: [], amount: s.total_amount || 0, date: s.settlement_date, issue_date: s.created_at, description: s.notes || "تسوية شركة", company_name: (s as any).insurance_companies?.name_ar || (s as any).insurance_companies?.name || "", payment_method: payMethodText, cheque_number: s.cheque_number || null, extra: "" });
         }
 
         // NOTE: policy_payments (customer payments) are NOT included here.
@@ -337,7 +338,7 @@ export default function Accounting() {
         const { data: brokerRefunds } = await brfq;
         for (const e of brokerRefunds || []) {
           const bName = brokers.find(b => b.id === (e as any).entity_id)?.name || "";
-          results.push({ id: e.id, tab: "refund", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: e.created_at, description: e.description || "مرتجع", company_name: "", payment_method: payMethodLabel[(e as any).payment_method] || "", extra: bName });
+          results.push({ id: e.id, tab: "refund", source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: e.created_at, description: e.description || "مرتجع", company_name: "", payment_method: payMethodLabel[(e as any).payment_method] || "", cheque_number: null, extra: bName });
         }
 
         // BROKER EXPENSES (payment + receipt)
@@ -354,7 +355,7 @@ export default function Accounting() {
           const isReceipt = e.voucher_type === "receipt";
           const brokerName = brokers.find(b => b.id === e.entity_id)?.name || "";
           const tab = isSale ? "sale" : isReceipt ? "receipt" : "payment";
-          results.push({ id: e.id, tab, source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: (e as any).created_at || e.expense_date, description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"), company_name: "", payment_method: isSale ? "" : payMethodLabel[(e as any).payment_method] || "", extra: brokerName });
+          results.push({ id: e.id, tab, source: "expense", client_name: "", car_number: null, types: [], amount: e.amount || 0, date: e.expense_date, issue_date: (e as any).created_at || e.expense_date, description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"), company_name: "", payment_method: isSale ? "" : payMethodLabel[(e as any).payment_method] || "", cheque_number: (e as any).payment_method === "cheque" ? e.reference_number || null : null, extra: brokerName });
         }
 
         // BROKER SETTLEMENTS (from broker wallet)
@@ -367,8 +368,8 @@ export default function Accounting() {
         for (const s of bSettlements || []) {
           if (s.status === "refused") continue; // skip refused
           const isReceipt = s.direction === "from_broker";
-          const bPayMethod = s.payment_type === "cheque" ? `شيك${s.cheque_number ? ` #${s.cheque_number}` : ""}` : payMethodLabel[s.payment_type || ""] || s.payment_type || "";
-          results.push({ id: s.id, tab: isReceipt ? "receipt" : "payment", source: "broker_settlement", client_name: "", car_number: null, types: [], amount: s.total_amount || 0, date: s.settlement_date, issue_date: s.created_at, description: s.notes || (isReceipt ? "سند قبض" : "سند صرف"), company_name: "", payment_method: bPayMethod, extra: (s as any).brokers?.name || "" });
+          const bPayMethod = payMethodLabel[s.payment_type || ""] || s.payment_type || "";
+          results.push({ id: s.id, tab: isReceipt ? "receipt" : "payment", source: "broker_settlement", client_name: "", car_number: null, types: [], amount: s.total_amount || 0, date: s.settlement_date, issue_date: s.created_at, description: s.notes || (isReceipt ? "سند قبض" : "سند صرف"), company_name: "", payment_method: bPayMethod, cheque_number: s.cheque_number || null, extra: (s as any).brokers?.name || "" });
         }
 
       } else {
@@ -393,6 +394,7 @@ export default function Accounting() {
             description: isSale ? (e.description || "").replace("[مبيعات] ", "") : e.description || (isReceipt ? "سند قبض" : "سند صرف"),
             company_name: e.contact_name || "",
             payment_method: payMethodLabel[e.payment_method || ""] || e.payment_method || "",
+            cheque_number: e.payment_method === "cheque" ? e.reference_number || null : null,
             extra: e.reference_number ? `#${e.reference_number}` : "",
           });
         }
@@ -1008,12 +1010,11 @@ export default function Accounting() {
               <TableHead className="text-right">النوع</TableHead>
               {entityType !== "other" && <TableHead className="text-right">العميل</TableHead>}
               {entityType !== "other" && <TableHead className="text-right">رقم السيارة</TableHead>}
-              {entityType !== "other" && <TableHead className="text-right">نوع البوليصة</TableHead>}
+              {entityType !== "other" && <TableHead className="text-right">{activeTab === "receipt" || activeTab === "payment" || activeTab === "refunds" ? "رقم الشيك" : activeTab === "all" ? "نوع البوليصة / رقم الشيك" : "نوع البوليصة"}</TableHead>}
               <TableHead className="text-right">المبلغ</TableHead>
               <TableHead className="text-right">تاريخ الإصدار</TableHead>
               <TableHead className="text-right">تاريخ الدفع</TableHead>
               <TableHead className="text-right">طريقة الدفع</TableHead>
-              <TableHead className="text-right">رقم الشيك</TableHead>
               <TableHead className="text-right">{entityType === "broker" ? "الشركة" : "الشركة"}</TableHead>
               {entityType === "broker" && <TableHead className="text-right">الوكيل</TableHead>}
               <TableHead className="text-right">البيان</TableHead>
@@ -1033,12 +1034,21 @@ export default function Accounting() {
                 <TableCell><Badge variant={b.variant} className="text-xs">{b.text}</Badge></TableCell>
                 {entityType !== "other" && <TableCell className="font-medium">{r.client_name || "-"}</TableCell>}
                 {entityType !== "other" && <TableCell className="font-mono">{r.car_number || "-"}</TableCell>}
-                {entityType !== "other" && <TableCell><div className="flex flex-wrap gap-1">{r.types.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}</div></TableCell>}
+                {entityType !== "other" && (
+                  <TableCell>
+                    {r.cheque_number ? (
+                      <span className="font-mono text-xs">{r.cheque_number}</span>
+                    ) : r.types.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">{r.types.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}</div>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                )}
                 <TableCell className={cn("font-bold", r.tab === "refund" ? "text-destructive" : r.tab === "receipt" ? "text-green-600" : "")}>{r.tab === "refund" ? "-" : ""}{fmtCur(r.amount)}</TableCell>
                 <TableCell className="font-mono text-xs">{fmt(r.issue_date)}</TableCell>
                 <TableCell className="font-mono text-xs">{r.date !== r.issue_date ? fmt(r.date) : "-"}</TableCell>
                 <TableCell className="text-xs">{r.payment_method || "-"}</TableCell>
-                <TableCell className="font-mono text-xs">{r.extra && r.extra.startsWith("#") ? r.extra.slice(1) : "-"}</TableCell>
                 <TableCell className="text-sm">{r.company_name || "-"}</TableCell>
                 {entityType === "broker" && <TableCell className="text-sm">{r.extra || "-"}</TableCell>}
                 <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{r.description || "-"}</TableCell>
