@@ -470,14 +470,19 @@ export function Step4Payments({
                     <div className="flex items-center gap-2">
                       {/* Cheque Number (if cheque) */}
                       {payment.payment_type === 'cheque' && !isLocked && (
-                        <Input
-                          value={payment.cheque_number || ''}
-                          onChange={(e) => updatePayment(payment.id, 'cheque_number', sanitizeChequeNumber(e.target.value))}
-                          placeholder="رقم الشيك"
-                          maxLength={CHEQUE_NUMBER_MAX_LENGTH}
-                          className="h-9 flex-1 font-mono ltr-input"
-                          disabled={isDisabled}
-                        />
+                        <div className="flex-1 space-y-1">
+                          <Input
+                            value={payment.cheque_number || ''}
+                            onChange={(e) => handleChequeNumberChange(payment.id, e.target.value)}
+                            placeholder="رقم الشيك"
+                            maxLength={CHEQUE_NUMBER_MAX_LENGTH}
+                            className={cn(
+                              "h-9 font-mono ltr-input",
+                              chequeDuplicates[payment.id] && "border-amber-500"
+                            )}
+                            disabled={isDisabled}
+                          />
+                        </div>
                       )}
                       
                       {/* Visa Pay Button - only show if not locked */}
