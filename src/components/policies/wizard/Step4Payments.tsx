@@ -61,6 +61,72 @@ export function Step4Payments({
   
   // Preview URLs for payment images (separate from files stored in payment objects)
   const [previewUrls, setPreviewUrls] = useState<PreviewUrls>({});
+  
+  // Duplicate cheque detection
+  const [chequeDuplicates, setChequeDuplicates] = useState<Record<string, { clientName: string; amount: number; paymentId: string } | null>>({});
+  const chequeCheckTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const checkDuplicateCheque = useCallback(async (paymentId: string, chequeNum: string) => {
+    if (!chequeNum || chequeNum.length < 3) {
+      setChequeDuplicates(prev => ({ ...prev, [paymentId]: null }));
+      return;
+    }
+    try {
+      const { data } = await supabase
+        .from('policy_payments')
+        .select('id, amount, cheque_number, policy_id')
+        .eq('payment_type', 'cheque')
+        .eq('cheque_number', chequeNum)
+        .limit(1);
+
+      if (data && data.length > 0) {
+        const existing = data[0];
+        // Fetch client name via policy
+        let clientName = 'عميل';
+        if (existing.policy_id) {
+          const { data: policyData } = await supabase
+            .from('policies')
+            .select('client_id, clients(full_name)')
+            .eq('id', existing.policy_id)
+            .single();
+          if (policyData?.clients) {
+            clientName = (policyData.clients as any).full_name || 'عميل';
+          }
+        }
+        setChequeDuplicates(prev => ({
+          ...prev,
+          [paymentId]: { clientName, amount: Number(existing.amount), paymentId: existing.id },
+        }));
+      } else {
+        setChequeDuplicates(prev => ({ ...prev, [paymentId]: null }));
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const handleChequeNumberChange = (paymentId: string, value: string) => {
+    const sanitized = sanitizeChequeNumber(value);
+    updatePayment(paymentId, 'cheque_number', sanitized);
+    
+    // Debounce check
+    if (chequeCheckTimers.current[paymentId]) {
+      clearTimeout(chequeCheckTimers.current[paymentId]);
+    }
+    chequeCheckTimers.current[paymentId] = setTimeout(() => {
+      checkDuplicateCheque(paymentId, sanitized);
+    }, 500);
+  };
+
+  const handleSwitchToCustomerCheque = (paymentId: string) => {
+    // Switch payment type to customer_cheque to indicate it's an existing cheque
+    updatePayment(paymentId, 'payment_type', 'customer_cheque');
+    setChequeDuplicates(prev => ({ ...prev, [paymentId]: null }));
+    toast({
+      title: "تم التحويل",
+      description: "تم تحويل الدفعة إلى شيك عميل موجود",
+    });
+  };
 
   const handleImageSelect = (paymentId: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
