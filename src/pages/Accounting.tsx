@@ -663,7 +663,13 @@ export default function Accounting() {
     setAddDesc(""); setMainNotes(""); setMainReceiptImages([]);
     setPaymentLines([]); setSaleAmount(""); setSaleDate(new Date().toISOString().split("T")[0]);
     setAddIssueDate(new Date().toISOString().split("T")[0]);
+    setAddDialogCompanyId(selectedCompanyIds.length === 1 ? selectedCompanyIds[0] : "");
+    setAddDialogBrokerId(selectedBrokerId !== "all" ? selectedBrokerId : "");
   };
+
+  // Resolve company ID for the add dialog
+  const resolvedCompanyId = addDialogCompanyId || (selectedCompanyIds.length === 1 ? selectedCompanyIds[0] : "");
+  const resolvedBrokerId = addDialogBrokerId || (selectedBrokerId !== "all" ? selectedBrokerId : "");
 
   const handleSave = async () => {
     setSaving(true);
