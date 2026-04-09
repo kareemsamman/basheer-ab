@@ -729,6 +729,17 @@ export default function Accounting() {
             created_by_admin_id: user?.id,
             cheque_image_url: payment.cheque_image_url || null,
           } as any);
+          // Also save cheque to outside_cheques table
+          if (payment.payment_type === "cheque" && payment.cheque_number) {
+            await supabase.from("outside_cheques").insert({
+              name: otherName.trim() || addDesc.trim() || "شيك خارجي",
+              cheque_number: payment.cheque_number,
+              amount,
+              cheque_date: payment.payment_date,
+              cheque_image_url: payment.cheque_image_url || null,
+              notes: addDesc.trim() || null,
+            } as any);
+          }
         }
         // Refresh saved contacts
         if (!savedContacts.includes(otherName.trim())) {
