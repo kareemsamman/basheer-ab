@@ -44,6 +44,7 @@ interface ChequeLine {
   payment_date: string;
   cheque_image_url?: string;
   notes?: string;
+  duplicateWarning?: string | null;
 }
 
 // Track all scan images from the batch for payment_images insertion
@@ -126,6 +127,32 @@ export function AddCustomerChequeModal({
 
   const updateChequeLine = (id: string, updates: Partial<ChequeLine>) => {
     setChequeLines(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+
+    // Check for duplicate cheque number when cheque_number changes
+    if (updates.cheque_number && updates.cheque_number.length >= 3) {
+      const chequeNum = updates.cheque_number;
+      supabase
+        .from('policy_payments')
+        .select('id, cheque_number, amount, payment_date, policies!policy_payments_policy_id_fkey(clients!policies_client_id_fkey(full_name))')
+        .eq('payment_type', 'cheque')
+        .eq('cheque_number', chequeNum)
+        .limit(1)
+        .then(({ data }) => {
+          if (data && data.length > 0) {
+            const existing = data[0] as any;
+            const clientName = existing.policies?.clients?.full_name || '';
+            setChequeLines(prev => prev.map(c =>
+              c.id === id
+                ? { ...c, duplicateWarning: `شيك موجود مسبقاً للعميل: ${clientName} بمبلغ ₪${Number(existing.amount).toLocaleString()}` }
+                : c
+            ));
+          } else {
+            setChequeLines(prev => prev.map(c =>
+              c.id === id ? { ...c, duplicateWarning: null } : c
+            ));
+          }
+        });
+    }
   };
 
   const handleScannerConfirm = (scannedCheques: any[]) => {
@@ -513,6 +540,12 @@ export function AddCustomerChequeModal({
                               maxLength={CHEQUE_NUMBER_MAX_LENGTH}
                               className="h-9 font-mono"
                             />
+                            {cheque.duplicateWarning && (
+                              <div className="flex items-center gap-1 text-amber-600 text-xs mt-1">
+                                <AlertTriangle className="h-3 w-3 shrink-0" />
+                                <span>{cheque.duplicateWarning}</span>
+                              </div>
+                            )}
                           </div>
                           <div className="space-y-1">
                             <Label className="text-xs">تاريخ الشيك *</Label>
