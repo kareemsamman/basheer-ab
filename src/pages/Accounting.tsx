@@ -142,6 +142,8 @@ export default function Accounting() {
   const [mainReceiptImages, setMainReceiptImages] = useState<string[]>([]);
   const [mainNotes, setMainNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [addDialogCompanyId, setAddDialogCompanyId] = useState<string>("");
+  const [addDialogBrokerId, setAddDialogBrokerId] = useState<string>("");
 
   // Load reference data
   useEffect(() => {
