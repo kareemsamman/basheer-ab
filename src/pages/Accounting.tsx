@@ -1174,6 +1174,28 @@ export default function Accounting() {
               </button>
             </div>
 
+            {/* Company selector inside dialog when no single company pre-selected */}
+            {entityType === "company" && (
+              <div className="space-y-1">
+                <Label>شركة التأمين *</Label>
+                <Select value={resolvedCompanyId} onValueChange={v => setAddDialogCompanyId(v)}>
+                  <SelectTrigger><SelectValue placeholder="اختر شركة تأمين..." /></SelectTrigger>
+                  <SelectContent>{companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name_ar || c.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Broker selector inside dialog when no single broker pre-selected */}
+            {entityType === "broker" && (
+              <div className="space-y-1">
+                <Label>الوكيل *</Label>
+                <Select value={resolvedBrokerId} onValueChange={v => setAddDialogBrokerId(v)}>
+                  <SelectTrigger><SelectValue placeholder="اختر وكيل..." /></SelectTrigger>
+                  <SelectContent>{brokers.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            )}
+
             {/* Contact name for "other" */}
             {entityType === "other" && (
               <div className="space-y-1">
