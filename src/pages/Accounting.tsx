@@ -90,6 +90,37 @@ const payMethodLabel: Record<string, string> = {
   visa: "فيزا", customer_cheque: "شيك عميل",
 };
 
+interface ExpandedExpenseEntry {
+  amount: number;
+  expense_date: string;
+  payment_method: Exclude<PaymentLine["payment_type"], "customer_cheque">;
+  reference_number: string | null;
+  cheque_image_url: string | null;
+  customer_cheque_ids: string[] | null;
+}
+
+function expandPaymentLineEntries(payment: PaymentLine): ExpandedExpenseEntry[] {
+  if (payment.payment_type === "customer_cheque" && payment.selected_cheques && payment.selected_cheques.length > 0) {
+    return payment.selected_cheques.map((cheque) => ({
+      amount: cheque.amount,
+      expense_date: payment.payment_date,
+      payment_method: "cheque",
+      reference_number: cheque.cheque_number || null,
+      cheque_image_url: cheque.cheque_image_url || null,
+      customer_cheque_ids: cheque.source_type === "outside" ? null : [cheque.id],
+    }));
+  }
+
+  return [{
+    amount: payment.amount,
+    expense_date: payment.payment_date,
+    payment_method: payment.payment_type === "customer_cheque" ? "cheque" : payment.payment_type,
+    reference_number: payment.payment_type === "cheque" ? payment.cheque_number || null : payment.bank_reference || null,
+    cheque_image_url: payment.cheque_image_url || null,
+    customer_cheque_ids: null,
+  }];
+}
+
 // ─── Component ───────────────────────────────────────────
 
 export default function Accounting() {
@@ -686,24 +717,25 @@ export default function Accounting() {
         if (paymentLines.length === 0) { toast.error("يرجى إضافة دفعة واحدة على الأقل"); setSaving(false); return; }
         if (!otherName.trim()) { toast.error("يرجى إدخال اسم الجهة"); setSaving(false); return; }
         for (const payment of paymentLines) {
-          const amount = payment.payment_type === "customer_cheque" && payment.selected_cheques
-            ? payment.selected_cheques.reduce((s, c) => s + c.amount, 0) : payment.amount;
-          const pm = payment.payment_type === "customer_cheque" ? "cheque" : payment.payment_type;
-          await supabase.from("expenses").insert({
-            amount,
-            expense_date: payment.payment_date,
-            description: addDesc.trim() || null,
-            voucher_type: addVoucherType,
-            category: "other",
-            entity_type: "manual",
-            entity_id: null,
-            contact_name: otherName.trim(),
-            payment_method: pm,
-            reference_number: payment.payment_type === "cheque" ? payment.cheque_number : payment.bank_reference || null,
-            notes: mainNotes || null,
-            created_by_admin_id: user?.id,
-            cheque_image_url: payment.cheque_image_url || null,
-          } as any);
+          const expandedEntries = expandPaymentLineEntries(payment);
+          for (const entry of expandedEntries) {
+            await supabase.from("expenses").insert({
+              amount: entry.amount,
+              expense_date: entry.expense_date,
+              description: addDesc.trim() || null,
+              voucher_type: addVoucherType,
+              category: "other",
+              entity_type: "manual",
+              entity_id: null,
+              contact_name: otherName.trim(),
+              payment_method: entry.payment_method,
+              reference_number: entry.reference_number,
+              notes: mainNotes || null,
+              created_by_admin_id: user?.id,
+              cheque_image_url: entry.cheque_image_url,
+              customer_cheque_ids: entry.customer_cheque_ids,
+            } as any);
+          }
         }
         // Refresh saved contacts
         if (!savedContacts.includes(otherName.trim())) {
@@ -718,25 +750,26 @@ export default function Accounting() {
         // All company entries save to expenses table
         const voucherType = addVoucherType === "refund" ? "refund" : addVoucherType;
         for (const payment of paymentLines) {
-          const amount = payment.payment_type === "customer_cheque" && payment.selected_cheques
-            ? payment.selected_cheques.reduce((s, c) => s + c.amount, 0) : payment.amount;
-          const pm = payment.payment_type === "customer_cheque" ? "cheque" : payment.payment_type;
           const customerChequeIds = payment.payment_type === "customer_cheque" && payment.selected_cheques
             ? payment.selected_cheques.map(c => c.id) : [];
-          const { error: insertErr } = await supabase.from("expenses").insert({
-            amount, expense_date: payment.payment_date,
-            description: addDesc.trim() || null,
-            voucher_type: voucherType,
-            category: "insurance_company",
-            entity_type: "company", entity_id: companyId,
-            payment_method: pm,
-            reference_number: payment.payment_type === "cheque" ? payment.cheque_number : payment.bank_reference || null,
-            notes: mainNotes || null,
-            created_by_admin_id: user?.id,
-            cheque_image_url: payment.cheque_image_url || null,
-            customer_cheque_ids: customerChequeIds.length > 0 ? customerChequeIds : null,
-          } as any);
-          if (insertErr) { console.error("Company expense insert error:", insertErr); throw insertErr; }
+          const expandedEntries = expandPaymentLineEntries(payment);
+          for (const entry of expandedEntries) {
+            const { error: insertErr } = await supabase.from("expenses").insert({
+              amount: entry.amount,
+              expense_date: entry.expense_date,
+              description: addDesc.trim() || null,
+              voucher_type: voucherType,
+              category: "insurance_company",
+              entity_type: "company", entity_id: companyId,
+              payment_method: entry.payment_method,
+              reference_number: entry.reference_number,
+              notes: mainNotes || null,
+              created_by_admin_id: user?.id,
+              cheque_image_url: entry.cheque_image_url,
+              customer_cheque_ids: entry.customer_cheque_ids,
+            } as any);
+            if (insertErr) { console.error("Company expense insert error:", insertErr); throw insertErr; }
+          }
           if (customerChequeIds.length > 0) {
             await supabase.from("policy_payments").update({ refused: false } as any).in("id", customerChequeIds);
           }
@@ -750,22 +783,24 @@ export default function Accounting() {
         // All broker entries save to expenses table (same as /expenses page)
         const voucherType = addVoucherType === "refund" ? "refund" : addVoucherType;
         for (const payment of paymentLines) {
-          const amount = payment.payment_type === "customer_cheque" && payment.selected_cheques
-            ? payment.selected_cheques.reduce((s, c) => s + c.amount, 0) : payment.amount;
-          const pm = payment.payment_type === "customer_cheque" ? "cheque" : payment.payment_type;
-          const { error: insertErr } = await supabase.from("expenses").insert({
-            amount, expense_date: payment.payment_date,
-            description: addDesc.trim() || null,
-            voucher_type: voucherType,
-            category: "broker_payment",
-            entity_type: "broker", entity_id: brokerId,
-            payment_method: pm,
-            reference_number: payment.payment_type === "cheque" ? payment.cheque_number : payment.bank_reference || null,
-            notes: mainNotes || null,
-            created_by_admin_id: user?.id,
-            cheque_image_url: payment.cheque_image_url || null,
-          } as any);
-          if (insertErr) { console.error("Broker expense insert error:", insertErr); throw insertErr; }
+          const expandedEntries = expandPaymentLineEntries(payment);
+          for (const entry of expandedEntries) {
+            const { error: insertErr } = await supabase.from("expenses").insert({
+              amount: entry.amount,
+              expense_date: entry.expense_date,
+              description: addDesc.trim() || null,
+              voucher_type: voucherType,
+              category: "broker_payment",
+              entity_type: "broker", entity_id: brokerId,
+              payment_method: entry.payment_method,
+              reference_number: entry.reference_number,
+              notes: mainNotes || null,
+              created_by_admin_id: user?.id,
+              cheque_image_url: entry.cheque_image_url,
+              customer_cheque_ids: entry.customer_cheque_ids,
+            } as any);
+            if (insertErr) { console.error("Broker expense insert error:", insertErr); throw insertErr; }
+          }
         }
       }
       toast.success("تم الإضافة بنجاح");
