@@ -680,8 +680,8 @@ export default function Accounting() {
         if (!amt || amt <= 0) { toast.error("يرجى إدخال مبلغ صحيح"); setSaving(false); return; }
         if (!addDesc.trim()) { toast.error("يرجى إدخال الوصف"); setSaving(false); return; }
         const eType = entityType === "company" ? "company" : entityType === "broker" ? "broker" : "manual";
-        const eId = entityType === "company" ? (selectedCompanyIds.length === 1 ? selectedCompanyIds[0] : null)
-          : entityType === "broker" ? (selectedBrokerId !== "all" ? selectedBrokerId : null) : null;
+        const eId = entityType === "company" ? resolvedCompanyId || null
+          : entityType === "broker" ? resolvedBrokerId || null : null;
         if ((entityType === "company" || entityType === "broker") && !eId) {
           toast.error("يرجى اختيار جهة واحدة"); setSaving(false); return;
         }
