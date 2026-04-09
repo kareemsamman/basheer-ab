@@ -80,14 +80,14 @@ interface ClientAccidentsTabProps {
 }
 
 const statusLabels: Record<string, string> = {
-  draft: 'مسودة',
-  submitted: 'مُقدَّم',
+  open: 'مفتوح',
+  in_progress: 'قيد المتابعة',
   closed: 'مُغلق',
 };
 
 const statusColors: Record<string, string> = {
-  draft: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20',
-  submitted: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+  open: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20',
+  in_progress: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
   closed: 'bg-gray-500/10 text-gray-600 border-gray-500/20',
 };
 
