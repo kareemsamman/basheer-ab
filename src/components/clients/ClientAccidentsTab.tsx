@@ -448,8 +448,8 @@ export function ClientAccidentsTab({ clientId, accidentNotes, onAccidentNotesUpd
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="draft">مسودة</SelectItem>
-                        <SelectItem value="submitted">مُقدَّم</SelectItem>
+                        <SelectItem value="open">مفتوح</SelectItem>
+                        <SelectItem value="in_progress">قيد المتابعة</SelectItem>
                         <SelectItem value="closed">مُغلق</SelectItem>
                       </SelectContent>
                     </Select>
