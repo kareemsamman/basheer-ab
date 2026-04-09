@@ -63,11 +63,28 @@ import { useToast } from "@/hooks/use-toast";
 import { PolicyDetailsDrawer } from "@/components/policies/PolicyDetailsDrawer";
 import { sanitizeChequeNumber, CHEQUE_NUMBER_MAX_LENGTH, getEffectiveChequeStatus, isChequeOverdue } from "@/lib/chequeUtils";
 import { AddCustomerChequeModal } from "@/components/cheques/AddCustomerChequeModal";
+import { Building2, Banknote } from "lucide-react";
 
 interface PaymentImage {
   id: string;
   image_url: string;
   image_type: string;
+}
+
+interface OutsideChequeRecord {
+  id: string;
+  name: string;
+  cheque_number: string | null;
+  amount: number;
+  cheque_date: string | null;
+  cheque_image_url: string | null;
+  refused: boolean | null;
+  used: boolean | null;
+  notes: string | null;
+  created_at: string;
+  transferred_to_type: string | null;
+  transferred_to_id: string | null;
+  transferred_to_name?: string | null;
 }
 
 interface ChequeRecord {
@@ -199,6 +216,64 @@ export default function Cheques() {
 
   // Add customer cheque modal
   const [addChequeModalOpen, setAddChequeModalOpen] = useState(false);
+
+  // Outside cheques state
+  const [outsideCheques, setOutsideCheques] = useState<OutsideChequeRecord[]>([]);
+  const [outsideLoading, setOutsideLoading] = useState(false);
+  const [outsideSearch, setOutsideSearch] = useState("");
+
+  const fetchOutsideCheques = useCallback(async () => {
+    setOutsideLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('outside_cheques')
+        .select('id, name, cheque_number, amount, cheque_date, cheque_image_url, refused, used, notes, created_at, transferred_to_type, transferred_to_id')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      // Resolve transfer names
+      const brokerIds = [...new Set((data || []).filter(c => c.transferred_to_type === 'broker' && c.transferred_to_id).map(c => c.transferred_to_id!))];
+      const companyIds = [...new Set((data || []).filter(c => c.transferred_to_type === 'company' && c.transferred_to_id).map(c => c.transferred_to_id!))];
+
+      let bMap: Record<string, string> = {};
+      let cMap: Record<string, string> = {};
+      if (brokerIds.length > 0) {
+        const { data: b } = await supabase.from('brokers').select('id, name').in('id', brokerIds);
+        bMap = (b || []).reduce((a, x) => ({ ...a, [x.id]: x.name }), {} as Record<string, string>);
+      }
+      if (companyIds.length > 0) {
+        const { data: c } = await supabase.from('insurance_companies').select('id, name, name_ar').in('id', companyIds);
+        cMap = (c || []).reduce((a, x) => ({ ...a, [x.id]: x.name_ar || x.name }), {} as Record<string, string>);
+      }
+
+      setOutsideCheques((data || []).map(c => ({
+        ...c,
+        transferred_to_name: c.transferred_to_type === 'broker' ? bMap[c.transferred_to_id!] : c.transferred_to_type === 'company' ? cMap[c.transferred_to_id!] : null,
+      })));
+    } catch (err) {
+      console.error('Error fetching outside cheques:', err);
+    } finally {
+      setOutsideLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { if (activeTab === 'outside') fetchOutsideCheques(); }, [activeTab, fetchOutsideCheques]);
+
+  const filteredOutsideCheques = useMemo(() => {
+    if (!outsideSearch.trim()) return outsideCheques;
+    const q = outsideSearch.toLowerCase();
+    return outsideCheques.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      c.cheque_number?.includes(q)
+    );
+  }, [outsideCheques, outsideSearch]);
+
+  const outsideSummary = useMemo(() => {
+    const total = outsideCheques.reduce((s, c) => s + Number(c.amount), 0);
+    const available = outsideCheques.filter(c => !c.used && !c.refused && !c.transferred_to_type).reduce((s, c) => s + Number(c.amount), 0);
+    const transferred = outsideCheques.filter(c => !!c.transferred_to_type).reduce((s, c) => s + Number(c.amount), 0);
+    return { total, available, transferred, count: outsideCheques.length };
+  }, [outsideCheques]);
 
   // Group cheques by customer
   const customerGroups = useMemo((): CustomerGroup[] => {
@@ -974,6 +1049,10 @@ export default function Cheques() {
               <BarChart3 className="h-4 w-4" />
               التقرير الشهري
             </TabsTrigger>
+            <TabsTrigger value="outside" className="gap-2">
+              <Building2 className="h-4 w-4" />
+              شيكات خارجية
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="report" className="mt-4">
@@ -1019,6 +1098,101 @@ export default function Cheques() {
                           </TableCell>
                         </TableRow>
                       ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="outside" className="mt-4 space-y-4">
+            {/* Outside cheques summary */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Card className="p-4">
+                <p className="text-xs text-muted-foreground">إجمالي الشيكات الخارجية</p>
+                <p className="text-xl font-bold ltr-nums">{formatCurrency(outsideSummary.total)}</p>
+                <p className="text-xs text-muted-foreground">{outsideSummary.count} شيك</p>
+              </Card>
+              <Card className="p-4 border-green-500/30 bg-green-500/5">
+                <p className="text-xs text-muted-foreground">متاح للاستخدام</p>
+                <p className="text-xl font-bold text-green-600 ltr-nums">{formatCurrency(outsideSummary.available)}</p>
+              </Card>
+              <Card className="p-4 border-blue-500/30 bg-blue-500/5">
+                <p className="text-xs text-muted-foreground">تم تحويله</p>
+                <p className="text-xl font-bold text-blue-600 ltr-nums">{formatCurrency(outsideSummary.transferred)}</p>
+              </Card>
+            </div>
+
+            <div className="relative max-w-md">
+              <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="بحث بالجهة أو رقم الشيك..."
+                value={outsideSearch}
+                onChange={(e) => setOutsideSearch(e.target.value)}
+                className="pr-9"
+              />
+            </div>
+
+            <Card className="overflow-hidden">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="text-right">#</TableHead>
+                      <TableHead className="text-right">الجهة</TableHead>
+                      <TableHead className="text-right">رقم الشيك</TableHead>
+                      <TableHead className="text-right">المبلغ</TableHead>
+                      <TableHead className="text-right">تاريخ الاستحقاق</TableHead>
+                      <TableHead className="text-right">الحالة</TableHead>
+                      <TableHead className="text-right">ملاحظات</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {outsideLoading ? (
+                      Array.from({ length: 5 }).map((_, i) => (
+                        <TableRow key={i}>
+                          {Array.from({ length: 7 }).map((_, j) => (
+                            <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
+                          ))}
+                        </TableRow>
+                      ))
+                    ) : filteredOutsideCheques.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                          لا توجد شيكات خارجية
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredOutsideCheques.map((c, i) => {
+                        const isTransferred = !!c.transferred_to_type;
+                        const isRefused = !!c.refused;
+                        return (
+                          <TableRow key={c.id} className={cn(isRefused && "bg-destructive/5")}>
+                            <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                            <TableCell className="font-medium">{c.name}</TableCell>
+                            <TableCell className="font-mono text-sm"><bdi>{c.cheque_number || "-"}</bdi></TableCell>
+                            <TableCell className="font-bold ltr-nums">{formatCurrency(c.amount)}</TableCell>
+                            <TableCell>{c.cheque_date ? formatDate(c.cheque_date) : "-"}</TableCell>
+                            <TableCell>
+                              {isRefused ? (
+                                <Badge variant="destructive">مرفوض</Badge>
+                              ) : isTransferred ? (
+                                <div className="flex flex-col gap-0.5">
+                                  <Badge variant="default">تم استخدامه</Badge>
+                                  {c.transferred_to_name && (
+                                    <span className="text-[10px] text-muted-foreground">
+                                      → {c.transferred_to_type === 'broker' ? 'وسيط' : 'شركة'}: {c.transferred_to_name}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <Badge variant="secondary">متاح</Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{c.notes || "-"}</TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
