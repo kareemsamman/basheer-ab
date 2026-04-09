@@ -588,9 +588,9 @@ export default function AccidentReportForm() {
 
             {/* Editable Policy Number & Accident Date */}
             {report && (
-              <div className="border-t pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="border-t pt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
                 <EditableField
-                  label="رقم البوليصة"
+                  label="رقم الملف"
                   value={policy.policy_number || ""}
                   onSave={async (val) => {
                     const { error } = await supabase
@@ -612,6 +612,19 @@ export default function AccidentReportForm() {
                       .eq("id", report.id);
                     if (error) throw error;
                     setReport({ ...report, accident_date: val });
+                  }}
+                  toast={toast}
+                />
+                <EditableField
+                  label="الكراج"
+                  value={report.garage_name || ""}
+                  onSave={async (val) => {
+                    const { error } = await supabase
+                      .from("accident_reports")
+                      .update({ garage_name: val || null })
+                      .eq("id", report.id);
+                    if (error) throw error;
+                    setReport({ ...report, garage_name: val || null });
                   }}
                   toast={toast}
                 />
