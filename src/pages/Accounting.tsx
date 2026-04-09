@@ -765,17 +765,6 @@ export default function Accounting() {
           if (customerChequeIds.length > 0) {
             await supabase.from("policy_payments").update({ refused: false } as any).in("id", customerChequeIds);
           }
-          // Also save cheque to outside_cheques table
-          if (payment.payment_type === "cheque" && payment.cheque_number) {
-            await supabase.from("outside_cheques").insert({
-              name: companyName || addDesc.trim() || "شيك خارجي",
-              cheque_number: payment.cheque_number,
-              amount,
-              cheque_date: payment.payment_date,
-              cheque_image_url: payment.cheque_image_url || null,
-              notes: addDesc.trim() || null,
-            } as any);
-          }
         }
       } else if (entityType === "broker") {
         if (paymentLines.length === 0) { toast.error("يرجى إضافة دفعة واحدة على الأقل"); setSaving(false); return; }
@@ -802,17 +791,6 @@ export default function Accounting() {
             cheque_image_url: payment.cheque_image_url || null,
           } as any);
           if (insertErr) { console.error("Broker expense insert error:", insertErr); throw insertErr; }
-          // Also save cheque to outside_cheques table
-          if (payment.payment_type === "cheque" && payment.cheque_number) {
-            await supabase.from("outside_cheques").insert({
-              name: brokerName || addDesc.trim() || "شيك خارجي",
-              cheque_number: payment.cheque_number,
-              amount,
-              cheque_date: payment.payment_date,
-              cheque_image_url: payment.cheque_image_url || null,
-              notes: addDesc.trim() || null,
-            } as any);
-          }
         }
       }
       toast.success("تم الإضافة بنجاح");
