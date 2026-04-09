@@ -1231,7 +1231,7 @@ export default function Accounting() {
               setMainReceiptImages={setMainReceiptImages}
               mainNotes={mainNotes}
               setMainNotes={setMainNotes}
-              entityId={entityType === "company" ? (selectedCompanyIds.length === 1 ? selectedCompanyIds[0] : "") : entityType === "broker" ? (selectedBrokerId !== "all" ? selectedBrokerId : "") : ""}
+              entityId={entityType === "company" ? resolvedCompanyId : entityType === "broker" ? resolvedBrokerId : ""}
               entityType={entityType === "company" ? "company" : "broker"}
             />
             )}
