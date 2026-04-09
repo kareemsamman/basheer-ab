@@ -257,7 +257,7 @@ export default function Accounting() {
           .select("id, amount, expense_date, created_at, description, reference_number, payment_method, voucher_type, entity_id")
           .eq("entity_type", "company")
           .in("voucher_type", ["payment", "receipt"])
-          .gte("expense_date", fromDate).lte("expense_date", toDate);
+          .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
         if (selectedCompanyIds.length > 0) pq = pq.in("entity_id", selectedCompanyIds);
         const { data: pays } = await pq;
         for (const e of pays || []) {
