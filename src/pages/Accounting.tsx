@@ -1013,6 +1013,7 @@ export default function Accounting() {
               <TableHead className="text-right">تاريخ الإصدار</TableHead>
               <TableHead className="text-right">تاريخ الدفع</TableHead>
               <TableHead className="text-right">طريقة الدفع</TableHead>
+              <TableHead className="text-right">رقم الشيك</TableHead>
               <TableHead className="text-right">{entityType === "broker" ? "الشركة" : "الشركة"}</TableHead>
               {entityType === "broker" && <TableHead className="text-right">الوكيل</TableHead>}
               <TableHead className="text-right">البيان</TableHead>
@@ -1037,6 +1038,7 @@ export default function Accounting() {
                 <TableCell className="font-mono text-xs">{fmt(r.issue_date)}</TableCell>
                 <TableCell className="font-mono text-xs">{r.date !== r.issue_date ? fmt(r.date) : "-"}</TableCell>
                 <TableCell className="text-xs">{r.payment_method || "-"}</TableCell>
+                <TableCell className="font-mono text-xs">{r.extra && r.extra.startsWith("#") ? r.extra.slice(1) : "-"}</TableCell>
                 <TableCell className="text-sm">{r.company_name || "-"}</TableCell>
                 {entityType === "broker" && <TableCell className="text-sm">{r.extra || "-"}</TableCell>}
                 <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{r.description || "-"}</TableCell>
