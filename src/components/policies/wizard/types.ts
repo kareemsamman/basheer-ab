@@ -224,7 +224,8 @@ export const CAR_TYPES = [
 
 export const PAYMENT_TYPES = [
   { value: "cash", label: "نقدي" },
-  { value: "cheque", label: "شيك" },
+  { value: "cheque", label: "شيك جديد" },
+  { value: "customer_cheque", label: "شيك عميل" },
   { value: "visa", label: "فيزا" },
   { value: "transfer", label: "تحويل" },
 ];

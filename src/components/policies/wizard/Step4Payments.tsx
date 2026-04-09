@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
-import { Plus, Trash2, CreditCard, AlertCircle, Loader2, Split, Upload, X, ImageIcon, Lock, Scan } from "lucide-react";
+import { Plus, Trash2, CreditCard, AlertCircle, Loader2, Split, Upload, X, ImageIcon, Lock, Scan, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PaymentSummaryBar } from "./PaymentSummaryBar";
 import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal";
@@ -13,6 +13,7 @@ import { ChequeScannerDialog } from "@/components/payments/ChequeScannerDialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { sanitizeChequeNumber, CHEQUE_NUMBER_MAX_LENGTH } from "@/lib/chequeUtils";
+import { supabase } from "@/integrations/supabase/client";
 import type { PaymentLine, PricingBreakdown, ValidationErrors } from "./types";
 import { PAYMENT_TYPES } from "./types";
 
@@ -60,6 +61,72 @@ export function Step4Payments({
   
   // Preview URLs for payment images (separate from files stored in payment objects)
   const [previewUrls, setPreviewUrls] = useState<PreviewUrls>({});
+  
+  // Duplicate cheque detection
+  const [chequeDuplicates, setChequeDuplicates] = useState<Record<string, { clientName: string; amount: number; paymentId: string } | null>>({});
+  const chequeCheckTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const checkDuplicateCheque = useCallback(async (paymentId: string, chequeNum: string) => {
+    if (!chequeNum || chequeNum.length < 3) {
+      setChequeDuplicates(prev => ({ ...prev, [paymentId]: null }));
+      return;
+    }
+    try {
+      const { data } = await supabase
+        .from('policy_payments')
+        .select('id, amount, cheque_number, policy_id')
+        .eq('payment_type', 'cheque')
+        .eq('cheque_number', chequeNum)
+        .limit(1);
+
+      if (data && data.length > 0) {
+        const existing = data[0];
+        // Fetch client name via policy
+        let clientName = 'عميل';
+        if (existing.policy_id) {
+          const { data: policyData } = await supabase
+            .from('policies')
+            .select('client_id, clients(full_name)')
+            .eq('id', existing.policy_id)
+            .single();
+          if (policyData?.clients) {
+            clientName = (policyData.clients as any).full_name || 'عميل';
+          }
+        }
+        setChequeDuplicates(prev => ({
+          ...prev,
+          [paymentId]: { clientName, amount: Number(existing.amount), paymentId: existing.id },
+        }));
+      } else {
+        setChequeDuplicates(prev => ({ ...prev, [paymentId]: null }));
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const handleChequeNumberChange = (paymentId: string, value: string) => {
+    const sanitized = sanitizeChequeNumber(value);
+    updatePayment(paymentId, 'cheque_number', sanitized);
+    
+    // Debounce check
+    if (chequeCheckTimers.current[paymentId]) {
+      clearTimeout(chequeCheckTimers.current[paymentId]);
+    }
+    chequeCheckTimers.current[paymentId] = setTimeout(() => {
+      checkDuplicateCheque(paymentId, sanitized);
+    }, 500);
+  };
+
+  const handleSwitchToCustomerCheque = (paymentId: string) => {
+    // Switch payment type to customer_cheque to indicate it's an existing cheque
+    updatePayment(paymentId, 'payment_type', 'customer_cheque');
+    setChequeDuplicates(prev => ({ ...prev, [paymentId]: null }));
+    toast({
+      title: "تم التحويل",
+      description: "تم تحويل الدفعة إلى شيك عميل موجود",
+    });
+  };
 
   const handleImageSelect = (paymentId: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -403,14 +470,19 @@ export function Step4Payments({
                     <div className="flex items-center gap-2">
                       {/* Cheque Number (if cheque) */}
                       {payment.payment_type === 'cheque' && !isLocked && (
-                        <Input
-                          value={payment.cheque_number || ''}
-                          onChange={(e) => updatePayment(payment.id, 'cheque_number', sanitizeChequeNumber(e.target.value))}
-                          placeholder="رقم الشيك"
-                          maxLength={CHEQUE_NUMBER_MAX_LENGTH}
-                          className="h-9 flex-1 font-mono ltr-input"
-                          disabled={isDisabled}
-                        />
+                        <div className="flex-1 space-y-1">
+                          <Input
+                            value={payment.cheque_number || ''}
+                            onChange={(e) => handleChequeNumberChange(payment.id, e.target.value)}
+                            placeholder="رقم الشيك"
+                            maxLength={CHEQUE_NUMBER_MAX_LENGTH}
+                            className={cn(
+                              "h-9 font-mono ltr-input",
+                              chequeDuplicates[payment.id] && "border-amber-500"
+                            )}
+                            disabled={isDisabled}
+                          />
+                        </div>
                       )}
                       
                       {/* Visa Pay Button - only show if not locked */}
@@ -462,6 +534,30 @@ export function Step4Payments({
                     </div>
                   </div>
                   
+                  {/* Duplicate Cheque Warning */}
+                  {payment.payment_type === 'cheque' && chequeDuplicates[payment.id] && (
+                    <div className="mt-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-700 flex items-start gap-3">
+                      <Info className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                      <div className="flex-1 space-y-1">
+                        <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                          شيك موجود مسبقاً!
+                        </p>
+                        <p className="text-xs text-amber-700 dark:text-amber-300">
+                          الشيك رقم {payment.cheque_number} موجود للعميل: <strong>{chequeDuplicates[payment.id]!.clientName}</strong> بمبلغ ₪{chequeDuplicates[payment.id]!.amount.toLocaleString()}
+                        </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="mt-1 h-7 text-xs border-amber-300 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                          onClick={() => handleSwitchToCustomerCheque(payment.id)}
+                        >
+                          استخدام كشيك عميل موجود
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Image Upload Section for Cash/Cheque/Transfer */}
                   {(payment.payment_type === 'cash' || payment.payment_type === 'cheque' || payment.payment_type === 'transfer') && !visaPaid && (
                     <div className="mt-3 pt-3 border-t border-border/50">
