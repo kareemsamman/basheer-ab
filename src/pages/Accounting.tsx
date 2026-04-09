@@ -142,6 +142,8 @@ export default function Accounting() {
   const [mainReceiptImages, setMainReceiptImages] = useState<string[]>([]);
   const [mainNotes, setMainNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [addDialogCompanyId, setAddDialogCompanyId] = useState<string>("");
+  const [addDialogBrokerId, setAddDialogBrokerId] = useState<string>("");
 
   // Load reference data
   useEffect(() => {
@@ -661,7 +663,13 @@ export default function Accounting() {
     setAddDesc(""); setMainNotes(""); setMainReceiptImages([]);
     setPaymentLines([]); setSaleAmount(""); setSaleDate(new Date().toISOString().split("T")[0]);
     setAddIssueDate(new Date().toISOString().split("T")[0]);
+    setAddDialogCompanyId(selectedCompanyIds.length === 1 ? selectedCompanyIds[0] : "");
+    setAddDialogBrokerId(selectedBrokerId !== "all" ? selectedBrokerId : "");
   };
+
+  // Resolve company ID for the add dialog
+  const resolvedCompanyId = addDialogCompanyId || (selectedCompanyIds.length === 1 ? selectedCompanyIds[0] : "");
+  const resolvedBrokerId = addDialogBrokerId || (selectedBrokerId !== "all" ? selectedBrokerId : "");
 
   const handleSave = async () => {
     setSaving(true);
@@ -672,8 +680,8 @@ export default function Accounting() {
         if (!amt || amt <= 0) { toast.error("يرجى إدخال مبلغ صحيح"); setSaving(false); return; }
         if (!addDesc.trim()) { toast.error("يرجى إدخال الوصف"); setSaving(false); return; }
         const eType = entityType === "company" ? "company" : entityType === "broker" ? "broker" : "manual";
-        const eId = entityType === "company" ? (selectedCompanyIds.length === 1 ? selectedCompanyIds[0] : null)
-          : entityType === "broker" ? (selectedBrokerId !== "all" ? selectedBrokerId : null) : null;
+        const eId = entityType === "company" ? resolvedCompanyId || null
+          : entityType === "broker" ? resolvedBrokerId || null : null;
         if ((entityType === "company" || entityType === "broker") && !eId) {
           toast.error("يرجى اختيار جهة واحدة"); setSaving(false); return;
         }
@@ -721,6 +729,17 @@ export default function Accounting() {
             created_by_admin_id: user?.id,
             cheque_image_url: payment.cheque_image_url || null,
           } as any);
+          // Also save cheque to outside_cheques table
+          if (payment.payment_type === "cheque" && payment.cheque_number) {
+            await supabase.from("outside_cheques").insert({
+              name: otherName.trim() || addDesc.trim() || "شيك خارجي",
+              cheque_number: payment.cheque_number,
+              amount,
+              cheque_date: payment.payment_date,
+              cheque_image_url: payment.cheque_image_url || null,
+              notes: addDesc.trim() || null,
+            } as any);
+          }
         }
         // Refresh saved contacts
         if (!savedContacts.includes(otherName.trim())) {
@@ -728,9 +747,10 @@ export default function Accounting() {
         }
       } else if (entityType === "company") {
         if (paymentLines.length === 0) { toast.error("يرجى إضافة دفعة واحدة على الأقل"); setSaving(false); return; }
-        const companyId = selectedCompanyIds.length === 1 ? selectedCompanyIds[0] : null;
+        const companyId = resolvedCompanyId || null;
         if (!companyId) { toast.error("يرجى اختيار شركة تأمين واحدة للإضافة"); setSaving(false); return; }
 
+        const companyName = companies.find(c => c.id === companyId)?.name_ar || companies.find(c => c.id === companyId)?.name || "";
         // All company entries save to expenses table
         const voucherType = addVoucherType === "refund" ? "refund" : addVoucherType;
         for (const payment of paymentLines) {
@@ -756,12 +776,24 @@ export default function Accounting() {
           if (customerChequeIds.length > 0) {
             await supabase.from("policy_payments").update({ refused: false } as any).in("id", customerChequeIds);
           }
+          // Also save cheque to outside_cheques table
+          if (payment.payment_type === "cheque" && payment.cheque_number) {
+            await supabase.from("outside_cheques").insert({
+              name: companyName || addDesc.trim() || "شيك خارجي",
+              cheque_number: payment.cheque_number,
+              amount,
+              cheque_date: payment.payment_date,
+              cheque_image_url: payment.cheque_image_url || null,
+              notes: addDesc.trim() || null,
+            } as any);
+          }
         }
       } else if (entityType === "broker") {
         if (paymentLines.length === 0) { toast.error("يرجى إضافة دفعة واحدة على الأقل"); setSaving(false); return; }
-        const brokerId = selectedBrokerId !== "all" ? selectedBrokerId : null;
+        const brokerId = resolvedBrokerId || null;
         if (!brokerId) { toast.error("يرجى اختيار وكيل"); setSaving(false); return; }
 
+        const brokerName = brokers.find(b => b.id === brokerId)?.name || "";
         // All broker entries save to expenses table (same as /expenses page)
         const voucherType = addVoucherType === "refund" ? "refund" : addVoucherType;
         for (const payment of paymentLines) {
@@ -781,6 +813,17 @@ export default function Accounting() {
             cheque_image_url: payment.cheque_image_url || null,
           } as any);
           if (insertErr) { console.error("Broker expense insert error:", insertErr); throw insertErr; }
+          // Also save cheque to outside_cheques table
+          if (payment.payment_type === "cheque" && payment.cheque_number) {
+            await supabase.from("outside_cheques").insert({
+              name: brokerName || addDesc.trim() || "شيك خارجي",
+              cheque_number: payment.cheque_number,
+              amount,
+              cheque_date: payment.payment_date,
+              cheque_image_url: payment.cheque_image_url || null,
+              notes: addDesc.trim() || null,
+            } as any);
+          }
         }
       }
       toast.success("تم الإضافة بنجاح");
@@ -1131,6 +1174,28 @@ export default function Accounting() {
               </button>
             </div>
 
+            {/* Company selector inside dialog when no single company pre-selected */}
+            {entityType === "company" && (
+              <div className="space-y-1">
+                <Label>شركة التأمين *</Label>
+                <Select value={resolvedCompanyId} onValueChange={v => setAddDialogCompanyId(v)}>
+                  <SelectTrigger><SelectValue placeholder="اختر شركة تأمين..." /></SelectTrigger>
+                  <SelectContent>{companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name_ar || c.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Broker selector inside dialog when no single broker pre-selected */}
+            {entityType === "broker" && (
+              <div className="space-y-1">
+                <Label>الوكيل *</Label>
+                <Select value={resolvedBrokerId} onValueChange={v => setAddDialogBrokerId(v)}>
+                  <SelectTrigger><SelectValue placeholder="اختر وكيل..." /></SelectTrigger>
+                  <SelectContent>{brokers.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            )}
+
             {/* Contact name for "other" */}
             {entityType === "other" && (
               <div className="space-y-1">
@@ -1166,7 +1231,7 @@ export default function Accounting() {
               setMainReceiptImages={setMainReceiptImages}
               mainNotes={mainNotes}
               setMainNotes={setMainNotes}
-              entityId={entityType === "company" ? (selectedCompanyIds.length === 1 ? selectedCompanyIds[0] : "") : entityType === "broker" ? (selectedBrokerId !== "all" ? selectedBrokerId : "") : ""}
+              entityId={entityType === "company" ? resolvedCompanyId : entityType === "broker" ? resolvedBrokerId : ""}
               entityType={entityType === "company" ? "company" : "broker"}
             />
             )}
