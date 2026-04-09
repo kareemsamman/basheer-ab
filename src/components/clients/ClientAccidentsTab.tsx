@@ -408,7 +408,7 @@ export function ClientAccidentsTab({ clientId, accidentNotes, onAccidentNotesUpd
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
-                <TableHead className="text-right">رقم البلاغ</TableHead>
+                <TableHead className="text-right">رقم الملف</TableHead>
                 <TableHead className="text-right">تاريخ الحادث</TableHead>
                 <TableHead className="text-right">السيارة</TableHead>
                 <TableHead className="text-right">الشركة</TableHead>
