@@ -677,7 +677,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
     try {
       const { error } = await supabase
         .from('cars')
-        .delete()
+        .update({ deleted_at: new Date().toISOString() })
         .eq('id', deleteCarId);
       
       if (error) throw error;
