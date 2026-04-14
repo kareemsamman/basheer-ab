@@ -91,6 +91,7 @@ export default function Cars() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingCar, setDeletingCar] = useState<CarRecord | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deletingCarPolicyCount, setDeletingCarPolicyCount] = useState<number | null>(null);
 
   const fetchCars = useCallback(async () => {
     setLoading(true);
@@ -125,17 +126,47 @@ export default function Cars() {
     fetchCars();
   }, [fetchCars]);
 
+  const openDeleteDialog = async (car: CarRecord) => {
+    setDeletingCar(car);
+    setDeletingCarPolicyCount(null);
+    setDeleteDialogOpen(true);
+    // Fetch policy count for this car
+    const { count } = await supabase
+      .from('policies')
+      .select('id', { count: 'exact', head: true })
+      .eq('car_id', car.id)
+      .is('deleted_at', null);
+    setDeletingCarPolicyCount(count || 0);
+  };
+
   const handleDelete = async () => {
     if (!deletingCar) return;
     setDeleteLoading(true);
     try {
+      const now = new Date().toISOString();
+
+      // Soft-delete all related policies first
+      const { error: policiesError } = await supabase
+        .from('policies')
+        .update({ deleted_at: now } as any)
+        .eq('car_id', deletingCar.id)
+        .is('deleted_at', null);
+
+      if (policiesError) throw policiesError;
+
+      // Then soft-delete the car
       const { error } = await supabase
         .from('cars')
-        .update({ deleted_at: new Date().toISOString() })
+        .update({ deleted_at: now })
         .eq('id', deletingCar.id);
 
       if (error) throw error;
-      toast({ title: "تم الحذف", description: "تم حذف السيارة بنجاح" });
+      toast({
+        title: "تم الحذف",
+        description: deletingCarPolicyCount && deletingCarPolicyCount > 0
+          ? `تم حذف السيارة و ${deletingCarPolicyCount} وثيقة مرتبطة بها`
+          : "تم حذف السيارة بنجاح"
+      });
       fetchCars();
     } catch (error) {
       toast({ title: "خطأ", description: "فشل في حذف السيارة", variant: "destructive" });
@@ -143,6 +174,7 @@ export default function Cars() {
       setDeleteLoading(false);
       setDeleteDialogOpen(false);
       setDeletingCar(null);
+      setDeletingCarPolicyCount(null);
     }
   };
 
@@ -315,10 +347,7 @@ export default function Cars() {
                             setSelectedCar(car);
                             setDrawerOpen(true);
                           }}
-                          onDelete={() => {
-                            setDeletingCar(car);
-                            setDeleteDialogOpen(true);
-                          }}
+                          onDelete={() => openDeleteDialog(car)}
                         />
                       </TableCell>
                     </TableRow>
@@ -373,7 +402,13 @@ export default function Cars() {
         onOpenChange={setDeleteDialogOpen}
         onConfirm={handleDelete}
         title="حذف السيارة"
-        description={`هل أنت متأكد من حذف السيارة "${deletingCar?.car_number}"؟`}
+        description={
+          deletingCarPolicyCount === null
+            ? `جاري التحقق من الوثائق المرتبطة بالسيارة "${deletingCar?.car_number}"...`
+            : deletingCarPolicyCount > 0
+              ? `⚠️ تحذير: السيارة "${deletingCar?.car_number}" مرتبطة بـ ${deletingCarPolicyCount} وثيقة. سيتم حذف السيارة وجميع الوثائق المرتبطة بها. هل أنت متأكد من المتابعة؟`
+              : `هل أنت متأكد من حذف السيارة "${deletingCar?.car_number}"؟`
+        }
         loading={deleteLoading}
       />
     </MainLayout>
