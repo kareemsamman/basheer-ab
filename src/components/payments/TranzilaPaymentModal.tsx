@@ -99,6 +99,10 @@ export function TranzilaPaymentModal({
 
         if (paymentStatus === 'success') {
           setStatus('success');
+          // Mark payment as not refused (was created with refused=true as pending)
+          if (pmtId) {
+            await supabase.from('policy_payments').update({ refused: false } as any).eq('id', pmtId);
+          }
           toast({
             title: "تم الدفع بنجاح",
             description: "تم استلام الدفع بنجاح",
@@ -199,6 +203,10 @@ export function TranzilaPaymentModal({
         if (statusData.status === 'paid') {
           clearInterval(pollingRef.current!);
           pollingRef.current = null;
+          // Mark payment as not refused (was created with refused=true as pending)
+          if (pmtId) {
+            await supabase.from('policy_payments').update({ refused: false } as any).eq('id', pmtId);
+          }
           setStatus('success');
           toast({
             title: "تم الدفع بنجاح",
