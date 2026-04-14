@@ -661,29 +661,40 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
     }
   };
 
-  // Delete car handler
+  // Delete car handler - cascade delete related policies
   const handleDeleteCar = async () => {
     if (!deleteCarId) return;
-    
-    // Check if car has policies
-    if (carPolicyCounts[deleteCarId] > 0) {
-      toast.error('لا يمكن حذف السيارة لوجود وثائق مرتبطة بها');
-      setDeleteCarDialogOpen(false);
-      setDeleteCarId(null);
-      return;
-    }
-    
+
     setDeletingCar(true);
     try {
+      const now = new Date().toISOString();
+
+      // Soft-delete all related policies first (cascade)
+      const { error: policiesError } = await supabase
+        .from('policies')
+        .update({ deleted_at: now } as any)
+        .eq('car_id', deleteCarId)
+        .is('deleted_at', null);
+
+      if (policiesError) throw policiesError;
+
+      // Then soft-delete the car
       const { error } = await supabase
         .from('cars')
-        .update({ deleted_at: new Date().toISOString() })
+        .update({ deleted_at: now })
         .eq('id', deleteCarId);
-      
+
       if (error) throw error;
-      toast.success('تم حذف السيارة بنجاح');
+
+      const policyCount = carPolicyCounts[deleteCarId] || 0;
+      toast.success(
+        policyCount > 0
+          ? `تم حذف السيارة و ${policyCount} وثيقة مرتبطة بها`
+          : 'تم حذف السيارة بنجاح'
+      );
       fetchCars();
       fetchCarPolicyCounts();
+      if (onRefresh) onRefresh();
     } catch (error) {
       console.error('Error deleting car:', error);
       toast.error('فشل حذف السيارة');
@@ -2245,7 +2256,9 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
           <AlertDialogHeader>
             <AlertDialogTitle>حذف السيارة</AlertDialogTitle>
             <AlertDialogDescription>
-              هل أنت متأكد من حذف هذه السيارة؟ لا يمكن التراجع عن هذا الإجراء.
+              {deleteCarId && carPolicyCounts[deleteCarId] > 0
+                ? `⚠️ تحذير: هذه السيارة مرتبطة بـ ${carPolicyCounts[deleteCarId]} وثيقة. سيتم حذف السيارة وجميع الوثائق المرتبطة بها. هل أنت متأكد من المتابعة؟`
+                : 'هل أنت متأكد من حذف هذه السيارة؟ لا يمكن التراجع عن هذا الإجراء.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex gap-2">
