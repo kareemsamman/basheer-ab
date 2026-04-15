@@ -26,7 +26,7 @@ import {
 import {
   BookOpen, FileText, RotateCcw, PlusCircle, MoreVertical,
   Download, TrendingUp, TrendingDown, Landmark, Trash2, Pencil, XCircle,
-  ChevronLeft, ChevronRight, Building2, Users, UserPlus,
+  ChevronLeft, ChevronRight, ChevronDown, Building2, Users, UserPlus,
   ArrowUpRight, ArrowDownLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -631,8 +631,35 @@ export default function Accounting() {
   }, [rows, activeTab]);
 
   useEffect(() => setPage(0), [activeTab, entityType, selectedCompanyIds, selectedBrokerId, fromDate, toDate]);
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE) || 1;
-  const pageRows = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  // Group rows by (issue_date day + tab + description + company) so batch
+  // entries (e.g. 20 cheques added on same day) collapse into one accordion row
+  const groupedRows = useMemo(() => {
+    const groupMap = new Map<string, Row[]>();
+    const order: string[] = [];
+    for (const r of filtered) {
+      const day = (r.issue_date || r.date || "").split("T")[0];
+      const key = `${day}|${r.tab}|${r.description || ""}|${r.company_name || ""}`;
+      if (!groupMap.has(key)) {
+        groupMap.set(key, []);
+        order.push(key);
+      }
+      groupMap.get(key)!.push(r);
+    }
+    return order.map(key => ({ key, rows: groupMap.get(key)! }));
+  }, [filtered]);
+
+  const totalPages = Math.ceil(groupedRows.length / PAGE_SIZE) || 1;
+  const pageGroups = groupedRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const toggleGroup = (key: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   // Summary
   const summary = useMemo(() => {
@@ -1206,7 +1233,7 @@ export default function Accounting() {
 
         {/* Table */}
         <Card className="overflow-hidden">
-          {loading ? <div className="p-4 space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div> : pageRows.length === 0 ? (
+          {loading ? <div className="p-4 space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div> : pageGroups.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">لا توجد بيانات</div>
           ) : (<>
             <div className="overflow-x-auto"><Table><TableHeader><TableRow className="bg-muted/50">
@@ -1224,64 +1251,121 @@ export default function Accounting() {
               <TableHead className="text-right">البيان</TableHead>
               <TableHead className="text-right w-10">إجراءات</TableHead>
             </TableRow></TableHeader>
-            <TableBody>{pageRows.map((r, i) => {
+            <TableBody>{pageGroups.flatMap((g, gi) => {
               const badges: Record<string, { text: string; variant: "default" | "destructive" | "outline" | "secondary" }> = {
                 issuance: { text: "إصدار", variant: "default" }, refund: { text: "مرتجع", variant: "destructive" },
                 payment: { text: "سند صرف", variant: "outline" }, sale: { text: "مبيعات", variant: "secondary" },
                 receipt: { text: "سند قبض", variant: "secondary" },
               };
-              const b = badges[r.tab];
-              const canAct = !r.is_split && (r.source === "settlement" || r.source === "broker_settlement" || r.source === "expense" || r.source === "ledger");
-              const isCheque = r.payment_method.includes("شيك");
-              return (<TableRow key={`${r.tab}-${r.id}-${i}`}>
-                <TableCell className="text-muted-foreground">{page * PAGE_SIZE + i + 1}</TableCell>
-                <TableCell><Badge variant={b.variant} className="text-xs">{b.text}</Badge></TableCell>
-                {entityType !== "other" && <TableCell className="font-medium">{r.client_name || "-"}</TableCell>}
-                {entityType !== "other" && <TableCell className="font-mono">{r.car_number || "-"}</TableCell>}
-                {entityType !== "other" && (
-                  <TableCell>
-                    {r.cheque_number ? (
-                      <span className="font-mono text-xs">{r.cheque_number}</span>
-                    ) : r.types.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">{r.types.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}</div>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                )}
-                <TableCell className={cn("font-bold", r.tab === "refund" ? "text-destructive" : r.tab === "receipt" ? "text-green-600" : "")}>{r.tab === "refund" ? "-" : ""}{fmtCur(r.amount)}</TableCell>
-                <TableCell className="font-mono text-xs">{fmt(r.issue_date)}</TableCell>
-                <TableCell className="font-mono text-xs">{r.date !== r.issue_date ? fmt(r.date) : "-"}</TableCell>
-                <TableCell className="text-xs">{r.payment_method || "-"}</TableCell>
-                <TableCell className="text-sm">{r.company_name || "-"}</TableCell>
-                {entityType === "broker" && <TableCell className="text-sm">{r.extra || "-"}</TableCell>}
-                <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{r.description || "-"}</TableCell>
-                <TableCell>
-                  {canAct && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openEdit(r)}>
-                          <Pencil className="h-4 w-4 ml-2" />تعديل
-                        </DropdownMenuItem>
-                        {isCheque && (
-                          <DropdownMenuItem onClick={() => handleRefuseCheque(r)} className="text-destructive">
-                            <XCircle className="h-4 w-4 ml-2" />شيك مرفوض
-                          </DropdownMenuItem>
+
+              const renderRow = (r: Row, rowNum: string, isChild: boolean = false, key?: string) => {
+                const b = badges[r.tab];
+                const canAct = !r.is_split && (r.source === "settlement" || r.source === "broker_settlement" || r.source === "expense" || r.source === "ledger");
+                const isCheque = r.payment_method.includes("شيك");
+                return (
+                  <TableRow key={key || `${r.tab}-${r.id}`} className={isChild ? "bg-muted/20" : ""}>
+                    <TableCell className="text-muted-foreground">{rowNum}</TableCell>
+                    <TableCell><Badge variant={b.variant} className="text-xs">{b.text}</Badge></TableCell>
+                    {entityType !== "other" && <TableCell className="font-medium">{r.client_name || "-"}</TableCell>}
+                    {entityType !== "other" && <TableCell className="font-mono">{r.car_number || "-"}</TableCell>}
+                    {entityType !== "other" && (
+                      <TableCell>
+                        {r.cheque_number ? (
+                          <span className="font-mono text-xs">{r.cheque_number}</span>
+                        ) : r.types.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">{r.types.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}</div>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
                         )}
-                        <DropdownMenuItem onClick={() => handleDelete(r)} className="text-destructive">
-                          <Trash2 className="h-4 w-4 ml-2" />حذف
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                </TableCell>
-              </TableRow>);
+                      </TableCell>
+                    )}
+                    <TableCell className={cn("font-bold", r.tab === "refund" ? "text-destructive" : r.tab === "receipt" ? "text-green-600" : "")}>{r.tab === "refund" ? "-" : ""}{fmtCur(r.amount)}</TableCell>
+                    <TableCell className="font-mono text-xs">{fmt(r.issue_date)}</TableCell>
+                    <TableCell className="font-mono text-xs">{r.date !== r.issue_date ? fmt(r.date) : "-"}</TableCell>
+                    <TableCell className="text-xs">{r.payment_method || "-"}</TableCell>
+                    <TableCell className="text-sm">{r.company_name || "-"}</TableCell>
+                    {entityType === "broker" && <TableCell className="text-sm">{r.extra || "-"}</TableCell>}
+                    <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{r.description || "-"}</TableCell>
+                    <TableCell>
+                      {canAct && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEdit(r)}>
+                              <Pencil className="h-4 w-4 ml-2" />تعديل
+                            </DropdownMenuItem>
+                            {isCheque && (
+                              <DropdownMenuItem onClick={() => handleRefuseCheque(r)} className="text-destructive">
+                                <XCircle className="h-4 w-4 ml-2" />شيك مرفوض
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={() => handleDelete(r)} className="text-destructive">
+                              <Trash2 className="h-4 w-4 ml-2" />حذف
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              };
+
+              // Single entry: render normally
+              if (g.rows.length === 1) {
+                return [renderRow(g.rows[0], String(page * PAGE_SIZE + gi + 1))];
+              }
+
+              // Multiple entries: render accordion parent + optional children
+              const first = g.rows[0];
+              const b = badges[first.tab];
+              const totalAmount = g.rows.reduce((s, r) => s + r.amount, 0);
+              const isExpanded = expandedGroups.has(g.key);
+              const rowNum = String(page * PAGE_SIZE + gi + 1);
+
+              const parent = (
+                <TableRow key={`group-${g.key}`} className="bg-primary/5 hover:bg-primary/10 cursor-pointer font-medium" onClick={() => toggleGroup(g.key)}>
+                  <TableCell className="text-muted-foreground">
+                    <div className="flex items-center gap-1">
+                      <ChevronDown className={cn("h-4 w-4 transition-transform", isExpanded && "rotate-180")} />
+                      {rowNum}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={b.variant} className="text-xs">{b.text}</Badge>
+                      <Badge variant="outline" className="text-xs">{g.rows.length}</Badge>
+                    </div>
+                  </TableCell>
+                  {entityType !== "other" && <TableCell className="font-medium">{first.client_name || "-"}</TableCell>}
+                  {entityType !== "other" && <TableCell className="font-mono">-</TableCell>}
+                  {entityType !== "other" && <TableCell className="text-xs text-muted-foreground">{g.rows.length} سند</TableCell>}
+                  <TableCell className={cn("font-bold", first.tab === "refund" ? "text-destructive" : first.tab === "receipt" ? "text-green-600" : "")}>
+                    {first.tab === "refund" ? "-" : ""}{fmtCur(totalAmount)}
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">{fmt(first.issue_date)}</TableCell>
+                  <TableCell className="font-mono text-xs">-</TableCell>
+                  <TableCell className="text-xs">{first.payment_method || "-"}</TableCell>
+                  <TableCell className="text-sm">{first.company_name || "-"}</TableCell>
+                  {entityType === "broker" && <TableCell className="text-sm">{first.extra || "-"}</TableCell>}
+                  <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{first.description || "-"}</TableCell>
+                  <TableCell></TableCell>
+                </TableRow>
+              );
+
+              if (!isExpanded) return [parent];
+
+              return [
+                parent,
+                ...g.rows.map((r, ri) => renderRow(r, `${rowNum}.${ri + 1}`, true, `child-${g.key}-${r.id}-${ri}`)),
+              ];
             })}</TableBody></Table></div>
             <div className="flex items-center justify-between p-4 border-t">
-              <p className="text-sm text-muted-foreground">إجمالي: {filtered.length}</p>
+              <p className="text-sm text-muted-foreground">
+                إجمالي: {filtered.length}
+                {groupedRows.length !== filtered.length && ` (${groupedRows.length} مجموعة)`}
+              </p>
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}><ChevronRight className="h-4 w-4" /></Button>
                 <span className="text-sm">{page + 1} / {totalPages}</span>
