@@ -751,6 +751,33 @@ export default function Accounting() {
     setEditPolicies([]);
     setEditOpen(true);
 
+    // Load existing payment data for expense rows (sales have no payment line)
+    if (row.source === "expense" && row.tab !== "sale") {
+      const expenseId = row.id.split(":")[0];
+      const { data: expense } = await supabase
+        .from("expenses")
+        .select("id, amount, expense_date, description, payment_method, reference_number, notes")
+        .eq("id", expenseId)
+        .maybeSingle();
+      if (expense) {
+        const rawDesc = (expense as any).description || "";
+        setEditDesc(rawDesc.startsWith("[مبيعات] ") ? rawDesc.replace("[مبيعات] ", "") : rawDesc);
+        setEditNotes((expense as any).notes || "");
+        const pm = (expense as any).payment_method as string | null;
+        const validType: PaymentLine["payment_type"] =
+          pm === "cash" || pm === "cheque" || pm === "bank_transfer" || pm === "visa" ? pm : "cash";
+        const ref = (expense as any).reference_number || "";
+        setEditPaymentLines([{
+          id: crypto.randomUUID(),
+          payment_type: validType,
+          amount: Number((expense as any).amount) || 0,
+          payment_date: (expense as any).expense_date || new Date().toISOString().split("T")[0],
+          cheque_number: validType === "cheque" ? ref : undefined,
+          bank_reference: validType === "bank_transfer" ? ref : undefined,
+        }]);
+      }
+    }
+
     // Load individual policies for issuance rows
     if (row.source === "policy" && row.policyIds && row.policyIds.length > 0) {
       setEditPoliciesLoading(true);
@@ -795,6 +822,7 @@ export default function Accounting() {
         const isSale = editType === "sale";
         const voucherType = editType === "receipt" ? "receipt" : editType === "refund" ? "refund" : "payment";
         const desc = isSale ? `[مبيعات] ${editDesc}` : editDesc;
+        const expenseId = editRow.id.split(":")[0];
 
         if (isSale || editPaymentLines.length === 0) {
           // Simple update (sale or just editing existing)
@@ -805,7 +833,7 @@ export default function Accounting() {
             voucher_type: voucherType,
             payment_method: isSale ? "cash" : undefined,
             notes: isSale ? "مبيعات - بدون طريقة دفع" : editNotes || undefined,
-          } as any).eq("id", editRow.id);
+          } as any).eq("id", expenseId);
         } else {
           // Has payment lines: update the first entry and create new ones
           const firstPayment = editPaymentLines[0];
@@ -817,7 +845,7 @@ export default function Accounting() {
             voucher_type: voucherType, payment_method: pm,
             reference_number: firstPayment.payment_type === "cheque" ? firstPayment.cheque_number : firstPayment.bank_reference || null,
             notes: editNotes || null,
-          } as any).eq("id", editRow.id);
+          } as any).eq("id", expenseId);
 
           // Create additional lines
           for (let i = 1; i < editPaymentLines.length; i++) {
