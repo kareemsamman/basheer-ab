@@ -199,10 +199,45 @@ export default function DebtTracking() {
         policiesByClient.set(row.client_id, list);
       }
 
-      const hydrated = baseClients.map((c) => ({
-        ...c,
-        policies: policiesByClient.get(c.client_id) || [],
-      }));
+      // Client-side broker group exclusion:
+      // Query all broker groups for these clients, then filter out policies
+      // that belong to those groups from each client's debt calculation
+      let brokerGroupsByClient = new Map<string, Set<string>>();
+      if (clientIds.length > 0) {
+        const { data: brokerGroupRows } = await supabase
+          .from('policies')
+          .select('client_id, group_id')
+          .in('client_id', clientIds)
+          .not('broker_id', 'is', null)
+          .not('group_id', 'is', null);
+        for (const row of brokerGroupRows || []) {
+          if (!row.group_id) continue;
+          const set = brokerGroupsByClient.get(row.client_id) || new Set<string>();
+          set.add(row.group_id);
+          brokerGroupsByClient.set(row.client_id, set);
+        }
+      }
+
+      const hydrated = baseClients.map((c) => {
+        const allPolicies = policiesByClient.get(c.client_id) || [];
+        const brokerGroups = brokerGroupsByClient.get(c.client_id) || new Set<string>();
+        // Filter out policies that belong to broker groups
+        const filteredPolicies = allPolicies.filter(p =>
+          !p.group_id || !brokerGroups.has(p.group_id)
+        );
+        // Recalculate totals based on filtered policies
+        const total_owed = filteredPolicies.reduce((s, p) => s + p.insurance_price, 0);
+        const total_paid = filteredPolicies.reduce((s, p) => s + p.paid, 0);
+        const total_remaining = filteredPolicies.reduce((s, p) => s + p.remaining, 0);
+        return {
+          ...c,
+          policies: filteredPolicies,
+          policies_count: filteredPolicies.length,
+          total_owed,
+          total_paid,
+          total_remaining,
+        };
+      }).filter(c => c.total_remaining > 0); // hide clients whose remaining is all broker
 
       setExpandedClients(new Set());
       setClients(hydrated);
