@@ -267,6 +267,16 @@ export function DebtPaymentModal({
   const fetchDebtItems = async () => {
     setLoading(true);
     try {
+      // First, find ALL group_ids where ANY policy has a broker_id set
+      // (broker packages may have broker_id only on the main policy)
+      const { data: brokerGroups } = await supabase
+        .from('policies')
+        .select('group_id')
+        .eq('client_id', clientId)
+        .not('broker_id', 'is', null)
+        .not('group_id', 'is', null);
+      const excludedGroupIds = new Set((brokerGroups || []).map(g => g.group_id).filter(Boolean));
+
       // Fetch ALL policies for this client (including ELZAMI)
       // Exclude: cancelled, deleted, transferred, and broker deals
       const { data: policiesData, error: policiesError } = await supabase
@@ -280,7 +290,12 @@ export function DebtPaymentModal({
 
       if (policiesError) throw policiesError;
 
-      const allPolicyIds = (policiesData || []).map(p => p.id);
+      // Also exclude policies that share a group_id with broker policies
+      const filteredPolicies = (policiesData || []).filter(p =>
+        !p.group_id || !excludedGroupIds.has(p.group_id)
+      );
+
+      const allPolicyIds = filteredPolicies.map(p => p.id);
 
       // Fetch ALL payments for these policies
       let paymentsMap: Record<string, number> = {};
@@ -300,9 +315,9 @@ export function DebtPaymentModal({
       }
 
       // Group policies by group_id or individual
-      const groupMap = new Map<string, typeof policiesData>();
-      
-      (policiesData || []).forEach(policy => {
+      const groupMap = new Map<string, typeof filteredPolicies>();
+
+      filteredPolicies.forEach(policy => {
         const key = policy.group_id || `single_${policy.id}`;
         if (!groupMap.has(key)) {
           groupMap.set(key, []);
