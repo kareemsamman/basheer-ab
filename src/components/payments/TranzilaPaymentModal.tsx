@@ -86,11 +86,11 @@ export function TranzilaPaymentModal({
 
   // Listen for postMessage from payment success/fail pages loaded in iframe
   useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
+    const handleMessage = async (event: MessageEvent) => {
       // Check if message is from our payment pages
       if (event.data?.type === 'TRANZILA_PAYMENT_RESULT') {
         const { status: paymentStatus, error_message, error_code } = event.data;
-        
+
         // Clear polling since we got direct result
         if (pollingRef.current) {
           clearInterval(pollingRef.current);
@@ -100,8 +100,8 @@ export function TranzilaPaymentModal({
         if (paymentStatus === 'success') {
           setStatus('success');
           // Mark payment as not refused (was created with refused=true as pending)
-          if (pmtId) {
-            await supabase.from('policy_payments').update({ refused: false } as any).eq('id', pmtId);
+          if (paymentId) {
+            await supabase.from('policy_payments').update({ refused: false } as any).eq('id', paymentId);
           }
           toast({
             title: "تم الدفع بنجاح",
@@ -128,7 +128,7 @@ export function TranzilaPaymentModal({
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [onSuccess, onOpenChange, toast]);
+  }, [onSuccess, onOpenChange, toast, paymentId]);
 
   const initializePayment = async () => {
     try {
