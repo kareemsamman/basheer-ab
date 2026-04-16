@@ -544,14 +544,14 @@ export default function Accounting() {
             company_name: co,
             broker_name: brokerName,
             insurance_price: p.insurance_price || 0,
-            payed_for_company: Number((p as any).payed_for_company) || 0,
+            payed_for_company: isTransferred ? 0 : (Number((p as any).payed_for_company) || 0),
             profit: isTransferred ? 0 : (Number((p as any).profit) || 0),
             issue_date: (p as any).issue_date || p.created_at,
           });
           if (isTransferred) continue;
           const k = p.group_id || p.id;
-          if (bMap.has(k)) {
-            const e = bMap.get(k)!;
+          if (gMap.has(k)) {
+            const e = gMap.get(k)!;
             e.amount += p.insurance_price || 0;
             if (lbl && !e.types.includes(lbl)) e.types.push(lbl);
             if (e.policyIds && !e.policyIds.includes(p.id)) e.policyIds.push(p.id);
