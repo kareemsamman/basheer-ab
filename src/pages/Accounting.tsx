@@ -86,6 +86,19 @@ interface Row {
   is_split?: boolean;
 }
 
+interface PolicyDetail {
+  id: string;
+  client_name: string;
+  car_number: string | null;
+  type_label: string;
+  company_name: string;
+  broker_name: string;
+  insurance_price: number;
+  payed_for_company: number;
+  profit: number;
+  issue_date: string;
+}
+
 const payMethodLabel: Record<string, string> = {
   cash: "نقدي", cheque: "شيك", bank_transfer: "تحويل بنكي",
   visa: "فيزا", customer_cheque: "شيك عميل",
@@ -280,6 +293,9 @@ export default function Accounting() {
 
   // Data
   const [rows, setRows] = useState<Row[]>([]);
+  const [policyDetails, setPolicyDetails] = useState<PolicyDetail[]>([]);
+  const [manualExpensesTotal, setManualExpensesTotal] = useState(0);
+  const [showPoliciesDetail, setShowPoliciesDetail] = useState(false);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
 
@@ -335,12 +351,13 @@ export default function Accounting() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     const results: Row[] = [];
+    const policyDetailsLocal: PolicyDetail[] = [];
 
     try {
       if (entityType === "company") {
         // ISSUANCES
         let q = supabase.from("policies")
-          .select("id, insurance_price, policy_type_parent, policy_type_child, issue_date, created_at, group_id, company_id, clients(full_name), cars(car_number), insurance_companies(name_ar, name)")
+          .select("id, insurance_price, payed_for_company, profit, policy_type_parent, policy_type_child, issue_date, created_at, group_id, company_id, clients(full_name), cars(car_number), insurance_companies(name_ar, name)")
           .gte("issue_date", fromDate).lte("issue_date", toDate)
           .is("deleted_at", null).eq("cancelled", false).eq("transferred", false)
           .neq("policy_type_parent", "ELZAMI");
@@ -368,6 +385,18 @@ export default function Accounting() {
           const k = p.group_id || p.id;
           const lbl = policyTypeDisplay(p.policy_type_parent, p.policy_type_child);
           const co = (p as any).insurance_companies?.name_ar || (p as any).insurance_companies?.name || "";
+          policyDetailsLocal.push({
+            id: p.id,
+            client_name: (p as any).clients?.full_name || "-",
+            car_number: (p as any).cars?.car_number || null,
+            type_label: lbl,
+            company_name: co,
+            broker_name: "",
+            insurance_price: p.insurance_price || 0,
+            payed_for_company: Number((p as any).payed_for_company) || 0,
+            profit: Number((p as any).profit) || 0,
+            issue_date: (p as any).issue_date || p.created_at,
+          });
           if (gMap.has(k)) {
             const e = gMap.get(k)!;
             e.amount += p.insurance_price || 0;
@@ -475,7 +504,7 @@ export default function Accounting() {
       } else if (entityType === "broker") {
         // BROKER ISSUANCES
         let bq = supabase.from("policies")
-          .select("id, insurance_price, policy_type_parent, policy_type_child, issue_date, created_at, group_id, broker_id, clients(full_name), cars(car_number), insurance_companies(name_ar, name), brokers(name)")
+          .select("id, insurance_price, payed_for_company, profit, policy_type_parent, policy_type_child, issue_date, created_at, group_id, broker_id, clients(full_name), cars(car_number), insurance_companies(name_ar, name), brokers(name)")
           .gte("issue_date", fromDate).lte("issue_date", toDate)
           .is("deleted_at", null).eq("cancelled", false).eq("transferred", false)
           .neq("policy_type_parent", "ELZAMI").not("broker_id", "is", null);
@@ -502,13 +531,26 @@ export default function Accounting() {
           const k = p.group_id || p.id;
           const lbl = policyTypeDisplay(p.policy_type_parent, p.policy_type_child);
           const co = (p as any).insurance_companies?.name_ar || (p as any).insurance_companies?.name || "";
+          const brokerName = (p as any).brokers?.name || "";
+          policyDetailsLocal.push({
+            id: p.id,
+            client_name: (p as any).clients?.full_name || "-",
+            car_number: (p as any).cars?.car_number || null,
+            type_label: lbl,
+            company_name: co,
+            broker_name: brokerName,
+            insurance_price: p.insurance_price || 0,
+            payed_for_company: Number((p as any).payed_for_company) || 0,
+            profit: Number((p as any).profit) || 0,
+            issue_date: (p as any).issue_date || p.created_at,
+          });
           if (bMap.has(k)) {
             const e = bMap.get(k)!;
             e.amount += p.insurance_price || 0;
             if (lbl && !e.types.includes(lbl)) e.types.push(lbl);
             if (e.policyIds && !e.policyIds.includes(p.id)) e.policyIds.push(p.id);
           } else {
-            bMap.set(k, { id: k, tab: "issuance", source: "policy", policyIds: [p.id], client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: (p as any).issue_date || p.created_at, issue_date: (p as any).issue_date || p.created_at, description: "", company_name: co, payment_method: "", extra: (p as any).brokers?.name || "" });
+            bMap.set(k, { id: k, tab: "issuance", source: "policy", policyIds: [p.id], client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: (p as any).issue_date || p.created_at, issue_date: (p as any).issue_date || p.created_at, description: "", company_name: co, payment_method: "", extra: brokerName });
           }
         }
         results.push(...bMap.values());
@@ -613,6 +655,22 @@ export default function Accounting() {
       // Sort all results by date descending (newest first)
       results.sort((a, b) => (b.issue_date || b.date).localeCompare(a.issue_date || a.date));
       setRows(results);
+      setPolicyDetails(policyDetailsLocal);
+
+      // Manual operational expenses (for net-profit calculation) — payment vouchers only, excluding sales
+      if (entityType !== "other") {
+        const { data: manual } = await supabase.from("expenses")
+          .select("amount, description")
+          .eq("entity_type", "manual")
+          .eq("voucher_type", "payment")
+          .gte("created_at", fromDate).lte("created_at", toDate + "T23:59:59");
+        const manualTotal = (manual || [])
+          .filter(e => !(e.description || "").startsWith("[مبيعات]"))
+          .reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        setManualExpensesTotal(manualTotal);
+      } else {
+        setManualExpensesTotal(0);
+      }
     } catch (err) {
       console.error("Error:", err);
       toast.error("فشل في تحميل البيانات");
@@ -668,8 +726,12 @@ export default function Accounting() {
     const p = rows.filter(r => r.tab === "payment").reduce((s, r) => s + r.amount, 0);
     const sl = rows.filter(r => r.tab === "sale").reduce((s, r) => s + r.amount, 0);
     const rc = rows.filter(r => r.tab === "receipt").reduce((s, r) => s + r.amount, 0);
-    return { issuances: i, refunds: rf, payments: p, sales: sl, receipts: rc, net: i - rf - p - sl + rc };
-  }, [rows]);
+    const owedToCompany = policyDetails.reduce((s, pol) => s + pol.payed_for_company, 0);
+    const policyProfit = policyDetails.reduce((s, pol) => s + pol.profit, 0);
+    const remainingToCompany = owedToCompany - p;
+    const netProfit = policyProfit - manualExpensesTotal;
+    return { issuances: i, refunds: rf, payments: p, sales: sl, receipts: rc, net: i - rf - p - sl + rc, owedToCompany, policyProfit, remainingToCompany, manualExpenses: manualExpensesTotal, netProfit };
+  }, [rows, policyDetails, manualExpensesTotal]);
 
   const showReceipt = true; // All entity types support payment + receipt
 
@@ -1231,6 +1293,81 @@ export default function Accounting() {
             </div></Card>
           ))}
         </div>
+
+        {/* Policy-level totals (owed, profit, net) */}
+        {entityType !== "other" && (
+          <div className={cn("grid gap-4", entityType === "company" ? "md:grid-cols-3 lg:grid-cols-5" : "md:grid-cols-3")}>
+            {(entityType === "company" ? [
+              { l: "المستحق للشركات", v: summary.owedToCompany, c: "text-orange-600", bg: "bg-orange-100", I: Building2 },
+              { l: "المدفوع للشركات", v: summary.payments, c: "text-amber-600", bg: "bg-amber-100", I: ArrowUpRight },
+              { l: "المتبقي للشركات", v: summary.remainingToCompany, c: summary.remainingToCompany > 0 ? "text-destructive" : "text-green-600", bg: summary.remainingToCompany > 0 ? "bg-destructive/10" : "bg-green-100", I: Landmark },
+              { l: "الربح من البوالص", v: summary.policyProfit, c: "text-emerald-600", bg: "bg-emerald-100", I: TrendingUp },
+              { l: "الربح الصافي", v: summary.netProfit, c: summary.netProfit >= 0 ? "text-green-700" : "text-destructive", bg: summary.netProfit >= 0 ? "bg-green-100" : "bg-destructive/10", I: Landmark },
+            ] : [
+              { l: "الربح من البوالص", v: summary.policyProfit, c: "text-emerald-600", bg: "bg-emerald-100", I: TrendingUp },
+              { l: "المصاريف التشغيلية", v: summary.manualExpenses, c: "text-destructive", bg: "bg-destructive/10", I: TrendingDown },
+              { l: "الربح الصافي", v: summary.netProfit, c: summary.netProfit >= 0 ? "text-green-700" : "text-destructive", bg: summary.netProfit >= 0 ? "bg-green-100" : "bg-destructive/10", I: Landmark },
+            ]).map((s, i) => (
+              <Card key={i} className="p-4"><div className="flex items-center justify-between">
+                <div><p className="text-xs text-muted-foreground">{s.l}</p>
+                  {loading ? <Skeleton className="h-7 w-20 mt-1" /> : <p className={cn("text-xl font-bold", s.c)}>{fmtCur(s.v)}</p>}
+                </div>
+                <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center", s.bg)}><s.I className={cn("h-4 w-4", s.c)} /></div>
+              </div></Card>
+            ))}
+          </div>
+        )}
+
+        {/* Collapsible policy-detail table */}
+        {entityType !== "other" && policyDetails.length > 0 && (
+          <Card className="overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowPoliciesDetail(v => !v)}
+              className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <ChevronDown className={cn("h-4 w-4 transition-transform", showPoliciesDetail ? "" : "-rotate-90")} />
+                <span className="font-medium">تفاصيل البوالص ({policyDetails.length})</span>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                مستحق: {fmtCur(summary.owedToCompany)} · ربح: {fmtCur(summary.policyProfit)}
+              </div>
+            </button>
+            {showPoliciesDetail && (
+              <div className="overflow-x-auto border-t">
+                <Table>
+                  <TableHeader><TableRow className="bg-muted/50">
+                    <TableHead className="text-right">العميل</TableHead>
+                    <TableHead className="text-right">رقم السيارة</TableHead>
+                    <TableHead className="text-right">نوع التأمين</TableHead>
+                    <TableHead className="text-right">الشركة</TableHead>
+                    {entityType === "broker" && <TableHead className="text-right">الوكيل</TableHead>}
+                    <TableHead className="text-right">تاريخ الإصدار</TableHead>
+                    <TableHead className="text-right">سعر التأمين</TableHead>
+                    <TableHead className="text-right">المستحق للشركة</TableHead>
+                    <TableHead className="text-right">الربح</TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>
+                    {policyDetails.map(p => (
+                      <TableRow key={p.id}>
+                        <TableCell>{p.client_name}</TableCell>
+                        <TableCell>{p.car_number || "-"}</TableCell>
+                        <TableCell>{p.type_label || "-"}</TableCell>
+                        <TableCell>{p.company_name || "-"}</TableCell>
+                        {entityType === "broker" && <TableCell>{p.broker_name || "-"}</TableCell>}
+                        <TableCell>{fmt(p.issue_date)}</TableCell>
+                        <TableCell className="font-mono">{fmtCur(p.insurance_price)}</TableCell>
+                        <TableCell className="font-mono text-orange-600">{fmtCur(p.payed_for_company)}</TableCell>
+                        <TableCell className="font-mono text-emerald-600">{fmtCur(p.profit)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </Card>
+        )}
 
         {/* Tabs + Add Button */}
         <div className="flex items-center gap-3">
