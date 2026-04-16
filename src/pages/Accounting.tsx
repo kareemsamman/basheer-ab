@@ -355,11 +355,11 @@ export default function Accounting() {
 
     try {
       if (entityType === "company") {
-        // ISSUANCES
+        // ISSUANCES (includes transferred so policy totals match /reports/company-settlement)
         let q = supabase.from("policies")
-          .select("id, insurance_price, payed_for_company, profit, policy_type_parent, policy_type_child, issue_date, created_at, group_id, company_id, clients(full_name), cars(car_number), insurance_companies(name_ar, name)")
+          .select("id, insurance_price, payed_for_company, profit, transferred, policy_type_parent, policy_type_child, issue_date, created_at, group_id, company_id, clients(full_name), cars(car_number), insurance_companies(name_ar, name)")
           .gte("issue_date", fromDate).lte("issue_date", toDate)
-          .is("deleted_at", null).eq("cancelled", false).eq("transferred", false)
+          .is("deleted_at", null).eq("cancelled", false)
           .neq("policy_type_parent", "ELZAMI");
         if (selectedCompanyIds.length > 0) q = q.in("company_id", selectedCompanyIds);
         if (selectedPolicyTypes.length > 0) {
@@ -382,9 +382,11 @@ export default function Accounting() {
 
         const gMap = new Map<string, Row>();
         for (const p of iss || []) {
-          const k = p.group_id || p.id;
+          const isTransferred = Boolean((p as any).transferred);
           const lbl = policyTypeDisplay(p.policy_type_parent, p.policy_type_child);
           const co = (p as any).insurance_companies?.name_ar || (p as any).insurance_companies?.name || "";
+          // Transferred policies: include in policy-level totals (match CompanySettlement)
+          // but zero out profit and skip from the issuance rows
           policyDetailsLocal.push({
             id: p.id,
             client_name: (p as any).clients?.full_name || "-",
@@ -394,9 +396,11 @@ export default function Accounting() {
             broker_name: "",
             insurance_price: p.insurance_price || 0,
             payed_for_company: Number((p as any).payed_for_company) || 0,
-            profit: Number((p as any).profit) || 0,
+            profit: isTransferred ? 0 : (Number((p as any).profit) || 0),
             issue_date: (p as any).issue_date || p.created_at,
           });
+          if (isTransferred) continue;
+          const k = p.group_id || p.id;
           if (gMap.has(k)) {
             const e = gMap.get(k)!;
             e.amount += p.insurance_price || 0;
@@ -502,11 +506,11 @@ export default function Accounting() {
         // Customer payments belong to the issuances flow, not receipts.
 
       } else if (entityType === "broker") {
-        // BROKER ISSUANCES
+        // BROKER ISSUANCES (includes transferred so policy totals match /reports/company-settlement)
         let bq = supabase.from("policies")
-          .select("id, insurance_price, payed_for_company, profit, policy_type_parent, policy_type_child, issue_date, created_at, group_id, broker_id, clients(full_name), cars(car_number), insurance_companies(name_ar, name), brokers(name)")
+          .select("id, insurance_price, payed_for_company, profit, transferred, policy_type_parent, policy_type_child, issue_date, created_at, group_id, broker_id, clients(full_name), cars(car_number), insurance_companies(name_ar, name), brokers(name)")
           .gte("issue_date", fromDate).lte("issue_date", toDate)
-          .is("deleted_at", null).eq("cancelled", false).eq("transferred", false)
+          .is("deleted_at", null).eq("cancelled", false)
           .neq("policy_type_parent", "ELZAMI").not("broker_id", "is", null);
         if (selectedBrokerId !== "all") bq = bq.eq("broker_id", selectedBrokerId);
         if (selectedCompanyIds.length > 0) bq = bq.in("company_id", selectedCompanyIds);
@@ -528,7 +532,7 @@ export default function Accounting() {
 
         const bMap = new Map<string, Row>();
         for (const p of bPols || []) {
-          const k = p.group_id || p.id;
+          const isTransferred = Boolean((p as any).transferred);
           const lbl = policyTypeDisplay(p.policy_type_parent, p.policy_type_child);
           const co = (p as any).insurance_companies?.name_ar || (p as any).insurance_companies?.name || "";
           const brokerName = (p as any).brokers?.name || "";
@@ -541,9 +545,11 @@ export default function Accounting() {
             broker_name: brokerName,
             insurance_price: p.insurance_price || 0,
             payed_for_company: Number((p as any).payed_for_company) || 0,
-            profit: Number((p as any).profit) || 0,
+            profit: isTransferred ? 0 : (Number((p as any).profit) || 0),
             issue_date: (p as any).issue_date || p.created_at,
           });
+          if (isTransferred) continue;
+          const k = p.group_id || p.id;
           if (bMap.has(k)) {
             const e = bMap.get(k)!;
             e.amount += p.insurance_price || 0;
