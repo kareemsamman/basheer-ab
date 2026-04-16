@@ -395,7 +395,7 @@ export default function Accounting() {
             company_name: co,
             broker_name: "",
             insurance_price: p.insurance_price || 0,
-            payed_for_company: Number((p as any).payed_for_company) || 0,
+            payed_for_company: isTransferred ? 0 : (Number((p as any).payed_for_company) || 0),
             profit: isTransferred ? 0 : (Number((p as any).profit) || 0),
             issue_date: (p as any).issue_date || p.created_at,
           });
@@ -544,7 +544,7 @@ export default function Accounting() {
             company_name: co,
             broker_name: brokerName,
             insurance_price: p.insurance_price || 0,
-            payed_for_company: Number((p as any).payed_for_company) || 0,
+            payed_for_company: isTransferred ? 0 : (Number((p as any).payed_for_company) || 0),
             profit: isTransferred ? 0 : (Number((p as any).profit) || 0),
             issue_date: (p as any).issue_date || p.created_at,
           });
