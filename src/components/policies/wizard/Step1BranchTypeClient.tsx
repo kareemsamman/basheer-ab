@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -383,6 +383,35 @@ export function Step1BranchTypeClient({
                 checkingDuplicate={checkingDuplicate}
                 errors={errors}
               />
+
+              {/* Duplicate ID warning */}
+              {duplicateClient && (
+                <Card className="p-4 border-amber-500 bg-amber-50 dark:bg-amber-950/20">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
+                      <AlertTriangle className="h-5 w-5 text-amber-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-amber-700 dark:text-amber-400">
+                        ⚠️ يوجد عميل مسجل بنفس رقم الهوية
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {duplicateClient.full_name} • {duplicateClient.id_number}
+                        {duplicateClient.phone_number && ` • ${duplicateClient.phone_number}`}
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="mt-3"
+                        onClick={handleUseExistingDuplicate}
+                      >
+                        اختيار العميل الحالي
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              )}
+
               <Button variant="outline" size="sm" onClick={handleCancelCreate} className="w-full">
                 إلغاء
               </Button>
