@@ -87,6 +87,7 @@ export default function Dashboard() {
   
   // Company debts data
   const [companyDebts, setCompanyDebts] = useState<CompanyDebt[]>([]);
+  const [companyDebtsNetTotal, setCompanyDebtsNetTotal] = useState(0);
   const [companyDebtsLoading, setCompanyDebtsLoading] = useState(true);
 
   // Fetch basic stats
@@ -203,12 +204,15 @@ export default function Dashboard() {
         paidMap.set(s.company_id, (paidMap.get(s.company_id) || 0) + (Number(s.total_amount) || 0));
       }
 
+      // Compute net total (owed - paid) across ALL non-broker companies — matches Accounting "المتبقي للشركات"
+      let netTotal = 0;
       const rows: CompanyDebt[] = [];
       for (const c of (companies || []) as any[]) {
         if (c.broker_id) continue; // exclude broker-linked companies
         const owed = owedMap.get(c.id) || 0;
         const paid = paidMap.get(c.id) || 0;
         const outstanding = owed - paid;
+        netTotal += outstanding;
         if (outstanding > 0) {
           rows.push({
             company_id: c.id,
@@ -219,6 +223,7 @@ export default function Dashboard() {
       }
       rows.sort((a, b) => b.outstanding - a.outstanding);
       setCompanyDebts(rows);
+      setCompanyDebtsNetTotal(netTotal);
     } catch (e) {
       console.error('Error fetching company debts:', e);
     } finally {
@@ -263,8 +268,8 @@ export default function Dashboard() {
     { third_count: 0, third_amount: 0, full_count: 0, full_amount: 0, total_count: 0, total_amount: 0 }
   );
 
-  // Company debts total
-  const companyDebtsTotal = companyDebts.reduce((sum, d) => sum + Number(d.outstanding), 0);
+  // Company debts total — net (owed - paid) across all non-broker companies, matches Accounting
+  const companyDebtsTotal = companyDebtsNetTotal;
 
   const handlePolicyComplete = () => {
     refetchProfit();
