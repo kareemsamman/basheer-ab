@@ -87,6 +87,7 @@ export default function Dashboard() {
   
   // Company debts data
   const [companyDebts, setCompanyDebts] = useState<CompanyDebt[]>([]);
+  const [companyDebtsNetTotal, setCompanyDebtsNetTotal] = useState(0);
   const [companyDebtsLoading, setCompanyDebtsLoading] = useState(true);
 
   // Fetch basic stats
