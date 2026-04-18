@@ -113,6 +113,45 @@ export function Step1BranchTypeClient({
     }
   }, [clientSearch]);
 
+  // Duplicate ID detection when creating a new client
+  const [duplicateClient, setDuplicateClient] = useState<Client | null>(null);
+
+  useEffect(() => {
+    if (!createNewClient) {
+      setDuplicateClient(null);
+      return;
+    }
+    const id = (newClient.id_number || "").trim();
+    if (id.length !== 9) {
+      setDuplicateClient(null);
+      return;
+    }
+    let cancelled = false;
+    setCheckingDuplicate(true);
+    const timer = setTimeout(async () => {
+      const { data } = await supabase
+        .from('clients')
+        .select('id, full_name, id_number, file_number, phone_number, less_than_24, under24_type, under24_driver_name, under24_driver_id, broker_id, accident_notes')
+        .eq('id_number', id)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (cancelled) return;
+      setCheckingDuplicate(false);
+      setDuplicateClient(data ? (data as Client) : null);
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      setCheckingDuplicate(false);
+    };
+  }, [newClient.id_number, createNewClient]);
+
+  const handleUseExistingDuplicate = () => {
+    if (!duplicateClient) return;
+    handleSelectClient(duplicateClient);
+    setDuplicateClient(null);
+  };
+
   const handleSelectClient = (client: Client) => {
     setSelectedClient(client);
     setCreateNewClient(false);
