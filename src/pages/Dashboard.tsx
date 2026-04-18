@@ -268,8 +268,8 @@ export default function Dashboard() {
     { third_count: 0, third_amount: 0, full_count: 0, full_amount: 0, total_count: 0, total_amount: 0 }
   );
 
-  // Company debts total
-  const companyDebtsTotal = companyDebts.reduce((sum, d) => sum + Number(d.outstanding), 0);
+  // Company debts total — net (owed - paid) across all non-broker companies, matches Accounting
+  const companyDebtsTotal = companyDebtsNetTotal;
 
   const handlePolicyComplete = () => {
     refetchProfit();
