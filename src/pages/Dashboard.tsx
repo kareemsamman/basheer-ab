@@ -147,13 +147,78 @@ export default function Dashboard() {
     fetchProduction();
   }, [fetchProduction]);
 
-  // Fetch company debts
+  // Fetch company debts — same logic as /accounting page:
+  // owed = SUM(payed_for_company) from non-transferred, non-ELZAMI, non-cancelled policies (issue_date >= 2026-01-01)
+  // paid = SUM(company_settlements.total_amount) where status != 'refused' (created_at >= 2026-01-01)
+  // outstanding per company = owed - paid (only positive shown in table; total uses raw sum)
   const fetchCompanyDebts = useCallback(async () => {
     setCompanyDebtsLoading(true);
     try {
-      const { data, error } = await supabase.rpc('dashboard_company_debts');
-      if (error) throw error;
-      setCompanyDebts((data as CompanyDebt[]) || []);
+      const FROM = '2026-01-01';
+
+      // 1) Pull all relevant policies (paginated to bypass 1000-row limit)
+      type Pol = { company_id: string | null; payed_for_company: number | null; transferred: boolean | null };
+      const polRows: Pol[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from('policies')
+          .select('company_id, payed_for_company, transferred')
+          .is('deleted_at', null)
+          .eq('cancelled', false)
+          .neq('policy_type_parent', 'ELZAMI')
+          .not('company_id', 'is', null)
+          .gte('issue_date', FROM)
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        const batch = (data || []) as Pol[];
+        polRows.push(...batch);
+        if (batch.length < pageSize) break;
+        from += pageSize;
+      }
+
+      // 2) Pull all settlements (excluding refused) from 2026-01-01
+      const { data: settlements, error: sErr } = await supabase
+        .from('company_settlements')
+        .select('company_id, total_amount, status, refused')
+        .gte('created_at', FROM);
+      if (sErr) throw sErr;
+
+      // 3) Pull companies for names + broker linkage (exclude broker-linked)
+      const { data: companies, error: cErr } = await supabase
+        .from('insurance_companies')
+        .select('id, name, name_ar, broker_id');
+      if (cErr) throw cErr;
+
+      const owedMap = new Map<string, number>();
+      for (const p of polRows) {
+        if (!p.company_id || p.transferred) continue;
+        owedMap.set(p.company_id, (owedMap.get(p.company_id) || 0) + (Number(p.payed_for_company) || 0));
+      }
+      const paidMap = new Map<string, number>();
+      for (const s of (settlements || []) as any[]) {
+        if (!s.company_id) continue;
+        if (s.status === 'refused' || s.refused === true) continue;
+        paidMap.set(s.company_id, (paidMap.get(s.company_id) || 0) + (Number(s.total_amount) || 0));
+      }
+
+      const rows: CompanyDebt[] = [];
+      for (const c of (companies || []) as any[]) {
+        if (c.broker_id) continue; // exclude broker-linked companies
+        const owed = owedMap.get(c.id) || 0;
+        const paid = paidMap.get(c.id) || 0;
+        const outstanding = owed - paid;
+        if (outstanding > 0) {
+          rows.push({
+            company_id: c.id,
+            company_name: c.name_ar || c.name || '',
+            outstanding,
+          });
+        }
+      }
+      rows.sort((a, b) => b.outstanding - a.outstanding);
+      setCompanyDebts(rows);
     } catch (e) {
       console.error('Error fetching company debts:', e);
     } finally {
