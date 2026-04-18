@@ -420,7 +420,7 @@ export function Step1BranchTypeClient({
         open={!!duplicateClient}
         onOpenChange={(open) => { if (!open) setDuplicateClient(null); }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="z-[100]">
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-amber-600" />
