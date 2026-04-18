@@ -186,6 +186,15 @@ export default function Dashboard() {
         .gte('created_at', FROM);
       if (sErr) throw sErr;
 
+      // 2b) Pull company-payment expenses (manual سند صرف entries) — Accounting includes these in "المدفوع للشركات"
+      const { data: payExpenses, error: peErr } = await supabase
+        .from('expenses')
+        .select('entity_id, amount, description')
+        .eq('entity_type', 'company')
+        .eq('voucher_type', 'payment')
+        .gte('created_at', FROM);
+      if (peErr) throw peErr;
+
       // 3) Pull companies for names + broker linkage (exclude broker-linked)
       const { data: companies, error: cErr } = await supabase
         .from('insurance_companies')
@@ -202,6 +211,12 @@ export default function Dashboard() {
         if (!s.company_id) continue;
         if (s.status === 'refused' || s.refused === true) continue;
         paidMap.set(s.company_id, (paidMap.get(s.company_id) || 0) + (Number(s.total_amount) || 0));
+      }
+      for (const e of (payExpenses || []) as any[]) {
+        if (!e.entity_id) continue;
+        // Exclude "[مبيعات]" sales entries — Accounting treats those as a separate "sales" tab
+        if (typeof e.description === 'string' && e.description.startsWith('[مبيعات]')) continue;
+        paidMap.set(e.entity_id, (paidMap.get(e.entity_id) || 0) + (Number(e.amount) || 0));
       }
 
       // Compute net total (owed - paid) across ALL non-broker companies — matches Accounting "المتبقي للشركات"
