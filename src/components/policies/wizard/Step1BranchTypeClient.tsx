@@ -441,6 +441,40 @@ export function Step1BranchTypeClient({
           )}
         </div>
       )}
+
+      {/* Auto-popup duplicate ID dialog */}
+      <AlertDialog
+        open={!!duplicateClient}
+        onOpenChange={(open) => { if (!open) setDuplicateClient(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+              يوجد عميل مسجل بنفس رقم الهوية
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {duplicateClient && (
+                <>
+                  <span className="block font-medium text-foreground">
+                    {duplicateClient.full_name} • {duplicateClient.id_number}
+                  </span>
+                  {duplicateClient.phone_number && (
+                    <span className="block text-sm">{duplicateClient.phone_number}</span>
+                  )}
+                  <span className="block mt-2">هل تريد اختيار هذا العميل بدلاً من إنشاء عميل جديد؟</span>
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>لا، متابعة الإنشاء</AlertDialogCancel>
+            <AlertDialogAction onClick={handleUseExistingDuplicate}>
+              نعم، اختيار العميل الحالي
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
