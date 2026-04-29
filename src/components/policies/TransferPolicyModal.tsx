@@ -498,6 +498,18 @@ export function TransferPolicyModal({
           } catch (e) {
             console.error("X-Service transfer notification error:", e);
           }
+
+          // Also create the NEW transferred policy on X-Service CRM
+          const newPolicyIdForSync = policyIdMap.get(origPolicy.id);
+          if (newPolicyIdForSync) {
+            try {
+              supabase.functions.invoke("sync-to-xservice", {
+                body: { policy_id: newPolicyIdForSync },
+              }).catch(err => console.error("X-Service sync (new policy) failed:", err));
+            } catch (e) {
+              console.error("X-Service sync (new policy) error:", e);
+            }
+          }
         }
       }
 
