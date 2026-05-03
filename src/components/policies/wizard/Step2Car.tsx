@@ -108,8 +108,13 @@ export function Step2Car({
           setExistingCar(data as CarRecord);
           setCarConflict(null);
         } else {
+          // Allow same car number for multiple customers - just show info, don't block
           setExistingCar(null);
-          setCarConflict(`هذه السيارة مسجلة على عميل آخر: ${(data as any).clients?.full_name || 'غير معروف'}`);
+          setCarConflict(null);
+          toast({
+            title: "ملاحظة",
+            description: `هذه السيارة مسجلة أيضاً على: ${(data as any).clients?.full_name || 'عميل آخر'}. سيتم إضافتها للعميل الحالي.`,
+          });
         }
       } else {
         setExistingCar(null);
