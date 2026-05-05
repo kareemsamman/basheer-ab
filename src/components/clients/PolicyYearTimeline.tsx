@@ -558,6 +558,46 @@ export function PolicyYearTimeline({
     setPackagePaymentOpen(true);
   };
 
+  const handleOpenWhatsApp = async (e: React.MouseEvent, pkg: PolicyPackage) => {
+    e.stopPropagation();
+    try {
+      const policyId = pkg.allPolicyIds[0];
+      const { data: policyData } = await supabase
+        .from('policies')
+        .select('clients(full_name, phone_number)')
+        .eq('id', policyId)
+        .single();
+
+      const client = (policyData?.clients as any) || null;
+      const rawPhone: string | null = client?.phone_number || null;
+      if (!rawPhone) {
+        toast.error('لا يوجد رقم هاتف لهذا العميل');
+        return;
+      }
+
+      // Normalize to international (+972) format for wa.me
+      let digits = rawPhone.replace(/[^0-9]/g, '');
+      if (digits.startsWith('00')) digits = digits.slice(2);
+      if (digits.startsWith('0')) digits = '972' + digits.slice(1);
+      else if (!digits.startsWith('972')) digits = '972' + digits;
+
+      const main = pkg.mainPolicy || pkg.addons[0];
+      const typeLabel = main ? getDisplayLabel(main) : 'وثيقة التأمين';
+      const company = main?.company?.name_ar || main?.company?.name || '';
+      const carNumber = main?.car?.car_number || '';
+      const greeting = client?.full_name ? `أهلاً ${client.full_name},` : 'أهلاً،';
+      const lines = [
+        greeting,
+        `بخصوص وثيقة التأمين (${typeLabel})${company ? ' لدى ' + company : ''}${carNumber ? ' للسيارة ' + carNumber : ''}.`,
+      ];
+      const message = encodeURIComponent(lines.join('\n'));
+      window.open(`https://wa.me/${digits}?text=${message}`, '_blank');
+    } catch (err) {
+      console.error('WhatsApp open error:', err);
+      toast.error('فشل فتح واتساب');
+    }
+  };
+
   const handleOpenInvoiceDialog = async (e: React.MouseEvent, policyIds: string[]) => {
     e.stopPropagation();
     
@@ -707,6 +747,7 @@ export function PolicyYearTimeline({
                         onPolicyClick={onPolicyClick}
                         onPaymentClick={(e) => handlePackagePayment(e, pkg.allPolicyIds, pkg.mainPolicy?.branch_id || pkg.addons[0]?.branch_id || null)}
                         onOpenInvoiceDialog={(e) => handleOpenInvoiceDialog(e, pkg.allPolicyIds)}
+                        onOpenWhatsApp={(e) => handleOpenWhatsApp(e, pkg)}
                         isPackage={pkg.allPolicyIds.length > 1}
                         onTransfer={onTransferPolicy}
                         onCancel={onCancelPolicy}
@@ -765,6 +806,7 @@ function PolicyPackageCard({
   onPolicyClick,
   onPaymentClick,
   onOpenInvoiceDialog,
+  onOpenWhatsApp,
   isPackage: isPackageProp,
   onTransfer,
   onCancel,
@@ -789,6 +831,7 @@ function PolicyPackageCard({
   onPolicyClick: (id: string) => void;
   onPaymentClick: (e: React.MouseEvent) => void;
   onOpenInvoiceDialog: (e: React.MouseEvent) => void;
+  onOpenWhatsApp: (e: React.MouseEvent) => void;
   isPackage: boolean;
   onTransfer?: (id: string) => void;
   onCancel?: (id: string) => void;
@@ -966,6 +1009,18 @@ function PolicyPackageCard({
               onClick={onOpenInvoiceDialog}
             >
               <Send className="h-3.5 w-3.5" />
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1 h-8 text-[#25D366] hover:text-[#25D366] hover:bg-[#25D366]/10"
+              onClick={onOpenWhatsApp}
+              title="إرسال واتساب"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                <path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.82 11.82 0 0 1 8.413 3.488 11.82 11.82 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 0 0 1.51 5.26l-.999 3.648 3.978-1.607zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.149-.173.198-.297.298-.495.099-.198.05-.372-.025-.521-.074-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/>
+              </svg>
             </Button>
 
             <DropdownMenu>
