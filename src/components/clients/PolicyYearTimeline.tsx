@@ -830,6 +830,7 @@ function PolicyPackageCard({
   onPolicyClick: (id: string) => void;
   onPaymentClick: (e: React.MouseEvent) => void;
   onOpenInvoiceDialog: (e: React.MouseEvent) => void;
+  onOpenWhatsApp: (e: React.MouseEvent) => void;
   isPackage: boolean;
   onTransfer?: (id: string) => void;
   onCancel?: (id: string) => void;
