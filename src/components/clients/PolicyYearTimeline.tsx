@@ -747,6 +747,7 @@ export function PolicyYearTimeline({
                         onPolicyClick={onPolicyClick}
                         onPaymentClick={(e) => handlePackagePayment(e, pkg.allPolicyIds, pkg.mainPolicy?.branch_id || pkg.addons[0]?.branch_id || null)}
                         onOpenInvoiceDialog={(e) => handleOpenInvoiceDialog(e, pkg.allPolicyIds)}
+                        onOpenWhatsApp={(e) => handleOpenWhatsApp(e, pkg)}
                         isPackage={pkg.allPolicyIds.length > 1}
                         onTransfer={onTransferPolicy}
                         onCancel={onCancelPolicy}
