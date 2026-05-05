@@ -558,6 +558,46 @@ export function PolicyYearTimeline({
     setPackagePaymentOpen(true);
   };
 
+  const handleOpenWhatsApp = async (e: React.MouseEvent, pkg: PolicyPackage) => {
+    e.stopPropagation();
+    try {
+      const policyId = pkg.allPolicyIds[0];
+      const { data: policyData } = await supabase
+        .from('policies')
+        .select('clients(full_name, phone_number)')
+        .eq('id', policyId)
+        .single();
+
+      const client = (policyData?.clients as any) || null;
+      const rawPhone: string | null = client?.phone_number || null;
+      if (!rawPhone) {
+        toast.error('لا يوجد رقم هاتف لهذا العميل');
+        return;
+      }
+
+      // Normalize to international (+972) format for wa.me
+      let digits = rawPhone.replace(/[^0-9]/g, '');
+      if (digits.startsWith('00')) digits = digits.slice(2);
+      if (digits.startsWith('0')) digits = '972' + digits.slice(1);
+      else if (!digits.startsWith('972')) digits = '972' + digits;
+
+      const main = pkg.mainPolicy || pkg.addons[0];
+      const typeLabel = main ? getDisplayLabel(main) : 'وثيقة التأمين';
+      const company = main?.company?.name_ar || main?.company?.name || '';
+      const carNumber = main?.car?.car_number || '';
+      const greeting = client?.full_name ? `أهلاً ${client.full_name},` : 'أهلاً،';
+      const lines = [
+        greeting,
+        `بخصوص وثيقة التأمين (${typeLabel})${company ? ' لدى ' + company : ''}${carNumber ? ' للسيارة ' + carNumber : ''}.`,
+      ];
+      const message = encodeURIComponent(lines.join('\n'));
+      window.open(`https://wa.me/${digits}?text=${message}`, '_blank');
+    } catch (err) {
+      console.error('WhatsApp open error:', err);
+      toast.error('فشل فتح واتساب');
+    }
+  };
+
   const handleOpenInvoiceDialog = async (e: React.MouseEvent, policyIds: string[]) => {
     e.stopPropagation();
     
