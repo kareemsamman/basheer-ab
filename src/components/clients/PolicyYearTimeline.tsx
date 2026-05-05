@@ -806,6 +806,7 @@ function PolicyPackageCard({
   onPolicyClick,
   onPaymentClick,
   onOpenInvoiceDialog,
+  onOpenWhatsApp,
   isPackage: isPackageProp,
   onTransfer,
   onCancel,
