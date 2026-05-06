@@ -675,6 +675,7 @@ export function PolicyWizard({
     try {
       let policyIdToUse = tempPolicyId;
       let newlyCreatedClientId: string | null = null; // Track if we created a new client
+      const _packageSyncPolicyIds = new Set<string>();
 
       if (!useTempPolicy) {
         // Create new policy (normal flow without Tranzila)
@@ -835,7 +836,6 @@ export function PolicyWizard({
         var _pkgFirstAddonType: string | null = null;
         var _pkgMainAddonId: string | null = null;
         var _tempConvertedToAddon = false; // Only true in Visa path where temp policy IS the first addon
-        const _packageSyncPolicyIds = new Set<string>();
         if (newPolicy.policy_type_parent === 'ROAD_SERVICE' || newPolicy.policy_type_parent === 'ACCIDENT_FEE_EXEMPTION') {
           _packageSyncPolicyIds.add(newPolicy.id);
         }
