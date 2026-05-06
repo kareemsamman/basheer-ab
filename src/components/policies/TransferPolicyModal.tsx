@@ -478,12 +478,12 @@ export function TransferPolicyModal({
         }
       }
 
-      // Notify X-Service about transfer for service-type policies (fire-and-forget)
+      // Notify X-Service about transfer for service-type policies
       const selectedCar2 = cars.find(c => c.id === selectedCarId);
       for (const origPolicy of originalPolicies) {
         if (origPolicy.policy_type_parent === "ROAD_SERVICE" || origPolicy.policy_type_parent === "ACCIDENT_FEE_EXEMPTION") {
           try {
-            supabase.functions.invoke("notify-xservice-change", {
+            const { error: notifyError } = await supabase.functions.invoke("notify-xservice-change", {
               body: {
                 action: "transfer",
                 policy_id: origPolicy.id,
@@ -494,7 +494,10 @@ export function TransferPolicyModal({
                   year: selectedCar2?.year || null,
                 },
               },
-            }).catch(err => console.error("X-Service transfer notification failed:", err));
+            });
+            if (notifyError) {
+              console.error("X-Service transfer notification failed:", notifyError);
+            }
           } catch (e) {
             console.error("X-Service transfer notification error:", e);
           }
@@ -503,9 +506,12 @@ export function TransferPolicyModal({
           const newPolicyIdForSync = policyIdMap.get(origPolicy.id);
           if (newPolicyIdForSync) {
             try {
-              supabase.functions.invoke("sync-to-xservice", {
+              const { error: syncError } = await supabase.functions.invoke("sync-to-xservice", {
                 body: { policy_id: newPolicyIdForSync },
-              }).catch(err => console.error("X-Service sync (new policy) failed:", err));
+              });
+              if (syncError) {
+                console.error("X-Service sync (new policy) failed:", syncError);
+              }
             } catch (e) {
               console.error("X-Service sync (new policy) error:", e);
             }
