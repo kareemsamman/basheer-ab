@@ -1440,51 +1440,51 @@ export function PolicyWizard({
         dialogClientId = policyData?.client_id || null;
       }
 
-      // === X-Service sync (fire-and-forget with proper error handling) ===
+      // === X-Service sync (AWAITED — must complete before success dialog/page reload) ===
       const xserviceSyncTypes = ['ROAD_SERVICE', 'ACCIDENT_FEE_EXEMPTION'] as const;
       const mainType = policy.policy_type_parent as string;
-      
-      // Use async IIFE to avoid swallowed errors in nested .then() chains
-      (async () => {
-        try {
-          // Small delay to ensure all DB writes are committed
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          
-          if (packageMode) {
-            const { data: pData, error: gErr } = await supabase
-              .from('policies')
-              .select('group_id')
-              .eq('id', policyIdToUse)
-              .single();
-            if (gErr) { console.error('[PolicyWizard] X-Service: failed to get group_id', gErr); return; }
+
+      try {
+        // Small delay to ensure all DB writes are committed
+        await new Promise(resolve => setTimeout(resolve, 800));
+
+        if (packageMode) {
+          const { data: pData, error: gErr } = await supabase
+            .from('policies')
+            .select('group_id')
+            .eq('id', policyIdToUse)
+            .single();
+          if (gErr) {
+            console.error('[PolicyWizard] X-Service: failed to get group_id', gErr);
+          } else {
             const gid = pData?.group_id;
-            if (!gid) { console.warn('[PolicyWizard] X-Service: no group_id found'); return; }
-            
-            const { data: syncPolicies, error: spErr } = await supabase
-              .from('policies')
-              .select('id')
-              .eq('group_id', gid)
-              .in('policy_type_parent', xserviceSyncTypes)
-              .is('deleted_at', null);
-            if (spErr) { console.error('[PolicyWizard] X-Service: failed to query siblings', spErr); return; }
-            
-            if (syncPolicies && syncPolicies.length > 0) {
-              console.log('[PolicyWizard] X-Service: syncing', syncPolicies.length, 'policies');
-              for (const p of syncPolicies) {
-                const { error } = await supabase.functions.invoke('sync-to-xservice', { body: { policy_id: p.id } });
-                if (error) console.error('[PolicyWizard] X-Service sync error for', p.id, error);
-                else console.log('[PolicyWizard] X-Service sync sent for', p.id);
+            if (gid) {
+              const { data: syncPolicies, error: spErr } = await supabase
+                .from('policies')
+                .select('id')
+                .eq('group_id', gid)
+                .in('policy_type_parent', xserviceSyncTypes)
+                .is('deleted_at', null);
+              if (spErr) {
+                console.error('[PolicyWizard] X-Service: failed to query siblings', spErr);
+              } else if (syncPolicies && syncPolicies.length > 0) {
+                console.log('[PolicyWizard] X-Service: syncing', syncPolicies.length, 'policies');
+                for (const p of syncPolicies) {
+                  const { error } = await supabase.functions.invoke('sync-to-xservice', { body: { policy_id: p.id } });
+                  if (error) console.error('[PolicyWizard] X-Service sync error for', p.id, error);
+                  else console.log('[PolicyWizard] X-Service sync sent for', p.id);
+                }
               }
             }
-          } else if ((xserviceSyncTypes as readonly string[]).includes(mainType)) {
-            const { error } = await supabase.functions.invoke('sync-to-xservice', { body: { policy_id: policyIdToUse } });
-            if (error) console.error('[PolicyWizard] X-Service sync error:', error);
-            else console.log('[PolicyWizard] X-Service sync sent for', policyIdToUse);
           }
-        } catch (e) {
-          console.error('[PolicyWizard] X-Service sync unexpected error:', e);
+        } else if ((xserviceSyncTypes as readonly string[]).includes(mainType)) {
+          const { error } = await supabase.functions.invoke('sync-to-xservice', { body: { policy_id: policyIdToUse } });
+          if (error) console.error('[PolicyWizard] X-Service sync error:', error);
+          else console.log('[PolicyWizard] X-Service sync sent for', policyIdToUse);
         }
-      })();
+      } catch (e) {
+        console.error('[PolicyWizard] X-Service sync unexpected error:', e);
+      }
 
       // Show success dialog instead of closing immediately
       setSuccessPolicyData({
