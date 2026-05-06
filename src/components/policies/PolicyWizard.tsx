@@ -835,6 +835,10 @@ export function PolicyWizard({
         var _pkgFirstAddonType: string | null = null;
         var _pkgMainAddonId: string | null = null;
         var _tempConvertedToAddon = false; // Only true in Visa path where temp policy IS the first addon
+        const _packageSyncPolicyIds = new Set<string>();
+        if (newPolicy.policy_type_parent === 'ROAD_SERVICE' || newPolicy.policy_type_parent === 'ACCIDENT_FEE_EXEMPTION') {
+          _packageSyncPolicyIds.add(newPolicy.id);
+        }
         if (packageMode && groupId) {
           for (const addon of packageAddons) {
             if (!addon.enabled) continue;
@@ -898,6 +902,9 @@ export function PolicyWizard({
 
             if (addonError) throw addonError;
             (addon as any)._savedPolicyId = addonData?.id || null;
+            if (addonTypeParent === 'ROAD_SERVICE' || addonTypeParent === 'ACCIDENT_FEE_EXEMPTION') {
+              _packageSyncPolicyIds.add(addonData.id);
+            }
 
             // Track first addon type for X-Service sync
             if (!_pkgFirstAddonType) {
@@ -1054,6 +1061,9 @@ export function PolicyWizard({
 
           if (updateError) throw updateError;
           _tempConvertedToAddon = true; // Mark that temp policy was converted to first addon
+          if (tempPolicyTypeParent === 'ROAD_SERVICE' || tempPolicyTypeParent === 'ACCIDENT_FEE_EXEMPTION') {
+            _packageSyncPolicyIds.add(tempPolicyId);
+          }
 
           // 7. Create addon policies (skip the first one since it's already the temp policy)
           for (const addon of packageAddons) {
@@ -1123,6 +1133,9 @@ export function PolicyWizard({
             }
             // Store saved ID for X-Service sync
             (addon as any)._savedPolicyId = addonData?.id || null;
+            if (addonTypeParent === 'ROAD_SERVICE' || addonTypeParent === 'ACCIDENT_FEE_EXEMPTION') {
+              _packageSyncPolicyIds.add(addonData.id);
+            }
           }
 
           // 8. Now add the main policy from Step 3 as an addon (if different from temp policy)
@@ -1164,6 +1177,9 @@ export function PolicyWizard({
               throw mainAddonError;
             }
             _pkgMainAddonId = mainAddonData?.id || null;
+            if (mainPolicyTypeParent === 'ROAD_SERVICE' || mainPolicyTypeParent === 'ACCIDENT_FEE_EXEMPTION') {
+              _packageSyncPolicyIds.add(mainAddonData.id);
+            }
           }
         }
       }
@@ -1449,32 +1465,13 @@ export function PolicyWizard({
         await new Promise(resolve => setTimeout(resolve, 800));
 
         if (packageMode) {
-          const { data: pData, error: gErr } = await supabase
-            .from('policies')
-            .select('group_id')
-            .eq('id', policyIdToUse)
-            .single();
-          if (gErr) {
-            console.error('[PolicyWizard] X-Service: failed to get group_id', gErr);
-          } else {
-            const gid = pData?.group_id;
-            if (gid) {
-              const { data: syncPolicies, error: spErr } = await supabase
-                .from('policies')
-                .select('id')
-                .eq('group_id', gid)
-                .in('policy_type_parent', xserviceSyncTypes)
-                .is('deleted_at', null);
-              if (spErr) {
-                console.error('[PolicyWizard] X-Service: failed to query siblings', spErr);
-              } else if (syncPolicies && syncPolicies.length > 0) {
-                console.log('[PolicyWizard] X-Service: syncing', syncPolicies.length, 'policies');
-                for (const p of syncPolicies) {
-                  const { error } = await supabase.functions.invoke('sync-to-xservice', { body: { policy_id: p.id } });
-                  if (error) console.error('[PolicyWizard] X-Service sync error for', p.id, error);
-                  else console.log('[PolicyWizard] X-Service sync sent for', p.id);
-                }
-              }
+          const syncPolicyIds = Array.from(_packageSyncPolicyIds);
+          if (syncPolicyIds.length > 0) {
+            console.log('[PolicyWizard] X-Service: syncing', syncPolicyIds.length, 'package service policies');
+            for (const pid of syncPolicyIds) {
+              const { error } = await supabase.functions.invoke('sync-to-xservice', { body: { policy_id: pid } });
+              if (error) console.error('[PolicyWizard] X-Service sync error for', pid, error);
+              else console.log('[PolicyWizard] X-Service sync sent for', pid);
             }
           }
         } else if ((xserviceSyncTypes as readonly string[]).includes(mainType)) {
