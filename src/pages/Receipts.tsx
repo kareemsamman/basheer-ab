@@ -37,6 +37,7 @@ interface ReceiptRow {
   car_id: string | null;
   amount: number;
   receipt_date: string;
+  issue_date: string | null;
   accident_date: string | null;
   accident_details: string | null;
   payment_id: string | null;
@@ -88,14 +89,14 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
         query = query.or(`client_name.ilike.%${search}%,car_number.ilike.%${search}%`);
       }
 
-      // "issue" mode filters by created_at (when the receipt was actually issued);
-      // "due" mode preserves legacy receipt_date filtering (cheque due-date for cheques)
+      // "issue" mode filters by user-editable issue_date; "due" mode keeps the
+      // legacy receipt_date filter (cheque due-date for cheques).
       if (dateFilterMode === "issue") {
         if (dateFrom) {
-          query = query.gte("created_at", `${format(dateFrom, "yyyy-MM-dd")}T00:00:00`);
+          query = query.gte("issue_date", format(dateFrom, "yyyy-MM-dd"));
         }
         if (dateTo) {
-          query = query.lte("created_at", `${format(dateTo, "yyyy-MM-dd")}T23:59:59`);
+          query = query.lte("issue_date", format(dateTo, "yyyy-MM-dd"));
         }
       } else {
         if (dateFrom) {
@@ -548,6 +549,7 @@ export default function Receipts() {
   const [formPaymentMethod, setFormPaymentMethod] = useState("cash");
   const [formChequeNumber, setFormChequeNumber] = useState("");
   const [formChequeDate, setFormChequeDate] = useState("");
+  const [formIssueDate, setFormIssueDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const { data: receipts, isLoading } = useReceipts(tab, search, dateFrom, dateTo, paymentMethodFilter, dateFilterMode);
   const { data: companySettings } = useCompanySettings();
   
@@ -737,6 +739,7 @@ export default function Receipts() {
     setFormPaymentMethod("cash");
     setFormChequeNumber("");
     setFormChequeDate("");
+    setFormIssueDate(format(new Date(), "yyyy-MM-dd"));
     setEditingReceipt(null);
   }, []);
 
@@ -758,17 +761,31 @@ export default function Receipts() {
     setFormPaymentMethod(r.payment_method || "cash");
     setFormChequeNumber(r.cheque_number || "");
     setFormChequeDate(r.cheque_date || "");
+    setFormIssueDate(r.issue_date || format(new Date(r.created_at), "yyyy-MM-dd"));
     setDrawerOpen(true);
   };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const isAutoEdit = editingReceipt?.source === "auto";
+
+      // Auto-generated receipts: only issue_date is user-editable
+      if (isAutoEdit) {
+        const { error } = await supabase
+          .from("receipts")
+          .update({ issue_date: formIssueDate || null, updated_at: new Date().toISOString() })
+          .eq("id", editingReceipt!.id);
+        if (error) throw error;
+        return;
+      }
+
       const payload = {
         receipt_type: formType,
         client_name: formClientName,
         car_number: formCarNumber || null,
         amount: parseFloat(formAmount) || 0,
         receipt_date: formDate,
+        issue_date: formIssueDate || null,
         accident_date: formType === "accident_fee" ? formAccidentDate || null : null,
         accident_details: formType === "accident_fee" ? formAccidentDetails || null : null,
         notes: formNotes || null,
@@ -1113,7 +1130,7 @@ export default function Receipts() {
                         <TableCell className="font-medium">{r.client_name}</TableCell>
                         <TableCell className="font-mono text-sm">{r.client_id_number || "-"}</TableCell>
                         <TableCell className="font-mono text-sm">{r.car_number || "-"}</TableCell>
-                        <TableCell>{dateFilterMode === "issue" ? format(new Date(r.created_at), "yyyy-MM-dd") : r.receipt_date}</TableCell>
+                        <TableCell>{dateFilterMode === "issue" ? (r.issue_date || format(new Date(r.created_at), "yyyy-MM-dd")) : r.receipt_date}</TableCell>
                         <TableCell className="font-bold">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
@@ -1142,15 +1159,13 @@ export default function Receipts() {
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleCopyLink(r)} disabled={copyingId === r.id} title="העתק קישור">
                               {copyingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
                             </Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)} title={r.source === "auto" ? "עריכת תאריך הנפקה" : "עריכה"}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
                             {r.source === "manual" && (
-                              <>
-                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)} title="עריכה">
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteReceipt(r)} title="מחיקה">
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                              </>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteReceipt(r)} title="מחיקה">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
                             )}
                           </div>
                         </TableCell>
@@ -1189,7 +1204,7 @@ export default function Receipts() {
                         <TableCell className="font-medium">{group.client_name}</TableCell>
                         <TableCell className="font-mono text-sm">{group.client_id_number || "-"}</TableCell>
                         <TableCell className="font-mono text-sm">{group.car_number || "-"}</TableCell>
-                        <TableCell>{dateFilterMode === "issue" ? format(new Date(group.receipts[0].created_at), "yyyy-MM-dd") : group.receipt_date}</TableCell>
+                        <TableCell>{dateFilterMode === "issue" ? (group.receipts[0].issue_date || format(new Date(group.receipts[0].created_at), "yyyy-MM-dd")) : group.receipt_date}</TableCell>
                         <TableCell className="font-bold">
                           ₪{group.totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                           <Badge variant="secondary" className="text-xs mr-1">{group.receipts.length} תשלומים</Badge>
@@ -1224,7 +1239,7 @@ export default function Receipts() {
                           <TableCell></TableCell>
                           <TableCell></TableCell>
                           <TableCell></TableCell>
-                          <TableCell>{dateFilterMode === "issue" ? format(new Date(r.created_at), "yyyy-MM-dd") : r.receipt_date}</TableCell>
+                          <TableCell>{dateFilterMode === "issue" ? (r.issue_date || format(new Date(r.created_at), "yyyy-MM-dd")) : r.receipt_date}</TableCell>
                           <TableCell className="font-bold text-sm">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
@@ -1248,6 +1263,9 @@ export default function Receipts() {
                               </Button>
                               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleCopyLink(r)} disabled={copyingId === r.id} title="העתק קישור">
                                 {copyingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)} title={r.source === "auto" ? "עריכת תאריך הנפקה" : "עריכה"}>
+                                <Pencil className="h-3.5 w-3.5" />
                               </Button>
                             </div>
                           </TableCell>
@@ -1277,85 +1295,108 @@ export default function Receipts() {
           </SheetHeader>
 
           <div className="space-y-4 mt-6">
-            <div className="space-y-2">
-              <Label>סוג קבלה</Label>
-              <Select value={formType} onValueChange={(v) => setFormType(v as "payment" | "accident_fee")}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="payment">קבלה</SelectItem>
-                  <SelectItem value="accident_fee">קבלת דמי תאונות</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {editingReceipt?.source === "auto" && (
+              <div className="rounded-md bg-muted/50 border border-border p-3 text-xs text-muted-foreground">
+                קבלה אוטומטית — ניתן לערוך רק את תאריך ההנפקה.
+              </div>
+            )}
 
-            <div className="space-y-2">
-              <Label>שם לקוח *</Label>
-              <Input value={formClientName} onChange={(e) => setFormClientName(e.target.value)} placeholder="שם הלקוח" />
-            </div>
-
-            <div className="space-y-2">
-              <Label>מס׳ רכב</Label>
-              <Input value={formCarNumber} onChange={(e) => setFormCarNumber(e.target.value)} placeholder="מספר רכב" />
-            </div>
-
-            <div className="space-y-2">
-              <Label>תאריך</Label>
-              <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} />
-            </div>
-
-            <div className="space-y-2">
-              <Label>סכום (₪) *</Label>
-              <Input type="number" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} placeholder="0.00" min="0" step="0.01" />
-            </div>
-
-            {formType === "accident_fee" && (
+            {editingReceipt?.source !== "auto" && (
               <>
                 <div className="space-y-2">
-                  <Label>תאריך תאונה</Label>
-                  <Input type="date" value={formAccidentDate} onChange={(e) => setFormAccidentDate(e.target.value)} />
+                  <Label>סוג קבלה</Label>
+                  <Select value={formType} onValueChange={(v) => setFormType(v as "payment" | "accident_fee")}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="payment">קבלה</SelectItem>
+                      <SelectItem value="accident_fee">קבלת דמי תאונות</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+
                 <div className="space-y-2">
-                  <Label>פרטי תאונה</Label>
-                  <Textarea value={formAccidentDetails} onChange={(e) => setFormAccidentDetails(e.target.value)} placeholder="תיאור התאונה..." rows={3} />
+                  <Label>שם לקוח *</Label>
+                  <Input value={formClientName} onChange={(e) => setFormClientName(e.target.value)} placeholder="שם הלקוח" />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>מס׳ רכב</Label>
+                  <Input value={formCarNumber} onChange={(e) => setFormCarNumber(e.target.value)} placeholder="מספר רכב" />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>תאריך פירעון</Label>
+                  <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} />
                 </div>
               </>
             )}
 
             <div className="space-y-2">
-              <Label>אמצעי תשלום</Label>
-              <Select value={formPaymentMethod} onValueChange={setFormPaymentMethod}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">מזומן</SelectItem>
-                  <SelectItem value="cheque">שיק</SelectItem>
-                  <SelectItem value="visa">כרטיס אשראי</SelectItem>
-                  <SelectItem value="transfer">העברה בנקאית</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>תאריך הנפקה</Label>
+              <Input type="date" value={formIssueDate} onChange={(e) => setFormIssueDate(e.target.value)} />
             </div>
 
-            {formPaymentMethod === "cheque" && (
+            {editingReceipt?.source !== "auto" && (
               <>
                 <div className="space-y-2">
-                  <Label>מספר שיק</Label>
-                  <Input value={formChequeNumber} onChange={(e) => setFormChequeNumber(e.target.value)} placeholder="מספר השיק" />
+                  <Label>סכום (₪) *</Label>
+                  <Input type="number" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} placeholder="0.00" min="0" step="0.01" />
                 </div>
+
+                {formType === "accident_fee" && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>תאריך תאונה</Label>
+                      <Input type="date" value={formAccidentDate} onChange={(e) => setFormAccidentDate(e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>פרטי תאונה</Label>
+                      <Textarea value={formAccidentDetails} onChange={(e) => setFormAccidentDetails(e.target.value)} placeholder="תיאור התאונה..." rows={3} />
+                    </div>
+                  </>
+                )}
+
                 <div className="space-y-2">
-                  <Label>תאריך שיק</Label>
-                  <Input type="date" value={formChequeDate} onChange={(e) => setFormChequeDate(e.target.value)} />
+                  <Label>אמצעי תשלום</Label>
+                  <Select value={formPaymentMethod} onValueChange={setFormPaymentMethod}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">מזומן</SelectItem>
+                      <SelectItem value="cheque">שיק</SelectItem>
+                      <SelectItem value="visa">כרטיס אשראי</SelectItem>
+                      <SelectItem value="transfer">העברה בנקאית</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {formPaymentMethod === "cheque" && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>מספר שיק</Label>
+                      <Input value={formChequeNumber} onChange={(e) => setFormChequeNumber(e.target.value)} placeholder="מספר השיק" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>תאריך שיק</Label>
+                      <Input type="date" value={formChequeDate} onChange={(e) => setFormChequeDate(e.target.value)} />
+                    </div>
+                  </>
+                )}
+
+                <div className="space-y-2">
+                  <Label>הערות</Label>
+                  <Textarea value={formNotes} onChange={(e) => setFormNotes(e.target.value)} placeholder="הערות נוספות..." rows={2} />
                 </div>
               </>
             )}
-
-            <div className="space-y-2">
-              <Label>הערות</Label>
-              <Textarea value={formNotes} onChange={(e) => setFormNotes(e.target.value)} placeholder="הערות נוספות..." rows={2} />
-            </div>
 
             <Button
               className="w-full"
               onClick={() => saveMutation.mutate()}
-              disabled={saveMutation.isPending || !formClientName || !formAmount}
+              disabled={
+                saveMutation.isPending ||
+                (editingReceipt?.source !== "auto" && (!formClientName || !formAmount)) ||
+                (editingReceipt?.source === "auto" && !formIssueDate)
+              }
             >
               {saveMutation.isPending ? "שומר..." : editingReceipt ? "עדכון" : "שמור קבלה"}
             </Button>

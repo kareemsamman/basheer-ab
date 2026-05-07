@@ -3906,6 +3906,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          issue_date: string | null
           notes: string | null
           payment_id: string | null
           payment_method: string | null
@@ -3931,6 +3932,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          issue_date?: string | null
           notes?: string | null
           payment_id?: string | null
           payment_method?: string | null
@@ -3956,6 +3958,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          issue_date?: string | null
           notes?: string | null
           payment_id?: string | null
           payment_method?: string | null
