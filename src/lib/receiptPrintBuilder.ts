@@ -3,6 +3,7 @@ export interface ReceiptPrintData {
   receiptType: string;
   receiptTypeLabel: string;
   clientName: string;
+  clientIdNumber?: string | null;
   carNumber: string;
   receiptDate: string;
   amount: number;
@@ -325,7 +326,10 @@ export function buildReceiptPrintHtml(data: ReceiptPrintData, settings: CompanyS
     </div>
 
     <div class="client-row">
-      <div><span>לכבוד: </span><span class="client-name">${data.clientName}</span></div>
+      <div>
+        <div><span>לכבוד: </span><span class="client-name">${data.clientName}</span></div>
+        ${data.clientIdNumber ? `<div style="font-size:12px;color:#666;margin-top:2px;">ת.ז: ${data.clientIdNumber}</div>` : ''}
+      </div>
       <div>תאריך: ${formatDateHe(new Date().toISOString())}</div>
     </div>
 

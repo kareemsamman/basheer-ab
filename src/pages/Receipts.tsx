@@ -32,6 +32,7 @@ interface ReceiptRow {
   source: string;
   client_name: string;
   client_id: string | null;
+  client_id_number: string | null;
   car_number: string | null;
   car_id: string | null;
   amount: number;
@@ -47,8 +48,11 @@ interface ReceiptRow {
   cheque_date: string | null;
   card_last_four: string | null;
   created_at: string;
+  clients: { id_number: string | null } | null;
   policy_payments: { cheque_date: string | null; payment_date: string | null } | null;
 }
+
+type DateFilterMode = "issue" | "due";
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   cash: 'מזומן',
@@ -64,13 +68,13 @@ function padReceiptNumber(num: number): string {
   return String(num).padStart(2, '0');
 }
 
-function useReceipts(tab: string, search: string, dateFrom: Date | undefined, dateTo: Date | undefined, paymentMethodFilter: string) {
+function useReceipts(tab: string, search: string, dateFrom: Date | undefined, dateTo: Date | undefined, paymentMethodFilter: string, dateFilterMode: DateFilterMode) {
   return useQuery({
-    queryKey: ["receipts", tab, search, dateFrom?.toISOString(), dateTo?.toISOString(), paymentMethodFilter],
+    queryKey: ["receipts", tab, search, dateFrom?.toISOString(), dateTo?.toISOString(), paymentMethodFilter, dateFilterMode],
     queryFn: async () => {
       let query = supabase
         .from("receipts")
-        .select("*, policy_payments!payment_id(cheque_date, payment_date)")
+        .select("*, clients!client_id(id_number), policy_payments!payment_id(cheque_date, payment_date)")
         .order("receipt_number", { ascending: false })
         .limit(500);
 
@@ -84,11 +88,22 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
         query = query.or(`client_name.ilike.%${search}%,car_number.ilike.%${search}%`);
       }
 
-      if (dateFrom) {
-        query = query.gte("receipt_date", format(dateFrom, "yyyy-MM-dd"));
-      }
-      if (dateTo) {
-        query = query.lte("receipt_date", format(dateTo, "yyyy-MM-dd"));
+      // "issue" mode filters by created_at (when the receipt was actually issued);
+      // "due" mode preserves legacy receipt_date filtering (cheque due-date for cheques)
+      if (dateFilterMode === "issue") {
+        if (dateFrom) {
+          query = query.gte("created_at", `${format(dateFrom, "yyyy-MM-dd")}T00:00:00`);
+        }
+        if (dateTo) {
+          query = query.lte("created_at", `${format(dateTo, "yyyy-MM-dd")}T23:59:59`);
+        }
+      } else {
+        if (dateFrom) {
+          query = query.gte("receipt_date", format(dateFrom, "yyyy-MM-dd"));
+        }
+        if (dateTo) {
+          query = query.lte("receipt_date", format(dateTo, "yyyy-MM-dd"));
+        }
       }
 
       if (paymentMethodFilter && paymentMethodFilter !== "all") {
@@ -97,7 +112,10 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
 
       const { data, error } = await query;
       if (error) throw error;
-      return (data || []) as ReceiptRow[];
+      return ((data || []) as any[]).map((r: any) => ({
+        ...r,
+        client_id_number: r.clients?.id_number || null,
+      })) as ReceiptRow[];
     },
   });
 }
@@ -107,6 +125,7 @@ interface GroupedReceipt {
   receipts: ReceiptRow[];
   totalAmount: number;
   client_name: string;
+  client_id_number: string | null;
   car_number: string | null;
   receipt_date: string;
   receipt_type: string;
@@ -133,6 +152,7 @@ function groupReceipts(receipts: ReceiptRow[]): GroupedReceipt[] {
       receipts: sorted,
       totalAmount: sorted.reduce((sum, r) => sum + r.amount, 0),
       client_name: sorted[0].client_name,
+      client_id_number: sorted[0].client_id_number,
       car_number: sorted[0].car_number,
       receipt_date: sorted[0].receipt_date,
       receipt_type: sorted[0].receipt_type,
@@ -282,7 +302,10 @@ function buildGroupedReceiptPrintHtml(group: GroupedReceipt, settings: CompanySe
     </div>
 
     <div class="client-row">
-      <div><span>לכבוד: </span><span class="client-name">${group.client_name}</span></div>
+      <div>
+        <div><span>לכבוד: </span><span class="client-name">${group.client_name}</span></div>
+        ${group.client_id_number ? `<div style="font-size:12px;color:#666;margin-top:2px;">ת.ז: ${group.client_id_number}</div>` : ""}
+      </div>
       <div>תאריך: ${formatPrintDate(group.receipt_date)}</div>
     </div>
 
@@ -343,6 +366,7 @@ function buildFullInvoiceHtml(receipts: ReceiptRow[], settings: CompanySettings)
         <td>${index + 1}</td>
         <td>${padReceiptNumber(r.receipt_number)}</td>
         <td>${r.client_name}</td>
+        <td>${r.client_id_number || "-"}</td>
         <td>${r.car_number || "-"}</td>
         <td>${PAYMENT_METHOD_LABELS[r.payment_method || ""] || "תשלום"}</td>
         <td>${getReceiptPaymentDetails(r)}</td>
@@ -431,6 +455,7 @@ function buildFullInvoiceHtml(receipts: ReceiptRow[], settings: CompanySettings)
             <th>#</th>
             <th>מס׳ קבלה</th>
             <th>שם לקוח</th>
+            <th>ת.ז</th>
             <th>מס׳ רכב</th>
             <th>אמצעי תשלום</th>
             <th>פירוט</th>
@@ -501,6 +526,7 @@ export default function Receipts() {
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
+  const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>("issue");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<ReceiptRow | null>(null);
   const [deleteReceipt, setDeleteReceipt] = useState<ReceiptRow | null>(null);
@@ -522,7 +548,7 @@ export default function Receipts() {
   const [formPaymentMethod, setFormPaymentMethod] = useState("cash");
   const [formChequeNumber, setFormChequeNumber] = useState("");
   const [formChequeDate, setFormChequeDate] = useState("");
-  const { data: receipts, isLoading } = useReceipts(tab, search, dateFrom, dateTo, paymentMethodFilter);
+  const { data: receipts, isLoading } = useReceipts(tab, search, dateFrom, dateTo, paymentMethodFilter, dateFilterMode);
   const { data: companySettings } = useCompanySettings();
   
   const groupedReceipts = receipts ? groupReceipts(receipts) : [];
@@ -624,6 +650,7 @@ export default function Receipts() {
         receiptType: r.receipt_type,
         receiptTypeLabel: RECEIPT_TYPE_LABELS[r.receipt_type] || r.receipt_type,
         clientName: r.client_name,
+        clientIdNumber: r.client_id_number,
         carNumber: r.car_number || "",
         receiptDate: r.receipt_date,
         amount: r.amount,
@@ -814,6 +841,7 @@ export default function Receipts() {
       receiptType: r.receipt_type,
       receiptTypeLabel: RECEIPT_TYPE_LABELS[r.receipt_type] || r.receipt_type,
       clientName: r.client_name,
+      clientIdNumber: r.client_id_number,
       carNumber: r.car_number || "",
       receiptDate: r.receipt_date,
       amount: r.amount,
@@ -941,7 +969,16 @@ export default function Receipts() {
 
           {/* Date range filter */}
           <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-sm text-muted-foreground">סינון לפי תאריך:</span>
+            <span className="text-sm text-muted-foreground">סנן לפי:</span>
+            <Select value={dateFilterMode} onValueChange={(v) => setDateFilterMode(v as DateFilterMode)}>
+              <SelectTrigger className="w-36 h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="issue">תאריך הנפקה</SelectItem>
+                <SelectItem value="due">תאריך פירעון</SelectItem>
+              </SelectContent>
+            </Select>
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className={cn("gap-2 text-sm", !dateFrom && "text-muted-foreground")}>
@@ -1035,6 +1072,7 @@ export default function Receipts() {
                 <TableHead className="text-right w-16">#</TableHead>
                 <TableHead className="text-right">סוג</TableHead>
                 <TableHead className="text-right">שם לקוח</TableHead>
+                <TableHead className="text-right">ת.ז</TableHead>
                 <TableHead className="text-right">מס׳ רכב</TableHead>
                 <TableHead className="text-right">תאריך</TableHead>
                 <TableHead className="text-right">סכום</TableHead>
@@ -1047,7 +1085,7 @@ export default function Receipts() {
               {isLoading ? (
                 Array.from({ length: 10 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 11 }).map((_, j) => (
+                    {Array.from({ length: 12 }).map((_, j) => (
                       <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                     ))}
                   </TableRow>
@@ -1073,8 +1111,9 @@ export default function Receipts() {
                           </Badge>
                         </TableCell>
                         <TableCell className="font-medium">{r.client_name}</TableCell>
+                        <TableCell className="font-mono text-sm">{r.client_id_number || "-"}</TableCell>
                         <TableCell className="font-mono text-sm">{r.car_number || "-"}</TableCell>
-                        <TableCell>{r.receipt_date}</TableCell>
+                        <TableCell>{dateFilterMode === "issue" ? format(new Date(r.created_at), "yyyy-MM-dd") : r.receipt_date}</TableCell>
                         <TableCell className="font-bold">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
@@ -1148,8 +1187,9 @@ export default function Receipts() {
                           </Badge>
                         </TableCell>
                         <TableCell className="font-medium">{group.client_name}</TableCell>
+                        <TableCell className="font-mono text-sm">{group.client_id_number || "-"}</TableCell>
                         <TableCell className="font-mono text-sm">{group.car_number || "-"}</TableCell>
-                        <TableCell>{group.receipt_date}</TableCell>
+                        <TableCell>{dateFilterMode === "issue" ? format(new Date(group.receipts[0].created_at), "yyyy-MM-dd") : group.receipt_date}</TableCell>
                         <TableCell className="font-bold">
                           ₪{group.totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                           <Badge variant="secondary" className="text-xs mr-1">{group.receipts.length} תשלומים</Badge>
@@ -1183,7 +1223,8 @@ export default function Receipts() {
                           <TableCell></TableCell>
                           <TableCell></TableCell>
                           <TableCell></TableCell>
-                          <TableCell>{r.receipt_date}</TableCell>
+                          <TableCell></TableCell>
+                          <TableCell>{dateFilterMode === "issue" ? format(new Date(r.created_at), "yyyy-MM-dd") : r.receipt_date}</TableCell>
                           <TableCell className="font-bold text-sm">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
@@ -1217,7 +1258,7 @@ export default function Receipts() {
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={12} className="text-center py-12 text-muted-foreground">
                     <Receipt className="h-10 w-10 mx-auto mb-2 opacity-30" />
                     <p>אין קבלות</p>
                   </TableCell>
