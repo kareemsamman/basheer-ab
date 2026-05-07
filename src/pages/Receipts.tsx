@@ -88,25 +88,32 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
         query = query.or(`client_name.ilike.%${search}%,car_number.ilike.%${search}%`);
       }
 
-      // Always filter by issue_date (user-editable issuance date).
-      // For cheques this is the date the cheque was issued, not the due date.
-      if (dateFrom) {
-        query = query.gte("issue_date", format(dateFrom, "yyyy-MM-dd"));
-      }
-      if (dateTo) {
-        query = query.lte("issue_date", format(dateTo, "yyyy-MM-dd"));
-      }
-
       if (paymentMethodFilter && paymentMethodFilter !== "all") {
         query = query.eq("payment_method", paymentMethodFilter);
       }
 
       const { data, error } = await query;
       if (error) throw error;
-      return ((data || []) as any[]).map((r: any) => ({
+      let rows = ((data || []) as any[]).map((r: any) => ({
         ...r,
         client_id_number: r.clients?.id_number || null,
       })) as ReceiptRow[];
+
+      // Filter by the displayed date (cheque_date for cheques, payment_date otherwise)
+      // so the date filter matches what the user sees in the table.
+      if (dateFrom || dateTo) {
+        const fromStr = dateFrom ? format(dateFrom, "yyyy-MM-dd") : null;
+        const toStr = dateTo ? format(dateTo, "yyyy-MM-dd") : null;
+        rows = rows.filter((r) => {
+          const d = getDisplayDate(r);
+          if (!d) return false;
+          if (fromStr && d < fromStr) return false;
+          if (toStr && d > toStr) return false;
+          return true;
+        });
+      }
+
+      return rows;
     },
   });
 }
