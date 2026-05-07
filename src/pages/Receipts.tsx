@@ -53,7 +53,6 @@ interface ReceiptRow {
   policy_payments: { cheque_date: string | null; payment_date: string | null } | null;
 }
 
-type DateFilterMode = "issue" | "due";
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   cash: 'מזומן',
@@ -69,9 +68,9 @@ function padReceiptNumber(num: number): string {
   return String(num).padStart(2, '0');
 }
 
-function useReceipts(tab: string, search: string, dateFrom: Date | undefined, dateTo: Date | undefined, paymentMethodFilter: string, dateFilterMode: DateFilterMode) {
+function useReceipts(tab: string, search: string, dateFrom: Date | undefined, dateTo: Date | undefined, paymentMethodFilter: string) {
   return useQuery({
-    queryKey: ["receipts", tab, search, dateFrom?.toISOString(), dateTo?.toISOString(), paymentMethodFilter, dateFilterMode],
+    queryKey: ["receipts", tab, search, dateFrom?.toISOString(), dateTo?.toISOString(), paymentMethodFilter],
     queryFn: async () => {
       let query = supabase
         .from("receipts")
@@ -89,22 +88,13 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
         query = query.or(`client_name.ilike.%${search}%,car_number.ilike.%${search}%`);
       }
 
-      // "issue" mode filters by user-editable issue_date; "due" mode keeps the
-      // legacy receipt_date filter (cheque due-date for cheques).
-      if (dateFilterMode === "issue") {
-        if (dateFrom) {
-          query = query.gte("issue_date", format(dateFrom, "yyyy-MM-dd"));
-        }
-        if (dateTo) {
-          query = query.lte("issue_date", format(dateTo, "yyyy-MM-dd"));
-        }
-      } else {
-        if (dateFrom) {
-          query = query.gte("receipt_date", format(dateFrom, "yyyy-MM-dd"));
-        }
-        if (dateTo) {
-          query = query.lte("receipt_date", format(dateTo, "yyyy-MM-dd"));
-        }
+      // Always filter by issue_date (user-editable issuance date).
+      // For cheques this is the date the cheque was issued, not the due date.
+      if (dateFrom) {
+        query = query.gte("issue_date", format(dateFrom, "yyyy-MM-dd"));
+      }
+      if (dateTo) {
+        query = query.lte("issue_date", format(dateTo, "yyyy-MM-dd"));
       }
 
       if (paymentMethodFilter && paymentMethodFilter !== "all") {
@@ -527,7 +517,6 @@ export default function Receipts() {
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
-  const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>("issue");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<ReceiptRow | null>(null);
   const [deleteReceipt, setDeleteReceipt] = useState<ReceiptRow | null>(null);
@@ -550,7 +539,7 @@ export default function Receipts() {
   const [formChequeNumber, setFormChequeNumber] = useState("");
   const [formChequeDate, setFormChequeDate] = useState("");
   const [formIssueDate, setFormIssueDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const { data: receipts, isLoading } = useReceipts(tab, search, dateFrom, dateTo, paymentMethodFilter, dateFilterMode);
+  const { data: receipts, isLoading } = useReceipts(tab, search, dateFrom, dateTo, paymentMethodFilter);
   const { data: companySettings } = useCompanySettings();
   
   const groupedReceipts = receipts ? groupReceipts(receipts) : [];
@@ -984,18 +973,9 @@ export default function Receipts() {
             </div>
           </div>
 
-          {/* Date range filter */}
+          {/* Date range filter (always filtered by issue date) */}
           <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-sm text-muted-foreground">סנן לפי:</span>
-            <Select value={dateFilterMode} onValueChange={(v) => setDateFilterMode(v as DateFilterMode)}>
-              <SelectTrigger className="w-36 h-8 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="issue">תאריך הנפקה</SelectItem>
-                <SelectItem value="due">תאריך פירעון</SelectItem>
-              </SelectContent>
-            </Select>
+            <span className="text-sm text-muted-foreground">סינון לפי תאריך הנפקה:</span>
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className={cn("gap-2 text-sm", !dateFrom && "text-muted-foreground")}>
@@ -1130,7 +1110,7 @@ export default function Receipts() {
                         <TableCell className="font-medium">{r.client_name}</TableCell>
                         <TableCell className="font-mono text-sm">{r.client_id_number || "-"}</TableCell>
                         <TableCell className="font-mono text-sm">{r.car_number || "-"}</TableCell>
-                        <TableCell>{dateFilterMode === "issue" ? (r.issue_date || format(new Date(r.created_at), "yyyy-MM-dd")) : r.receipt_date}</TableCell>
+                        <TableCell>{r.issue_date || format(new Date(r.created_at), "yyyy-MM-dd")}</TableCell>
                         <TableCell className="font-bold">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
@@ -1204,7 +1184,7 @@ export default function Receipts() {
                         <TableCell className="font-medium">{group.client_name}</TableCell>
                         <TableCell className="font-mono text-sm">{group.client_id_number || "-"}</TableCell>
                         <TableCell className="font-mono text-sm">{group.car_number || "-"}</TableCell>
-                        <TableCell>{dateFilterMode === "issue" ? (group.receipts[0].issue_date || format(new Date(group.receipts[0].created_at), "yyyy-MM-dd")) : group.receipt_date}</TableCell>
+                        <TableCell>{group.receipts[0].issue_date || format(new Date(group.receipts[0].created_at), "yyyy-MM-dd")}</TableCell>
                         <TableCell className="font-bold">
                           ₪{group.totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                           <Badge variant="secondary" className="text-xs mr-1">{group.receipts.length} תשלומים</Badge>
@@ -1239,7 +1219,7 @@ export default function Receipts() {
                           <TableCell></TableCell>
                           <TableCell></TableCell>
                           <TableCell></TableCell>
-                          <TableCell>{dateFilterMode === "issue" ? (r.issue_date || format(new Date(r.created_at), "yyyy-MM-dd")) : r.receipt_date}</TableCell>
+                          <TableCell>{r.issue_date || format(new Date(r.created_at), "yyyy-MM-dd")}</TableCell>
                           <TableCell className="font-bold text-sm">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
