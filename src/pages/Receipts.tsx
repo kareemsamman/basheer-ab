@@ -1118,7 +1118,7 @@ export default function Receipts() {
                         <TableCell className="font-medium">{r.client_name}</TableCell>
                         <TableCell className="font-mono text-sm">{r.client_id_number || "-"}</TableCell>
                         <TableCell className="font-mono text-sm">{r.car_number || "-"}</TableCell>
-                        <TableCell>{r.issue_date || format(new Date(r.created_at), "yyyy-MM-dd")}</TableCell>
+                        <TableCell>{getDisplayDate(r)}</TableCell>
                         <TableCell className="font-bold">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
