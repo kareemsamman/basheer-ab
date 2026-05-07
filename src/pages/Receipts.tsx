@@ -192,6 +192,14 @@ function getEffectiveChequeDate(r: ReceiptRow): string | null {
   return r.cheque_date || r.policy_payments?.cheque_date || r.policy_payments?.payment_date || r.receipt_date || null;
 }
 
+function getDisplayDate(r: ReceiptRow): string {
+  if (r.payment_method === 'cheque') {
+    const ch = r.cheque_date || r.policy_payments?.cheque_date;
+    if (ch) return ch;
+  }
+  return r.issue_date || format(new Date(r.created_at), "yyyy-MM-dd");
+}
+
 function getReceiptPaymentDetails(r: ReceiptRow): string {
   if (r.payment_method === "cheque") {
     if (!r.cheque_number) return "שיק";
