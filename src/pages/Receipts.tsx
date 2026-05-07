@@ -194,9 +194,13 @@ function getEffectiveChequeDate(r: ReceiptRow): string | null {
 
 function getDisplayDate(r: ReceiptRow): string {
   if (r.payment_method === 'cheque') {
-    const ch = r.cheque_date || r.policy_payments?.cheque_date;
+    // For cheques: show the cheque date (when the cheque is due / dated)
+    const ch = r.cheque_date || r.policy_payments?.cheque_date || r.receipt_date;
     if (ch) return ch;
   }
+  // For all other payment types: show the actual payment date
+  const pd = r.policy_payments?.payment_date || r.receipt_date;
+  if (pd) return pd;
   return r.issue_date || format(new Date(r.created_at), "yyyy-MM-dd");
 }
 
