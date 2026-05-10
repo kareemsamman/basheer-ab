@@ -160,8 +160,13 @@ function groupReceipts(receipts: ReceiptRow[]): GroupedReceipt[] {
       lastReceiptNumber: sorted[sorted.length - 1].receipt_number,
     });
   }
-  // Sort by first receipt number descending
-  groups.sort((a, b) => b.lastReceiptNumber - a.lastReceiptNumber);
+  // Sort oldest first (ascending by date, then by receipt number)
+  groups.sort((a, b) => {
+    const da = a.receipt_date || "";
+    const db = b.receipt_date || "";
+    if (da !== db) return da < db ? -1 : 1;
+    return a.firstReceiptNumber - b.firstReceiptNumber;
+  });
   return groups;
 }
 
@@ -256,33 +261,33 @@ function buildGroupedReceiptPrintHtml(group: GroupedReceipt, settings: CompanySe
       .no-print { display: none !important; }
       .container { box-shadow: none; border: none; }
     }
-    body { font-family: Arial, Tahoma, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.5; color: #1a1a1a; background: #f0f2f5; padding: 20px; direction: rtl; }
+    body { font-family: Arial, Tahoma, 'Segoe UI', sans-serif; font-size: 17px; line-height: 1.55; color: #1a1a1a; background: #f0f2f5; padding: 20px; direction: rtl; }
     .container { max-width: 794px; margin: 0 auto; background: white; border: 2px solid #1a3a5c; min-height: 600px; }
-    .header { display: flex; align-items: center; justify-content: space-between; padding: 20px 30px; border-bottom: 3px solid #1a3a5c; }
+    .header { display: flex; align-items: center; justify-content: space-between; padding: 22px 32px; border-bottom: 3px solid #1a3a5c; }
     .header-right { display: flex; align-items: center; gap: 15px; }
-    .logo { height: 70px; width: auto; object-fit: contain; }
-    .logo-placeholder { width: 70px; height: 70px; background: #1a3a5c; color: white; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; border-radius: 8px; }
+    .logo { height: 86px; width: auto; object-fit: contain; }
+    .logo-placeholder { width: 86px; height: 86px; background: #1a3a5c; color: white; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: bold; border-radius: 8px; }
     .company-info { text-align: right; }
-    .company-name { font-size: 22px; font-weight: bold; color: #1a3a5c; }
-    .company-name-en { font-size: 11px; color: #666; letter-spacing: 1px; }
-    .company-detail { font-size: 12px; color: #444; margin-top: 2px; }
-    .header-left { text-align: left; font-size: 12px; color: #444; }
+    .company-name { font-size: 26px; font-weight: bold; color: #1a3a5c; }
+    .company-name-en { font-size: 13px; color: #666; letter-spacing: 1px; }
+    .company-detail { font-size: 14px; color: #444; margin-top: 2px; }
+    .header-left { text-align: left; font-size: 14px; color: #444; }
     .header-left div { margin-bottom: 2px; }
-    .receipt-meta { display: flex; justify-content: space-between; align-items: center; padding: 15px 30px; border-bottom: 1px solid #ddd; }
-    .receipt-label { font-size: 22px; font-weight: bold; color: #1a3a5c; }
-    .receipt-num { font-size: 16px; font-weight: bold; color: #c0392b; }
-    .client-row { display: flex; justify-content: space-between; padding: 12px 30px; border-bottom: 1px solid #ddd; font-size: 14px; }
+    .receipt-meta { display: flex; justify-content: space-between; align-items: center; padding: 16px 32px; border-bottom: 1px solid #ddd; }
+    .receipt-label { font-size: 26px; font-weight: bold; color: #1a3a5c; }
+    .receipt-num { font-size: 19px; font-weight: bold; color: #c0392b; }
+    .client-row { display: flex; justify-content: space-between; padding: 14px 32px; border-bottom: 1px solid #ddd; font-size: 17px; }
     .client-name { font-weight: bold; }
-    .subject-bar { background: #d6e4f0; padding: 10px 30px; font-weight: bold; font-size: 15px; color: #1a3a5c; border-bottom: 1px solid #b0c4d8; }
-    .table-section { padding: 20px 30px; }
-    .table-header-label { background: #1a3a5c; color: white; padding: 8px 16px; font-size: 14px; font-weight: bold; display: inline-block; border-radius: 4px 4px 0 0; }
+    .subject-bar { background: #d6e4f0; padding: 12px 32px; font-weight: bold; font-size: 18px; color: #1a3a5c; border-bottom: 1px solid #b0c4d8; }
+    .table-section { padding: 22px 32px; }
+    .table-header-label { background: #1a3a5c; color: white; padding: 9px 18px; font-size: 16px; font-weight: bold; display: inline-block; border-radius: 4px 4px 0 0; }
     table { width: 100%; border-collapse: collapse; border: 1px solid #ccc; }
-    th { background: #e8eef4; color: #1a3a5c; font-weight: bold; padding: 10px 12px; font-size: 13px; border: 1px solid #ccc; text-align: center; }
-    td { padding: 10px 12px; border: 1px solid #ccc; text-align: center; font-size: 13px; }
+    th { background: #e8eef4; color: #1a3a5c; font-weight: bold; padding: 12px 14px; font-size: 16px; border: 1px solid #ccc; text-align: center; }
+    td { padding: 12px 14px; border: 1px solid #ccc; text-align: center; font-size: 16px; }
     .amount-cell { font-weight: bold; }
-    .total-row { display: flex; justify-content: flex-end; align-items: center; padding: 15px 30px; gap: 15px; }
-    .total-label { font-size: 16px; font-weight: bold; color: #1a3a5c; }
-    .total-value { background: #1a3a5c; color: white; padding: 8px 24px; border-radius: 6px; font-size: 20px; font-weight: bold; }
+    .total-row { display: flex; justify-content: flex-end; align-items: center; padding: 18px 32px; gap: 16px; }
+    .total-label { font-size: 19px; font-weight: bold; color: #1a3a5c; }
+    .total-value { background: #1a3a5c; color: white; padding: 10px 28px; border-radius: 6px; font-size: 24px; font-weight: bold; }
     .footer { border-top: 2px solid #1a3a5c; padding: 12px 30px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #888; background: #fafafa; }
     .footer-badge { color: #1a3a5c; font-weight: bold; }
     .action-buttons { display: flex; gap: 10px; justify-content: center; padding: 20px; }
@@ -479,23 +484,23 @@ function buildFullInvoiceHtml(receipts: ReceiptRow[], settings: CompanySettings)
     .logo { height: 60px; width: auto; object-fit: contain; }
     .logo-placeholder { width: 60px; height: 60px; background: #1a3a5c; color: white; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: bold; border-radius: 8px; }
     .company-info { text-align: right; }
-    .company-name { font-size: 20px; font-weight: bold; color: #1a3a5c; }
-    .company-name-en { font-size: 10px; color: #666; letter-spacing: 1px; }
-    .company-detail { font-size: 11px; color: #444; margin-top: 2px; }
-    .header-left { text-align: left; font-size: 11px; color: #444; }
+    .company-name { font-size: 24px; font-weight: bold; color: #1a3a5c; }
+    .company-name-en { font-size: 12px; color: #666; letter-spacing: 1px; }
+    .company-detail { font-size: 13px; color: #444; margin-top: 2px; }
+    .header-left { text-align: left; font-size: 13px; color: #444; }
     .header-left div { margin-bottom: 2px; }
-    .title-bar { background: #d6e4f0; padding: 10px 25px; font-weight: bold; font-size: 16px; color: #1a3a5c; border-bottom: 1px solid #b0c4d8; display: flex; justify-content: space-between; align-items: center; }
-    .date-range { font-size: 13px; color: #444; font-weight: normal; }
-    .table-section { padding: 15px 25px; }
+    .title-bar { background: #d6e4f0; padding: 12px 28px; font-weight: bold; font-size: 19px; color: #1a3a5c; border-bottom: 1px solid #b0c4d8; display: flex; justify-content: space-between; align-items: center; }
+    .date-range { font-size: 15px; color: #444; font-weight: normal; }
+    .table-section { padding: 16px 28px; }
     table { width: 100%; border-collapse: collapse; border: 1px solid #ccc; }
-    th { background: #1a3a5c; color: white; font-weight: bold; padding: 8px 10px; font-size: 12px; border: 1px solid #1a3a5c; text-align: center; white-space: nowrap; }
-    td { padding: 7px 10px; border: 1px solid #ccc; text-align: center; font-size: 12px; }
+    th { background: #1a3a5c; color: white; font-weight: bold; padding: 10px 12px; font-size: 14px; border: 1px solid #1a3a5c; text-align: center; white-space: nowrap; }
+    td { padding: 9px 12px; border: 1px solid #ccc; text-align: center; font-size: 14px; }
     tr:nth-child(even) { background: #f8f9fa; }
     .amount-cell { font-weight: bold; }
-    .total-row { display: flex; justify-content: flex-end; align-items: center; padding: 12px 25px; gap: 15px; border-top: 2px solid #1a3a5c; }
-    .total-label { font-size: 16px; font-weight: bold; color: #1a3a5c; }
-    .total-value { background: #1a3a5c; color: white; padding: 6px 20px; border-radius: 6px; font-size: 18px; font-weight: bold; }
-    .total-count { font-size: 13px; color: #666; }
+    .total-row { display: flex; justify-content: flex-end; align-items: center; padding: 14px 28px; gap: 16px; border-top: 2px solid #1a3a5c; }
+    .total-label { font-size: 19px; font-weight: bold; color: #1a3a5c; }
+    .total-value { background: #1a3a5c; color: white; padding: 8px 24px; border-radius: 6px; font-size: 22px; font-weight: bold; }
+    .total-count { font-size: 15px; color: #666; }
     .footer { border-top: 1px solid #ddd; padding: 10px 25px; display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #888; background: #fafafa; }
     .footer-badge { color: #1a3a5c; font-weight: bold; }
     .action-buttons { display: flex; gap: 10px; justify-content: center; padding: 20px; }
@@ -594,9 +599,9 @@ async function generateHtmlPdfBlob(html: string, filename: string): Promise<Blob
     const target = (host.querySelector(".container") as HTMLElement) || host;
     const blob: Blob = await html2pdf()
       .set({
-        margin: 5,
+        margin: 2,
         filename,
-        image: { type: "jpeg", quality: 0.92 },
+        image: { type: "jpeg", quality: 0.95 },
         html2canvas: { scale: 2, useCORS: true, letterRendering: true, logging: false, backgroundColor: "#ffffff" },
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait", compress: true },
       })
