@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { buildReceiptPrintHtml, type ReceiptPrintData, type CompanySettings } from "@/lib/receiptPrintBuilder";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
+import { jsPDF } from "jspdf";
 
 interface ReceiptRow {
   id: string;
@@ -363,6 +364,72 @@ function buildGroupedReceiptPrintHtml(group: GroupedReceipt, settings: CompanySe
 </html>`;
 }
 
+function downloadTextPdf(lines: string[]): Blob {
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margin = 12;
+  const lineHeight = 6;
+  let y = margin;
+
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(11);
+
+  for (const rawLine of lines) {
+    const safeLine = rawLine || " ";
+    const wrapped = pdf.splitTextToSize(safeLine, pageWidth - margin * 2) as string[];
+    for (const part of wrapped) {
+      if (y > pageHeight - margin) {
+        pdf.addPage();
+        y = margin;
+      }
+      pdf.text(part, pageWidth - margin, y, { align: "right" });
+      y += lineHeight;
+    }
+  }
+
+  return pdf.output("blob");
+}
+
+function buildReceiptPdfLines(group: GroupedReceipt): string[] {
+  const title = RECEIPT_TYPE_LABELS[group.receipt_type] || group.receipt_type;
+  const receiptRange = group.receipts.length === 1
+    ? padReceiptNumber(group.firstReceiptNumber)
+    : `${padReceiptNumber(group.firstReceiptNumber)}-${padReceiptNumber(group.lastReceiptNumber)}`;
+
+  const headerLines = [
+    "Basheer Abu Sneineh Insurance",
+    title,
+    `Receipt: ${receiptRange}`,
+    `Client: ${group.client_name}`,
+    `ID: ${group.client_id_number || "-"}`,
+    `Car: ${group.car_number || "-"}`,
+    `Date: ${formatPrintDate(group.receipt_date)}`,
+    "",
+    "Payments:",
+  ];
+
+  const paymentLines = group.receipts.flatMap((r, index) => {
+    const method = PAYMENT_METHOD_LABELS[r.payment_method || ""] || "Payment";
+    const details = getReceiptPaymentDetails(r);
+    const amount = `₪${r.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    return [
+      `${index + 1}. ${method} | ${amount}`,
+      `   Date: ${formatPrintDate(getDisplayDate(r))}`,
+      `   Details: ${details}`,
+    ];
+  });
+
+  return [
+    ...headerLines,
+    ...paymentLines,
+    "",
+    `Total: ₪${group.totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+    `Count: ${group.receipts.length}`,
+  ];
+}
+
 function buildFullInvoiceHtml(receipts: ReceiptRow[], settings: CompanySettings): string {
   const phoneLinksHtml = (settings.company_phone_links || []).map((link) => `<span>${link.phone}</span>`).join(" | ");
   const logoImg = settings.logoUrl
@@ -502,29 +569,6 @@ function buildFullInvoiceHtml(receipts: ReceiptRow[], settings: CompanySettings)
 </html>`;
 }
 
-let _html2pdfPromise: Promise<any> | null = null;
-function getHtml2Pdf() {
-  if (!_html2pdfPromise) _html2pdfPromise = import("html2pdf.js").then(m => m.default);
-  return _html2pdfPromise;
-}
-
-let _pdfRenderHost: HTMLDivElement | null = null;
-function getPdfRenderHost() {
-  if (_pdfRenderHost) return _pdfRenderHost;
-  const host = document.createElement("div");
-  host.setAttribute("aria-hidden", "true");
-  host.style.position = "fixed";
-  host.style.left = "-20000px";
-  host.style.top = "0";
-  host.style.width = "820px";
-  host.style.pointerEvents = "none";
-  host.style.opacity = "0";
-  host.style.overflow = "hidden";
-  document.body.appendChild(host);
-  _pdfRenderHost = host;
-  return host;
-}
-
 function formatElapsedTime(ms: number): string {
   const totalSeconds = Math.max(0, Math.round(ms / 1000));
   const minutes = Math.floor(totalSeconds / 60);
@@ -537,42 +581,6 @@ function getPdfWorkerCount(total: number): number {
   if (total <= 1) return 1;
   if (total <= 4) return 2;
   return Math.max(2, Math.min(3, Math.floor(cpuCount / 2)));
-}
-
-async function generateReceiptPdfBlob(html: string): Promise<Blob> {
-  const html2pdf = await getHtml2Pdf();
-  const host = getPdfRenderHost();
-  const container = document.createElement("div");
-  container.innerHTML = html;
-  container.style.width = "794px";
-  container.style.background = "#ffffff";
-  container.style.contain = "layout paint style";
-  const receiptEl = container.querySelector(".container") || container;
-  host.appendChild(container);
-
-  try {
-    const renderScale = typeof window !== "undefined" && window.devicePixelRatio > 1.5 ? 1.1 : 1.2;
-    const blob = await html2pdf()
-      .set({
-        margin: 4,
-        filename: "receipt.pdf",
-        image: { type: "jpeg", quality: 0.78 },
-        html2canvas: {
-          scale: renderScale,
-          useCORS: html.includes("<img"),
-          backgroundColor: "#ffffff",
-          logging: false,
-          letterRendering: false,
-          removeContainer: true,
-        },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait", compress: true },
-      })
-      .from(receiptEl as HTMLElement)
-      .outputPdf("blob");
-    return blob as Blob;
-  } finally {
-    container.remove();
-  }
 }
 
 // Run promise-producing tasks with limited concurrency
@@ -733,9 +741,8 @@ export default function Receipts() {
       }));
   };
 
-  const buildGroupPdfHtml = (group: GroupedReceipt): string => {
+  const buildGroupPdfLines = (group: GroupedReceipt): string[] => {
     const settings = companySettings || defaultSettings;
-    let html: string;
     if (group.receipts.length === 1) {
       const r = group.receipts[0];
       const data: ReceiptPrintData = {
@@ -756,12 +763,19 @@ export default function Receipts() {
         chequeDate: r.cheque_date || "",
         cardLastFour: r.card_last_four || "",
       };
-      html = buildReceiptPrintHtml(data, settings);
-    } else {
-      html = buildGroupedReceiptPrintHtml(group, settings);
+      const html = buildReceiptPrintHtml(data, settings).replace(/setTimeout\(function\(\)\{.*?\}.*?\);/s, "");
+      return html
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<[^>]+>/g, "\n")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/\n{2,}/g, "\n")
+        .split("\n")
+        .map(line => line.trim())
+        .filter(Boolean);
     }
-    // Remove auto-print script
-    return html.replace(/setTimeout\(function\(\)\{.*?\}.*?\);/s, "");
+    return buildReceiptPdfLines(group);
   };
 
   const handleDownloadPdf = async () => {
@@ -783,8 +797,8 @@ export default function Receipts() {
         workerCount,
         async (i) => {
           const group = groups[i];
-          const html = buildGroupPdfHtml(group);
-          const blob = await generateReceiptPdfBlob(html);
+          const lines = buildGroupPdfLines(group);
+          const blob = downloadTextPdf(lines);
           const clientSlug = group.client_name.replace(/[^a-zA-Z0-9\u0590-\u05FF\u0600-\u06FF]/g, "_");
           const receiptLabel = group.receipts.length === 1
             ? padReceiptNumber(group.firstReceiptNumber)
