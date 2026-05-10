@@ -809,8 +809,29 @@ export default function Receipts() {
   };
 
   const handleDownloadPdf = async () => {
-    const groups = getTargetGroups();
+    let groups = getTargetGroups();
     if (groups.length === 0) { toast.error("אין קבלות להורדה"); return; }
+
+    // Override receipt numbers sequentially if a starting number was provided
+    const startNumRaw = customStartNumber.trim();
+    if (startNumRaw !== "") {
+      const startNum = parseInt(startNumRaw, 10);
+      if (!Number.isFinite(startNum) || startNum <= 0) {
+        toast.error("מספר התחלה לא תקין");
+        return;
+      }
+      let counter = startNum;
+      groups = groups.map((g) => {
+        const newReceipts = g.receipts.map((r) => ({ ...r, receipt_number: counter++ }));
+        return {
+          ...g,
+          receipts: newReceipts,
+          firstReceiptNumber: newReceipts[0].receipt_number,
+          lastReceiptNumber: newReceipts[newReceipts.length - 1].receipt_number,
+        };
+      });
+    }
+
     setBulkLoading("zip");
     const receiptCount = groups.reduce((sum, group) => sum + group.receipts.length, 0);
     const startedAt = performance.now();
