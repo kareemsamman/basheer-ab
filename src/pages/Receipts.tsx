@@ -735,26 +735,32 @@ export default function Receipts() {
         : `מייצר ${receiptCount} קבלות בתוך ${groups.length} קבצי PDF...`
     );
     try {
-      const pdfEntries: { name: string; blob: Blob }[] = [];
-      for (let i = 0; i < groups.length; i++) {
-        const group = groups[i];
-        toast.loading(
-          receiptCount === groups.length
-            ? `מייצר PDF ${i + 1}/${groups.length}...`
-            : `מייצר PDF ${i + 1}/${groups.length} (${group.receipts.length} קבלות)...`,
-          { id: toastId }
-        );
-        const html = buildGroupPdfHtml(group);
-        const blob = await generateReceiptPdfBlob(html);
-        const clientSlug = group.client_name.replace(/[^a-zA-Z0-9\u0590-\u05FF\u0600-\u06FF]/g, "_");
-        const receiptLabel = group.receipts.length === 1
-          ? padReceiptNumber(group.firstReceiptNumber)
-          : `${padReceiptNumber(group.firstReceiptNumber)}-${padReceiptNumber(group.lastReceiptNumber)}`;
-        pdfEntries.push({
-          name: `receipt_${receiptLabel}_${clientSlug}.pdf`,
-          blob,
-        });
-      }
+      const pdfEntries: { name: string; blob: Blob }[] = new Array(groups.length);
+      await runWithConcurrency(
+        groups.length,
+        4,
+        async (i) => {
+          const group = groups[i];
+          const html = buildGroupPdfHtml(group);
+          const blob = await generateReceiptPdfBlob(html);
+          const clientSlug = group.client_name.replace(/[^a-zA-Z0-9\u0590-\u05FF\u0600-\u06FF]/g, "_");
+          const receiptLabel = group.receipts.length === 1
+            ? padReceiptNumber(group.firstReceiptNumber)
+            : `${padReceiptNumber(group.firstReceiptNumber)}-${padReceiptNumber(group.lastReceiptNumber)}`;
+          pdfEntries[i] = {
+            name: `receipt_${receiptLabel}_${clientSlug}.pdf`,
+            blob,
+          };
+        },
+        (done) => {
+          toast.loading(
+            receiptCount === groups.length
+              ? `מייצר PDF ${done}/${groups.length}...`
+              : `מייצר PDF ${done}/${groups.length}...`,
+            { id: toastId }
+          );
+        }
+      );
 
       if (pdfEntries.length === 1) {
         // Single PDF — download directly, no ZIP
