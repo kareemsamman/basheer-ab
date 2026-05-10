@@ -569,6 +569,45 @@ function buildFullInvoiceHtml(receipts: ReceiptRow[], settings: CompanySettings)
 </html>`;
 }
 
+// Cached html2pdf import
+let _html2pdfPromise: Promise<any> | null = null;
+function getHtml2Pdf() {
+  if (!_html2pdfPromise) {
+    _html2pdfPromise = import("html2pdf.js").then((m: any) => m.default || m);
+  }
+  return _html2pdfPromise;
+}
+
+// Render an HTML string to a styled PDF blob (matches the print view visually).
+async function generateHtmlPdfBlob(html: string, filename: string): Promise<Blob> {
+  const html2pdf = await getHtml2Pdf();
+  // Off-screen container so layout reflects print CSS (A4 width ~ 794px)
+  const host = document.createElement("div");
+  host.style.cssText = "position:fixed;left:-10000px;top:0;width:820px;background:#fff;z-index:-1;";
+  // Strip auto-print scripts to avoid triggering print dialog during render
+  const cleanHtml = html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<button[\s\S]*?<\/button>/gi, "");
+  host.innerHTML = cleanHtml;
+  document.body.appendChild(host);
+  try {
+    const target = (host.querySelector(".container") as HTMLElement) || host;
+    const blob: Blob = await html2pdf()
+      .set({
+        margin: 5,
+        filename,
+        image: { type: "jpeg", quality: 0.92 },
+        html2canvas: { scale: 2, useCORS: true, letterRendering: true, logging: false, backgroundColor: "#ffffff" },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait", compress: true },
+      })
+      .from(target)
+      .outputPdf("blob");
+    return blob;
+  } finally {
+    host.remove();
+  }
+}
+
 function formatElapsedTime(ms: number): string {
   const totalSeconds = Math.max(0, Math.round(ms / 1000));
   const minutes = Math.floor(totalSeconds / 60);
