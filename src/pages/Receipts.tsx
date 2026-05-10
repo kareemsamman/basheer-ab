@@ -51,7 +51,12 @@ interface ReceiptRow {
   card_last_four: string | null;
   created_at: string;
   clients: { id_number: string | null } | null;
-  policy_payments: { cheque_date: string | null; payment_date: string | null } | null;
+  policy_payments: {
+    cheque_date: string | null;
+    payment_date: string | null;
+    policy_id?: string | null;
+    policy?: { policy_type_parent: string | null } | null;
+  } | null;
 }
 
 
@@ -75,7 +80,7 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
     queryFn: async () => {
       let query = supabase
         .from("receipts")
-        .select("*, clients!client_id(id_number), policy_payments!payment_id(cheque_date, payment_date, policy:policies!policy_id(policy_type_parent))")
+        .select("*, clients!client_id(id_number), policy_payments!payment_id(policy_id, cheque_date, payment_date, policy:policies!policy_id(policy_type_parent))")
         .order("receipt_number", { ascending: false })
         .limit(500);
 
@@ -118,9 +123,10 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
 
       let rows = ((data || []) as any[])
         .filter((r: any) => {
+          const linkedPolicyId = r.policy_payments?.policy_id || r.policy_id;
           const parent = r.policy_payments?.policy?.policy_type_parent;
           if (parent === "ELZAMI") return false;
-          if (r.policy_id && elzamiPolicyIds.has(r.policy_id)) return false;
+          if (linkedPolicyId && elzamiPolicyIds.has(linkedPolicyId)) return false;
           return true;
         })
         .map((r: any) => ({
