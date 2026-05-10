@@ -78,28 +78,39 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
   return useQuery({
     queryKey: ["receipts", tab, search, dateFrom?.toISOString(), dateTo?.toISOString(), paymentMethodFilter],
     queryFn: async () => {
-      let query = supabase
-        .from("receipts")
-        .select("*, clients!client_id(id_number), policy_payments!payment_id(policy_id, cheque_date, payment_date, policy:policies!policy_id(policy_type_parent))")
-        .order("receipt_number", { ascending: false })
-        .limit(500);
+      const pageSize = 1000;
+      const searchTerm = search.trim();
+      const data: any[] = [];
 
-      if (tab === "payment") {
-        query = query.eq("receipt_type", "payment");
-      } else if (tab === "accident_fee") {
-        query = query.eq("receipt_type", "accident_fee");
+      for (let from = 0; ; from += pageSize) {
+        let query = supabase
+          .from("receipts")
+          .select("*, clients!client_id(id_number), policy_payments!payment_id(policy_id, cheque_date, payment_date, policy:policies!policy_id(policy_type_parent))")
+          .order("receipt_number", { ascending: false })
+          .range(from, from + pageSize - 1);
+
+        if (tab === "payment") {
+          query = query.eq("receipt_type", "payment");
+        } else if (tab === "accident_fee") {
+          query = query.eq("receipt_type", "accident_fee");
+        }
+
+        if (searchTerm) {
+          query = query.or(`client_name.ilike.%${searchTerm}%,car_number.ilike.%${searchTerm}%`);
+        }
+
+        if (paymentMethodFilter && paymentMethodFilter !== "all") {
+          query = query.eq("payment_method", paymentMethodFilter);
+        }
+
+        const { data: page, error } = await query;
+        if (error) throw error;
+
+        if (!page?.length) break;
+        data.push(...page);
+
+        if (page.length < pageSize) break;
       }
-
-      if (search.trim()) {
-        query = query.or(`client_name.ilike.%${search}%,car_number.ilike.%${search}%`);
-      }
-
-      if (paymentMethodFilter && paymentMethodFilter !== "all") {
-        query = query.eq("payment_method", paymentMethodFilter);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
 
       // Collect all policy_ids referenced by these receipts (direct or via payment)
       const policyIds = new Set<string>();
