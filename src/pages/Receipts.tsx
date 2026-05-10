@@ -75,7 +75,7 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
     queryFn: async () => {
       let query = supabase
         .from("receipts")
-        .select("*, clients!client_id(id_number), policy_payments!payment_id(cheque_date, payment_date, policy:policies!policy_id(policy_type_parent)), policies!policy_id(policy_type_parent)")
+        .select("*, clients!client_id(id_number), policy_payments!payment_id(cheque_date, payment_date, policy:policies!policy_id(policy_type_parent))")
         .order("receipt_number", { ascending: false })
         .limit(500);
 
