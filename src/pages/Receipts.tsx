@@ -185,13 +185,12 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
           client_id_number: r.clients?.id_number || null,
         })) as ReceiptRow[];
 
-      // Filter by the displayed date (cheque_date for cheques, payment_date otherwise)
-      // so the date filter matches what the user sees in the table.
+      // Filter by issue_date (תאריך הנפקה) — falls back to receipt_date / display date
       if (dateFrom || dateTo) {
         const fromStr = dateFrom ? format(dateFrom, "yyyy-MM-dd") : null;
         const toStr = dateTo ? format(dateTo, "yyyy-MM-dd") : null;
         rows = rows.filter((r) => {
-          const d = getDisplayDate(r);
+          const d = r.issue_date || r.receipt_date || getDisplayDate(r);
           if (!d) return false;
           if (fromStr && d < fromStr) return false;
           if (toStr && d > toStr) return false;
