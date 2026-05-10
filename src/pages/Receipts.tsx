@@ -97,7 +97,7 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
       if (error) throw error;
       let rows = ((data || []) as any[])
         .filter((r: any) => {
-          const parent = r.policies?.policy_type_parent || r.policy_payments?.policy?.policy_type_parent;
+          const parent = r.policy_payments?.policy?.policy_type_parent;
           return parent !== "ELZAMI";
         })
         .map((r: any) => ({
