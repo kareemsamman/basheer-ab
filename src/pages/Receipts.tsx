@@ -502,11 +502,16 @@ function buildFullInvoiceHtml(receipts: ReceiptRow[], settings: CompanySettings)
 </html>`;
 }
 
+let _html2pdfPromise: Promise<any> | null = null;
+function getHtml2Pdf() {
+  if (!_html2pdfPromise) _html2pdfPromise = import("html2pdf.js").then(m => m.default);
+  return _html2pdfPromise;
+}
+
 async function generateReceiptPdfBlob(html: string): Promise<Blob> {
-  const html2pdf = (await import("html2pdf.js")).default;
+  const html2pdf = await getHtml2Pdf();
   const container = document.createElement("div");
   container.innerHTML = html;
-  // Extract just the .container element for cleaner PDF
   const receiptEl = container.querySelector(".container") || container;
   document.body.appendChild(container);
   container.style.position = "absolute";
@@ -518,9 +523,9 @@ async function generateReceiptPdfBlob(html: string): Promise<Blob> {
       .set({
         margin: 5,
         filename: "receipt.pdf",
-        image: { type: "jpeg", quality: 0.95 },
-        html2canvas: { scale: 2, useCORS: true, letterRendering: true },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        image: { type: "jpeg", quality: 0.85 },
+        html2canvas: { scale: 1.5, useCORS: true, letterRendering: true, logging: false },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait", compress: true },
       })
       .from(receiptEl as HTMLElement)
       .outputPdf("blob");
@@ -528,6 +533,29 @@ async function generateReceiptPdfBlob(html: string): Promise<Blob> {
   } finally {
     document.body.removeChild(container);
   }
+}
+
+// Run promise-producing tasks with limited concurrency
+async function runWithConcurrency<T>(
+  items: number,
+  concurrency: number,
+  task: (index: number) => Promise<T>,
+  onProgress?: (done: number) => void
+): Promise<T[]> {
+  const results: T[] = new Array(items);
+  let next = 0;
+  let done = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items) }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items) return;
+      results[i] = await task(i);
+      done++;
+      onProgress?.(done);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 export default function Receipts() {
