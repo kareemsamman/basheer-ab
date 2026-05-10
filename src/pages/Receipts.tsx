@@ -75,7 +75,7 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
     queryFn: async () => {
       let query = supabase
         .from("receipts")
-        .select("*, clients!client_id(id_number), policy_payments!payment_id(cheque_date, payment_date)")
+        .select("*, clients!client_id(id_number), policy_payments!payment_id(cheque_date, payment_date, policy:policies!policy_id(policy_type_parent))")
         .order("receipt_number", { ascending: false })
         .limit(500);
 
@@ -95,10 +95,15 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
 
       const { data, error } = await query;
       if (error) throw error;
-      let rows = ((data || []) as any[]).map((r: any) => ({
-        ...r,
-        client_id_number: r.clients?.id_number || null,
-      })) as ReceiptRow[];
+      let rows = ((data || []) as any[])
+        .filter((r: any) => {
+          const parent = r.policy_payments?.policy?.policy_type_parent;
+          return parent !== "ELZAMI";
+        })
+        .map((r: any) => ({
+          ...r,
+          client_id_number: r.clients?.id_number || null,
+        })) as ReceiptRow[];
 
       // Filter by the displayed date (cheque_date for cheques, payment_date otherwise)
       // so the date filter matches what the user sees in the table.
