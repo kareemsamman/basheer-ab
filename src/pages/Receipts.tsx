@@ -120,28 +120,43 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
         if (ppPid) policyIds.add(ppPid);
       }
 
-      // Fetch parent type + group_id for all referenced policies, then for every
-      // group find the ELZAMI sibling so we can exclude payments that match its price.
+      // Fetch parent type + group_id for all referenced policies in small chunks,
+      // then for every group find the ELZAMI sibling so we can exclude its receipt.
+      // Large `.in(...)` filters can fail or return incomplete results when no search is applied.
       const elzamiPolicyIds = new Set<string>();
       const policyToGroup = new Map<string, string | null>();
       const groupElzamiPrice = new Map<string, number>();
       if (policyIds.size > 0) {
-        const { data: pols } = await supabase
-          .from("policies")
-          .select("id, policy_type_parent, group_id, insurance_price")
-          .in("id", Array.from(policyIds));
+        const chunkSize = 200;
+        const policyIdList = Array.from(policyIds);
+        const pols: any[] = [];
+
+        for (let i = 0; i < policyIdList.length; i += chunkSize) {
+          const chunk = policyIdList.slice(i, i + chunkSize);
+          const { data: page, error } = await supabase
+            .from("policies")
+            .select("id, policy_type_parent, group_id, insurance_price")
+            .in("id", chunk);
+          if (error) throw error;
+          if (page?.length) pols.push(...page);
+        }
+
         const groupIds = new Set<string>();
-        for (const p of (pols || []) as any[]) {
+        for (const p of pols) {
           if (p.policy_type_parent === "ELZAMI") elzamiPolicyIds.add(p.id);
           policyToGroup.set(p.id, p.group_id || null);
           if (p.group_id) groupIds.add(p.group_id);
         }
-        if (groupIds.size > 0) {
-          const { data: siblings } = await supabase
+
+        const groupIdList = Array.from(groupIds);
+        for (let i = 0; i < groupIdList.length; i += chunkSize) {
+          const chunk = groupIdList.slice(i, i + chunkSize);
+          const { data: siblings, error } = await supabase
             .from("policies")
             .select("id, policy_type_parent, group_id, insurance_price")
-            .in("group_id", Array.from(groupIds))
+            .in("group_id", chunk)
             .eq("policy_type_parent", "ELZAMI");
+          if (error) throw error;
           for (const s of (siblings || []) as any[]) {
             elzamiPolicyIds.add(s.id);
             if (s.group_id) groupElzamiPrice.set(s.group_id, Number(s.insurance_price) || 0);
