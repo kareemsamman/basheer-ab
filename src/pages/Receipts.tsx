@@ -1476,11 +1476,9 @@ export default function Receipts() {
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)} title={r.source === "auto" ? "עריכת תאריך הנפקה" : "עריכה"}>
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
-                            {r.source === "manual" && (
-                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteReceipt(r)} title="מחיקה">
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteReceipt(r)} title="מחיקה">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
