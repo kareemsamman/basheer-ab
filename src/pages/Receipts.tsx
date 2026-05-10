@@ -512,23 +512,23 @@ function buildFullInvoiceHtml(receipts: ReceiptRow[], settings: CompanySettings)
     .logo { height: 60px; width: auto; object-fit: contain; }
     .logo-placeholder { width: 60px; height: 60px; background: #1a3a5c; color: white; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: bold; border-radius: 8px; }
     .company-info { text-align: right; }
-    .company-name { font-size: 24px; font-weight: bold; color: #1a3a5c; }
-    .company-name-en { font-size: 12px; color: #666; letter-spacing: 1px; }
-    .company-detail { font-size: 13px; color: #444; margin-top: 2px; }
-    .header-left { text-align: left; font-size: 13px; color: #444; }
+    .company-name { font-size: 28px; font-weight: bold; color: #1a3a5c; }
+    .company-name-en { font-size: 14px; color: #666; letter-spacing: 1px; }
+    .company-detail { font-size: 15px; color: #444; margin-top: 2px; }
+    .header-left { text-align: left; font-size: 15px; color: #444; }
     .header-left div { margin-bottom: 2px; }
-    .title-bar { background: #d6e4f0; padding: 12px 28px; font-weight: bold; font-size: 19px; color: #1a3a5c; border-bottom: 1px solid #b0c4d8; display: flex; justify-content: space-between; align-items: center; }
-    .date-range { font-size: 15px; color: #444; font-weight: normal; }
-    .table-section { padding: 16px 28px; }
+    .title-bar { background: #d6e4f0; padding: 14px 30px; font-weight: bold; font-size: 22px; color: #1a3a5c; border-bottom: 1px solid #b0c4d8; display: flex; justify-content: space-between; align-items: center; }
+    .date-range { font-size: 17px; color: #444; font-weight: normal; }
+    .table-section { padding: 18px 30px; }
     table { width: 100%; border-collapse: collapse; border: 1px solid #ccc; }
-    th { background: #1a3a5c; color: white; font-weight: bold; padding: 10px 12px; font-size: 14px; border: 1px solid #1a3a5c; text-align: center; white-space: nowrap; }
-    td { padding: 9px 12px; border: 1px solid #ccc; text-align: center; font-size: 14px; }
+    th { background: #1a3a5c; color: white; font-weight: bold; padding: 12px 14px; font-size: 17px; border: 1px solid #1a3a5c; text-align: center; white-space: nowrap; }
+    td { padding: 11px 14px; border: 1px solid #ccc; text-align: center; font-size: 17px; }
     tr:nth-child(even) { background: #f8f9fa; }
     .amount-cell { font-weight: bold; }
-    .total-row { display: flex; justify-content: flex-end; align-items: center; padding: 14px 28px; gap: 16px; border-top: 2px solid #1a3a5c; }
-    .total-label { font-size: 19px; font-weight: bold; color: #1a3a5c; }
-    .total-value { background: #1a3a5c; color: white; padding: 8px 24px; border-radius: 6px; font-size: 22px; font-weight: bold; }
-    .total-count { font-size: 15px; color: #666; }
+    .total-row { display: flex; justify-content: flex-end; align-items: center; padding: 16px 30px; gap: 18px; border-top: 2px solid #1a3a5c; }
+    .total-label { font-size: 22px; font-weight: bold; color: #1a3a5c; }
+    .total-value { background: #1a3a5c; color: white; padding: 10px 28px; border-radius: 6px; font-size: 26px; font-weight: bold; }
+    .total-count { font-size: 17px; color: #666; }
     .footer { border-top: 1px solid #ddd; padding: 10px 25px; display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #888; background: #fafafa; }
     .footer-badge { color: #1a3a5c; font-weight: bold; }
     .action-buttons { display: flex; gap: 10px; justify-content: center; padding: 20px; }
