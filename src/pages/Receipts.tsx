@@ -109,15 +109,32 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
         if (ppPid) policyIds.add(ppPid);
       }
 
-      // Fetch parent type for all referenced policies
+      // Fetch parent type + group_id for all referenced policies, then for every
+      // group find the ELZAMI sibling so we can exclude payments that match its price.
       const elzamiPolicyIds = new Set<string>();
+      const policyToGroup = new Map<string, string | null>();
+      const groupElzamiPrice = new Map<string, number>();
       if (policyIds.size > 0) {
         const { data: pols } = await supabase
           .from("policies")
-          .select("id, policy_type_parent")
+          .select("id, policy_type_parent, group_id, insurance_price")
           .in("id", Array.from(policyIds));
+        const groupIds = new Set<string>();
         for (const p of (pols || []) as any[]) {
           if (p.policy_type_parent === "ELZAMI") elzamiPolicyIds.add(p.id);
+          policyToGroup.set(p.id, p.group_id || null);
+          if (p.group_id) groupIds.add(p.group_id);
+        }
+        if (groupIds.size > 0) {
+          const { data: siblings } = await supabase
+            .from("policies")
+            .select("id, policy_type_parent, group_id, insurance_price")
+            .in("group_id", Array.from(groupIds))
+            .eq("policy_type_parent", "ELZAMI");
+          for (const s of (siblings || []) as any[]) {
+            elzamiPolicyIds.add(s.id);
+            if (s.group_id) groupElzamiPrice.set(s.group_id, Number(s.insurance_price) || 0);
+          }
         }
       }
 
@@ -127,6 +144,14 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
           const parent = r.policy_payments?.policy?.policy_type_parent;
           if (parent === "ELZAMI") return false;
           if (linkedPolicyId && elzamiPolicyIds.has(linkedPolicyId)) return false;
+          // Exclude payments whose amount matches the ELZAMI sibling price within the same group
+          if (linkedPolicyId) {
+            const gid = policyToGroup.get(linkedPolicyId);
+            if (gid) {
+              const elzPrice = groupElzamiPrice.get(gid);
+              if (elzPrice && Math.abs(Number(r.amount) - elzPrice) < 0.01) return false;
+            }
+          }
           return true;
         })
         .map((r: any) => ({

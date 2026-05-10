@@ -1,44 +1,17 @@
+## الخطة
 
+1. تعديل منطق تحميل الإيصالات في `src/pages/Receipts.tsx` بحيث لا يعتمد فقط على `policy_id` المباشر، بل يفحص أيضاً كل `group_id` المرتبط بالبوليصة، ويستبعد أي دفعة/إيصال يطابق مبلغ بوليصة ELZAMI داخل نفس المجموعة.
+2. تعديل منطق التجميع في الصفحة حتى لا تُجمع دفعة الإلزامي مع الدفعات الأخرى، وبالتالي يصبح الصف الظاهر لهذا العميل `₪1,500.00` بدل `₪4,060.00`.
+3. توحيد نفس الاستبعاد داخل مسارات الطباعة والـPDF، بما فيها المسار الذي يستخدم backend function للـ auto receipts، حتى لا يرجع مبلغ الإلزامي عند الطباعة أو تنزيل الـPDF.
+4. تكبير تنسيق الطباعة والـPDF مرة إضافية في القوالب المستخدمة حالياً، لأن التكبير السابق لم ينعكس على كل المسارات.
+5. التحقق من الحالة نفسها لهذا العميل بعد التعديل للتأكد أن مبلغ `₪2,560.00` اختفى من الجدول، ومن رיכוז קבלות، ومن الطباعة، ومن الـPDF.
 
-## Understanding: Receipts vs Accounting & The Duplicate Issue
+## تفاصيل تقنية
 
-### Receipts (`/receipts`)
-A dedicated Hebrew receipt system using the `receipts` table. Auto-generates receipt numbers for policy payments, supports manual creation, groups by client/car/minute, and prints professional A4 Hebrew receipts.
-
-### Accounting (`/accounting`)
-An Arabic accounting ledger that **aggregates data from 6+ tables** into one unified view:
-
-```text
-┌─────────────────────────────────────────────────┐
-│              ACCOUNTING DATA SOURCES             │
-├──────────────┬──────────────────────────────────┤
-│ Tab          │ Sources                          │
-├──────────────┼──────────────────────────────────┤
-│ Issuances    │ policies (grouped by group_id)   │
-│ Refunds      │ policies (cancelled)             │
-│              │ policy_payments (refused cheques) │
-│              │ customer_wallet_transactions      │
-│              │ expenses (voucher_type=refund)    │
-│ Payments     │ expenses (voucher_type=payment)   │
-│              │ company_settlements               │
-│ Receipts     │ expenses (voucher_type=receipt)   │
-│              │ policy_payments (customer pays)   │
-│ Sales        │ expenses (desc starts [مبيعات])   │
-└──────────────┴──────────────────────────────────┘
-```
-
-### The Duplicate Issue
-The Accounting page can show the same transaction twice if:
-1. A company settlement was created via the **Company Wallet** page (saved to `company_settlements`)
-2. AND the same payment was also recorded as an **expense** (saved to `expenses` with entity_type=company)
-
-Both get pulled into the "payment" tab independently.
-
-### Clarification Needed
-Before planning a fix, I need to understand: what specifically are you seeing duplicated? For example:
-- Company settlements appearing twice (once from `company_settlements`, once from `expenses`)?
-- Policy payments showing in both Receipts page AND Accounting page?
-- Something else?
-
-Could you show me an example of the duplicate entries, or tell me which entity type (company/broker/other) and which tab (payments/receipts) has the duplicates?
-
+- السبب الحالي: دفعة `₪2,560.00` مسجلة على `policy_payments.policy_id` لبوليصة `THIRD_FULL`، لكن نفس `group_id` يحتوي بوليصة `ELZAMI` بقيمة `₪2,560.00`، لذلك الفلتر الحالي لا يلتقطها.
+- الملفات المرجح تعديلها:
+  - `src/pages/Receipts.tsx`
+  - `src/lib/receiptPrintBuilder.ts`
+  - `supabase/functions/generate-bulk-payment-receipt/index.ts`
+  - وقد يلزم `supabase/functions/generate-payment-receipt/index.ts` إذا كان نفس المسار يتأثر
+- لن أغيّر قواعد عمل أخرى خارج الإيصالات.
