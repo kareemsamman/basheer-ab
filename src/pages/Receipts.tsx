@@ -289,33 +289,33 @@ function buildGroupedReceiptPrintHtml(group: GroupedReceipt, settings: CompanySe
       .no-print { display: none !important; }
       .container { box-shadow: none; border: none; }
     }
-    body { font-family: Arial, Tahoma, 'Segoe UI', sans-serif; font-size: 17px; line-height: 1.55; color: #1a1a1a; background: #f0f2f5; padding: 20px; direction: rtl; }
+    body { font-family: Arial, Tahoma, 'Segoe UI', sans-serif; font-size: 21px; line-height: 1.6; color: #1a1a1a; background: #f0f2f5; padding: 20px; direction: rtl; }
     .container { max-width: 794px; margin: 0 auto; background: white; border: 2px solid #1a3a5c; min-height: 600px; }
-    .header { display: flex; align-items: center; justify-content: space-between; padding: 22px 32px; border-bottom: 3px solid #1a3a5c; }
-    .header-right { display: flex; align-items: center; gap: 15px; }
-    .logo { height: 86px; width: auto; object-fit: contain; }
-    .logo-placeholder { width: 86px; height: 86px; background: #1a3a5c; color: white; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: bold; border-radius: 8px; }
+    .header { display: flex; align-items: center; justify-content: space-between; padding: 24px 34px; border-bottom: 3px solid #1a3a5c; }
+    .header-right { display: flex; align-items: center; gap: 16px; }
+    .logo { height: 100px; width: auto; object-fit: contain; }
+    .logo-placeholder { width: 100px; height: 100px; background: #1a3a5c; color: white; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: bold; border-radius: 8px; }
     .company-info { text-align: right; }
-    .company-name { font-size: 26px; font-weight: bold; color: #1a3a5c; }
-    .company-name-en { font-size: 13px; color: #666; letter-spacing: 1px; }
-    .company-detail { font-size: 14px; color: #444; margin-top: 2px; }
-    .header-left { text-align: left; font-size: 14px; color: #444; }
-    .header-left div { margin-bottom: 2px; }
-    .receipt-meta { display: flex; justify-content: space-between; align-items: center; padding: 16px 32px; border-bottom: 1px solid #ddd; }
-    .receipt-label { font-size: 26px; font-weight: bold; color: #1a3a5c; }
-    .receipt-num { font-size: 19px; font-weight: bold; color: #c0392b; }
-    .client-row { display: flex; justify-content: space-between; padding: 14px 32px; border-bottom: 1px solid #ddd; font-size: 17px; }
+    .company-name { font-size: 30px; font-weight: bold; color: #1a3a5c; }
+    .company-name-en { font-size: 15px; color: #666; letter-spacing: 1px; }
+    .company-detail { font-size: 16px; color: #444; margin-top: 3px; }
+    .header-left { text-align: left; font-size: 16px; color: #444; }
+    .header-left div { margin-bottom: 3px; }
+    .receipt-meta { display: flex; justify-content: space-between; align-items: center; padding: 18px 34px; border-bottom: 1px solid #ddd; }
+    .receipt-label { font-size: 30px; font-weight: bold; color: #1a3a5c; }
+    .receipt-num { font-size: 22px; font-weight: bold; color: #c0392b; }
+    .client-row { display: flex; justify-content: space-between; padding: 16px 34px; border-bottom: 1px solid #ddd; font-size: 20px; }
     .client-name { font-weight: bold; }
-    .subject-bar { background: #d6e4f0; padding: 12px 32px; font-weight: bold; font-size: 18px; color: #1a3a5c; border-bottom: 1px solid #b0c4d8; }
-    .table-section { padding: 22px 32px; }
-    .table-header-label { background: #1a3a5c; color: white; padding: 9px 18px; font-size: 16px; font-weight: bold; display: inline-block; border-radius: 4px 4px 0 0; }
+    .subject-bar { background: #d6e4f0; padding: 14px 34px; font-weight: bold; font-size: 21px; color: #1a3a5c; border-bottom: 1px solid #b0c4d8; }
+    .table-section { padding: 24px 34px; }
+    .table-header-label { background: #1a3a5c; color: white; padding: 10px 20px; font-size: 18px; font-weight: bold; display: inline-block; border-radius: 4px 4px 0 0; }
     table { width: 100%; border-collapse: collapse; border: 1px solid #ccc; }
-    th { background: #e8eef4; color: #1a3a5c; font-weight: bold; padding: 12px 14px; font-size: 16px; border: 1px solid #ccc; text-align: center; }
-    td { padding: 12px 14px; border: 1px solid #ccc; text-align: center; font-size: 16px; }
+    th { background: #e8eef4; color: #1a3a5c; font-weight: bold; padding: 14px 16px; font-size: 19px; border: 1px solid #ccc; text-align: center; }
+    td { padding: 14px 16px; border: 1px solid #ccc; text-align: center; font-size: 19px; }
     .amount-cell { font-weight: bold; }
-    .total-row { display: flex; justify-content: flex-end; align-items: center; padding: 18px 32px; gap: 16px; }
-    .total-label { font-size: 19px; font-weight: bold; color: #1a3a5c; }
-    .total-value { background: #1a3a5c; color: white; padding: 10px 28px; border-radius: 6px; font-size: 24px; font-weight: bold; }
+    .total-row { display: flex; justify-content: flex-end; align-items: center; padding: 20px 34px; gap: 18px; }
+    .total-label { font-size: 22px; font-weight: bold; color: #1a3a5c; }
+    .total-value { background: #1a3a5c; color: white; padding: 12px 32px; border-radius: 6px; font-size: 28px; font-weight: bold; }
     .footer { border-top: 2px solid #1a3a5c; padding: 12px 30px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #888; background: #fafafa; }
     .footer-badge { color: #1a3a5c; font-weight: bold; }
     .action-buttons { display: flex; gap: 10px; justify-content: center; padding: 20px; }
