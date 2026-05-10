@@ -160,8 +160,13 @@ function groupReceipts(receipts: ReceiptRow[]): GroupedReceipt[] {
       lastReceiptNumber: sorted[sorted.length - 1].receipt_number,
     });
   }
-  // Sort by first receipt number descending
-  groups.sort((a, b) => b.lastReceiptNumber - a.lastReceiptNumber);
+  // Sort oldest first (ascending by date, then by receipt number)
+  groups.sort((a, b) => {
+    const da = a.receipt_date || "";
+    const db = b.receipt_date || "";
+    if (da !== db) return da < db ? -1 : 1;
+    return a.firstReceiptNumber - b.firstReceiptNumber;
+  });
   return groups;
 }
 
