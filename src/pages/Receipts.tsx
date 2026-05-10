@@ -569,29 +569,6 @@ function buildFullInvoiceHtml(receipts: ReceiptRow[], settings: CompanySettings)
 </html>`;
 }
 
-let _html2pdfPromise: Promise<any> | null = null;
-function getHtml2Pdf() {
-  if (!_html2pdfPromise) _html2pdfPromise = import("html2pdf.js").then(m => m.default);
-  return _html2pdfPromise;
-}
-
-let _pdfRenderHost: HTMLDivElement | null = null;
-function getPdfRenderHost() {
-  if (_pdfRenderHost) return _pdfRenderHost;
-  const host = document.createElement("div");
-  host.setAttribute("aria-hidden", "true");
-  host.style.position = "fixed";
-  host.style.left = "-20000px";
-  host.style.top = "0";
-  host.style.width = "820px";
-  host.style.pointerEvents = "none";
-  host.style.opacity = "0";
-  host.style.overflow = "hidden";
-  document.body.appendChild(host);
-  _pdfRenderHost = host;
-  return host;
-}
-
 function formatElapsedTime(ms: number): string {
   const totalSeconds = Math.max(0, Math.round(ms / 1000));
   const minutes = Math.floor(totalSeconds / 60);
@@ -607,39 +584,15 @@ function getPdfWorkerCount(total: number): number {
 }
 
 async function generateReceiptPdfBlob(html: string): Promise<Blob> {
-  const html2pdf = await getHtml2Pdf();
-  const host = getPdfRenderHost();
-  const container = document.createElement("div");
-  container.innerHTML = html;
-  container.style.width = "794px";
-  container.style.background = "#ffffff";
-  container.style.contain = "layout paint style";
-  const receiptEl = container.querySelector(".container") || container;
-  host.appendChild(container);
-
-  try {
-    const renderScale = typeof window !== "undefined" && window.devicePixelRatio > 1.5 ? 1.1 : 1.2;
-    const blob = await html2pdf()
-      .set({
-        margin: 4,
-        filename: "receipt.pdf",
-        image: { type: "jpeg", quality: 0.78 },
-        html2canvas: {
-          scale: renderScale,
-          useCORS: html.includes("<img"),
-          backgroundColor: "#ffffff",
-          logging: false,
-          letterRendering: false,
-          removeContainer: true,
-        },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait", compress: true },
-      })
-      .from(receiptEl as HTMLElement)
-      .outputPdf("blob");
-    return blob as Blob;
-  } finally {
-    container.remove();
-  }
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, "\n")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
+  return downloadTextPdf(text.split("\n").map(line => line.trim()).filter(Boolean), "receipt.pdf");
 }
 
 // Run promise-producing tasks with limited concurrency
