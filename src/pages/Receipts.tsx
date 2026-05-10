@@ -95,10 +95,33 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
 
       const { data, error } = await query;
       if (error) throw error;
+
+      // Collect all policy_ids referenced by these receipts (direct or via payment)
+      const policyIds = new Set<string>();
+      for (const r of (data || []) as any[]) {
+        if (r.policy_id) policyIds.add(r.policy_id);
+        const ppPid = r.policy_payments?.policy_id;
+        if (ppPid) policyIds.add(ppPid);
+      }
+
+      // Fetch parent type for all referenced policies
+      const elzamiPolicyIds = new Set<string>();
+      if (policyIds.size > 0) {
+        const { data: pols } = await supabase
+          .from("policies")
+          .select("id, policy_type_parent")
+          .in("id", Array.from(policyIds));
+        for (const p of (pols || []) as any[]) {
+          if (p.policy_type_parent === "ELZAMI") elzamiPolicyIds.add(p.id);
+        }
+      }
+
       let rows = ((data || []) as any[])
         .filter((r: any) => {
           const parent = r.policy_payments?.policy?.policy_type_parent;
-          return parent !== "ELZAMI";
+          if (parent === "ELZAMI") return false;
+          if (r.policy_id && elzamiPolicyIds.has(r.policy_id)) return false;
+          return true;
         })
         .map((r: any) => ({
           ...r,
