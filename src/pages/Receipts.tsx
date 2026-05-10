@@ -780,7 +780,7 @@ export default function Receipts() {
       }));
   };
 
-  const buildGroupPdfLines = (group: GroupedReceipt): string[] => {
+  const buildGroupPdfHtml = (group: GroupedReceipt): string => {
     const settings = companySettings || defaultSettings;
     if (group.receipts.length === 1) {
       const r = group.receipts[0];
@@ -802,19 +802,9 @@ export default function Receipts() {
         chequeDate: r.cheque_date || "",
         cardLastFour: r.card_last_four || "",
       };
-      const html = buildReceiptPrintHtml(data, settings).replace(/setTimeout\(function\(\)\{.*?\}.*?\);/s, "");
-      return html
-        .replace(/<script[\s\S]*?<\/script>/gi, " ")
-        .replace(/<style[\s\S]*?<\/style>/gi, " ")
-        .replace(/<[^>]+>/g, "\n")
-        .replace(/&nbsp;/g, " ")
-        .replace(/&amp;/g, "&")
-        .replace(/\n{2,}/g, "\n")
-        .split("\n")
-        .map(line => line.trim())
-        .filter(Boolean);
+      return buildReceiptPrintHtml(data, settings);
     }
-    return buildReceiptPdfLines(group);
+    return buildGroupedReceiptPrintHtml(group, settings);
   };
 
   const handleDownloadPdf = async () => {
