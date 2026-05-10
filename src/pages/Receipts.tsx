@@ -599,9 +599,9 @@ async function generateHtmlPdfBlob(html: string, filename: string): Promise<Blob
     const target = (host.querySelector(".container") as HTMLElement) || host;
     const blob: Blob = await html2pdf()
       .set({
-        margin: 5,
+        margin: 2,
         filename,
-        image: { type: "jpeg", quality: 0.92 },
+        image: { type: "jpeg", quality: 0.95 },
         html2canvas: { scale: 2, useCORS: true, letterRendering: true, logging: false, backgroundColor: "#ffffff" },
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait", compress: true },
       })
