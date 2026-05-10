@@ -769,16 +769,18 @@ export default function Receipts() {
     if (groups.length === 0) { toast.error("אין קבלות להורדה"); return; }
     setBulkLoading("zip");
     const receiptCount = groups.reduce((sum, group) => sum + group.receipts.length, 0);
+    const startedAt = performance.now();
+    const workerCount = getPdfWorkerCount(groups.length);
     const toastId = toast.loading(
       receiptCount === groups.length
-        ? `מייצר ${groups.length} קבצי PDF...`
-        : `מייצר ${receiptCount} קבלות בתוך ${groups.length} קבצי PDF...`
+        ? `מייצר ${groups.length} קבצי PDF... זמן 00:00`
+        : `מייצר ${receiptCount} קבלות בתוך ${groups.length} קבצי PDF... זמן 00:00`
     );
     try {
       const pdfEntries: { name: string; blob: Blob }[] = new Array(groups.length);
       await runWithConcurrency(
         groups.length,
-        4,
+        workerCount,
         async (i) => {
           const group = groups[i];
           const html = buildGroupPdfHtml(group);
@@ -793,25 +795,32 @@ export default function Receipts() {
           };
         },
         (done) => {
+          const elapsedMs = performance.now() - startedAt;
+          const avgPerFileMs = done > 0 ? elapsedMs / done : 0;
+          const remainingMs = avgPerFileMs * Math.max(groups.length - done, 0);
           toast.loading(
             receiptCount === groups.length
-              ? `מייצר PDF ${done}/${groups.length}...`
-              : `מייצר PDF ${done}/${groups.length}...`,
+              ? `מייצר PDF ${done}/${groups.length}... זמן ${formatElapsedTime(elapsedMs)} · נשאר ~${formatElapsedTime(remainingMs)}`
+              : `מייצר ${receiptCount} קבלות בתוך ${done}/${groups.length} קבצי PDF... זמן ${formatElapsedTime(elapsedMs)} · נשאר ~${formatElapsedTime(remainingMs)}`,
             { id: toastId }
           );
         }
       );
 
+      const totalElapsedMs = performance.now() - startedAt;
+
       if (pdfEntries.length === 1) {
         // Single PDF — download directly, no ZIP
         saveAs(pdfEntries[0].blob, pdfEntries[0].name);
         toast.success(
-          receiptCount === 1 ? "הקובץ הורד בהצלחה" : `${receiptCount} קבלות הורדו בתוך קובץ PDF אחד`,
+          receiptCount === 1
+            ? `הקובץ הורד בהצלחה תוך ${formatElapsedTime(totalElapsedMs)}`
+            : `${receiptCount} קבלות הורדו בתוך קובץ PDF אחד תוך ${formatElapsedTime(totalElapsedMs)}`,
           { id: toastId }
         );
       } else {
         // Multiple PDFs — bundle into ZIP
-        toast.loading("מכווץ קבצים...", { id: toastId });
+        toast.loading(`מכווץ קבצים... זמן ${formatElapsedTime(totalElapsedMs)}`, { id: toastId });
         const zip = new JSZip();
         for (const entry of pdfEntries) {
           zip.file(entry.name, entry.blob);
@@ -819,10 +828,11 @@ export default function Receipts() {
         const zipBlob = await zip.generateAsync({ type: "blob" });
         const dateStr = format(new Date(), "yyyy-MM-dd");
         saveAs(zipBlob, `receipts_${dateStr}.zip`);
+        const finalElapsedMs = performance.now() - startedAt;
         toast.success(
           receiptCount === pdfEntries.length
-            ? `${pdfEntries.length} קבצי PDF הורדו בהצלחה`
-            : `${receiptCount} קבלות הורדו בתוך ${pdfEntries.length} קבצי PDF`,
+            ? `${pdfEntries.length} קבצי PDF הורדו בהצלחה תוך ${formatElapsedTime(finalElapsedMs)}`
+            : `${receiptCount} קבלות הורדו בתוך ${pdfEntries.length} קבצי PDF תוך ${formatElapsedTime(finalElapsedMs)}`,
           { id: toastId }
         );
       }
