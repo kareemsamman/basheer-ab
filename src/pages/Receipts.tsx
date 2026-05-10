@@ -508,30 +508,70 @@ function getHtml2Pdf() {
   return _html2pdfPromise;
 }
 
+let _pdfRenderHost: HTMLDivElement | null = null;
+function getPdfRenderHost() {
+  if (_pdfRenderHost) return _pdfRenderHost;
+  const host = document.createElement("div");
+  host.setAttribute("aria-hidden", "true");
+  host.style.position = "fixed";
+  host.style.left = "-20000px";
+  host.style.top = "0";
+  host.style.width = "820px";
+  host.style.pointerEvents = "none";
+  host.style.opacity = "0";
+  host.style.overflow = "hidden";
+  document.body.appendChild(host);
+  _pdfRenderHost = host;
+  return host;
+}
+
+function formatElapsedTime(ms: number): string {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function getPdfWorkerCount(total: number): number {
+  const cpuCount = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
+  if (total <= 1) return 1;
+  if (total <= 4) return 2;
+  return Math.max(2, Math.min(3, Math.floor(cpuCount / 2)));
+}
+
 async function generateReceiptPdfBlob(html: string): Promise<Blob> {
   const html2pdf = await getHtml2Pdf();
+  const host = getPdfRenderHost();
   const container = document.createElement("div");
   container.innerHTML = html;
+  container.style.width = "794px";
+  container.style.background = "#ffffff";
+  container.style.contain = "layout paint style";
   const receiptEl = container.querySelector(".container") || container;
-  document.body.appendChild(container);
-  container.style.position = "absolute";
-  container.style.left = "-9999px";
-  container.style.top = "0";
+  host.appendChild(container);
 
   try {
+    const renderScale = typeof window !== "undefined" && window.devicePixelRatio > 1.5 ? 1.1 : 1.2;
     const blob = await html2pdf()
       .set({
-        margin: 5,
+        margin: 4,
         filename: "receipt.pdf",
-        image: { type: "jpeg", quality: 0.85 },
-        html2canvas: { scale: 1.5, useCORS: true, letterRendering: true, logging: false },
+        image: { type: "jpeg", quality: 0.78 },
+        html2canvas: {
+          scale: renderScale,
+          useCORS: html.includes("<img"),
+          backgroundColor: "#ffffff",
+          logging: false,
+          letterRendering: false,
+          removeContainer: true,
+        },
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait", compress: true },
       })
       .from(receiptEl as HTMLElement)
       .outputPdf("blob");
     return blob as Blob;
   } finally {
-    document.body.removeChild(container);
+    container.remove();
   }
 }
 
@@ -729,16 +769,18 @@ export default function Receipts() {
     if (groups.length === 0) { toast.error("אין קבלות להורדה"); return; }
     setBulkLoading("zip");
     const receiptCount = groups.reduce((sum, group) => sum + group.receipts.length, 0);
+    const startedAt = performance.now();
+    const workerCount = getPdfWorkerCount(groups.length);
     const toastId = toast.loading(
       receiptCount === groups.length
-        ? `מייצר ${groups.length} קבצי PDF...`
-        : `מייצר ${receiptCount} קבלות בתוך ${groups.length} קבצי PDF...`
+        ? `מייצר ${groups.length} קבצי PDF... זמן 00:00`
+        : `מייצר ${receiptCount} קבלות בתוך ${groups.length} קבצי PDF... זמן 00:00`
     );
     try {
       const pdfEntries: { name: string; blob: Blob }[] = new Array(groups.length);
       await runWithConcurrency(
         groups.length,
-        4,
+        workerCount,
         async (i) => {
           const group = groups[i];
           const html = buildGroupPdfHtml(group);
@@ -753,25 +795,32 @@ export default function Receipts() {
           };
         },
         (done) => {
+          const elapsedMs = performance.now() - startedAt;
+          const avgPerFileMs = done > 0 ? elapsedMs / done : 0;
+          const remainingMs = avgPerFileMs * Math.max(groups.length - done, 0);
           toast.loading(
             receiptCount === groups.length
-              ? `מייצר PDF ${done}/${groups.length}...`
-              : `מייצר PDF ${done}/${groups.length}...`,
+              ? `מייצר PDF ${done}/${groups.length}... זמן ${formatElapsedTime(elapsedMs)} · נשאר ~${formatElapsedTime(remainingMs)}`
+              : `מייצר ${receiptCount} קבלות בתוך ${done}/${groups.length} קבצי PDF... זמן ${formatElapsedTime(elapsedMs)} · נשאר ~${formatElapsedTime(remainingMs)}`,
             { id: toastId }
           );
         }
       );
 
+      const totalElapsedMs = performance.now() - startedAt;
+
       if (pdfEntries.length === 1) {
         // Single PDF — download directly, no ZIP
         saveAs(pdfEntries[0].blob, pdfEntries[0].name);
         toast.success(
-          receiptCount === 1 ? "הקובץ הורד בהצלחה" : `${receiptCount} קבלות הורדו בתוך קובץ PDF אחד`,
+          receiptCount === 1
+            ? `הקובץ הורד בהצלחה תוך ${formatElapsedTime(totalElapsedMs)}`
+            : `${receiptCount} קבלות הורדו בתוך קובץ PDF אחד תוך ${formatElapsedTime(totalElapsedMs)}`,
           { id: toastId }
         );
       } else {
         // Multiple PDFs — bundle into ZIP
-        toast.loading("מכווץ קבצים...", { id: toastId });
+        toast.loading(`מכווץ קבצים... זמן ${formatElapsedTime(totalElapsedMs)}`, { id: toastId });
         const zip = new JSZip();
         for (const entry of pdfEntries) {
           zip.file(entry.name, entry.blob);
@@ -779,10 +828,11 @@ export default function Receipts() {
         const zipBlob = await zip.generateAsync({ type: "blob" });
         const dateStr = format(new Date(), "yyyy-MM-dd");
         saveAs(zipBlob, `receipts_${dateStr}.zip`);
+        const finalElapsedMs = performance.now() - startedAt;
         toast.success(
           receiptCount === pdfEntries.length
-            ? `${pdfEntries.length} קבצי PDF הורדו בהצלחה`
-            : `${receiptCount} קבלות הורדו בתוך ${pdfEntries.length} קבצי PDF`,
+            ? `${pdfEntries.length} קבצי PDF הורדו בהצלחה תוך ${formatElapsedTime(finalElapsedMs)}`
+            : `${receiptCount} קבלות הורדו בתוך ${pdfEntries.length} קבצי PDF תוך ${formatElapsedTime(finalElapsedMs)}`,
           { id: toastId }
         );
       }
