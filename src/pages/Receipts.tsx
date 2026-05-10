@@ -283,7 +283,7 @@ function buildGroupedReceiptPrintHtml(group: GroupedReceipt, settings: CompanySe
   <title>${RECEIPT_TYPE_LABELS[group.receipt_type] || group.receipt_type} ${group.client_name}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    @page { size: A4; margin: 15mm; }
+    @page { size: A4; margin: 8mm; }
     @media print {
       body { padding: 0; background: white; }
       .no-print { display: none !important; }
