@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { buildReceiptPrintHtml, type ReceiptPrintData, type CompanySettings } from "@/lib/receiptPrintBuilder";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
+import { jsPDF } from "jspdf";
 
 interface ReceiptRow {
   id: string;
@@ -361,6 +362,72 @@ function buildGroupedReceiptPrintHtml(group: GroupedReceipt, settings: CompanySe
   </script>
 </body>
 </html>`;
+}
+
+function downloadTextPdf(lines: string[], fileName: string): Blob {
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margin = 12;
+  const lineHeight = 6;
+  let y = margin;
+
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(11);
+
+  for (const rawLine of lines) {
+    const safeLine = rawLine || " ";
+    const wrapped = pdf.splitTextToSize(safeLine, pageWidth - margin * 2) as string[];
+    for (const part of wrapped) {
+      if (y > pageHeight - margin) {
+        pdf.addPage();
+        y = margin;
+      }
+      pdf.text(part, pageWidth - margin, y, { align: "right" });
+      y += lineHeight;
+    }
+  }
+
+  return pdf.output("blob");
+}
+
+function buildReceiptPdfLines(group: GroupedReceipt): string[] {
+  const title = RECEIPT_TYPE_LABELS[group.receipt_type] || group.receipt_type;
+  const receiptRange = group.receipts.length === 1
+    ? padReceiptNumber(group.firstReceiptNumber)
+    : `${padReceiptNumber(group.firstReceiptNumber)}-${padReceiptNumber(group.lastReceiptNumber)}`;
+
+  const headerLines = [
+    "Basheer Abu Sneineh Insurance",
+    title,
+    `Receipt: ${receiptRange}`,
+    `Client: ${group.client_name}`,
+    `ID: ${group.client_id_number || "-"}`,
+    `Car: ${group.car_number || "-"}`,
+    `Date: ${formatPrintDate(group.receipt_date)}`,
+    "",
+    "Payments:",
+  ];
+
+  const paymentLines = group.receipts.flatMap((r, index) => {
+    const method = PAYMENT_METHOD_LABELS[r.payment_method || ""] || "Payment";
+    const details = getReceiptPaymentDetails(r);
+    const amount = `₪${r.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    return [
+      `${index + 1}. ${method} | ${amount}`,
+      `   Date: ${formatPrintDate(getDisplayDate(r))}`,
+      `   Details: ${details}`,
+    ];
+  });
+
+  return [
+    ...headerLines,
+    ...paymentLines,
+    "",
+    `Total: ₪${group.totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+    `Count: ${group.receipts.length}`,
+  ];
 }
 
 function buildFullInvoiceHtml(receipts: ReceiptRow[], settings: CompanySettings): string {
