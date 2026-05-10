@@ -1248,6 +1248,19 @@ export default function Receipts() {
               {bulkLoading === "zip" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
               הורד PDF
             </Button>
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor="start-num" className="text-xs text-muted-foreground whitespace-nowrap">מספר התחלה:</Label>
+              <Input
+                id="start-num"
+                type="number"
+                min={1}
+                value={customStartNumber}
+                onChange={(e) => setCustomStartNumber(e.target.value)}
+                placeholder="אוטומטי"
+                className="h-8 w-24 text-sm"
+                disabled={!!bulkLoading}
+              />
+            </div>
             {selectedIds.size > 0 && (
               <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())} className="gap-1 text-xs">
                 <X className="h-3 w-3" />
