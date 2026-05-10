@@ -659,6 +659,7 @@ export default function Receipts() {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState<string | null>(null); // 'zip' | 'invoice' | null
+  const [customStartNumber, setCustomStartNumber] = useState<string>("");
 
   // Form state
   const [formType, setFormType] = useState<"payment" | "accident_fee">("payment");
