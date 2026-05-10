@@ -798,7 +798,7 @@ export default function Receipts() {
         async (i) => {
           const group = groups[i];
           const lines = buildGroupPdfLines(group);
-          const blob = downloadTextPdf(lines, "receipt.pdf");
+          const blob = downloadTextPdf(lines);
           const clientSlug = group.client_name.replace(/[^a-zA-Z0-9\u0590-\u05FF\u0600-\u06FF]/g, "_");
           const receiptLabel = group.receipts.length === 1
             ? padReceiptNumber(group.firstReceiptNumber)
