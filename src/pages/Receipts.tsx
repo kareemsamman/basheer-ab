@@ -1020,6 +1020,24 @@ export default function Receipts() {
     },
   });
 
+  // Build id -> overridden receipt number based on the user-set start number,
+  // numbering sequentially across the currently-targeted (selected or filtered) receipts.
+  const getReceiptNumberOverrides = (): Map<string, number> | null => {
+    const raw = customStartNumber.trim();
+    if (raw === "") return null;
+    const start = parseInt(raw, 10);
+    if (!Number.isFinite(start) || start <= 0) return null;
+    const groups = getTargetGroups();
+    const map = new Map<string, number>();
+    let counter = start;
+    for (const g of groups) {
+      for (const r of g.receipts) {
+        map.set(r.id, counter++);
+      }
+    }
+    return map;
+  };
+
   const handlePrint = async (r: ReceiptRow) => {
     let paymentMethod = r.payment_method || '';
     let chequeNumber = r.cheque_number || '';
@@ -1041,8 +1059,10 @@ export default function Receipts() {
       }
     }
 
+    const overrides = getReceiptNumberOverrides();
+    const overrideNum = overrides?.get(r.id);
     const data: ReceiptPrintData = {
-      receiptNumber: padReceiptNumber(r.receipt_number),
+      receiptNumber: padReceiptNumber(overrideNum ?? r.receipt_number),
       receiptType: r.receipt_type,
       receiptTypeLabel: RECEIPT_TYPE_LABELS[r.receipt_type] || r.receipt_type,
       clientName: r.client_name,
@@ -1067,13 +1087,31 @@ export default function Receipts() {
   };
 
   const handlePrintGroup = async (group: GroupedReceipt) => {
-    const paymentIds = group.receipts.map((r) => r.payment_id).filter((id): id is string => !!id);
+    const overrides = getReceiptNumberOverrides();
 
-    // For auto groups, use backend bulk receipt generator to ensure all payments are included
-    if (group.source === "auto" && paymentIds.length === group.receipts.length && paymentIds.length > 1) {
+    // Apply overrides if set
+    let effectiveGroup = group;
+    if (overrides) {
+      const newReceipts = group.receipts.map((r) => ({
+        ...r,
+        receipt_number: overrides.get(r.id) ?? r.receipt_number,
+      }));
+      effectiveGroup = {
+        ...group,
+        receipts: newReceipts,
+        firstReceiptNumber: newReceipts[0].receipt_number,
+        lastReceiptNumber: newReceipts[newReceipts.length - 1].receipt_number,
+      };
+    }
+
+    const paymentIds = effectiveGroup.receipts.map((r) => r.payment_id).filter((id): id is string => !!id);
+
+    // For auto groups, use backend bulk receipt generator to ensure all payments are included.
+    // Skip backend path when number overrides are active so the custom numbering is honored.
+    if (!overrides && effectiveGroup.source === "auto" && paymentIds.length === effectiveGroup.receipts.length && paymentIds.length > 1) {
       try {
         const { data, error } = await supabase.functions.invoke("generate-bulk-payment-receipt", {
-          body: { payment_ids: paymentIds, total_amount: group.totalAmount },
+          body: { payment_ids: paymentIds, total_amount: effectiveGroup.totalAmount },
         });
         if (!error) {
           const url = data?.receipt_url || data?.url;
@@ -1089,7 +1127,7 @@ export default function Receipts() {
 
     // Fallback for manual/mixed groups
     const html = buildGroupedReceiptPrintHtml(
-      group,
+      effectiveGroup,
       companySettings || { logoUrl: "", company_email: "", company_location: "", company_phone_links: [] }
     );
     const printWindow = window.open("", "_blank");
