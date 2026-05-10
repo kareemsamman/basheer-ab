@@ -753,9 +753,8 @@ export default function Receipts() {
       }));
   };
 
-  const buildGroupPdfHtml = (group: GroupedReceipt): string => {
+  const buildGroupPdfLines = (group: GroupedReceipt): string[] => {
     const settings = companySettings || defaultSettings;
-    let html: string;
     if (group.receipts.length === 1) {
       const r = group.receipts[0];
       const data: ReceiptPrintData = {
@@ -776,12 +775,19 @@ export default function Receipts() {
         chequeDate: r.cheque_date || "",
         cardLastFour: r.card_last_four || "",
       };
-      html = buildReceiptPrintHtml(data, settings);
-    } else {
-      html = buildGroupedReceiptPrintHtml(group, settings);
+      const html = buildReceiptPrintHtml(data, settings).replace(/setTimeout\(function\(\)\{.*?\}.*?\);/s, "");
+      return html
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<[^>]+>/g, "\n")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/\n{2,}/g, "\n")
+        .split("\n")
+        .map(line => line.trim())
+        .filter(Boolean);
     }
-    // Remove auto-print script
-    return html.replace(/setTimeout\(function\(\)\{.*?\}.*?\);/s, "");
+    return buildReceiptPdfLines(group);
   };
 
   const handleDownloadPdf = async () => {
@@ -803,8 +809,8 @@ export default function Receipts() {
         workerCount,
         async (i) => {
           const group = groups[i];
-          const html = buildGroupPdfHtml(group);
-          const blob = await generateReceiptPdfBlob(html);
+          const lines = buildGroupPdfLines(group);
+          const blob = downloadTextPdf(lines, "receipt.pdf");
           const clientSlug = group.client_name.replace(/[^a-zA-Z0-9\u0590-\u05FF\u0600-\u06FF]/g, "_");
           const receiptLabel = group.receipts.length === 1
             ? padReceiptNumber(group.firstReceiptNumber)
