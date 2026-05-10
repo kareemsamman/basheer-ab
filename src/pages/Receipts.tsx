@@ -364,7 +364,7 @@ function buildGroupedReceiptPrintHtml(group: GroupedReceipt, settings: CompanySe
 </html>`;
 }
 
-function downloadTextPdf(lines: string[], fileName: string): Blob {
+function downloadTextPdf(lines: string[]): Blob {
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
@@ -581,18 +581,6 @@ function getPdfWorkerCount(total: number): number {
   if (total <= 1) return 1;
   if (total <= 4) return 2;
   return Math.max(2, Math.min(3, Math.floor(cpuCount / 2)));
-}
-
-async function generateReceiptPdfBlob(html: string): Promise<Blob> {
-  const text = html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, "\n")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/\n{2,}/g, "\n")
-    .trim();
-  return downloadTextPdf(text.split("\n").map(line => line.trim()).filter(Boolean), "receipt.pdf");
 }
 
 // Run promise-producing tasks with limited concurrency
