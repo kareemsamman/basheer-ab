@@ -508,30 +508,70 @@ function getHtml2Pdf() {
   return _html2pdfPromise;
 }
 
+let _pdfRenderHost: HTMLDivElement | null = null;
+function getPdfRenderHost() {
+  if (_pdfRenderHost) return _pdfRenderHost;
+  const host = document.createElement("div");
+  host.setAttribute("aria-hidden", "true");
+  host.style.position = "fixed";
+  host.style.left = "-20000px";
+  host.style.top = "0";
+  host.style.width = "820px";
+  host.style.pointerEvents = "none";
+  host.style.opacity = "0";
+  host.style.overflow = "hidden";
+  document.body.appendChild(host);
+  _pdfRenderHost = host;
+  return host;
+}
+
+function formatElapsedTime(ms: number): string {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function getPdfWorkerCount(total: number): number {
+  const cpuCount = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
+  if (total <= 1) return 1;
+  if (total <= 4) return 2;
+  return Math.max(2, Math.min(3, Math.floor(cpuCount / 2)));
+}
+
 async function generateReceiptPdfBlob(html: string): Promise<Blob> {
   const html2pdf = await getHtml2Pdf();
+  const host = getPdfRenderHost();
   const container = document.createElement("div");
   container.innerHTML = html;
+  container.style.width = "794px";
+  container.style.background = "#ffffff";
+  container.style.contain = "layout paint style";
   const receiptEl = container.querySelector(".container") || container;
-  document.body.appendChild(container);
-  container.style.position = "absolute";
-  container.style.left = "-9999px";
-  container.style.top = "0";
+  host.appendChild(container);
 
   try {
+    const renderScale = typeof window !== "undefined" && window.devicePixelRatio > 1.5 ? 1.1 : 1.2;
     const blob = await html2pdf()
       .set({
-        margin: 5,
+        margin: 4,
         filename: "receipt.pdf",
-        image: { type: "jpeg", quality: 0.85 },
-        html2canvas: { scale: 1.5, useCORS: true, letterRendering: true, logging: false },
+        image: { type: "jpeg", quality: 0.78 },
+        html2canvas: {
+          scale: renderScale,
+          useCORS: html.includes("<img"),
+          backgroundColor: "#ffffff",
+          logging: false,
+          letterRendering: false,
+          removeContainer: true,
+        },
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait", compress: true },
       })
       .from(receiptEl as HTMLElement)
       .outputPdf("blob");
     return blob as Blob;
   } finally {
-    document.body.removeChild(container);
+    container.remove();
   }
 }
 
