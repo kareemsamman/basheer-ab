@@ -1020,6 +1020,24 @@ export default function Receipts() {
     },
   });
 
+  // Build id -> overridden receipt number based on the user-set start number,
+  // numbering sequentially across the currently-targeted (selected or filtered) receipts.
+  const getReceiptNumberOverrides = (): Map<string, number> | null => {
+    const raw = customStartNumber.trim();
+    if (raw === "") return null;
+    const start = parseInt(raw, 10);
+    if (!Number.isFinite(start) || start <= 0) return null;
+    const groups = getTargetGroups();
+    const map = new Map<string, number>();
+    let counter = start;
+    for (const g of groups) {
+      for (const r of g.receipts) {
+        map.set(r.id, counter++);
+      }
+    }
+    return map;
+  };
+
   const handlePrint = async (r: ReceiptRow) => {
     let paymentMethod = r.payment_method || '';
     let chequeNumber = r.cheque_number || '';
