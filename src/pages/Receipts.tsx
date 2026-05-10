@@ -700,12 +700,22 @@ export default function Receipts() {
     const groups = getTargetGroups();
     if (groups.length === 0) { toast.error("אין קבלות להורדה"); return; }
     setBulkLoading("zip");
-    const toastId = toast.loading(`מייצר ${groups.length} קבצי PDF...`);
+    const receiptCount = groups.reduce((sum, group) => sum + group.receipts.length, 0);
+    const toastId = toast.loading(
+      receiptCount === groups.length
+        ? `מייצר ${groups.length} קבצי PDF...`
+        : `מייצר ${receiptCount} קבלות בתוך ${groups.length} קבצי PDF...`
+    );
     try {
       const pdfEntries: { name: string; blob: Blob }[] = [];
       for (let i = 0; i < groups.length; i++) {
         const group = groups[i];
-        toast.loading(`מייצר PDF ${i + 1}/${groups.length}...`, { id: toastId });
+        toast.loading(
+          receiptCount === groups.length
+            ? `מייצר PDF ${i + 1}/${groups.length}...`
+            : `מייצר PDF ${i + 1}/${groups.length} (${group.receipts.length} קבלות)...`,
+          { id: toastId }
+        );
         const html = buildGroupPdfHtml(group);
         const blob = await generateReceiptPdfBlob(html);
         const clientSlug = group.client_name.replace(/[^a-zA-Z0-9\u0590-\u05FF\u0600-\u06FF]/g, "_");
@@ -721,7 +731,10 @@ export default function Receipts() {
       if (pdfEntries.length === 1) {
         // Single PDF — download directly, no ZIP
         saveAs(pdfEntries[0].blob, pdfEntries[0].name);
-        toast.success("הקובץ הורד בהצלחה", { id: toastId });
+        toast.success(
+          receiptCount === 1 ? "הקובץ הורד בהצלחה" : `${receiptCount} קבלות הורדו בתוך קובץ PDF אחד`,
+          { id: toastId }
+        );
       } else {
         // Multiple PDFs — bundle into ZIP
         toast.loading("מכווץ קבצים...", { id: toastId });
@@ -732,7 +745,12 @@ export default function Receipts() {
         const zipBlob = await zip.generateAsync({ type: "blob" });
         const dateStr = format(new Date(), "yyyy-MM-dd");
         saveAs(zipBlob, `receipts_${dateStr}.zip`);
-        toast.success(`${pdfEntries.length} קבלות הורדו בהצלחה`, { id: toastId });
+        toast.success(
+          receiptCount === pdfEntries.length
+            ? `${pdfEntries.length} קבצי PDF הורדו בהצלחה`
+            : `${receiptCount} קבלות הורדו בתוך ${pdfEntries.length} קבצי PDF`,
+          { id: toastId }
+        );
       }
     } catch (err: any) {
       toast.error("שגיאה בהורדה: " + err.message, { id: toastId });
