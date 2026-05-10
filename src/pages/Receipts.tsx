@@ -826,16 +826,14 @@ export default function Receipts() {
         workerCount,
         async (i) => {
           const group = groups[i];
-          const lines = buildGroupPdfLines(group);
-          const blob = downloadTextPdf(lines);
+          const html = buildGroupPdfHtml(group);
           const clientSlug = group.client_name.replace(/[^a-zA-Z0-9\u0590-\u05FF\u0600-\u06FF]/g, "_");
           const receiptLabel = group.receipts.length === 1
             ? padReceiptNumber(group.firstReceiptNumber)
             : `${padReceiptNumber(group.firstReceiptNumber)}-${padReceiptNumber(group.lastReceiptNumber)}`;
-          pdfEntries[i] = {
-            name: `receipt_${receiptLabel}_${clientSlug}.pdf`,
-            blob,
-          };
+          const filename = `receipt_${receiptLabel}_${clientSlug}.pdf`;
+          const blob = await generateHtmlPdfBlob(html, filename);
+          pdfEntries[i] = { name: filename, blob };
         },
         (done) => {
           const elapsedMs = performance.now() - startedAt;
