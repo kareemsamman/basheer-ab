@@ -1059,8 +1059,10 @@ export default function Receipts() {
       }
     }
 
+    const overrides = getReceiptNumberOverrides();
+    const overrideNum = overrides?.get(r.id);
     const data: ReceiptPrintData = {
-      receiptNumber: padReceiptNumber(r.receipt_number),
+      receiptNumber: padReceiptNumber(overrideNum ?? r.receipt_number),
       receiptType: r.receipt_type,
       receiptTypeLabel: RECEIPT_TYPE_LABELS[r.receipt_type] || r.receipt_type,
       clientName: r.client_name,
