@@ -572,6 +572,21 @@ export default function Receipts() {
     return groupedReceipts.flatMap(g => g.receipts);
   }, [groupedReceipts]);
 
+  // Prune selectedIds: drop ids no longer in the filtered list so the badge
+  // count matches what will actually be printed/exported.
+  useEffect(() => {
+    setSelectedIds(prev => {
+      if (prev.size === 0) return prev;
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach(id => {
+        if (allFilteredIds.has(id)) next.add(id);
+        else changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [allFilteredIds]);
+
   const isAllSelected = allFilteredIds.size > 0 && [...allFilteredIds].every(id => selectedIds.has(id));
 
   const toggleSelectAll = () => {
