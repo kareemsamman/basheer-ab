@@ -659,6 +659,7 @@ export default function Receipts() {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState<string | null>(null); // 'zip' | 'invoice' | null
+  const [customStartNumber, setCustomStartNumber] = useState<string>("");
 
   // Form state
   const [formType, setFormType] = useState<"payment" | "accident_fee">("payment");
@@ -808,8 +809,29 @@ export default function Receipts() {
   };
 
   const handleDownloadPdf = async () => {
-    const groups = getTargetGroups();
+    let groups = getTargetGroups();
     if (groups.length === 0) { toast.error("אין קבלות להורדה"); return; }
+
+    // Override receipt numbers sequentially if a starting number was provided
+    const startNumRaw = customStartNumber.trim();
+    if (startNumRaw !== "") {
+      const startNum = parseInt(startNumRaw, 10);
+      if (!Number.isFinite(startNum) || startNum <= 0) {
+        toast.error("מספר התחלה לא תקין");
+        return;
+      }
+      let counter = startNum;
+      groups = groups.map((g) => {
+        const newReceipts = g.receipts.map((r) => ({ ...r, receipt_number: counter++ }));
+        return {
+          ...g,
+          receipts: newReceipts,
+          firstReceiptNumber: newReceipts[0].receipt_number,
+          lastReceiptNumber: newReceipts[newReceipts.length - 1].receipt_number,
+        };
+      });
+    }
+
     setBulkLoading("zip");
     const receiptCount = groups.reduce((sum, group) => sum + group.receipts.length, 0);
     const startedAt = performance.now();
@@ -1226,6 +1248,19 @@ export default function Receipts() {
               {bulkLoading === "zip" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
               הורד PDF
             </Button>
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor="start-num" className="text-xs text-muted-foreground whitespace-nowrap">מספר התחלה:</Label>
+              <Input
+                id="start-num"
+                type="number"
+                min={1}
+                value={customStartNumber}
+                onChange={(e) => setCustomStartNumber(e.target.value)}
+                placeholder="אוטומטי"
+                className="h-8 w-24 text-sm"
+                disabled={!!bulkLoading}
+              />
+            </div>
             {selectedIds.size > 0 && (
               <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())} className="gap-1 text-xs">
                 <X className="h-3 w-3" />
