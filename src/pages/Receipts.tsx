@@ -746,8 +746,17 @@ export default function Receipts() {
 
   const defaultSettings: CompanySettings = { logoUrl: "", company_email: "", company_location: "", company_phone_links: [] };
 
+  const applyReceiptNumberOverridesToReceipts = (items: ReceiptRow[]): ReceiptRow[] => {
+    const overrides = getReceiptNumberOverrides();
+    if (!overrides) return items;
+    return items.map((receipt) => ({
+      ...receipt,
+      receipt_number: overrides.get(receipt.id) ?? receipt.receipt_number,
+    }));
+  };
+
   const handleFullInvoice = () => {
-    const targets = getTargetReceipts();
+    const targets = applyReceiptNumberOverridesToReceipts(getTargetReceipts());
     if (targets.length === 0) { toast.error("אין קבלות להצגה"); return; }
     setBulkLoading("invoice");
     try {
