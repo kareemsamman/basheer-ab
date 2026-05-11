@@ -745,6 +745,7 @@ export default function Receipts() {
   const [deleteReceipt, setDeleteReceipt] = useState<ReceiptRow | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
   const [paymentMethodFilter, setPaymentMethodFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "manual" | "auto">("all");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState<string | null>(null); // 'zip' | 'invoice' | null
