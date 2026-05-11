@@ -1107,11 +1107,11 @@ export default function Receipts() {
         if (error) throw error;
       }
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(editingReceipt ? "הקבלה עודכנה בהצלחה" : "הקבלה נוצרה בהצלחה");
-      queryClient.invalidateQueries({ queryKey: ["receipts"] });
       setDrawerOpen(false);
       resetForm();
+      await queryClient.refetchQueries({ queryKey: ["receipts"], type: "active" });
     },
     onError: (err: any) => {
       toast.error("שגיאה: " + err.message);
