@@ -745,6 +745,7 @@ export default function Receipts() {
   const [deleteReceipt, setDeleteReceipt] = useState<ReceiptRow | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
   const [paymentMethodFilter, setPaymentMethodFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "manual" | "auto">("all");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState<string | null>(null); // 'zip' | 'invoice' | null
@@ -766,7 +767,13 @@ export default function Receipts() {
   const { data: receipts, isLoading } = useReceipts(tab, search, dateFrom, dateTo, paymentMethodFilter);
   const { data: companySettings } = useCompanySettings();
   
-  const groupedReceipts = receipts ? groupReceipts(receipts) : [];
+  const filteredReceipts = useMemo(() => {
+    if (!receipts) return [] as ReceiptRow[];
+    if (sourceFilter === "all") return receipts;
+    return receipts.filter((r) => (r.source || "manual") === sourceFilter);
+  }, [receipts, sourceFilter]);
+
+  const groupedReceipts = filteredReceipts ? groupReceipts(filteredReceipts) : [];
 
   // All receipt IDs in current filtered view (flattened)
   const allFilteredIds = useMemo(() => {
@@ -1358,6 +1365,18 @@ export default function Receipts() {
                 <SelectItem value="cheque">שיק</SelectItem>
                 <SelectItem value="visa">כרטיס אשראי</SelectItem>
                 <SelectItem value="transfer">העברה בנקאית</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <span className="text-sm text-muted-foreground mr-2">מקור:</span>
+            <Select value={sourceFilter} onValueChange={(v) => setSourceFilter(v as any)}>
+              <SelectTrigger className="w-32 h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">הכל</SelectItem>
+                <SelectItem value="manual">ידני</SelectItem>
+                <SelectItem value="auto">אוטומטי</SelectItem>
               </SelectContent>
             </Select>
           </div>
