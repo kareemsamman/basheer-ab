@@ -185,12 +185,12 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
           client_id_number: r.clients?.id_number || null,
         })) as ReceiptRow[];
 
-      // Filter by issue_date (תאריך הנפקה) — falls back to receipt_date / display date
+      // Filter by the same date shown in the table.
       if (dateFrom || dateTo) {
         const fromStr = dateFrom ? format(dateFrom, "yyyy-MM-dd") : null;
         const toStr = dateTo ? format(dateTo, "yyyy-MM-dd") : null;
         rows = rows.filter((r) => {
-          const d = r.issue_date || r.receipt_date || getDisplayDate(r);
+          const d = getReceiptListDate(r);
           if (!d) return false;
           if (fromStr && d < fromStr) return false;
           if (toStr && d > toStr) return false;
@@ -211,6 +211,7 @@ interface GroupedReceipt {
   client_id_number: string | null;
   car_number: string | null;
   receipt_date: string;
+  list_date: string;
   receipt_type: string;
   source: string;
   firstReceiptNumber: number;
@@ -238,6 +239,7 @@ function groupReceipts(receipts: ReceiptRow[]): GroupedReceipt[] {
       client_id_number: sorted[0].client_id_number,
       car_number: sorted[0].car_number,
       receipt_date: sorted[0].receipt_date,
+      list_date: getReceiptListDate(sorted[0]),
       receipt_type: sorted[0].receipt_type,
       source: sorted[0].source,
       firstReceiptNumber: sorted[0].receipt_number,
@@ -246,8 +248,8 @@ function groupReceipts(receipts: ReceiptRow[]): GroupedReceipt[] {
   }
   // Sort oldest first (ascending by date, then by receipt number)
   groups.sort((a, b) => {
-    const da = a.receipt_date || "";
-    const db = b.receipt_date || "";
+    const da = a.list_date || "";
+    const db = b.list_date || "";
     if (da !== db) return da < db ? -1 : 1;
     return a.firstReceiptNumber - b.firstReceiptNumber;
   });
@@ -299,6 +301,12 @@ function getDisplayDate(r: ReceiptRow): string {
   const pd = r.policy_payments?.payment_date || r.receipt_date;
   if (pd) return pd;
   return r.issue_date || format(new Date(r.created_at), "yyyy-MM-dd");
+}
+
+function getReceiptListDate(r: ReceiptRow): string {
+  return r.source === "auto"
+    ? (r.issue_date || getDisplayDate(r))
+    : getDisplayDate(r);
 }
 
 function getReceiptPaymentDetails(r: ReceiptRow): string {
