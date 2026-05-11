@@ -767,7 +767,13 @@ export default function Receipts() {
   const { data: receipts, isLoading } = useReceipts(tab, search, dateFrom, dateTo, paymentMethodFilter);
   const { data: companySettings } = useCompanySettings();
   
-  const groupedReceipts = receipts ? groupReceipts(receipts) : [];
+  const filteredReceipts = useMemo(() => {
+    if (!receipts) return [] as ReceiptRow[];
+    if (sourceFilter === "all") return receipts;
+    return receipts.filter((r) => (r.source || "manual") === sourceFilter);
+  }, [receipts, sourceFilter]);
+
+  const groupedReceipts = filteredReceipts ? groupReceipts(filteredReceipts) : [];
 
   // All receipt IDs in current filtered view (flattened)
   const allFilteredIds = useMemo(() => {
