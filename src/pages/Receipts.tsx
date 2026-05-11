@@ -1367,6 +1367,18 @@ export default function Receipts() {
                 <SelectItem value="transfer">העברה בנקאית</SelectItem>
               </SelectContent>
             </Select>
+
+            <span className="text-sm text-muted-foreground mr-2">מקור:</span>
+            <Select value={sourceFilter} onValueChange={(v) => setSourceFilter(v as any)}>
+              <SelectTrigger className="w-32 h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">הכל</SelectItem>
+                <SelectItem value="manual">ידני</SelectItem>
+                <SelectItem value="auto">אוטומטי</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Bulk actions bar */}
