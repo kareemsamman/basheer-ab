@@ -1323,9 +1323,9 @@ export default function Receipts() {
             </div>
           </div>
 
-          {/* Date range filter (always filtered by issue date) */}
+          {/* Date range filter (same date shown in the table) */}
           <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-sm text-muted-foreground">סינון לפי תאריך הנפקה:</span>
+            <span className="text-sm text-muted-foreground">סינון לפי תאריך:</span>
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className={cn("gap-2 text-sm", !dateFrom && "text-muted-foreground")}>
@@ -1485,7 +1485,7 @@ export default function Receipts() {
                         <TableCell className="font-medium">{r.client_name}</TableCell>
                         <TableCell className="font-mono text-sm">{r.client_id_number || "-"}</TableCell>
                         <TableCell className="font-mono text-sm">{r.car_number || "-"}</TableCell>
-                        <TableCell>{r.issue_date || getDisplayDate(r)}</TableCell>
+                        <TableCell>{getReceiptListDate(r)}</TableCell>
                         <TableCell className="font-bold">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
@@ -1557,7 +1557,7 @@ export default function Receipts() {
                         <TableCell className="font-medium">{group.client_name}</TableCell>
                         <TableCell className="font-mono text-sm">{group.client_id_number || "-"}</TableCell>
                         <TableCell className="font-mono text-sm">{group.car_number || "-"}</TableCell>
-                        <TableCell>{group.receipts[0].issue_date || format(new Date(group.receipts[0].created_at), "yyyy-MM-dd")}</TableCell>
+                        <TableCell>{group.list_date}</TableCell>
                         <TableCell className="font-bold">
                           ₪{group.totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                           <Badge variant="secondary" className="text-xs mr-1">{group.receipts.length} תשלומים</Badge>
@@ -1592,7 +1592,7 @@ export default function Receipts() {
                           <TableCell></TableCell>
                           <TableCell></TableCell>
                           <TableCell></TableCell>
-                          <TableCell>{r.issue_date || getDisplayDate(r)}</TableCell>
+                          <TableCell>{getReceiptListDate(r)}</TableCell>
                           <TableCell className="font-bold text-sm">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
