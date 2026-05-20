@@ -115,6 +115,39 @@ export function buildAccountingStatementHtml(opts: {
     margin-bottom: 8px;
     text-align: right;
   }
+  .ab-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin-bottom: 10px;
+    background: #fff;
+  }
+  .ab-header .ab-biz { text-align: right; }
+  .ab-header .ab-biz-name {
+    font-size: 20px;
+    font-weight: 800;
+    color: #1e3a5f;
+  }
+  .ab-header .ab-biz-sub {
+    font-size: 11px;
+    color: #555;
+    margin-top: 2px;
+  }
+  .ab-header .ab-logo-wrap { flex: 0 0 auto; }
+  .ab-header .ab-logo-wrap img {
+    max-height: 60px;
+    max-width: 140px;
+    object-fit: contain;
+  }
+  .ab-header .ab-tax {
+    font-size: 12px;
+    font-weight: 700;
+    color: #1e3a5f;
+    text-align: left;
+  }
   .info-row {
     display: flex;
     justify-content: flex-end;
