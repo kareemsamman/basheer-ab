@@ -617,7 +617,9 @@ export default function Accounting() {
         if (bsError) console.error("Broker settlements error:", bsError);
         for (const s of bSettlements || []) {
           if (s.status === "refused") continue; // skip refused
-          const isReceipt = s.direction === "from_broker";
+          // broker_owes = broker pays us (money in) → سند قبض
+          // we_owe = we pay broker (money out) → سند صرف
+          const isReceipt = s.direction === "broker_owes" || s.direction === "from_broker";
           const bPayMethod = payMethodLabel[s.payment_type || ""] || s.payment_type || "";
           results.push({ id: s.id, tab: isReceipt ? "receipt" : "payment", source: "broker_settlement", client_name: "", car_number: null, types: [], amount: s.total_amount || 0, date: s.settlement_date, issue_date: s.created_at, description: s.notes || (isReceipt ? "سند قبض" : "سند صرف"), company_name: "", payment_method: bPayMethod, cheque_number: s.cheque_number || null, extra: (s as any).brokers?.name || "" });
         }
