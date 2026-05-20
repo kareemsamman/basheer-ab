@@ -272,9 +272,9 @@ export function ExpensePaymentLines({
                   {payment.payment_type === 'cheque' && (
                     <Input
                       value={payment.cheque_number || ''}
-                      onChange={(e) => updatePaymentLine(payment.id, 'cheque_number', e.target.value.replace(/\D/g, '').slice(0, 8))}
+                      onChange={(e) => updatePaymentLine(payment.id, 'cheque_number', e.target.value.replace(/\D/g, ''))}
                       placeholder="رقم الشيك"
-                      maxLength={8}
+                      inputMode="numeric"
                       className="h-9 flex-1 font-mono"
                     />
                   )}
