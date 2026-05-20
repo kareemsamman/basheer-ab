@@ -34,6 +34,7 @@ import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { ArabicMonthPicker } from "@/components/ui/arabic-month-picker";
 import { ExpensePaymentLines, PaymentLine } from "@/components/expenses/ExpensePaymentLines";
 import { buildExpenseInvoiceHtml, openExpenseInvoicePrint } from "@/lib/expenseInvoiceBuilder";
+import { buildAccountingStatementHtml, openAccountingStatementPrint, type StatementRow } from "@/lib/accountingStatementBuilder";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
 import { format } from "date-fns";
 import { he } from "date-fns/locale";
