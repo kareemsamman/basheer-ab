@@ -35,6 +35,7 @@ import { ArabicMonthPicker } from "@/components/ui/arabic-month-picker";
 import { ExpensePaymentLines, PaymentLine } from "@/components/expenses/ExpensePaymentLines";
 import { buildExpenseInvoiceHtml, openExpenseInvoicePrint } from "@/lib/expenseInvoiceBuilder";
 import { buildAccountingStatementHtml, openAccountingStatementPrint, type StatementRow } from "@/lib/accountingStatementBuilder";
+import abLogo from "@/assets/ab-insurance-logo.png";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
 import { format } from "date-fns";
 import { he } from "date-fns/locale";
@@ -758,12 +759,20 @@ export default function Accounting() {
       receipt: "سند قبض",
     };
 
-    // Sign convention: receipts = له (credit, money in), everything else = عليه (debit, money out)
+    // Build a rich "البيان" line per row using all available context.
     const statementRows: StatementRow[] = data.map((r) => {
       const isCredit = r.tab === "receipt";
-      const partyName = r.client_name || r.company_name || r.extra || "-";
-      const details = r.types.length > 0 ? r.types.join(" + ") : r.description || "";
-      const description = details ? `${partyName} - ${details}` : partyName;
+      const parts: string[] = [];
+      const party = r.client_name || r.company_name || r.extra;
+      if (party) parts.push(party);
+      if (r.car_number) parts.push(`سيارة رقم(${r.car_number})`);
+      if (r.types && r.types.length > 0) parts.push(r.types.join(" + "));
+      if (r.company_name && r.client_name) parts.push(`شركة: ${r.company_name}`);
+      if (r.cheque_number) parts.push(`شيك #${r.cheque_number}`);
+      else if (r.payment_method) parts.push(r.payment_method);
+      if (r.description) parts.push(r.description);
+      const description = parts.filter(Boolean).join(" — ") || "-";
+
       return {
         date: r.date,
         movement: movementLabels[r.tab] || r.tab,
@@ -773,13 +782,20 @@ export default function Accounting() {
       };
     });
 
-    const businessName = siteSettings?.site_title || "AB Insurance";
+    const businessName = siteSettings?.site_title || "بشير أبو سنينة";
+    const rawLogo = siteSettings?.logo_url || abLogo;
+    const logoUrl = rawLogo?.startsWith("http")
+      ? rawLogo
+      : `${window.location.origin}${rawLogo}`;
+
     const html = buildAccountingStatementHtml({
       rows: statementRows,
       fromDate,
       toDate,
       customerName: businessName,
       title: "كشف حساب - مختصر",
+      logoUrl,
+      businessName,
     });
     openAccountingStatementPrint(html);
   };

@@ -30,6 +30,10 @@ export function buildAccountingStatementHtml(opts: {
   phone?: string;             // الجوال
   openingBalance?: number;    // رصيد مدور (optional)
   title?: string;             // default: كشف حساب - مختصر
+  logoUrl?: string | null;    // AB logo
+  businessName?: string;      // header business name
+  businessSubtitle?: string;  // header subtitle (address/phone line)
+  taxId?: string;             // عوسك مورشيه / Tax ID
 }): string {
   const {
     rows,
@@ -41,6 +45,10 @@ export function buildAccountingStatementHtml(opts: {
     phone = '',
     openingBalance = 0,
     title = 'كشف حساب - مختصر',
+    logoUrl = null,
+    businessName = 'بشير أبو سنينة',
+    businessSubtitle = 'بيت حنينا الجديدة، القدس · هاتف: 026307377',
+    taxId = 'עוסק מורשה 212426498',
   } = opts;
 
   let running = openingBalance;
@@ -106,6 +114,39 @@ export function buildAccountingStatementHtml(opts: {
     border: 1px solid #888;
     margin-bottom: 8px;
     text-align: right;
+  }
+  .ab-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin-bottom: 10px;
+    background: #fff;
+  }
+  .ab-header .ab-biz { text-align: right; }
+  .ab-header .ab-biz-name {
+    font-size: 20px;
+    font-weight: 800;
+    color: #1e3a5f;
+  }
+  .ab-header .ab-biz-sub {
+    font-size: 11px;
+    color: #555;
+    margin-top: 2px;
+  }
+  .ab-header .ab-logo-wrap { flex: 0 0 auto; }
+  .ab-header .ab-logo-wrap img {
+    max-height: 60px;
+    max-width: 140px;
+    object-fit: contain;
+  }
+  .ab-header .ab-tax {
+    font-size: 12px;
+    font-weight: 700;
+    color: #1e3a5f;
+    text-align: left;
   }
   .info-row {
     display: flex;
@@ -180,6 +221,17 @@ export function buildAccountingStatementHtml(opts: {
 </style>
 </head>
 <body>
+  <div class="ab-header">
+    <div class="ab-tax">${taxId}</div>
+    <div class="ab-logo-wrap">
+      ${logoUrl ? `<img src="${logoUrl}" alt="AB" />` : ''}
+    </div>
+    <div class="ab-biz">
+      <div class="ab-biz-name">${businessName}</div>
+      <div class="ab-biz-sub">${businessSubtitle}</div>
+    </div>
+  </div>
+
   <div class="top-bar">${title}</div>
 
   <div class="info-row">
