@@ -30,6 +30,10 @@ export function buildAccountingStatementHtml(opts: {
   phone?: string;             // الجوال
   openingBalance?: number;    // رصيد مدور (optional)
   title?: string;             // default: كشف حساب - مختصر
+  logoUrl?: string | null;    // AB logo
+  businessName?: string;      // header business name
+  businessSubtitle?: string;  // header subtitle (address/phone line)
+  taxId?: string;             // عوسك مورشيه / Tax ID
 }): string {
   const {
     rows,
@@ -41,6 +45,10 @@ export function buildAccountingStatementHtml(opts: {
     phone = '',
     openingBalance = 0,
     title = 'كشف حساب - مختصر',
+    logoUrl = null,
+    businessName = 'بشير أبو سنينة',
+    businessSubtitle = 'بيت حنينا الجديدة، القدس · هاتف: 026307377',
+    taxId = 'עוסק מורשה 212426498',
   } = opts;
 
   let running = openingBalance;
