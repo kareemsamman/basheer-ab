@@ -188,6 +188,17 @@ export function buildAccountingStatementHtml(opts: {
 </style>
 </head>
 <body>
+  <div class="ab-header">
+    <div class="ab-tax">${taxId}</div>
+    <div class="ab-logo-wrap">
+      ${logoUrl ? `<img src="${logoUrl}" alt="AB" />` : ''}
+    </div>
+    <div class="ab-biz">
+      <div class="ab-biz-name">${businessName}</div>
+      <div class="ab-biz-sub">${businessSubtitle}</div>
+    </div>
+  </div>
+
   <div class="top-bar">${title}</div>
 
   <div class="info-row">
