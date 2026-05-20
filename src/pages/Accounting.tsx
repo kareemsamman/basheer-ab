@@ -744,41 +744,44 @@ export default function Accounting() {
 
   const showReceipt = true; // All entity types support payment + receipt
 
-  // Export invoice (same as /expenses)
+  // Export as Arabic account statement (كشف حساب مختصر)
   const handleExportInvoice = () => {
     const data = filtered.length > 0 ? filtered : rows;
     if (data.length === 0) { toast.error("لا توجد بيانات للتصدير"); return; }
 
-    // Map tab types to Hebrew transaction labels
-    const txTypeLabels: Record<string, string> = {
-      issuance: "הנפקה",
-      refund: "מרתגעאת",
-      payment: "סנד שרף",
-      sale: "מכירות",
-      receipt: "סנד קבץ",
+    // Movement labels per tab
+    const movementLabels: Record<string, string> = {
+      issuance: "إصدار",
+      refund: "مرتجعات",
+      payment: "سند صرف",
+      sale: "مبيعات",
+      receipt: "سند قبض",
     };
 
-    // Convert Row[] to ExpenseRow format for the invoice builder
-    const expenseRows = data.map(r => ({
-      description: r.types.length > 0 ? r.types.join(" + ") : r.description || "-",
-      amount: r.amount,
-      expense_date: r.date,
-      category: r.tab === "issuance" ? "insurance_premium" : r.tab === "refund" ? "other" : r.tab === "receipt" ? "other_income" : "insurance_company",
-      contact_name: r.client_name || r.company_name || r.extra || null,
-      payment_method: r.payment_method ? Object.entries(payMethodLabel).find(([, v]) => v === r.payment_method)?.[0] || r.payment_method : "cash",
-      reference_number: null,
-      transaction_type: txTypeLabels[r.tab] || r.tab,
-    }));
+    // Sign convention: receipts = له (credit, money in), everything else = عليه (debit, money out)
+    const statementRows: StatementRow[] = data.map((r) => {
+      const isCredit = r.tab === "receipt";
+      const partyName = r.client_name || r.company_name || r.extra || "-";
+      const details = r.types.length > 0 ? r.types.join(" + ") : r.description || "";
+      const description = details ? `${partyName} - ${details}` : partyName;
+      return {
+        date: r.date,
+        movement: movementLabels[r.tab] || r.tab,
+        description,
+        debit: isCredit ? 0 : r.amount,
+        credit: isCredit ? r.amount : 0,
+      };
+    });
 
-    const [y, m] = selectedMonth.split("-").map(Number);
-    const monthDate = new Date(y, m - 1, 1);
-    const monthLabel = format(monthDate, "MMMM yyyy", { locale: he });
-    const logoUrl = siteSettings?.logo_url || null;
     const businessName = siteSettings?.site_title || "AB Insurance";
-    const type = activeTab === "receipt" ? "receipt" as const : "payment" as const;
-
-    const html = buildExpenseInvoiceHtml(expenseRows, type, monthLabel, logoUrl, businessName);
-    openExpenseInvoicePrint(html);
+    const html = buildAccountingStatementHtml({
+      rows: statementRows,
+      fromDate,
+      toDate,
+      customerName: businessName,
+      title: "كشف حساب - مختصر",
+    });
+    openAccountingStatementPrint(html);
   };
 
   // Delete settlement
