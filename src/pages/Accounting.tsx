@@ -1399,7 +1399,16 @@ export default function Accounting() {
               </button>
             ))}
           </div>
-          <Button onClick={() => { resetAddDialog(); setAddOpen(true); }} className="gap-2 shrink-0"><PlusCircle className="h-4 w-4" />إضافة</Button>
+          <Button onClick={() => {
+            resetAddDialog();
+            // Default the voucher type to match the currently active tab so a
+            // user viewing "سند قبض" gets a receipt voucher (not صرف) by default.
+            const tabToVoucher: Record<string, "payment" | "receipt" | "refund" | "sale"> = {
+              receipt: "receipt", payment: "payment", refunds: "refund", sale: "sale",
+            };
+            setAddVoucherType(tabToVoucher[activeTab] || "payment");
+            setAddOpen(true);
+          }} className="gap-2 shrink-0"><PlusCircle className="h-4 w-4" />إضافة</Button>
         </div>
 
         {/* Table */}
