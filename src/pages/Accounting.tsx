@@ -852,6 +852,59 @@ export default function Accounting() {
     } catch { toast.error("فشل في تحديث الحالة"); }
   };
 
+  // Inline-edit saver for issuance rows.
+  // Updates one or more policies (and optionally their car) and recomputes profit.
+  const saveIssuanceInline = useCallback(async (
+    row: Row,
+    field: "issue_date" | "start_date" | "end_date" | "insurance_price" | "payed_for_company" | "car_value",
+    value: string | number | null,
+  ) => {
+    const policyIds = row.policyIds && row.policyIds.length > 0 ? row.policyIds : [row.id];
+    if (!policyIds.length) return;
+    try {
+      if (field === "car_value") {
+        // Find car_id from any policy in the group
+        const { data: pol } = await supabase
+          .from("policies")
+          .select("car_id")
+          .eq("id", policyIds[0])
+          .maybeSingle();
+        if (!pol?.car_id) { toast.error("لم يتم العثور على السيارة"); return; }
+        const { error } = await supabase
+          .from("cars")
+          .update({ car_value: value as number | null } as any)
+          .eq("id", pol.car_id);
+        if (error) throw error;
+      } else if (field === "insurance_price" || field === "payed_for_company") {
+        // Update each policy and recompute profit = insurance_price - payed_for_company
+        const { data: pols } = await supabase
+          .from("policies")
+          .select("id, insurance_price, payed_for_company, transferred")
+          .in("id", policyIds);
+        for (const p of (pols || []) as any[]) {
+          const newPrice = field === "insurance_price" ? Number(value) || 0 : Number(p.insurance_price) || 0;
+          const newPfc = field === "payed_for_company" ? Number(value) || 0 : Number(p.payed_for_company) || 0;
+          const profit = p.transferred ? 0 : Math.max(0, newPrice - newPfc);
+          const patch: any = { profit };
+          patch[field] = Number(value) || 0;
+          const { error } = await supabase.from("policies").update(patch).eq("id", p.id);
+          if (error) throw error;
+        }
+      } else {
+        // Date fields broadcast to all policies in the group
+        const patch: any = {};
+        patch[field] = value;
+        const { error } = await supabase.from("policies").update(patch).in("id", policyIds);
+        if (error) throw error;
+      }
+      toast.success("تم الحفظ");
+      fetchData();
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e?.message || "فشل الحفظ");
+    }
+  }, [fetchData]);
+
   const openEdit = async (row: Row) => {
     setEditRow(row);
     setEditAmount(String(row.amount));
