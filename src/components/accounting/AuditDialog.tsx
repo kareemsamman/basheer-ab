@@ -167,28 +167,28 @@ export function AuditDialog({
         dir="rtl"
         className="max-w-5xl max-h-[90vh] overflow-y-auto p-0 gap-0"
       >
-        {/* Custom header: actions on visual LEFT for RTL */}
-        <DialogHeader className="flex flex-row items-center justify-between gap-2 p-4 border-b sticky top-0 bg-background z-10">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        {/* Header */}
+        <DialogHeader className="flex flex-row items-center justify-between gap-3 px-5 py-3.5 border-b sticky top-0 bg-background/95 backdrop-blur z-10">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-primary/20">
               <Sparkles className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <DialogTitle className="text-base">تدقيق الكشف بالذكاء الاصطناعي</DialogTitle>
-              <p className="text-xs text-muted-foreground truncate">{filterDescription}</p>
+              <DialogTitle className="text-base font-semibold">تدقيق الكشف بالذكاء الاصطناعي</DialogTitle>
+              <p className="text-xs text-muted-foreground truncate mt-0.5">{filterDescription}</p>
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onMinimize} title="تصغير">
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={onMinimize} title="تصغير">
               <Minus className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { reset(); onClose(); }} title="إغلاق ومسح">
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={() => { reset(); onClose(); }} title="إغلاق ومسح">
               <X className="h-4 w-4" />
             </Button>
           </div>
         </DialogHeader>
 
-        <div className="p-4 space-y-4">
+        <div className="p-5 space-y-5">
           {!result && (
             <>
               {/* Drop zone */}
@@ -201,13 +201,15 @@ export function AuditDialog({
                 }}
                 onClick={() => inputRef.current?.click()}
                 className={cn(
-                  "border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-colors",
-                  dragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+                  "border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-all",
+                  dragOver ? "border-primary bg-primary/5 scale-[1.01]" : "border-border hover:border-primary/50 hover:bg-muted/30"
                 )}
               >
-                <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                <p className="font-medium">اسحب الكشف هنا أو اضغط للاختيار</p>
-                <p className="text-xs text-muted-foreground mt-1">صور (JPG/PNG) أو PDF — يمكن رفع عدة ملفات</p>
+                <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
+                  <Upload className="h-7 w-7 text-primary" />
+                </div>
+                <p className="font-semibold">اسحب الكشف هنا أو اضغط للاختيار</p>
+                <p className="text-xs text-muted-foreground mt-1.5">صور (JPG/PNG) أو PDF — يمكن رفع عدة ملفات</p>
                 <input
                   ref={inputRef}
                   type="file"
@@ -221,12 +223,12 @@ export function AuditDialog({
               {files.length > 0 && (
                 <div className="space-y-2">
                   {files.map((f, i) => (
-                    <div key={i} className="flex items-center gap-2 p-2 rounded-lg border bg-card">
+                    <div key={i} className="flex items-center gap-2 p-2.5 rounded-lg border bg-card">
                       {f.type === "application/pdf"
                         ? <FileText className="h-4 w-4 text-destructive" />
                         : <ImageIcon className="h-4 w-4 text-primary" />}
                       <span className="text-sm flex-1 truncate">{f.name}</span>
-                      <span className="text-xs text-muted-foreground">{(f.size / 1024).toFixed(0)} KB</span>
+                      <span className="text-xs text-muted-foreground tabular-nums">{(f.size / 1024).toFixed(0)} KB</span>
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -236,7 +238,7 @@ export function AuditDialog({
               )}
 
               <div className="flex justify-end">
-                <Button onClick={runAudit} disabled={loading || files.length === 0} className="gap-2">
+                <Button onClick={runAudit} disabled={loading || files.length === 0} className="gap-2 h-10 px-5">
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                   {loading ? "جاري التحليل... (20-40 ثانية)" : "ابدأ التدقيق"}
                 </Button>
@@ -246,34 +248,37 @@ export function AuditDialog({
 
           {result && diff && (
             <>
-              {/* AI metadata strip */}
-              <Card className="p-3">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                  {result.company && <span><span className="text-muted-foreground">الشركة:</span> <strong>{result.company}</strong></span>}
-                  {result.period && <span><span className="text-muted-foreground">الفترة:</span> <strong>{result.period}</strong></span>}
-                  {result.column_used && <span><span className="text-muted-foreground">العمود:</span> <strong>{result.column_used}</strong></span>}
-                  <span className="text-muted-foreground">عدد الصفوف المستخرجة: <strong className="text-foreground">{result.rows.length}</strong></span>
+              {/* AI metadata — clean labeled grid */}
+              <Card className="overflow-hidden">
+                <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-border rtl:divide-x-reverse">
+                  <MetaCell label="الشركة" value={result.company || "—"} />
+                  <MetaCell label="الفترة" value={result.period || "—"} ltr />
+                  <MetaCell label="صفوف الكشف" value={String(result.rows.length)} />
+                  <MetaCell label="العمود المعتمد" value={result.column_used || "—"} ltr small />
                 </div>
                 {result.notes && (
-                  <Collapsible className="mt-2">
-                    <CollapsibleTrigger className="text-xs text-primary inline-flex items-center gap-1 hover:underline">
-                      <ChevronLeft className="h-3 w-3" /> ملاحظات الذكاء الاصطناعي
+                  <Collapsible>
+                    <CollapsibleTrigger className="w-full text-xs text-primary inline-flex items-center justify-between gap-1 hover:bg-muted/40 px-4 py-2 border-t">
+                      <span className="flex items-center gap-1.5">
+                        <Info className="h-3.5 w-3.5" /> ملاحظات الذكاء الاصطناعي
+                      </span>
+                      <ChevronLeft className="h-3 w-3" />
                     </CollapsibleTrigger>
-                    <CollapsibleContent className="mt-1 text-xs text-muted-foreground bg-muted/40 rounded p-2 whitespace-pre-wrap">
+                    <CollapsibleContent className="text-xs text-muted-foreground bg-muted/30 px-4 py-3 whitespace-pre-wrap border-t" dir="auto">
                       {result.notes}
                     </CollapsibleContent>
                   </Collapsible>
                 )}
               </Card>
 
-              {/* Warnings */}
+              {/* Warning */}
               {hasZeroMatches && (
-                <Card className="p-3 border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
-                  <div className="flex gap-2">
-                    <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
+                <Card className="p-3.5 border-amber-500/40 bg-amber-50 dark:bg-amber-950/20">
+                  <div className="flex gap-2.5">
+                    <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
                     <div className="text-sm">
                       <p className="font-semibold text-amber-900 dark:text-amber-200">لا توجد سيارة مشتركة بين الكشف والجدول</p>
-                      <p className="text-xs text-amber-800 dark:text-amber-300 mt-1">
+                      <p className="text-xs text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
                         ربما رفعت كشفاً يغطي فترة أو شركة مختلفة عمّا تدقّقه. راجع الفلتر الحالي والكشف المرفوع.
                       </p>
                     </div>
@@ -281,142 +286,134 @@ export function AuditDialog({
                 </Card>
               )}
 
-              {/* Summary cards: ours / theirs / diff */}
+              {/* Summary: Diff first (most important), then both sides */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <Card className="p-4 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
-                  <p className="text-xs font-medium text-muted-foreground tracking-wide">المستحق للشركات عنا</p>
-                  <p className="text-2xl font-bold mt-2 text-primary tabular-nums">{fmtCur(dbTotal)}</p>
-                  <p className="text-xs text-muted-foreground mt-2">{dbRows.length} صف في الجدول</p>
-                </Card>
-                <Card className="p-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900/40 dark:to-slate-800/40 border-slate-200 dark:border-slate-700">
-                  <p className="text-xs font-medium text-muted-foreground tracking-wide">المستحق للشركات بالكشف</p>
-                  <p className="text-2xl font-bold mt-2 tabular-nums">
-                    {result.grand_total != null ? fmtCur(result.grand_total) : fmtCur(extTotal)}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {result.grand_total != null ? "إجمالي مطبوع على الكشف" : `مجموع ${result.rows.length} صف مستخرج`}
-                  </p>
-                </Card>
                 {result.grand_total != null ? (
-                  <Card className={cn(
-                    "p-4 border",
-                    Math.abs(dbTotal - result.grand_total) <= TOLERANCE
-                      ? "bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200 dark:from-emerald-950/30 dark:to-emerald-900/20 dark:border-emerald-800"
-                      : "bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200 dark:from-amber-950/30 dark:to-amber-900/20 dark:border-amber-800"
-                  )}>
-                    <p className="text-xs font-medium text-muted-foreground tracking-wide">الفرق</p>
-                    <p className={cn(
-                      "text-2xl font-bold mt-2 tabular-nums",
-                      Math.abs(dbTotal - result.grand_total) <= TOLERANCE ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"
-                    )}>{fmtSigned(dbTotal - result.grand_total)}</p>
-                    <p className="text-xs text-muted-foreground mt-2">عنا − بالكشف</p>
-                  </Card>
+                  <SummaryCard
+                    label="الفرق"
+                    value={fmtSigned(dbTotal - result.grand_total)}
+                    hint="عنا − بالكشف"
+                    tone={Math.abs(dbTotal - result.grand_total) <= TOLERANCE ? "success" : "warning"}
+                  />
                 ) : (
-                  <Card className="p-4 border-dashed">
-                    <p className="text-xs text-muted-foreground">الفرق</p>
-                    <p className="text-sm text-muted-foreground mt-2">
-                      <Info className="h-3 w-3 inline ml-1" />
-                      لم يتم العثور على مجموع كلي في الكشف
-                    </p>
-                  </Card>
+                  <SummaryCard
+                    label="الفرق"
+                    value="—"
+                    hint="لا يوجد مجموع كلي بالكشف"
+                    tone="muted"
+                  />
                 )}
+                <SummaryCard
+                  label="المستحق للشركات عنا"
+                  value={fmtCur(dbTotal)}
+                  hint={`${dbRows.length} صف في الجدول`}
+                  tone="primary"
+                />
+                <SummaryCard
+                  label="المستحق للشركات بالكشف"
+                  value={fmtCur(result.grand_total != null ? result.grand_total : extTotal)}
+                  hint={result.grand_total != null ? "إجمالي مطبوع على الكشف" : `مجموع ${result.rows.length} صف مستخرج`}
+                  tone="neutral"
+                />
               </div>
 
               {/* Sections */}
-              <Section
-                title="مطابق"
-                color="emerald"
-                icon={<CheckCircle2 className="h-4 w-4" />}
-                count={diff.matched.length}
-              >
-                {diff.matched.length > 0 && (
-                  <SimpleList>
-                    {diff.matched.map((m, i) => (
-                      <Row key={i}
-                        car={m.db.car_number}
-                        label={m.db.client_name || m.ext.raw_label}
-                        right={<span className="font-mono text-emerald-700">{fmtCur(m.db.auditAmount)}</span>}
-                        onGo={() => onGoToRow(m.db.id)}
-                      />
-                    ))}
-                  </SimpleList>
-                )}
-              </Section>
+              <div className="space-y-2.5">
+                <Section
+                  title="مطابق"
+                  color="emerald"
+                  icon={<CheckCircle2 className="h-4 w-4" />}
+                  count={diff.matched.length}
+                >
+                  {diff.matched.length > 0 && (
+                    <SimpleList>
+                      {diff.matched.map((m, i) => (
+                        <Row key={i}
+                          car={m.db.car_number}
+                          label={m.db.client_name || m.ext.raw_label}
+                          right={<span className="font-mono text-emerald-700 dark:text-emerald-400 tabular-nums">{fmtCur(m.db.auditAmount)}</span>}
+                          onGo={() => onGoToRow(m.db.id)}
+                        />
+                      ))}
+                    </SimpleList>
+                  )}
+                </Section>
 
-              <Section
-                title="اختلاف بالمبلغ"
-                color="amber"
-                icon={<AlertTriangle className="h-4 w-4" />}
-                count={diff.amountMismatch.length}
-                defaultOpen
-              >
-                {diff.amountMismatch.length > 0 && (
-                  <SimpleList>
-                    {diff.amountMismatch.map((m, i) => (
-                      <Row key={i}
-                        car={m.db.car_number}
-                        label={m.db.client_name || m.ext.raw_label}
-                        right={
-                          <div className="flex items-center gap-2 font-mono text-xs">
-                            <span className="text-muted-foreground">جدول</span>
-                            <span className="text-foreground">{fmtCur(m.db.auditAmount)}</span>
-                            <span className="text-muted-foreground">←</span>
-                            <span className="text-muted-foreground">كشف</span>
-                            <span className="text-foreground">{fmtCur(m.ext.amount)}</span>
-                            <Badge variant={m.diff > 0 ? "default" : "destructive"} className="ml-1">
-                              {fmtSigned(m.diff)}
-                            </Badge>
-                          </div>
-                        }
-                        onGo={() => onGoToRow(m.db.id)}
-                      />
-                    ))}
-                  </SimpleList>
-                )}
-              </Section>
+                <Section
+                  title="اختلاف بالمبلغ"
+                  color="amber"
+                  icon={<AlertTriangle className="h-4 w-4" />}
+                  count={diff.amountMismatch.length}
+                  defaultOpen
+                >
+                  {diff.amountMismatch.length > 0 && (
+                    <SimpleList>
+                      {diff.amountMismatch.map((m, i) => (
+                        <Row key={i}
+                          car={m.db.car_number}
+                          label={m.db.client_name || m.ext.raw_label}
+                          right={
+                            <div className="flex items-center gap-2 font-mono text-xs tabular-nums">
+                              <span className="text-muted-foreground">عنا</span>
+                              <span>{fmtCur(m.db.auditAmount)}</span>
+                              <span className="text-muted-foreground">·</span>
+                              <span className="text-muted-foreground">كشف</span>
+                              <span>{fmtCur(m.ext.amount)}</span>
+                              <Badge variant={m.diff > 0 ? "default" : "destructive"} className="ms-1">
+                                {fmtSigned(m.diff)}
+                              </Badge>
+                            </div>
+                          }
+                          onGo={() => onGoToRow(m.db.id)}
+                        />
+                      ))}
+                    </SimpleList>
+                  )}
+                </Section>
 
-              <Section
-                title="ناقص عندنا (موجود بالكشف فقط)"
-                color="orange"
-                icon={<MinusCircle className="h-4 w-4" />}
-                count={diff.missingHere.length}
-                defaultOpen
-              >
-                {diff.missingHere.length > 0 && (
-                  <SimpleList>
-                    {diff.missingHere.map((e, i) => (
-                      <Row key={i}
-                        car={e.car_number}
-                        label={e.raw_label || "—"}
-                        right={<span className="font-mono">{fmtCur(e.amount)}</span>}
-                      />
-                    ))}
-                  </SimpleList>
-                )}
-              </Section>
+                <Section
+                  title="ناقص عندنا (موجود بالكشف فقط)"
+                  color="orange"
+                  icon={<MinusCircle className="h-4 w-4" />}
+                  count={diff.missingHere.length}
+                  defaultOpen
+                >
+                  {diff.missingHere.length > 0 && (
+                    <SimpleList>
+                      {diff.missingHere.map((e, i) => (
+                        <Row key={i}
+                          car={e.car_number}
+                          label={e.raw_label || "—"}
+                          right={<span className="font-mono tabular-nums">{fmtCur(e.amount)}</span>}
+                        />
+                      ))}
+                    </SimpleList>
+                  )}
+                </Section>
 
-              <Section
-                title="زيادة عندنا (موجود بالجدول فقط)"
-                color="blue"
-                icon={<PlusCircle className="h-4 w-4" />}
-                count={diff.extraHere.length}
-                defaultOpen
-              >
-                {diff.extraHere.length > 0 && (
-                  <SimpleList>
-                    {diff.extraHere.map((db) => (
-                      <Row key={db.id}
-                        car={db.car_number}
-                        label={db.client_name}
-                        right={<span className="font-mono">{fmtCur(db.auditAmount)}</span>}
-                        onGo={() => onGoToRow(db.id)}
-                      />
-                    ))}
-                  </SimpleList>
-                )}
-              </Section>
+                <Section
+                  title="زيادة عندنا (موجود بالجدول فقط)"
+                  color="blue"
+                  icon={<PlusCircle className="h-4 w-4" />}
+                  count={diff.extraHere.length}
+                  defaultOpen
+                >
+                  {diff.extraHere.length > 0 && (
+                    <SimpleList>
+                      {diff.extraHere.map((db) => (
+                        <Row key={db.id}
+                          car={db.car_number}
+                          label={db.client_name}
+                          right={<span className="font-mono tabular-nums">{fmtCur(db.auditAmount)}</span>}
+                          onGo={() => onGoToRow(db.id)}
+                        />
+                      ))}
+                    </SimpleList>
+                  )}
+                </Section>
+              </div>
 
-              <div className="flex justify-between pt-2 border-t">
+              <div className="flex justify-between pt-3 border-t">
                 <Button variant="outline" onClick={reset} className="gap-2">
                   <Upload className="h-4 w-4" /> تدقيق جديد
                 </Button>
@@ -431,6 +428,46 @@ export function AuditDialog({
     </Dialog>
   );
 }
+
+function MetaCell({ label, value, ltr, small }: { label: string; value: string; ltr?: boolean; small?: boolean }) {
+  return (
+    <div className="px-4 py-3 min-w-0">
+      <p className="text-[11px] font-medium text-muted-foreground tracking-wide uppercase">{label}</p>
+      <p
+        className={cn("font-semibold mt-1 truncate", small ? "text-xs" : "text-sm")}
+        dir={ltr ? "ltr" : "auto"}
+        title={value}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function SummaryCard({
+  label, value, hint, tone,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+  tone: "primary" | "neutral" | "success" | "warning" | "muted";
+}) {
+  const toneCls = {
+    primary: "bg-gradient-to-br from-primary/8 to-primary/[0.02] border-primary/25 text-primary",
+    neutral: "bg-gradient-to-br from-slate-50 to-white dark:from-slate-900/40 dark:to-slate-900/10 border-slate-200 dark:border-slate-700 text-foreground",
+    success: "bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/30 dark:to-emerald-950/10 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300",
+    warning: "bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/30 dark:to-amber-950/10 border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300",
+    muted: "border-dashed bg-muted/20 text-muted-foreground",
+  }[tone];
+  return (
+    <Card className={cn("p-4 border", toneCls)}>
+      <p className="text-[11px] font-medium text-muted-foreground tracking-wide uppercase">{label}</p>
+      <p className="text-2xl font-bold mt-2 tabular-nums leading-none">{value}</p>
+      <p className="text-[11px] text-muted-foreground mt-2.5">{hint}</p>
+    </Card>
+  );
+}
+
 
 function Section({
   title, color, icon, count, defaultOpen, children,
