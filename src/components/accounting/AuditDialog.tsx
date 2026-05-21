@@ -318,101 +318,124 @@ export function AuditDialog({
                 />
               </div>
 
-              {/* Sections */}
-              <div className="space-y-2.5">
-                <Section
-                  title="مطابق"
-                  color="emerald"
-                  icon={<CheckCircle2 className="h-4 w-4" />}
-                  count={diff.matched.length}
-                >
-                  {diff.matched.length > 0 && (
-                    <SimpleList>
-                      {diff.matched.map((m, i) => (
-                        <Row key={i}
-                          car={m.db.car_number}
-                          label={m.db.client_name || m.ext.raw_label}
-                          right={<span className="font-mono text-emerald-700 dark:text-emerald-400 tabular-nums">{fmtCur(m.db.auditAmount)}</span>}
-                          onGo={() => onGoToRow(m.db.id)}
-                        />
-                      ))}
-                    </SimpleList>
-                  )}
-                </Section>
+              {/* Tabbed results */}
+              {(() => {
+                const tabs = [
+                  { key: "mismatch", label: "اختلاف بالمبلغ", icon: AlertTriangle, count: diff.amountMismatch.length, tone: "amber" as const },
+                  { key: "missing", label: "ناقص عندنا", icon: MinusCircle, count: diff.missingHere.length, tone: "orange" as const },
+                  { key: "extra", label: "زيادة عندنا", icon: PlusCircle, count: diff.extraHere.length, tone: "blue" as const },
+                  { key: "matched", label: "مطابق", icon: CheckCircle2, count: diff.matched.length, tone: "emerald" as const },
+                ];
+                const defaultTab = tabs.find(t => t.count > 0)?.key || "matched";
+                const toneRing: Record<string, string> = {
+                  amber: "data-[state=active]:bg-amber-50 data-[state=active]:text-amber-800 data-[state=active]:border-amber-300 dark:data-[state=active]:bg-amber-950/30 dark:data-[state=active]:text-amber-300",
+                  orange: "data-[state=active]:bg-orange-50 data-[state=active]:text-orange-800 data-[state=active]:border-orange-300 dark:data-[state=active]:bg-orange-950/30 dark:data-[state=active]:text-orange-300",
+                  blue: "data-[state=active]:bg-blue-50 data-[state=active]:text-blue-800 data-[state=active]:border-blue-300 dark:data-[state=active]:bg-blue-950/30 dark:data-[state=active]:text-blue-300",
+                  emerald: "data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-800 data-[state=active]:border-emerald-300 dark:data-[state=active]:bg-emerald-950/30 dark:data-[state=active]:text-emerald-300",
+                };
+                const badgeTone: Record<string, string> = {
+                  amber: "bg-amber-600 text-white",
+                  orange: "bg-orange-600 text-white",
+                  blue: "bg-blue-600 text-white",
+                  emerald: "bg-emerald-600 text-white",
+                };
+                return (
+                  <Tabs defaultValue={defaultTab} dir="rtl" className="w-full">
+                    <TabsList className="w-full h-auto p-1 bg-muted/40 grid grid-cols-2 md:grid-cols-4 gap-1">
+                      {tabs.map(t => {
+                        const Icon = t.icon;
+                        return (
+                          <TabsTrigger
+                            key={t.key}
+                            value={t.key}
+                            className={cn(
+                              "h-10 gap-2 border border-transparent rounded-md text-xs md:text-sm font-medium transition-all",
+                              toneRing[t.tone]
+                            )}
+                          >
+                            <Icon className="h-4 w-4 shrink-0" />
+                            <span className="truncate">{t.label}</span>
+                            <span className={cn(
+                              "min-w-[22px] h-[20px] px-1.5 inline-flex items-center justify-center rounded-full text-[11px] font-bold tabular-nums",
+                              t.count === 0 ? "bg-muted text-muted-foreground" : badgeTone[t.tone]
+                            )}>{t.count}</span>
+                          </TabsTrigger>
+                        );
+                      })}
+                    </TabsList>
 
-                <Section
-                  title="اختلاف بالمبلغ"
-                  color="amber"
-                  icon={<AlertTriangle className="h-4 w-4" />}
-                  count={diff.amountMismatch.length}
-                  defaultOpen
-                >
-                  {diff.amountMismatch.length > 0 && (
-                    <SimpleList>
-                      {diff.amountMismatch.map((m, i) => (
-                        <Row key={i}
-                          car={m.db.car_number}
-                          label={m.db.client_name || m.ext.raw_label}
-                          right={
-                            <div className="flex items-center gap-2 font-mono text-xs tabular-nums">
-                              <span className="text-muted-foreground">عنا</span>
-                              <span>{fmtCur(m.db.auditAmount)}</span>
-                              <span className="text-muted-foreground">·</span>
-                              <span className="text-muted-foreground">كشف</span>
-                              <span>{fmtCur(m.ext.amount)}</span>
-                              <Badge variant={m.diff > 0 ? "default" : "destructive"} className="ms-1">
-                                {fmtSigned(m.diff)}
-                              </Badge>
-                            </div>
-                          }
-                          onGo={() => onGoToRow(m.db.id)}
-                        />
-                      ))}
-                    </SimpleList>
-                  )}
-                </Section>
+                    <TabsContent value="mismatch" className="mt-3">
+                      {diff.amountMismatch.length === 0 ? <EmptyState text="لا يوجد اختلاف بالمبلغ" /> : (
+                        <SimpleList>
+                          {diff.amountMismatch.map((m, i) => (
+                            <Row key={i}
+                              car={m.db.car_number}
+                              label={m.db.client_name || m.ext.raw_label}
+                              right={
+                                <div className="flex items-center gap-2 font-mono text-xs tabular-nums">
+                                  <span className="text-muted-foreground">عنا</span>
+                                  <span>{fmtCur(m.db.auditAmount)}</span>
+                                  <span className="text-muted-foreground">·</span>
+                                  <span className="text-muted-foreground">كشف</span>
+                                  <span>{fmtCur(m.ext.amount)}</span>
+                                  <Badge variant={m.diff > 0 ? "default" : "destructive"} className="ms-1">
+                                    {fmtSigned(m.diff)}
+                                  </Badge>
+                                </div>
+                              }
+                              onGo={() => onGoToRow(m.db.id)}
+                            />
+                          ))}
+                        </SimpleList>
+                      )}
+                    </TabsContent>
 
-                <Section
-                  title="ناقص عندنا (موجود بالكشف فقط)"
-                  color="orange"
-                  icon={<MinusCircle className="h-4 w-4" />}
-                  count={diff.missingHere.length}
-                  defaultOpen
-                >
-                  {diff.missingHere.length > 0 && (
-                    <SimpleList>
-                      {diff.missingHere.map((e, i) => (
-                        <Row key={i}
-                          car={e.car_number}
-                          label={e.raw_label || "—"}
-                          right={<span className="font-mono tabular-nums">{fmtCur(e.amount)}</span>}
-                        />
-                      ))}
-                    </SimpleList>
-                  )}
-                </Section>
+                    <TabsContent value="missing" className="mt-3">
+                      {diff.missingHere.length === 0 ? <EmptyState text="لا شيء ناقص عندنا" /> : (
+                        <SimpleList>
+                          {diff.missingHere.map((e, i) => (
+                            <Row key={i}
+                              car={e.car_number}
+                              label={e.raw_label || "—"}
+                              right={<span className="font-mono tabular-nums">{fmtCur(e.amount)}</span>}
+                            />
+                          ))}
+                        </SimpleList>
+                      )}
+                    </TabsContent>
 
-                <Section
-                  title="زيادة عندنا (موجود بالجدول فقط)"
-                  color="blue"
-                  icon={<PlusCircle className="h-4 w-4" />}
-                  count={diff.extraHere.length}
-                  defaultOpen
-                >
-                  {diff.extraHere.length > 0 && (
-                    <SimpleList>
-                      {diff.extraHere.map((db) => (
-                        <Row key={db.id}
-                          car={db.car_number}
-                          label={db.client_name}
-                          right={<span className="font-mono tabular-nums">{fmtCur(db.auditAmount)}</span>}
-                          onGo={() => onGoToRow(db.id)}
-                        />
-                      ))}
-                    </SimpleList>
-                  )}
-                </Section>
-              </div>
+                    <TabsContent value="extra" className="mt-3">
+                      {diff.extraHere.length === 0 ? <EmptyState text="لا يوجد زيادة عندنا" /> : (
+                        <SimpleList>
+                          {diff.extraHere.map((db) => (
+                            <Row key={db.id}
+                              car={db.car_number}
+                              label={db.client_name}
+                              right={<span className="font-mono tabular-nums">{fmtCur(db.auditAmount)}</span>}
+                              onGo={() => onGoToRow(db.id)}
+                            />
+                          ))}
+                        </SimpleList>
+                      )}
+                    </TabsContent>
+
+                    <TabsContent value="matched" className="mt-3">
+                      {diff.matched.length === 0 ? <EmptyState text="لا توجد صفوف مطابقة" /> : (
+                        <SimpleList>
+                          {diff.matched.map((m, i) => (
+                            <Row key={i}
+                              car={m.db.car_number}
+                              label={m.db.client_name || m.ext.raw_label}
+                              right={<span className="font-mono text-emerald-700 dark:text-emerald-400 tabular-nums">{fmtCur(m.db.auditAmount)}</span>}
+                              onGo={() => onGoToRow(m.db.id)}
+                            />
+                          ))}
+                        </SimpleList>
+                      )}
+                    </TabsContent>
+                  </Tabs>
+                );
+              })()}
 
               <div className="flex justify-between pt-3 border-t">
                 <Button variant="outline" onClick={reset} className="gap-2">
