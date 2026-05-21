@@ -94,11 +94,14 @@ interface Props {
   result: AuditResult | null;
   setResult: (r: AuditResult | null) => void;
   onGoToRow: (rowId: string) => void;
+  /** Override "ours" total shown in the summary (e.g. remaining after payments) */
+  oursTotalOverride?: number;
+  oursHintOverride?: string;
 }
 
 export function AuditDialog({
   open, onMinimize, onClose, dbRows, filterDescription, comparedFieldLabel,
-  result, setResult, onGoToRow,
+  result, setResult, onGoToRow, oursTotalOverride, oursHintOverride,
 }: Props) {
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
@@ -157,7 +160,8 @@ export function AuditDialog({
 
   const diff = useMemo(() => result ? computeDiff(dbRows, result.rows) : null, [result, dbRows]);
 
-  const dbTotal = useMemo(() => dbRows.reduce((s, r) => s + (r.auditAmount || 0), 0), [dbRows]);
+  const dbRowsTotal = useMemo(() => dbRows.reduce((s, r) => s + (r.auditAmount || 0), 0), [dbRows]);
+  const dbTotal = oursTotalOverride != null ? oursTotalOverride : dbRowsTotal;
   const extTotal = useMemo(
     () => result ? result.rows.reduce((s, r) => s + (r.amount || 0), 0) : 0,
     [result]
@@ -313,7 +317,7 @@ export function AuditDialog({
                 <SummaryCard
                   label="المستحق للشركات عنا"
                   value={fmtCur(dbTotal)}
-                  hint={`${dbRows.length} صف في الجدول`}
+                  hint={oursHintOverride ?? `${dbRows.length} صف في الجدول`}
                   tone="primary"
                 />
                 <SummaryCard
