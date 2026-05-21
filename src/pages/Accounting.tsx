@@ -1521,17 +1521,17 @@ export default function Accounting() {
               {entityType !== "other" && <TableHead className="text-right">العميل</TableHead>}
               {entityType !== "other" && <TableHead className="text-right">رقم السيارة</TableHead>}
               {entityType !== "other" && <TableHead className="text-right">{activeTab === "receipt" || activeTab === "payment" || activeTab === "refunds" ? "رقم الشيك" : activeTab === "all" ? "نوع البوليصة / رقم الشيك" : "نوع البوليصة"}</TableHead>}
+              <TableHead className="text-right">{entityType === "broker" ? "الشركة" : "الشركة"}</TableHead>
+              {entityType === "broker" && <TableHead className="text-right">الوكيل</TableHead>}
+              <TableHead className="text-right">تاريخ الإصدار</TableHead>
+              {activeTab === "issuances" && <TableHead className="text-right">تاريخ البداية</TableHead>}
+              {activeTab === "issuances" && <TableHead className="text-right">تاريخ النهاية</TableHead>}
+              {activeTab === "issuances" && <TableHead className="text-right">قيمة السيارة</TableHead>}
               <TableHead className="text-right">المبلغ</TableHead>
               {activeTab === "issuances" && <TableHead className="text-right">المستحق للشركة</TableHead>}
               {activeTab === "issuances" && <TableHead className="text-right">الربح</TableHead>}
-              {activeTab === "issuances" && <TableHead className="text-right">قيمة السيارة</TableHead>}
-              {activeTab === "issuances" && <TableHead className="text-right">تاريخ البداية</TableHead>}
-              {activeTab === "issuances" && <TableHead className="text-right">تاريخ النهاية</TableHead>}
-              <TableHead className="text-right">تاريخ الإصدار</TableHead>
               {activeTab !== "issuances" && <TableHead className="text-right">تاريخ الدفع</TableHead>}
               {activeTab !== "issuances" && <TableHead className="text-right">طريقة الدفع</TableHead>}
-              <TableHead className="text-right">{entityType === "broker" ? "الشركة" : "الشركة"}</TableHead>
-              {entityType === "broker" && <TableHead className="text-right">الوكيل</TableHead>}
               <TableHead className="text-right">البيان</TableHead>
               <TableHead className="text-right w-10">إجراءات</TableHead>
             </TableRow></TableHeader>
