@@ -854,7 +854,7 @@ export default function Accounting() {
   const openEdit = async (row: Row) => {
     setEditRow(row);
     setEditAmount(String(row.amount));
-    setEditDate(row.date?.split("T")[0] || "");
+    setEditDate((row.source === "policy" ? row.issue_date : row.date)?.split("T")[0] || "");
     setEditDesc(row.description);
     setEditType(row.tab === "issuance" ? "payment" : row.tab as any);
     setEditPaymentLines([]);
