@@ -283,30 +283,33 @@ export function AuditDialog({
 
               {/* Summary cards: ours / theirs / diff */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <Card className="p-4">
-                  <p className="text-xs text-muted-foreground">مجموعنا (الجدول)</p>
-                  <p className="text-2xl font-bold mt-1">{fmtCur(dbTotal)}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{dbRows.length} صف</p>
+                <Card className="p-4 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+                  <p className="text-xs font-medium text-muted-foreground tracking-wide">المستحق للشركات عنا</p>
+                  <p className="text-2xl font-bold mt-2 text-primary tabular-nums">{fmtCur(dbTotal)}</p>
+                  <p className="text-xs text-muted-foreground mt-2">{dbRows.length} صف في الجدول</p>
                 </Card>
-                <Card className="p-4">
-                  <p className="text-xs text-muted-foreground">مجموعهم (الكشف)</p>
-                  <p className="text-2xl font-bold mt-1">
+                <Card className="p-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900/40 dark:to-slate-800/40 border-slate-200 dark:border-slate-700">
+                  <p className="text-xs font-medium text-muted-foreground tracking-wide">المستحق للشركات بالكشف</p>
+                  <p className="text-2xl font-bold mt-2 tabular-nums">
                     {result.grand_total != null ? fmtCur(result.grand_total) : fmtCur(extTotal)}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {result.grand_total != null ? "إجمالي مطبوع" : `مجموع ${result.rows.length} صف مستخرج`}
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {result.grand_total != null ? "إجمالي مطبوع على الكشف" : `مجموع ${result.rows.length} صف مستخرج`}
                   </p>
                 </Card>
                 {result.grand_total != null ? (
                   <Card className={cn(
-                    "p-4",
+                    "p-4 border",
                     Math.abs(dbTotal - result.grand_total) <= TOLERANCE
-                      ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20"
-                      : "bg-amber-50 border-amber-200 dark:bg-amber-950/20"
+                      ? "bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200 dark:from-emerald-950/30 dark:to-emerald-900/20 dark:border-emerald-800"
+                      : "bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200 dark:from-amber-950/30 dark:to-amber-900/20 dark:border-amber-800"
                   )}>
-                    <p className="text-xs text-muted-foreground">الفرق</p>
-                    <p className="text-2xl font-bold mt-1">{fmtSigned(dbTotal - result.grand_total)}</p>
-                    <p className="text-xs text-muted-foreground mt-1">جدول − كشف</p>
+                    <p className="text-xs font-medium text-muted-foreground tracking-wide">الفرق</p>
+                    <p className={cn(
+                      "text-2xl font-bold mt-2 tabular-nums",
+                      Math.abs(dbTotal - result.grand_total) <= TOLERANCE ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"
+                    )}>{fmtSigned(dbTotal - result.grand_total)}</p>
+                    <p className="text-xs text-muted-foreground mt-2">عنا − بالكشف</p>
                   </Card>
                 ) : (
                   <Card className="p-4 border-dashed">
