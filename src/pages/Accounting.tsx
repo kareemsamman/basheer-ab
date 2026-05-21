@@ -1585,7 +1585,7 @@ export default function Accounting() {
                 const canAct = !r.is_split && (r.source === "settlement" || r.source === "broker_settlement" || r.source === "expense" || r.source === "ledger" || r.source === "policy");
                 const isCheque = r.payment_method.includes("شيك");
                 return (
-                  <TableRow key={key || `${r.tab}-${r.id}`} className={isChild ? "bg-muted/20" : ""}>
+                  <TableRow key={key || `${r.tab}-${r.id}`} data-row-id={r.id} className={cn(isChild ? "bg-muted/20" : "", flashRowId === r.id && "!bg-yellow-200 dark:!bg-yellow-900/40 transition-colors duration-1000")}>
                     <TableCell className="text-muted-foreground">{rowNum}</TableCell>
                     <TableCell><Badge variant={b.variant} className="text-xs">{b.text}</Badge></TableCell>
                     {entityType !== "other" && <TableCell className="font-medium">{r.client_name || "-"}</TableCell>}
