@@ -1809,15 +1809,17 @@ export default function Accounting() {
                 <Input value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="الوصف..." />
               </div>
 
-              {/* Sale: simple amount + date */}
+              {/* Sale: simple amount + date | Policy: only issue date (amount edited per-policy above) */}
               {(editType === "sale" || editRow.source !== "expense") && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className={cn("grid gap-3", editRow.source === "policy" ? "grid-cols-1" : "grid-cols-2")}>
+                  {editRow.source !== "policy" && (
+                    <div className="space-y-1">
+                      <Label>المبلغ *</Label>
+                      <Input type="number" min="0" step="0.01" value={editAmount} onChange={e => setEditAmount(e.target.value)} />
+                    </div>
+                  )}
                   <div className="space-y-1">
-                    <Label>المبلغ *</Label>
-                    <Input type="number" min="0" step="0.01" value={editAmount} onChange={e => setEditAmount(e.target.value)} />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>التاريخ *</Label>
+                    <Label>{editRow.source === "policy" ? "تاريخ الإصدار *" : "التاريخ *"}</Label>
                     <ArabicDatePicker value={editDate} onChange={d => setEditDate(d)} compact />
                   </div>
                 </div>
