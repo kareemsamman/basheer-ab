@@ -50,6 +50,12 @@ interface Diff {
 const normalizeCar = (s: string | null | undefined) => (s || "").replace(/\D/g, "");
 const TOLERANCE = 0.5;
 
+const EmptyState = ({ text }: { text: string }) => (
+  <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
+    {text}
+  </div>
+);
+
 export function computeDiff(dbRows: AuditDbRow[], ext: AuditExtractedRow[]): Diff {
   const dbByCar = new Map<string, AuditDbRow>();
   for (const r of dbRows) {
