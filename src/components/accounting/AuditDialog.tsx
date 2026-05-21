@@ -160,7 +160,8 @@ export function AuditDialog({
 
   const diff = useMemo(() => result ? computeDiff(dbRows, result.rows) : null, [result, dbRows]);
 
-  const dbTotal = useMemo(() => dbRows.reduce((s, r) => s + (r.auditAmount || 0), 0), [dbRows]);
+  const dbRowsTotal = useMemo(() => dbRows.reduce((s, r) => s + (r.auditAmount || 0), 0), [dbRows]);
+  const dbTotal = oursTotalOverride != null ? oursTotalOverride : dbRowsTotal;
   const extTotal = useMemo(
     () => result ? result.rows.reduce((s, r) => s + (r.amount || 0), 0) : 0,
     [result]
