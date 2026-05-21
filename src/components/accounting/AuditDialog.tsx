@@ -94,11 +94,14 @@ interface Props {
   result: AuditResult | null;
   setResult: (r: AuditResult | null) => void;
   onGoToRow: (rowId: string) => void;
+  /** Override "ours" total shown in the summary (e.g. remaining after payments) */
+  oursTotalOverride?: number;
+  oursHintOverride?: string;
 }
 
 export function AuditDialog({
   open, onMinimize, onClose, dbRows, filterDescription, comparedFieldLabel,
-  result, setResult, onGoToRow,
+  result, setResult, onGoToRow, oursTotalOverride, oursHintOverride,
 }: Props) {
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
