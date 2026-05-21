@@ -920,6 +920,7 @@ export default function Accounting() {
             policy_type_child: pol.policy_type_child,
             company_id: pol.company_id,
             insurance_price: pol.insurance_price,
+            ...(editDate ? { issue_date: editDate } : {}),
           } as any).eq("id", pol.id);
         }
         toast.success("تم تعديل الوثائق بنجاح");
