@@ -551,10 +551,3 @@ function Row({ car, label, right, onGo }: { car: string | null; label: string; r
   );
 }
 
-function EmptyState({ text }: { text: string }) {
-  return (
-    <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
-      {text}
-    </div>
-  );
-}
