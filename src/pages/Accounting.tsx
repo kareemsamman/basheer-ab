@@ -2049,6 +2049,8 @@ export default function Accounting() {
             result={auditResult}
             setResult={setAuditResult}
             onGoToRow={goToRow}
+            oursTotalOverride={activeTab === "issuances" ? summary.remainingToCompany : undefined}
+            oursHintOverride={activeTab === "issuances" ? `المتبقي بعد الدفعات · ${filtered.length} صف` : undefined}
           />
         );
       })()}
