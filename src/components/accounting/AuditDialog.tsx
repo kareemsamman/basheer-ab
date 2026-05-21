@@ -480,21 +480,27 @@ function Section({
   children?: React.ReactNode;
 }) {
   const tone: Record<string, string> = {
-    emerald: "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-300",
-    amber: "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/20 dark:text-amber-300",
-    orange: "bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950/20 dark:text-orange-300",
-    blue: "bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/20 dark:text-blue-300",
+    emerald: "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-300 dark:border-emerald-900",
+    amber: "bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300 dark:border-amber-900",
+    orange: "bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-950/20 dark:text-orange-300 dark:border-orange-900",
+    blue: "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-950/20 dark:text-blue-300 dark:border-blue-900",
+  };
+  const badgeTone: Record<string, string> = {
+    emerald: "bg-emerald-600 text-white border-emerald-600",
+    amber: "bg-amber-600 text-white border-amber-600",
+    orange: "bg-orange-600 text-white border-orange-600",
+    blue: "bg-blue-600 text-white border-blue-600",
   };
   return (
     <Collapsible defaultOpen={defaultOpen ?? count > 0}>
       <CollapsibleTrigger asChild>
-        <button className={cn("w-full flex items-center justify-between p-3 rounded-lg border text-sm font-medium", tone[color])}>
+        <button className={cn("w-full flex items-center justify-between px-4 py-2.5 rounded-lg border text-sm font-semibold transition-colors hover:brightness-[0.97]", tone[color])}>
           <span className="flex items-center gap-2">{icon} {title}</span>
-          <Badge variant="outline" className="bg-background">{count}</Badge>
+          <Badge variant="outline" className={cn("min-w-[28px] justify-center tabular-nums", count === 0 ? "bg-background text-muted-foreground" : badgeTone[color])}>{count}</Badge>
         </button>
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1">
-        {count === 0 ? <p className="text-xs text-muted-foreground p-3">لا شيء.</p> : children}
+      <CollapsibleContent className="mt-1.5">
+        {count === 0 ? <p className="text-xs text-muted-foreground px-4 py-2">لا شيء.</p> : children}
       </CollapsibleContent>
     </Collapsible>
   );
