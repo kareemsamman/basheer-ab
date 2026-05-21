@@ -37,6 +37,8 @@ import { buildExpenseInvoiceHtml, openExpenseInvoicePrint } from "@/lib/expenseI
 import { buildAccountingStatementHtml, openAccountingStatementPrint, type StatementRow } from "@/lib/accountingStatementBuilder";
 import abLogo from "@/assets/ab-insurance-logo.png";
 import { InlineEditCell } from "@/components/accounting/InlineEditCell";
+import { AuditDialog, type AuditResult, type AuditDbRow, computeDiff } from "@/components/accounting/AuditDialog";
+import { Sparkles } from "lucide-react";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
 import { format } from "date-fns";
 import { he } from "date-fns/locale";
