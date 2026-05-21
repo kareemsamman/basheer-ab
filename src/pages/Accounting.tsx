@@ -86,6 +86,12 @@ interface Row {
   cheque_number?: string | null;
   extra: string;
   is_split?: boolean;
+  // Issuance-only fields (aggregated when grouped)
+  payed_for_company?: number;
+  profit?: number;
+  car_value?: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
 }
 
 interface PolicyDetail {
