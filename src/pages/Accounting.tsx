@@ -36,6 +36,7 @@ import { ExpensePaymentLines, PaymentLine } from "@/components/expenses/ExpenseP
 import { buildExpenseInvoiceHtml, openExpenseInvoicePrint } from "@/lib/expenseInvoiceBuilder";
 import { buildAccountingStatementHtml, openAccountingStatementPrint, type StatementRow } from "@/lib/accountingStatementBuilder";
 import abLogo from "@/assets/ab-insurance-logo.png";
+import { InlineEditCell } from "@/components/accounting/InlineEditCell";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
 import { format } from "date-fns";
 import { he } from "date-fns/locale";
