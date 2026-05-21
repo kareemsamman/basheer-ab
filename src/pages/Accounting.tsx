@@ -1384,6 +1384,37 @@ export default function Accounting() {
             )}
 
             <Button variant="outline" className="gap-2" onClick={handleExportInvoice}><Download className="h-4 w-4" />تصدير קבלה</Button>
+            <Button
+              variant="outline"
+              className="gap-2 border-primary/40 text-primary hover:bg-primary/5"
+              onClick={() => setAuditOpen(true)}
+              disabled={filtered.length === 0}
+              title={filtered.length === 0 ? "فلتر الجدول أولاً" : "تدقيق كشف بالذكاء الاصطناعي"}
+            >
+              <Sparkles className="h-4 w-4" />
+              تدقيق بالـ AI
+            </Button>
+            {auditResult && !auditOpen && (() => {
+              const dbRowsForAudit: AuditDbRow[] = filtered.map(r => ({
+                id: r.id, car_number: r.car_number, client_name: r.client_name, company_name: r.company_name,
+                auditAmount: activeTab === "issuances" ? (r.payed_for_company ?? r.amount) : r.amount,
+              }));
+              const d = computeDiff(dbRowsForAudit, auditResult.rows);
+              const issues = d.amountMismatch.length + d.missingHere.length + d.extraHere.length;
+              return (
+                <Button
+                  variant="outline"
+                  className="gap-2 relative"
+                  onClick={() => setAuditOpen(true)}
+                >
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  استعادة التدقيق
+                  {issues > 0 && (
+                    <Badge className="bg-amber-500 hover:bg-amber-500 text-white">{issues}</Badge>
+                  )}
+                </Button>
+              );
+            })()}
           </div>
         </Card>
 
