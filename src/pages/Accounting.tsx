@@ -1660,21 +1660,43 @@ export default function Accounting() {
                     </div>
                   </TableCell>
                   {entityType !== "other" && <TableCell className="font-medium">{first.client_name || "-"}</TableCell>}
-                  {entityType !== "other" && <TableCell className="font-mono">-</TableCell>}
+                  {entityType !== "other" && <TableCell className="font-mono">{first.car_number || "-"}</TableCell>}
                   {entityType !== "other" && <TableCell className="text-xs text-muted-foreground">{g.rows.length} سند</TableCell>}
+                  <TableCell className="text-sm">{first.company_name || "-"}</TableCell>
+                  {entityType === "broker" && <TableCell className="text-sm">{first.extra || "-"}</TableCell>}
+                  <TableCell className="font-mono text-xs" onClick={(e) => e.stopPropagation()}>
+                    {activeTab === "issuances" && first.source === "policy" ? (
+                      <InlineEditCell value={first.issue_date} kind="date" display={(v) => fmt(v as string)} onSave={(v) => saveIssuanceInline({ ...first, policyIds: g.rows.flatMap(r => r.policyIds || []) }, "issue_date", v)} />
+                    ) : fmt(first.issue_date)}
+                  </TableCell>
+                  {activeTab === "issuances" && (
+                    <TableCell className="font-mono text-xs" onClick={(e) => e.stopPropagation()}>
+                      {first.source === "policy" ? (
+                        <InlineEditCell value={first.start_date} kind="date" display={(v) => v ? fmt(v as string) : "-"} onSave={(v) => saveIssuanceInline({ ...first, policyIds: g.rows.flatMap(r => r.policyIds || []) }, "start_date", v)} />
+                      ) : (first.start_date ? fmt(first.start_date) : "-")}
+                    </TableCell>
+                  )}
+                  {activeTab === "issuances" && (
+                    <TableCell className="font-mono text-xs" onClick={(e) => e.stopPropagation()}>
+                      {first.source === "policy" ? (
+                        <InlineEditCell value={first.end_date} kind="date" display={(v) => v ? fmt(v as string) : "-"} onSave={(v) => saveIssuanceInline({ ...first, policyIds: g.rows.flatMap(r => r.policyIds || []) }, "end_date", v)} />
+                      ) : (first.end_date ? fmt(first.end_date) : "-")}
+                    </TableCell>
+                  )}
+                  {activeTab === "issuances" && (
+                    <TableCell className="font-mono text-xs" onClick={(e) => e.stopPropagation()}>
+                      {first.source === "policy" ? (
+                        <InlineEditCell value={first.car_value} kind="number" display={(v) => v != null ? fmtCur(v as number) : "-"} onSave={(v) => saveIssuanceInline({ ...first, policyIds: g.rows.flatMap(r => r.policyIds || []) }, "car_value", v)} />
+                      ) : (first.car_value != null ? fmtCur(first.car_value) : "-")}
+                    </TableCell>
+                  )}
                   <TableCell className={cn("font-bold", first.tab === "refund" ? "text-destructive" : first.tab === "receipt" ? "text-green-600" : "")}>
                     {first.tab === "refund" ? "-" : ""}{fmtCur(totalAmount)}
                   </TableCell>
                   {activeTab === "issuances" && <TableCell className="font-mono text-xs text-orange-600">{fmtCur(g.rows.reduce((s, r) => s + (r.payed_for_company || 0), 0))}</TableCell>}
                   {activeTab === "issuances" && <TableCell className="font-mono text-xs text-emerald-600">{fmtCur(g.rows.reduce((s, r) => s + (r.profit || 0), 0))}</TableCell>}
-                  {activeTab === "issuances" && <TableCell className="font-mono text-xs">{first.car_value != null ? fmtCur(first.car_value) : "-"}</TableCell>}
-                  {activeTab === "issuances" && <TableCell className="font-mono text-xs">{first.start_date ? fmt(first.start_date) : "-"}</TableCell>}
-                  {activeTab === "issuances" && <TableCell className="font-mono text-xs">{first.end_date ? fmt(first.end_date) : "-"}</TableCell>}
-                  <TableCell className="font-mono text-xs">{fmt(first.issue_date)}</TableCell>
                   {activeTab !== "issuances" && <TableCell className="font-mono text-xs">-</TableCell>}
                   {activeTab !== "issuances" && <TableCell className="text-xs">{first.payment_method || "-"}</TableCell>}
-                  <TableCell className="text-sm">{first.company_name || "-"}</TableCell>
-                  {entityType === "broker" && <TableCell className="text-sm">{first.extra || "-"}</TableCell>}
                   <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{first.description || "-"}</TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     {first.source === "policy" && (
