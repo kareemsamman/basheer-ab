@@ -339,6 +339,11 @@ export default function Accounting() {
   const [addDialogCompanyId, setAddDialogCompanyId] = useState<string>("");
   const [addDialogBrokerId, setAddDialogBrokerId] = useState<string>("");
 
+  // Audit dialog (AI statement audit)
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
+  const [flashRowId, setFlashRowId] = useState<string | null>(null);
+
   // Load reference data
   useEffect(() => {
     supabase.from("insurance_companies").select("id, name, name_ar, category_parent").eq("active", true).order("name_ar").then(({ data }) => {
