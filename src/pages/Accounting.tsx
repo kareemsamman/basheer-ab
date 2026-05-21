@@ -365,7 +365,7 @@ export default function Accounting() {
       if (entityType === "company") {
         // ISSUANCES (includes transferred so policy totals match /reports/company-settlement)
         let q = supabase.from("policies")
-          .select("id, insurance_price, payed_for_company, profit, transferred, policy_type_parent, policy_type_child, issue_date, created_at, group_id, company_id, clients(full_name), cars(car_number), insurance_companies(name_ar, name)")
+          .select("id, insurance_price, payed_for_company, profit, transferred, policy_type_parent, policy_type_child, issue_date, start_date, end_date, created_at, group_id, company_id, clients(full_name), cars(car_number, car_value), insurance_companies(name_ar, name)")
           .gte("issue_date", fromDate).lte("issue_date", toDate)
           .is("deleted_at", null).eq("cancelled", false)
           .neq("policy_type_parent", "ELZAMI");
