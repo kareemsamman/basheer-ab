@@ -1395,9 +1395,14 @@ export default function Accounting() {
               تدقيق بالـ AI
             </Button>
             {auditResult && !auditOpen && (() => {
+              const scale = activeTab === "issuances" && summary.owedToCompany > 0
+                ? summary.remainingToCompany / summary.owedToCompany
+                : 1;
               const dbRowsForAudit: AuditDbRow[] = filtered.map(r => ({
                 id: r.id, car_number: r.car_number, client_name: r.client_name, company_name: r.company_name,
-                auditAmount: activeTab === "issuances" ? (r.payed_for_company ?? r.amount) : r.amount,
+                auditAmount: activeTab === "issuances"
+                  ? Math.round(((r.payed_for_company ?? r.amount) * scale) * 100) / 100
+                  : r.amount,
               }));
               const d = computeDiff(dbRowsForAudit, auditResult.rows);
               const issues = d.amountMismatch.length + d.missingHere.length + d.extraHere.length;
@@ -2014,9 +2019,14 @@ export default function Accounting() {
       </Dialog>
 
       {(() => {
+        const scale = activeTab === "issuances" && summary.owedToCompany > 0
+          ? summary.remainingToCompany / summary.owedToCompany
+          : 1;
         const dbRowsForAudit: AuditDbRow[] = filtered.map(r => ({
           id: r.id, car_number: r.car_number, client_name: r.client_name, company_name: r.company_name,
-          auditAmount: activeTab === "issuances" ? (r.payed_for_company ?? r.amount) : r.amount,
+          auditAmount: activeTab === "issuances"
+            ? Math.round(((r.payed_for_company ?? r.amount) * scale) * 100) / 100
+            : r.amount,
         }));
         const tabLabels: Record<string, string> = { all: "كل الحركات", issuances: "الإصدارات", refunds: "المرتجعات", payment: "سندات الصرف", sale: "المبيعات", receipt: "سندات القبض" };
         const companyNames = companies.filter(c => selectedCompanyIds.includes(c.id)).map(c => c.name_ar || c.name).join("، ");
