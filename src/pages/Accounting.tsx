@@ -36,6 +36,7 @@ import { ExpensePaymentLines, PaymentLine } from "@/components/expenses/ExpenseP
 import { buildExpenseInvoiceHtml, openExpenseInvoicePrint } from "@/lib/expenseInvoiceBuilder";
 import { buildAccountingStatementHtml, openAccountingStatementPrint, type StatementRow } from "@/lib/accountingStatementBuilder";
 import abLogo from "@/assets/ab-insurance-logo.png";
+import { InlineEditCell } from "@/components/accounting/InlineEditCell";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
 import { format } from "date-fns";
 import { he } from "date-fns/locale";
@@ -851,6 +852,59 @@ export default function Accounting() {
     } catch { toast.error("فشل في تحديث الحالة"); }
   };
 
+  // Inline-edit saver for issuance rows.
+  // Updates one or more policies (and optionally their car) and recomputes profit.
+  const saveIssuanceInline = useCallback(async (
+    row: Row,
+    field: "issue_date" | "start_date" | "end_date" | "insurance_price" | "payed_for_company" | "car_value",
+    value: string | number | null,
+  ) => {
+    const policyIds = row.policyIds && row.policyIds.length > 0 ? row.policyIds : [row.id];
+    if (!policyIds.length) return;
+    try {
+      if (field === "car_value") {
+        // Find car_id from any policy in the group
+        const { data: pol } = await supabase
+          .from("policies")
+          .select("car_id")
+          .eq("id", policyIds[0])
+          .maybeSingle();
+        if (!pol?.car_id) { toast.error("لم يتم العثور على السيارة"); return; }
+        const { error } = await supabase
+          .from("cars")
+          .update({ car_value: value as number | null } as any)
+          .eq("id", pol.car_id);
+        if (error) throw error;
+      } else if (field === "insurance_price" || field === "payed_for_company") {
+        // Update each policy and recompute profit = insurance_price - payed_for_company
+        const { data: pols } = await supabase
+          .from("policies")
+          .select("id, insurance_price, payed_for_company, transferred")
+          .in("id", policyIds);
+        for (const p of (pols || []) as any[]) {
+          const newPrice = field === "insurance_price" ? Number(value) || 0 : Number(p.insurance_price) || 0;
+          const newPfc = field === "payed_for_company" ? Number(value) || 0 : Number(p.payed_for_company) || 0;
+          const profit = p.transferred ? 0 : Math.max(0, newPrice - newPfc);
+          const patch: any = { profit };
+          patch[field] = Number(value) || 0;
+          const { error } = await supabase.from("policies").update(patch).eq("id", p.id);
+          if (error) throw error;
+        }
+      } else {
+        // Date fields broadcast to all policies in the group
+        const patch: any = {};
+        patch[field] = value;
+        const { error } = await supabase.from("policies").update(patch).in("id", policyIds);
+        if (error) throw error;
+      }
+      toast.success("تم الحفظ");
+      fetchData();
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e?.message || "فشل الحفظ");
+    }
+  }, [fetchData]);
+
   const openEdit = async (row: Row) => {
     setEditRow(row);
     setEditAmount(String(row.amount));
@@ -1467,17 +1521,17 @@ export default function Accounting() {
               {entityType !== "other" && <TableHead className="text-right">العميل</TableHead>}
               {entityType !== "other" && <TableHead className="text-right">رقم السيارة</TableHead>}
               {entityType !== "other" && <TableHead className="text-right">{activeTab === "receipt" || activeTab === "payment" || activeTab === "refunds" ? "رقم الشيك" : activeTab === "all" ? "نوع البوليصة / رقم الشيك" : "نوع البوليصة"}</TableHead>}
+              <TableHead className="text-right">{entityType === "broker" ? "الشركة" : "الشركة"}</TableHead>
+              {entityType === "broker" && <TableHead className="text-right">الوكيل</TableHead>}
+              <TableHead className="text-right">تاريخ الإصدار</TableHead>
+              {activeTab === "issuances" && <TableHead className="text-right">تاريخ البداية</TableHead>}
+              {activeTab === "issuances" && <TableHead className="text-right">تاريخ النهاية</TableHead>}
+              {activeTab === "issuances" && <TableHead className="text-right">قيمة السيارة</TableHead>}
               <TableHead className="text-right">المبلغ</TableHead>
               {activeTab === "issuances" && <TableHead className="text-right">المستحق للشركة</TableHead>}
               {activeTab === "issuances" && <TableHead className="text-right">الربح</TableHead>}
-              {activeTab === "issuances" && <TableHead className="text-right">قيمة السيارة</TableHead>}
-              {activeTab === "issuances" && <TableHead className="text-right">تاريخ البداية</TableHead>}
-              {activeTab === "issuances" && <TableHead className="text-right">تاريخ النهاية</TableHead>}
-              <TableHead className="text-right">تاريخ الإصدار</TableHead>
               {activeTab !== "issuances" && <TableHead className="text-right">تاريخ الدفع</TableHead>}
               {activeTab !== "issuances" && <TableHead className="text-right">طريقة الدفع</TableHead>}
-              <TableHead className="text-right">{entityType === "broker" ? "الشركة" : "الشركة"}</TableHead>
-              {entityType === "broker" && <TableHead className="text-right">الوكيل</TableHead>}
               <TableHead className="text-right">البيان</TableHead>
               <TableHead className="text-right w-10">إجراءات</TableHead>
             </TableRow></TableHeader>
@@ -1509,17 +1563,49 @@ export default function Accounting() {
                         )}
                       </TableCell>
                     )}
-                    <TableCell className={cn("font-bold", r.tab === "refund" ? "text-destructive" : r.tab === "receipt" ? "text-green-600" : "")}>{r.tab === "refund" ? "-" : ""}{fmtCur(r.amount)}</TableCell>
-                    {activeTab === "issuances" && <TableCell className="font-mono text-xs text-orange-600">{r.payed_for_company != null ? fmtCur(r.payed_for_company) : "-"}</TableCell>}
-                    {activeTab === "issuances" && <TableCell className="font-mono text-xs text-emerald-600">{r.profit != null ? fmtCur(r.profit) : "-"}</TableCell>}
-                    {activeTab === "issuances" && <TableCell className="font-mono text-xs">{r.car_value != null ? fmtCur(r.car_value) : "-"}</TableCell>}
-                    {activeTab === "issuances" && <TableCell className="font-mono text-xs">{r.start_date ? fmt(r.start_date) : "-"}</TableCell>}
-                    {activeTab === "issuances" && <TableCell className="font-mono text-xs">{r.end_date ? fmt(r.end_date) : "-"}</TableCell>}
-                    <TableCell className="font-mono text-xs">{fmt(r.issue_date)}</TableCell>
-                    {activeTab !== "issuances" && <TableCell className="font-mono text-xs">{r.date !== r.issue_date ? fmt(r.date) : "-"}</TableCell>}
-                    {activeTab !== "issuances" && <TableCell className="text-xs">{r.payment_method || "-"}</TableCell>}
                     <TableCell className="text-sm">{r.company_name || "-"}</TableCell>
                     {entityType === "broker" && <TableCell className="text-sm">{r.extra || "-"}</TableCell>}
+                    <TableCell className="font-mono text-xs">
+                      {activeTab === "issuances" && r.source === "policy" ? (
+                        <InlineEditCell value={r.issue_date} kind="date" display={(v) => fmt(v as string)} onSave={(v) => saveIssuanceInline(r, "issue_date", v)} />
+                      ) : fmt(r.issue_date)}
+                    </TableCell>
+                    {activeTab === "issuances" && (
+                      <TableCell className="font-mono text-xs">
+                        {r.source === "policy" ? (
+                          <InlineEditCell value={r.start_date} kind="date" display={(v) => v ? fmt(v as string) : "-"} onSave={(v) => saveIssuanceInline(r, "start_date", v)} />
+                        ) : (r.start_date ? fmt(r.start_date) : "-")}
+                      </TableCell>
+                    )}
+                    {activeTab === "issuances" && (
+                      <TableCell className="font-mono text-xs">
+                        {r.source === "policy" ? (
+                          <InlineEditCell value={r.end_date} kind="date" display={(v) => v ? fmt(v as string) : "-"} onSave={(v) => saveIssuanceInline(r, "end_date", v)} />
+                        ) : (r.end_date ? fmt(r.end_date) : "-")}
+                      </TableCell>
+                    )}
+                    {activeTab === "issuances" && (
+                      <TableCell className="font-mono text-xs">
+                        {r.source === "policy" ? (
+                          <InlineEditCell value={r.car_value} kind="number" display={(v) => v != null ? fmtCur(v as number) : "-"} onSave={(v) => saveIssuanceInline(r, "car_value", v)} />
+                        ) : (r.car_value != null ? fmtCur(r.car_value) : "-")}
+                      </TableCell>
+                    )}
+                    <TableCell className={cn("font-bold", r.tab === "refund" ? "text-destructive" : r.tab === "receipt" ? "text-green-600" : "")}>
+                      {activeTab === "issuances" && r.source === "policy" ? (
+                        <InlineEditCell value={r.amount} kind="number" display={(v) => fmtCur(v as number)} onSave={(v) => saveIssuanceInline(r, "insurance_price", v)} />
+                      ) : (<>{r.tab === "refund" ? "-" : ""}{fmtCur(r.amount)}</>)}
+                    </TableCell>
+                    {activeTab === "issuances" && (
+                      <TableCell className="font-mono text-xs text-orange-600">
+                        {r.source === "policy" ? (
+                          <InlineEditCell value={r.payed_for_company} kind="number" display={(v) => v != null ? fmtCur(v as number) : "-"} onSave={(v) => saveIssuanceInline(r, "payed_for_company", v)} />
+                        ) : (r.payed_for_company != null ? fmtCur(r.payed_for_company) : "-")}
+                      </TableCell>
+                    )}
+                    {activeTab === "issuances" && <TableCell className="font-mono text-xs text-emerald-600">{r.profit != null ? fmtCur(r.profit) : "-"}</TableCell>}
+                    {activeTab !== "issuances" && <TableCell className="font-mono text-xs">{r.date !== r.issue_date ? fmt(r.date) : "-"}</TableCell>}
+                    {activeTab !== "issuances" && <TableCell className="text-xs">{r.payment_method || "-"}</TableCell>}
                     <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{r.description || "-"}</TableCell>
                     <TableCell>
                       {canAct && (
@@ -1574,21 +1660,43 @@ export default function Accounting() {
                     </div>
                   </TableCell>
                   {entityType !== "other" && <TableCell className="font-medium">{first.client_name || "-"}</TableCell>}
-                  {entityType !== "other" && <TableCell className="font-mono">-</TableCell>}
+                  {entityType !== "other" && <TableCell className="font-mono">{first.car_number || "-"}</TableCell>}
                   {entityType !== "other" && <TableCell className="text-xs text-muted-foreground">{g.rows.length} سند</TableCell>}
+                  <TableCell className="text-sm">{first.company_name || "-"}</TableCell>
+                  {entityType === "broker" && <TableCell className="text-sm">{first.extra || "-"}</TableCell>}
+                  <TableCell className="font-mono text-xs" onClick={(e) => e.stopPropagation()}>
+                    {activeTab === "issuances" && first.source === "policy" ? (
+                      <InlineEditCell value={first.issue_date} kind="date" display={(v) => fmt(v as string)} onSave={(v) => saveIssuanceInline({ ...first, policyIds: g.rows.flatMap(r => r.policyIds || []) }, "issue_date", v)} />
+                    ) : fmt(first.issue_date)}
+                  </TableCell>
+                  {activeTab === "issuances" && (
+                    <TableCell className="font-mono text-xs" onClick={(e) => e.stopPropagation()}>
+                      {first.source === "policy" ? (
+                        <InlineEditCell value={first.start_date} kind="date" display={(v) => v ? fmt(v as string) : "-"} onSave={(v) => saveIssuanceInline({ ...first, policyIds: g.rows.flatMap(r => r.policyIds || []) }, "start_date", v)} />
+                      ) : (first.start_date ? fmt(first.start_date) : "-")}
+                    </TableCell>
+                  )}
+                  {activeTab === "issuances" && (
+                    <TableCell className="font-mono text-xs" onClick={(e) => e.stopPropagation()}>
+                      {first.source === "policy" ? (
+                        <InlineEditCell value={first.end_date} kind="date" display={(v) => v ? fmt(v as string) : "-"} onSave={(v) => saveIssuanceInline({ ...first, policyIds: g.rows.flatMap(r => r.policyIds || []) }, "end_date", v)} />
+                      ) : (first.end_date ? fmt(first.end_date) : "-")}
+                    </TableCell>
+                  )}
+                  {activeTab === "issuances" && (
+                    <TableCell className="font-mono text-xs" onClick={(e) => e.stopPropagation()}>
+                      {first.source === "policy" ? (
+                        <InlineEditCell value={first.car_value} kind="number" display={(v) => v != null ? fmtCur(v as number) : "-"} onSave={(v) => saveIssuanceInline({ ...first, policyIds: g.rows.flatMap(r => r.policyIds || []) }, "car_value", v)} />
+                      ) : (first.car_value != null ? fmtCur(first.car_value) : "-")}
+                    </TableCell>
+                  )}
                   <TableCell className={cn("font-bold", first.tab === "refund" ? "text-destructive" : first.tab === "receipt" ? "text-green-600" : "")}>
                     {first.tab === "refund" ? "-" : ""}{fmtCur(totalAmount)}
                   </TableCell>
                   {activeTab === "issuances" && <TableCell className="font-mono text-xs text-orange-600">{fmtCur(g.rows.reduce((s, r) => s + (r.payed_for_company || 0), 0))}</TableCell>}
                   {activeTab === "issuances" && <TableCell className="font-mono text-xs text-emerald-600">{fmtCur(g.rows.reduce((s, r) => s + (r.profit || 0), 0))}</TableCell>}
-                  {activeTab === "issuances" && <TableCell className="font-mono text-xs">{first.car_value != null ? fmtCur(first.car_value) : "-"}</TableCell>}
-                  {activeTab === "issuances" && <TableCell className="font-mono text-xs">{first.start_date ? fmt(first.start_date) : "-"}</TableCell>}
-                  {activeTab === "issuances" && <TableCell className="font-mono text-xs">{first.end_date ? fmt(first.end_date) : "-"}</TableCell>}
-                  <TableCell className="font-mono text-xs">{fmt(first.issue_date)}</TableCell>
                   {activeTab !== "issuances" && <TableCell className="font-mono text-xs">-</TableCell>}
                   {activeTab !== "issuances" && <TableCell className="text-xs">{first.payment_method || "-"}</TableCell>}
-                  <TableCell className="text-sm">{first.company_name || "-"}</TableCell>
-                  {entityType === "broker" && <TableCell className="text-sm">{first.extra || "-"}</TableCell>}
                   <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{first.description || "-"}</TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     {first.source === "policy" && (
