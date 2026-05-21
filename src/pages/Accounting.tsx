@@ -2012,6 +2012,46 @@ export default function Accounting() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {(() => {
+        const dbRowsForAudit: AuditDbRow[] = filtered.map(r => ({
+          id: r.id, car_number: r.car_number, client_name: r.client_name, company_name: r.company_name,
+          auditAmount: activeTab === "issuances" ? (r.payed_for_company ?? r.amount) : r.amount,
+        }));
+        const tabLabels: Record<string, string> = { all: "كل الحركات", issuances: "الإصدارات", refunds: "المرتجعات", payment: "سندات الصرف", sale: "المبيعات", receipt: "سندات القبض" };
+        const companyNames = companies.filter(c => selectedCompanyIds.includes(c.id)).map(c => c.name_ar || c.name).join("، ");
+        const desc = `${tabLabels[activeTab] || activeTab} · ${fmt(fromDate)} - ${fmt(toDate)}${companyNames ? ` · ${companyNames}` : ""} · ${filtered.length} صف`;
+        const fieldLabel = activeTab === "issuances" ? "المستحق للشركة" : "المبلغ";
+        const goToRow = (rowId: string) => {
+          const idx = groupedRows.findIndex(g => g.rows.some(r => r.id === rowId));
+          if (idx < 0) { toast.error("الصف غير ظاهر في العرض الحالي"); return; }
+          const targetPage = Math.floor(idx / PAGE_SIZE);
+          setPage(targetPage);
+          setExpandedGroups(prev => new Set([...prev, groupedRows[idx].key]));
+          setAuditOpen(false);
+          setTimeout(() => {
+            const el = document.querySelector(`[data-row-id="${rowId}"]`) as HTMLElement | null;
+            if (el) {
+              el.scrollIntoView({ behavior: "smooth", block: "center" });
+              setFlashRowId(rowId);
+              setTimeout(() => setFlashRowId(null), 2000);
+            }
+          }, 250);
+        };
+        return (
+          <AuditDialog
+            open={auditOpen}
+            onMinimize={() => setAuditOpen(false)}
+            onClose={() => { setAuditOpen(false); setAuditResult(null); }}
+            dbRows={dbRowsForAudit}
+            filterDescription={desc}
+            comparedFieldLabel={fieldLabel}
+            result={auditResult}
+            setResult={setAuditResult}
+            onGoToRow={goToRow}
+          />
+        );
+      })()}
     </MainLayout>
   );
 }
