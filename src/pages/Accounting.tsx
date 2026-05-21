@@ -1489,7 +1489,7 @@ export default function Accounting() {
 
               const renderRow = (r: Row, rowNum: string, isChild: boolean = false, key?: string) => {
                 const b = badges[r.tab];
-                const canAct = !r.is_split && (r.source === "settlement" || r.source === "broker_settlement" || r.source === "expense" || r.source === "ledger");
+                const canAct = !r.is_split && (r.source === "settlement" || r.source === "broker_settlement" || r.source === "expense" || r.source === "ledger" || r.source === "policy");
                 const isCheque = r.payment_method.includes("شيك");
                 return (
                   <TableRow key={key || `${r.tab}-${r.id}`} className={isChild ? "bg-muted/20" : ""}>
@@ -1509,9 +1509,14 @@ export default function Accounting() {
                       </TableCell>
                     )}
                     <TableCell className={cn("font-bold", r.tab === "refund" ? "text-destructive" : r.tab === "receipt" ? "text-green-600" : "")}>{r.tab === "refund" ? "-" : ""}{fmtCur(r.amount)}</TableCell>
+                    {activeTab === "issuances" && <TableCell className="font-mono text-xs text-orange-600">{r.payed_for_company != null ? fmtCur(r.payed_for_company) : "-"}</TableCell>}
+                    {activeTab === "issuances" && <TableCell className="font-mono text-xs text-emerald-600">{r.profit != null ? fmtCur(r.profit) : "-"}</TableCell>}
+                    {activeTab === "issuances" && <TableCell className="font-mono text-xs">{r.car_value != null ? fmtCur(r.car_value) : "-"}</TableCell>}
+                    {activeTab === "issuances" && <TableCell className="font-mono text-xs">{r.start_date ? fmt(r.start_date) : "-"}</TableCell>}
+                    {activeTab === "issuances" && <TableCell className="font-mono text-xs">{r.end_date ? fmt(r.end_date) : "-"}</TableCell>}
                     <TableCell className="font-mono text-xs">{fmt(r.issue_date)}</TableCell>
-                    <TableCell className="font-mono text-xs">{r.date !== r.issue_date ? fmt(r.date) : "-"}</TableCell>
-                    <TableCell className="text-xs">{r.payment_method || "-"}</TableCell>
+                    {activeTab !== "issuances" && <TableCell className="font-mono text-xs">{r.date !== r.issue_date ? fmt(r.date) : "-"}</TableCell>}
+                    {activeTab !== "issuances" && <TableCell className="text-xs">{r.payment_method || "-"}</TableCell>}
                     <TableCell className="text-sm">{r.company_name || "-"}</TableCell>
                     {entityType === "broker" && <TableCell className="text-sm">{r.extra || "-"}</TableCell>}
                     <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{r.description || "-"}</TableCell>
