@@ -564,15 +564,23 @@ export default function Accounting() {
             profit: isTransferred ? 0 : (Number((p as any).profit) || 0),
             issue_date: (p as any).issue_date || p.created_at,
           });
+          const cv = (p as any).cars?.car_value ?? null;
+          const sd = (p as any).start_date || null;
+          const ed = (p as any).end_date || null;
+          const pfc = isTransferred ? 0 : (Number((p as any).payed_for_company) || 0);
+          const pr = isTransferred ? 0 : (Number((p as any).profit) || 0);
           if (isTransferred) continue;
           const k = p.group_id || p.id;
           if (bMap.has(k)) {
             const e = bMap.get(k)!;
             e.amount += p.insurance_price || 0;
+            e.payed_for_company = (e.payed_for_company || 0) + pfc;
+            e.profit = (e.profit || 0) + pr;
+            if (cv != null && (e.car_value == null || cv > (e.car_value || 0))) e.car_value = cv;
             if (lbl && !e.types.includes(lbl)) e.types.push(lbl);
             if (e.policyIds && !e.policyIds.includes(p.id)) e.policyIds.push(p.id);
           } else {
-            bMap.set(k, { id: k, tab: "issuance", source: "policy", policyIds: [p.id], client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: (p as any).issue_date || p.created_at, issue_date: (p as any).issue_date || p.created_at, description: "", company_name: co, payment_method: "", extra: brokerName });
+            bMap.set(k, { id: k, tab: "issuance", source: "policy", policyIds: [p.id], client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: (p as any).issue_date || p.created_at, issue_date: (p as any).issue_date || p.created_at, description: "", company_name: co, payment_method: "", extra: brokerName, payed_for_company: pfc, profit: pr, car_value: cv, start_date: sd, end_date: ed });
           }
         }
         results.push(...bMap.values());
