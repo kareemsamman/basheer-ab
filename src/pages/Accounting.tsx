@@ -86,6 +86,12 @@ interface Row {
   cheque_number?: string | null;
   extra: string;
   is_split?: boolean;
+  // Issuance-only fields (aggregated when grouped)
+  payed_for_company?: number;
+  profit?: number;
+  car_value?: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
 }
 
 interface PolicyDetail {
@@ -359,7 +365,7 @@ export default function Accounting() {
       if (entityType === "company") {
         // ISSUANCES (includes transferred so policy totals match /reports/company-settlement)
         let q = supabase.from("policies")
-          .select("id, insurance_price, payed_for_company, profit, transferred, policy_type_parent, policy_type_child, issue_date, created_at, group_id, company_id, clients(full_name), cars(car_number), insurance_companies(name_ar, name)")
+          .select("id, insurance_price, payed_for_company, profit, transferred, policy_type_parent, policy_type_child, issue_date, start_date, end_date, created_at, group_id, company_id, clients(full_name), cars(car_number, car_value), insurance_companies(name_ar, name)")
           .gte("issue_date", fromDate).lte("issue_date", toDate)
           .is("deleted_at", null).eq("cancelled", false)
           .neq("policy_type_parent", "ELZAMI");
@@ -401,15 +407,23 @@ export default function Accounting() {
             profit: isTransferred ? 0 : (Number((p as any).profit) || 0),
             issue_date: (p as any).issue_date || p.created_at,
           });
+          const cv = (p as any).cars?.car_value ?? null;
+          const sd = (p as any).start_date || null;
+          const ed = (p as any).end_date || null;
+          const pfc = isTransferred ? 0 : (Number((p as any).payed_for_company) || 0);
+          const pr = isTransferred ? 0 : (Number((p as any).profit) || 0);
           if (isTransferred) continue;
           const k = p.group_id || p.id;
           if (gMap.has(k)) {
             const e = gMap.get(k)!;
             e.amount += p.insurance_price || 0;
+            e.payed_for_company = (e.payed_for_company || 0) + pfc;
+            e.profit = (e.profit || 0) + pr;
+            if (cv != null && (e.car_value == null || cv > (e.car_value || 0))) e.car_value = cv;
             if (lbl && !e.types.includes(lbl)) e.types.push(lbl);
             if (e.policyIds && !e.policyIds.includes(p.id)) e.policyIds.push(p.id);
           } else {
-            gMap.set(k, { id: k, tab: "issuance", source: "policy", policyIds: [p.id], client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: (p as any).issue_date || p.created_at, issue_date: (p as any).issue_date || p.created_at, description: "", company_name: co, payment_method: "", extra: "" });
+            gMap.set(k, { id: k, tab: "issuance", source: "policy", policyIds: [p.id], client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: (p as any).issue_date || p.created_at, issue_date: (p as any).issue_date || p.created_at, description: "", company_name: co, payment_method: "", extra: "", payed_for_company: pfc, profit: pr, car_value: cv, start_date: sd, end_date: ed });
           }
         }
         results.push(...gMap.values());
@@ -510,7 +524,7 @@ export default function Accounting() {
       } else if (entityType === "broker") {
         // BROKER ISSUANCES (includes transferred so policy totals match /reports/company-settlement)
         let bq = supabase.from("policies")
-          .select("id, insurance_price, payed_for_company, profit, transferred, policy_type_parent, policy_type_child, issue_date, created_at, group_id, broker_id, clients(full_name), cars(car_number), insurance_companies(name_ar, name), brokers(name)")
+          .select("id, insurance_price, payed_for_company, profit, transferred, policy_type_parent, policy_type_child, issue_date, start_date, end_date, created_at, group_id, broker_id, clients(full_name), cars(car_number, car_value), insurance_companies(name_ar, name), brokers(name)")
           .gte("issue_date", fromDate).lte("issue_date", toDate)
           .is("deleted_at", null).eq("cancelled", false)
           .neq("policy_type_parent", "ELZAMI").not("broker_id", "is", null);
@@ -550,15 +564,23 @@ export default function Accounting() {
             profit: isTransferred ? 0 : (Number((p as any).profit) || 0),
             issue_date: (p as any).issue_date || p.created_at,
           });
+          const cv = (p as any).cars?.car_value ?? null;
+          const sd = (p as any).start_date || null;
+          const ed = (p as any).end_date || null;
+          const pfc = isTransferred ? 0 : (Number((p as any).payed_for_company) || 0);
+          const pr = isTransferred ? 0 : (Number((p as any).profit) || 0);
           if (isTransferred) continue;
           const k = p.group_id || p.id;
           if (bMap.has(k)) {
             const e = bMap.get(k)!;
             e.amount += p.insurance_price || 0;
+            e.payed_for_company = (e.payed_for_company || 0) + pfc;
+            e.profit = (e.profit || 0) + pr;
+            if (cv != null && (e.car_value == null || cv > (e.car_value || 0))) e.car_value = cv;
             if (lbl && !e.types.includes(lbl)) e.types.push(lbl);
             if (e.policyIds && !e.policyIds.includes(p.id)) e.policyIds.push(p.id);
           } else {
-            bMap.set(k, { id: k, tab: "issuance", source: "policy", policyIds: [p.id], client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: (p as any).issue_date || p.created_at, issue_date: (p as any).issue_date || p.created_at, description: "", company_name: co, payment_method: "", extra: brokerName });
+            bMap.set(k, { id: k, tab: "issuance", source: "policy", policyIds: [p.id], client_name: (p as any).clients?.full_name || "-", car_number: (p as any).cars?.car_number || null, types: lbl ? [lbl] : [], amount: p.insurance_price || 0, date: (p as any).issue_date || p.created_at, issue_date: (p as any).issue_date || p.created_at, description: "", company_name: co, payment_method: "", extra: brokerName, payed_for_company: pfc, profit: pr, car_value: cv, start_date: sd, end_date: ed });
           }
         }
         results.push(...bMap.values());
@@ -832,7 +854,7 @@ export default function Accounting() {
   const openEdit = async (row: Row) => {
     setEditRow(row);
     setEditAmount(String(row.amount));
-    setEditDate(row.date?.split("T")[0] || "");
+    setEditDate((row.source === "policy" ? row.issue_date : row.date)?.split("T")[0] || "");
     setEditDesc(row.description);
     setEditType(row.tab === "issuance" ? "payment" : row.tab as any);
     setEditPaymentLines([]);
@@ -898,6 +920,7 @@ export default function Accounting() {
             policy_type_child: pol.policy_type_child,
             company_id: pol.company_id,
             insurance_price: pol.insurance_price,
+            ...(editDate ? { issue_date: editDate } : {}),
           } as any).eq("id", pol.id);
         }
         toast.success("تم تعديل الوثائق بنجاح");
@@ -1445,9 +1468,14 @@ export default function Accounting() {
               {entityType !== "other" && <TableHead className="text-right">رقم السيارة</TableHead>}
               {entityType !== "other" && <TableHead className="text-right">{activeTab === "receipt" || activeTab === "payment" || activeTab === "refunds" ? "رقم الشيك" : activeTab === "all" ? "نوع البوليصة / رقم الشيك" : "نوع البوليصة"}</TableHead>}
               <TableHead className="text-right">المبلغ</TableHead>
+              {activeTab === "issuances" && <TableHead className="text-right">المستحق للشركة</TableHead>}
+              {activeTab === "issuances" && <TableHead className="text-right">الربح</TableHead>}
+              {activeTab === "issuances" && <TableHead className="text-right">قيمة السيارة</TableHead>}
+              {activeTab === "issuances" && <TableHead className="text-right">تاريخ البداية</TableHead>}
+              {activeTab === "issuances" && <TableHead className="text-right">تاريخ النهاية</TableHead>}
               <TableHead className="text-right">تاريخ الإصدار</TableHead>
-              <TableHead className="text-right">تاريخ الدفع</TableHead>
-              <TableHead className="text-right">طريقة الدفع</TableHead>
+              {activeTab !== "issuances" && <TableHead className="text-right">تاريخ الدفع</TableHead>}
+              {activeTab !== "issuances" && <TableHead className="text-right">طريقة الدفع</TableHead>}
               <TableHead className="text-right">{entityType === "broker" ? "الشركة" : "الشركة"}</TableHead>
               {entityType === "broker" && <TableHead className="text-right">الوكيل</TableHead>}
               <TableHead className="text-right">البيان</TableHead>
@@ -1462,7 +1490,7 @@ export default function Accounting() {
 
               const renderRow = (r: Row, rowNum: string, isChild: boolean = false, key?: string) => {
                 const b = badges[r.tab];
-                const canAct = !r.is_split && (r.source === "settlement" || r.source === "broker_settlement" || r.source === "expense" || r.source === "ledger");
+                const canAct = !r.is_split && (r.source === "settlement" || r.source === "broker_settlement" || r.source === "expense" || r.source === "ledger" || r.source === "policy");
                 const isCheque = r.payment_method.includes("شيك");
                 return (
                   <TableRow key={key || `${r.tab}-${r.id}`} className={isChild ? "bg-muted/20" : ""}>
@@ -1482,9 +1510,14 @@ export default function Accounting() {
                       </TableCell>
                     )}
                     <TableCell className={cn("font-bold", r.tab === "refund" ? "text-destructive" : r.tab === "receipt" ? "text-green-600" : "")}>{r.tab === "refund" ? "-" : ""}{fmtCur(r.amount)}</TableCell>
+                    {activeTab === "issuances" && <TableCell className="font-mono text-xs text-orange-600">{r.payed_for_company != null ? fmtCur(r.payed_for_company) : "-"}</TableCell>}
+                    {activeTab === "issuances" && <TableCell className="font-mono text-xs text-emerald-600">{r.profit != null ? fmtCur(r.profit) : "-"}</TableCell>}
+                    {activeTab === "issuances" && <TableCell className="font-mono text-xs">{r.car_value != null ? fmtCur(r.car_value) : "-"}</TableCell>}
+                    {activeTab === "issuances" && <TableCell className="font-mono text-xs">{r.start_date ? fmt(r.start_date) : "-"}</TableCell>}
+                    {activeTab === "issuances" && <TableCell className="font-mono text-xs">{r.end_date ? fmt(r.end_date) : "-"}</TableCell>}
                     <TableCell className="font-mono text-xs">{fmt(r.issue_date)}</TableCell>
-                    <TableCell className="font-mono text-xs">{r.date !== r.issue_date ? fmt(r.date) : "-"}</TableCell>
-                    <TableCell className="text-xs">{r.payment_method || "-"}</TableCell>
+                    {activeTab !== "issuances" && <TableCell className="font-mono text-xs">{r.date !== r.issue_date ? fmt(r.date) : "-"}</TableCell>}
+                    {activeTab !== "issuances" && <TableCell className="text-xs">{r.payment_method || "-"}</TableCell>}
                     <TableCell className="text-sm">{r.company_name || "-"}</TableCell>
                     {entityType === "broker" && <TableCell className="text-sm">{r.extra || "-"}</TableCell>}
                     <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{r.description || "-"}</TableCell>
@@ -1546,9 +1579,14 @@ export default function Accounting() {
                   <TableCell className={cn("font-bold", first.tab === "refund" ? "text-destructive" : first.tab === "receipt" ? "text-green-600" : "")}>
                     {first.tab === "refund" ? "-" : ""}{fmtCur(totalAmount)}
                   </TableCell>
+                  {activeTab === "issuances" && <TableCell className="font-mono text-xs text-orange-600">{fmtCur(g.rows.reduce((s, r) => s + (r.payed_for_company || 0), 0))}</TableCell>}
+                  {activeTab === "issuances" && <TableCell className="font-mono text-xs text-emerald-600">{fmtCur(g.rows.reduce((s, r) => s + (r.profit || 0), 0))}</TableCell>}
+                  {activeTab === "issuances" && <TableCell className="font-mono text-xs">{first.car_value != null ? fmtCur(first.car_value) : "-"}</TableCell>}
+                  {activeTab === "issuances" && <TableCell className="font-mono text-xs">{first.start_date ? fmt(first.start_date) : "-"}</TableCell>}
+                  {activeTab === "issuances" && <TableCell className="font-mono text-xs">{first.end_date ? fmt(first.end_date) : "-"}</TableCell>}
                   <TableCell className="font-mono text-xs">{fmt(first.issue_date)}</TableCell>
-                  <TableCell className="font-mono text-xs">-</TableCell>
-                  <TableCell className="text-xs">{first.payment_method || "-"}</TableCell>
+                  {activeTab !== "issuances" && <TableCell className="font-mono text-xs">-</TableCell>}
+                  {activeTab !== "issuances" && <TableCell className="text-xs">{first.payment_method || "-"}</TableCell>}
                   <TableCell className="text-sm">{first.company_name || "-"}</TableCell>
                   {entityType === "broker" && <TableCell className="text-sm">{first.extra || "-"}</TableCell>}
                   <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{first.description || "-"}</TableCell>
@@ -1771,15 +1809,17 @@ export default function Accounting() {
                 <Input value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="الوصف..." />
               </div>
 
-              {/* Sale: simple amount + date */}
+              {/* Sale: simple amount + date | Policy: only issue date (amount edited per-policy above) */}
               {(editType === "sale" || editRow.source !== "expense") && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className={cn("grid gap-3", editRow.source === "policy" ? "grid-cols-1" : "grid-cols-2")}>
+                  {editRow.source !== "policy" && (
+                    <div className="space-y-1">
+                      <Label>المبلغ *</Label>
+                      <Input type="number" min="0" step="0.01" value={editAmount} onChange={e => setEditAmount(e.target.value)} />
+                    </div>
+                  )}
                   <div className="space-y-1">
-                    <Label>المبلغ *</Label>
-                    <Input type="number" min="0" step="0.01" value={editAmount} onChange={e => setEditAmount(e.target.value)} />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>التاريخ *</Label>
+                    <Label>{editRow.source === "policy" ? "تاريخ الإصدار *" : "التاريخ *"}</Label>
                     <ArabicDatePicker value={editDate} onChange={d => setEditDate(d)} compact />
                   </div>
                 </div>
