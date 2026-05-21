@@ -37,6 +37,8 @@ import { buildExpenseInvoiceHtml, openExpenseInvoicePrint } from "@/lib/expenseI
 import { buildAccountingStatementHtml, openAccountingStatementPrint, type StatementRow } from "@/lib/accountingStatementBuilder";
 import abLogo from "@/assets/ab-insurance-logo.png";
 import { InlineEditCell } from "@/components/accounting/InlineEditCell";
+import { AuditDialog, type AuditResult, type AuditDbRow, computeDiff } from "@/components/accounting/AuditDialog";
+import { Sparkles } from "lucide-react";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
 import { format } from "date-fns";
 import { he } from "date-fns/locale";
@@ -336,6 +338,11 @@ export default function Accounting() {
   const [saving, setSaving] = useState(false);
   const [addDialogCompanyId, setAddDialogCompanyId] = useState<string>("");
   const [addDialogBrokerId, setAddDialogBrokerId] = useState<string>("");
+
+  // Audit dialog (AI statement audit)
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
+  const [flashRowId, setFlashRowId] = useState<string | null>(null);
 
   // Load reference data
   useEffect(() => {
@@ -1377,6 +1384,37 @@ export default function Accounting() {
             )}
 
             <Button variant="outline" className="gap-2" onClick={handleExportInvoice}><Download className="h-4 w-4" />تصدير קבלה</Button>
+            <Button
+              variant="outline"
+              className="gap-2 border-primary/40 text-primary hover:bg-primary/5"
+              onClick={() => setAuditOpen(true)}
+              disabled={filtered.length === 0}
+              title={filtered.length === 0 ? "فلتر الجدول أولاً" : "تدقيق كشف بالذكاء الاصطناعي"}
+            >
+              <Sparkles className="h-4 w-4" />
+              تدقيق بالـ AI
+            </Button>
+            {auditResult && !auditOpen && (() => {
+              const dbRowsForAudit: AuditDbRow[] = filtered.map(r => ({
+                id: r.id, car_number: r.car_number, client_name: r.client_name, company_name: r.company_name,
+                auditAmount: activeTab === "issuances" ? (r.payed_for_company ?? r.amount) : r.amount,
+              }));
+              const d = computeDiff(dbRowsForAudit, auditResult.rows);
+              const issues = d.amountMismatch.length + d.missingHere.length + d.extraHere.length;
+              return (
+                <Button
+                  variant="outline"
+                  className="gap-2 relative"
+                  onClick={() => setAuditOpen(true)}
+                >
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  استعادة التدقيق
+                  {issues > 0 && (
+                    <Badge className="bg-amber-500 hover:bg-amber-500 text-white">{issues}</Badge>
+                  )}
+                </Button>
+              );
+            })()}
           </div>
         </Card>
 
@@ -1547,7 +1585,7 @@ export default function Accounting() {
                 const canAct = !r.is_split && (r.source === "settlement" || r.source === "broker_settlement" || r.source === "expense" || r.source === "ledger" || r.source === "policy");
                 const isCheque = r.payment_method.includes("شيك");
                 return (
-                  <TableRow key={key || `${r.tab}-${r.id}`} className={isChild ? "bg-muted/20" : ""}>
+                  <TableRow key={key || `${r.tab}-${r.id}`} data-row-id={r.id} className={cn(isChild ? "bg-muted/20" : "", flashRowId === r.id && "!bg-yellow-200 dark:!bg-yellow-900/40 transition-colors duration-1000")}>
                     <TableCell className="text-muted-foreground">{rowNum}</TableCell>
                     <TableCell><Badge variant={b.variant} className="text-xs">{b.text}</Badge></TableCell>
                     {entityType !== "other" && <TableCell className="font-medium">{r.client_name || "-"}</TableCell>}
@@ -1646,7 +1684,7 @@ export default function Accounting() {
               const rowNum = String(page * PAGE_SIZE + gi + 1);
 
               const parent = (
-                <TableRow key={`group-${g.key}`} className="bg-primary/5 hover:bg-primary/10 cursor-pointer font-medium" onClick={() => toggleGroup(g.key)}>
+                <TableRow key={`group-${g.key}`} data-row-id={first.id} className={cn("bg-primary/5 hover:bg-primary/10 cursor-pointer font-medium", flashRowId === first.id && "!bg-yellow-200 dark:!bg-yellow-900/40 transition-colors duration-1000")} onClick={() => toggleGroup(g.key)}>
                   <TableCell className="text-muted-foreground">
                     <div className="flex items-center gap-1">
                       <ChevronDown className={cn("h-4 w-4 transition-transform", isExpanded && "rotate-180")} />
@@ -1974,6 +2012,46 @@ export default function Accounting() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {(() => {
+        const dbRowsForAudit: AuditDbRow[] = filtered.map(r => ({
+          id: r.id, car_number: r.car_number, client_name: r.client_name, company_name: r.company_name,
+          auditAmount: activeTab === "issuances" ? (r.payed_for_company ?? r.amount) : r.amount,
+        }));
+        const tabLabels: Record<string, string> = { all: "كل الحركات", issuances: "الإصدارات", refunds: "المرتجعات", payment: "سندات الصرف", sale: "المبيعات", receipt: "سندات القبض" };
+        const companyNames = companies.filter(c => selectedCompanyIds.includes(c.id)).map(c => c.name_ar || c.name).join("، ");
+        const desc = `${tabLabels[activeTab] || activeTab} · ${fmt(fromDate)} - ${fmt(toDate)}${companyNames ? ` · ${companyNames}` : ""} · ${filtered.length} صف`;
+        const fieldLabel = activeTab === "issuances" ? "المستحق للشركة" : "المبلغ";
+        const goToRow = (rowId: string) => {
+          const idx = groupedRows.findIndex(g => g.rows.some(r => r.id === rowId));
+          if (idx < 0) { toast.error("الصف غير ظاهر في العرض الحالي"); return; }
+          const targetPage = Math.floor(idx / PAGE_SIZE);
+          setPage(targetPage);
+          setExpandedGroups(prev => new Set([...prev, groupedRows[idx].key]));
+          setAuditOpen(false);
+          setTimeout(() => {
+            const el = document.querySelector(`[data-row-id="${rowId}"]`) as HTMLElement | null;
+            if (el) {
+              el.scrollIntoView({ behavior: "smooth", block: "center" });
+              setFlashRowId(rowId);
+              setTimeout(() => setFlashRowId(null), 2000);
+            }
+          }, 250);
+        };
+        return (
+          <AuditDialog
+            open={auditOpen}
+            onMinimize={() => setAuditOpen(false)}
+            onClose={() => { setAuditOpen(false); setAuditResult(null); }}
+            dbRows={dbRowsForAudit}
+            filterDescription={desc}
+            comparedFieldLabel={fieldLabel}
+            result={auditResult}
+            setResult={setAuditResult}
+            onGoToRow={goToRow}
+          />
+        );
+      })()}
     </MainLayout>
   );
 }
