@@ -1684,7 +1684,7 @@ export default function Accounting() {
               const rowNum = String(page * PAGE_SIZE + gi + 1);
 
               const parent = (
-                <TableRow key={`group-${g.key}`} className="bg-primary/5 hover:bg-primary/10 cursor-pointer font-medium" onClick={() => toggleGroup(g.key)}>
+                <TableRow key={`group-${g.key}`} data-row-id={first.id} className={cn("bg-primary/5 hover:bg-primary/10 cursor-pointer font-medium", flashRowId === first.id && "!bg-yellow-200 dark:!bg-yellow-900/40 transition-colors duration-1000")} onClick={() => toggleGroup(g.key)}>
                   <TableCell className="text-muted-foreground">
                     <div className="flex items-center gap-1">
                       <ChevronDown className={cn("h-4 w-4 transition-transform", isExpanded && "rotate-180")} />
