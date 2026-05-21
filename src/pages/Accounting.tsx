@@ -1590,7 +1590,23 @@ export default function Accounting() {
                   <TableCell className="text-sm">{first.company_name || "-"}</TableCell>
                   {entityType === "broker" && <TableCell className="text-sm">{first.extra || "-"}</TableCell>}
                   <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{first.description || "-"}</TableCell>
-                  <TableCell></TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    {first.source === "policy" && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit({ ...first, policyIds: g.rows.flatMap(r => r.policyIds || []) })}>
+                            <Pencil className="h-4 w-4 ml-2" />تعديل
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDelete({ ...first, policyIds: g.rows.flatMap(r => r.policyIds || []) })} className="text-destructive">
+                            <Trash2 className="h-4 w-4 ml-2" />حذف
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </TableCell>
                 </TableRow>
               );
 
