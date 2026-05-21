@@ -317,7 +317,7 @@ export function AuditDialog({
                 <SummaryCard
                   label="المستحق للشركات عنا"
                   value={fmtCur(dbTotal)}
-                  hint={`${dbRows.length} صف في الجدول`}
+                  hint={oursHintOverride ?? `${dbRows.length} صف في الجدول`}
                   tone="primary"
                 />
                 <SummaryCard
