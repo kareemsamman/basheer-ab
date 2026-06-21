@@ -6,6 +6,16 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Domain used to build a synthetic auth email when the admin only sets a
+// username (no real email). Login still works via signInWithPassword.
+const USERNAME_EMAIL_DOMAIN = "staff.local";
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -14,10 +24,7 @@ Deno.serve(async (req) => {
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: "غير مصرح" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return json({ error: "غير مصرح" });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -30,10 +37,7 @@ Deno.serve(async (req) => {
 
     const { data: { user: caller }, error: callerError } = await callerClient.auth.getUser();
     if (callerError || !caller) {
-      return new Response(
-        JSON.stringify({ error: "غير مصرح" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return json({ error: "غير مصرح" });
     }
 
     // Check caller is admin
@@ -46,43 +50,76 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (!callerRole) {
-      return new Response(
-        JSON.stringify({ error: "صلاحيات غير كافية" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return json({ error: "صلاحيات غير كافية" });
     }
 
-    const { email, full_name, role, branch_id } = await req.json();
+    const body = await req.json();
+    const role = body.role;
+    const full_name: string | null = body.full_name ?? null;
+    const branch_id: string | null = body.branch_id ?? null;
+    const password: string | undefined = body.password?.trim();
 
-    if (!email || !role || !["admin", "worker"].includes(role)) {
-      return new Response(
-        JSON.stringify({ error: "بيانات غير صالحة" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    let email: string | null = body.email?.trim()?.toLowerCase() || null;
+    let username: string | null = body.username?.trim() || null;
+
+    if (!role || !["admin", "worker"].includes(role)) {
+      return json({ error: "بيانات غير صالحة" });
     }
 
-    // Create auth user
+    // Need at least a username or an email to identify the account.
+    if (!email && !username) {
+      return json({ error: "يجب إدخال اسم المستخدم أو البريد الإلكتروني" });
+    }
+
+    // Password is required for the new username/password login flow.
+    if (!password || password.length < 6) {
+      return json({ error: "كلمة المرور مطلوبة (٦ أحرف على الأقل)" });
+    }
+
+    // Validate username format (no spaces, no @ so it can't collide with emails).
+    if (username) {
+      if (/[@\s]/.test(username)) {
+        return json({ error: "اسم المستخدم لا يجوز أن يحتوي مسافات أو @" });
+      }
+
+      // Reject duplicate usernames (case-insensitive).
+      const { data: existing } = await adminClient
+        .from("profiles")
+        .select("id")
+        .ilike("username", username.replace(/[\\%_]/g, "\\$&"))
+        .maybeSingle();
+
+      if (existing) {
+        return json({ error: "اسم المستخدم مستخدم بالفعل" });
+      }
+    }
+
+    // The auth email: a real email if given, otherwise synthesized from username.
+    const authEmail = email ?? `${username!.toLowerCase()}@${USERNAME_EMAIL_DOMAIN}`;
+
+    // Create auth user with a password and confirmed email (no verification step).
     const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
-      email,
+      email: authEmail,
+      password,
       email_confirm: true,
+      user_metadata: full_name ? { full_name } : undefined,
     });
 
     if (authError) {
       console.error("Auth create error:", authError);
-      return new Response(
-        JSON.stringify({ error: authError.message }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      const msg = /already been registered|already exists/i.test(authError.message)
+        ? "البريد الإلكتروني مستخدم بالفعل"
+        : authError.message;
+      return json({ error: msg });
     }
 
     const newUserId = authData.user.id;
 
-    // Update profile
-    const profileUpdate: Record<string, unknown> = {
-      status: "active",
-    };
+    // Update profile (handle_new_user trigger already inserted the base row).
+    const profileUpdate: Record<string, unknown> = { status: "active" };
     if (full_name) profileUpdate.full_name = full_name;
     if (branch_id) profileUpdate.branch_id = branch_id;
+    if (username) profileUpdate.username = username;
 
     const { error: profileError } = await adminClient
       .from("profiles")
@@ -102,15 +139,9 @@ Deno.serve(async (req) => {
       console.error("Role insert error:", roleError);
     }
 
-    return new Response(
-      JSON.stringify({ success: true, user_id: newUserId }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return json({ success: true, user_id: newUserId });
   } catch (err) {
     console.error("Unexpected error:", err);
-    return new Response(
-      JSON.stringify({ error: "حدث خطأ غير متوقع" }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return json({ error: "حدث خطأ غير متوقع" });
   }
 });

@@ -141,11 +141,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // Keep session guard flag synced
-        if (session) {
-          try { sessionStorage.setItem('admin_session_active', 'true'); } catch {}
-        }
-
         setSession(session);
         setUser(session?.user ?? null);
 
@@ -193,39 +188,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe();
     };
   }, []);
-
-  // Admin session guard - force logout for non-super admins on new browser session
-  useEffect(() => {
-    const SESSION_KEY = 'admin_session_active';
-    const effectiveEmail = user?.email ?? profile?.email ?? null;
-    const canEvaluateAdminGuard = Boolean(effectiveEmail);
-    const isNonSuperAdmin = canEvaluateAdminGuard && !isSuperAdminEmail(effectiveEmail) && isAdmin;
-
-    if (!isReady || !session || !user || !isNonSuperAdmin) {
-      return;
-    }
-
-    // Skip guard if sessionStorage is not available (e.g. restricted iframe)
-    let wasActive: string | null = null;
-    try {
-      wasActive = sessionStorage.getItem(SESSION_KEY);
-    } catch {
-      // sessionStorage blocked (iframe restriction) - skip guard entirely
-      return;
-    }
-
-    if (!wasActive) {
-      // This is a new browser session after browser was closed - force logout
-      console.log('[AdminSessionGuard] New browser session detected for admin, forcing logout');
-      supabase.auth.signOut().then(() => {
-        window.location.href = '/login';
-      });
-      return;
-    }
-
-    // Keep session flag active
-    try { sessionStorage.setItem(SESSION_KEY, 'true'); } catch {}
-  }, [isReady, session, user, profile?.email, isAdmin]);
 
   // CRITICAL: Super admin and admins bypass status checks entirely
   // Order: super admin → admin → active status

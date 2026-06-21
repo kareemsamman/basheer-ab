@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, ExternalLink, AlertCircle, Mail, Smartphone, ArrowRight } from "lucide-react";
+import { Loader2, ExternalLink, AlertCircle, Mail, Smartphone, ArrowRight, KeyRound } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
@@ -31,6 +31,10 @@ export default function Login() {
   const [otpCode, setOtpCode] = useState("");
   const [countdown, setCountdown] = useState(0);
 
+  // Username/email + password state (employees, no OTP)
+  const [loginId, setLoginId] = useState("");
+  const [password, setPassword] = useState("");
+
   useEffect(() => {
     try {
       setIsInIframe(window.self !== window.top);
@@ -41,9 +45,6 @@ export default function Login() {
 
   useEffect(() => {
     if (!authLoading && user) {
-      // Set admin session flag for all authenticated users
-      try { sessionStorage.setItem('admin_session_active', 'true'); } catch {}
-
       // Super admin can redirect immediately without waiting for profile
       if (isSuperAdmin) {
         navigate('/', { replace: true });
@@ -70,6 +71,49 @@ export default function Login() {
       return () => clearTimeout(timer);
     }
   }, [countdown]);
+
+  const handlePasswordLogin = async () => {
+    const identifier = loginId.trim();
+    if (!identifier || !password) {
+      toast.error("يرجى إدخال اسم المستخدم/البريد وكلمة المرور");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Resolve a username to its underlying auth email; emails pass through.
+      let signInEmail = identifier;
+      if (!identifier.includes("@")) {
+        const res = await supabase.functions.invoke("resolve-login-email", {
+          body: { identifier },
+        });
+
+        if (res.error || !res.data?.success || !res.data?.email) {
+          toast.error(res.data?.error || "اسم المستخدم غير موجود");
+          return;
+        }
+        signInEmail = res.data.email;
+      }
+
+      const { error } = await supabase.auth.signInWithPassword({
+        email: signInEmail,
+        password,
+      });
+
+      if (error) {
+        toast.error("اسم المستخدم أو كلمة المرور غير صحيحة");
+        return;
+      }
+
+      toast.success("تم تسجيل الدخول بنجاح");
+      navigate("/", { replace: true });
+    } catch (error: unknown) {
+      console.error("Password login error:", error);
+      toast.error(error instanceof Error ? error.message : "حدث خطأ غير متوقع");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleGoogleLogin = async () => {
     if (isInIframe) {
@@ -389,8 +433,12 @@ export default function Login() {
             </Alert>
           )}
 
-          <Tabs defaultValue="google" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+          <Tabs defaultValue="password" className="w-full">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="password" className="text-xs sm:text-sm gap-1">
+                <KeyRound className="h-3 w-3 hidden sm:block" />
+                موظف
+              </TabsTrigger>
               <TabsTrigger value="google" className="text-xs sm:text-sm">
                 Google
               </TabsTrigger>
@@ -403,6 +451,49 @@ export default function Login() {
                 رسالة
               </TabsTrigger>
             </TabsList>
+
+            <TabsContent value="password" className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="loginId">اسم المستخدم أو البريد الإلكتروني</Label>
+                <Input
+                  id="loginId"
+                  type="text"
+                  placeholder="username"
+                  value={loginId}
+                  onChange={(e) => setLoginId(e.target.value)}
+                  className="ltr-input"
+                  disabled={loading}
+                  autoComplete="username"
+                  onKeyDown={(e) => { if (e.key === "Enter") handlePasswordLogin(); }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">كلمة المرور</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="ltr-input"
+                  disabled={loading}
+                  autoComplete="current-password"
+                  onKeyDown={(e) => { if (e.key === "Enter") handlePasswordLogin(); }}
+                />
+              </div>
+              <Button
+                className="w-full h-12 text-base gap-2"
+                onClick={handlePasswordLogin}
+                disabled={loading || !loginId || !password}
+              >
+                {loading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <KeyRound className="h-5 w-5" />
+                )}
+                {loading ? "جاري الدخول..." : "تسجيل الدخول"}
+              </Button>
+            </TabsContent>
 
             <TabsContent value="google" className="space-y-4 mt-4">
               <p className="text-sm text-muted-foreground text-center">

@@ -111,27 +111,37 @@ export default function AdminUsers() {
   const [addUserOpen, setAddUserOpen] = useState(false);
   const [addUserLoading, setAddUserLoading] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserUsername, setNewUserUsername] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserName, setNewUserName] = useState('');
   const [newUserRole, setNewUserRole] = useState<'admin' | 'worker'>('worker');
   const [newUserBranch, setNewUserBranch] = useState('');
 
   const resetAddUserForm = () => {
     setNewUserEmail('');
+    setNewUserUsername('');
+    setNewUserPassword('');
     setNewUserName('');
     setNewUserRole('worker');
     setNewUserBranch('');
   };
 
   const handleAddUser = async () => {
-    if (!newUserEmail.trim()) {
-      toast({ title: "خطأ", description: "البريد الإلكتروني مطلوب", variant: "destructive" });
+    if (!newUserUsername.trim() && !newUserEmail.trim()) {
+      toast({ title: "خطأ", description: "يجب إدخال اسم المستخدم أو البريد الإلكتروني", variant: "destructive" });
+      return;
+    }
+    if (newUserPassword.trim().length < 6) {
+      toast({ title: "خطأ", description: "كلمة المرور مطلوبة (٦ أحرف على الأقل)", variant: "destructive" });
       return;
     }
     setAddUserLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('create-user', {
         body: {
-          email: newUserEmail.trim(),
+          email: newUserEmail.trim() || null,
+          username: newUserUsername.trim() || null,
+          password: newUserPassword.trim(),
           full_name: newUserName.trim() || null,
           role: newUserRole,
           branch_id: newUserBranch || null,
@@ -503,7 +513,31 @@ export default function AdminUsers() {
             </DialogHeader>
             <div className="space-y-4 py-2">
               <div className="space-y-2">
-                <Label>البريد الإلكتروني *</Label>
+                <Label>اسم المستخدم</Label>
+                <Input
+                  placeholder="username"
+                  value={newUserUsername}
+                  onChange={(e) => setNewUserUsername(e.target.value)}
+                  dir="ltr"
+                  autoComplete="off"
+                />
+                <p className="text-xs text-muted-foreground">
+                  يقدر الموظف يدخل باسم المستخدم أو البريد + كلمة المرور (بدون OTP)
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>كلمة المرور *</Label>
+                <Input
+                  type="password"
+                  placeholder="٦ أحرف على الأقل"
+                  value={newUserPassword}
+                  onChange={(e) => setNewUserPassword(e.target.value)}
+                  dir="ltr"
+                  autoComplete="new-password"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>البريد الإلكتروني (اختياري)</Label>
                 <Input
                   type="email"
                   placeholder="user@example.com"
