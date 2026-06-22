@@ -103,7 +103,7 @@ Deno.serve(async (req) => {
       .from("policies")
       .select(`
         id, policy_type_parent, policy_number, start_date, end_date,
-        payed_for_company, notes, car_id, client_id,
+        insurance_price, payed_for_company, notes, car_id, client_id,
         road_service_id, accident_fee_service_id
       `)
       .eq("id", policy_id)
@@ -189,7 +189,11 @@ Deno.serve(async (req) => {
         policy_number: policy.policy_number,
         start_date: policy.start_date,
         end_date: policy.end_date,
-        sell_price: policy.payed_for_company || 0,
+        // For "update" send the customer selling price (matches sync-to-xservice
+        // create); other actions keep the company cost.
+        sell_price: action === "update"
+          ? (policy.insurance_price || 0)
+          : (policy.payed_for_company || 0),
         notes: policy.notes || "",
       },
     };

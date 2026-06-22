@@ -498,8 +498,8 @@ export function PackagePolicyEditModal({
       }
 
       // 3. Process each policy
-      const xserviceSyncIds: string[] = [];
-      
+      const xserviceUpdateIds: string[] = [];
+
       for (const policy of policies) {
         const state = editStates[policy.id];
         if (!state) continue;
@@ -590,15 +590,23 @@ export function PackagePolicyEditModal({
 
         if (error) throw error;
 
-        // Queue X-Service sync for service policies whose company changed
-        if (companyChanged && ["ROAD_SERVICE", "ACCIDENT_FEE_EXEMPTION"].includes(policy.policy_type_parent)) {
-          xserviceSyncIds.push(policy.id);
+        // Queue X-Service update for service-type policies whose dates, price,
+        // or service changed — keeps the external X-Service record in sync.
+        const isServicePolicy = ["ROAD_SERVICE", "ACCIDENT_FEE_EXEMPTION"].includes(policy.policy_type_parent);
+        const datesOrPriceChanged =
+          state.startDate !== policy.start_date ||
+          state.endDate !== policy.end_date ||
+          price !== policy.insurance_price;
+        if (isServicePolicy && (companyChanged || datesOrPriceChanged)) {
+          xserviceUpdateIds.push(policy.id);
         }
       }
 
-      // Fire X-Service re-sync in background
-      for (const pid of xserviceSyncIds) {
-        supabase.functions.invoke("sync-to-xservice", { body: { policy_id: pid } }).catch(console.error);
+      // Fire X-Service update sync in background (fire-and-forget)
+      for (const pid of xserviceUpdateIds) {
+        supabase.functions
+          .invoke("notify-xservice-change", { body: { action: "update", policy_id: pid } })
+          .catch(console.error);
       }
 
       toast({ title: "تم الحفظ", description: "تم تحديث جميع وثائق الباقة بنجاح" });
