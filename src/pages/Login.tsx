@@ -14,7 +14,6 @@ import { OtpInput } from "@/components/auth/OtpInput";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
 
 type AuthStep = "method" | "otp";
-type AuthMethod = "google" | "email" | "sms";
 
 export default function Login() {
   const { data: settings } = useSiteSettings();
@@ -23,15 +22,13 @@ export default function Login() {
   const navigate = useNavigate();
   const { user, isActive, isSuperAdmin, profileLoading, loading: authLoading } = useAuth();
 
-  // OTP state
+  // SMS OTP state
   const [authStep, setAuthStep] = useState<AuthStep>("method");
-  const [authMethod, setAuthMethod] = useState<AuthMethod>("google");
-  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [countdown, setCountdown] = useState(0);
 
-  // Username/email + password state (employees, no OTP)
+  // Username/email + password state
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
 
@@ -150,52 +147,6 @@ export default function Login() {
     window.open(window.location.origin + '/login', '_blank');
   };
 
-  const handleEmailStart = async () => {
-    if (!email || !email.includes("@")) {
-      toast.error("يرجى إدخال بريد إلكتروني صحيح");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const response = await supabase.functions.invoke("auth-email-start", {
-        body: { email },
-      });
-
-      if (response.error) {
-        // Try to extract the real error message from the function response body
-        let message = response.error.message;
-        const ctx = (response as any).response ?? (response.error as any).context;
-
-        if (ctx && typeof ctx.json === "function") {
-          try {
-            const body = await ctx.json();
-            if (body?.error) message = body.error;
-          } catch {
-            // ignore JSON parsing errors
-          }
-        }
-
-        throw new Error(message);
-      }
-
-      if (!response.data?.success) {
-        toast.error(response.data?.error || "فشل في إرسال رمز التحقق");
-        return;
-      }
-
-      toast.success("تم إرسال رمز التحقق إلى بريدك الإلكتروني");
-      setAuthStep("otp");
-      setAuthMethod("email");
-      setCountdown(60);
-    } catch (error: unknown) {
-      console.error("Email OTP error:", error);
-      toast.error(error instanceof Error ? error.message : "حدث خطأ غير متوقع");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSmsStart = async () => {
     if (!phone || phone.length < 9) {
       toast.error("يرجى إدخال رقم هاتف صحيح");
@@ -239,7 +190,6 @@ export default function Login() {
 
       toast.success("تم إرسال رمز التحقق إلى هاتفك");
       setAuthStep("otp");
-      setAuthMethod("sms");
       setCountdown(60);
     } catch (error: unknown) {
       console.error("SMS OTP error:", error);
@@ -257,12 +207,9 @@ export default function Login() {
 
     setLoading(true);
     try {
-      const endpoint = authMethod === "email" ? "auth-email-verify" : "auth-sms-verify";
-      const body = authMethod === "email" 
-        ? { email, code: otpCode }
-        : { phone, code: otpCode };
-
-      const response = await supabase.functions.invoke(endpoint, { body });
+      const response = await supabase.functions.invoke("auth-sms-verify", {
+        body: { phone, code: otpCode },
+      });
 
       if (response.error) {
         throw new Error(response.error.message);
@@ -305,12 +252,7 @@ export default function Login() {
 
   const handleResend = async () => {
     if (countdown > 0) return;
-    
-    if (authMethod === "email") {
-      await handleEmailStart();
-    } else {
-      await handleSmsStart();
-    }
+    await handleSmsStart();
   };
 
   const handleBack = () => {
@@ -333,21 +275,14 @@ export default function Login() {
         <Card className="w-full max-w-md border shadow-lg animate-scale-in">
           <CardHeader className="text-center space-y-4">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary shadow-md">
-              {authMethod === "email" ? (
-                <Mail className="h-8 w-8 text-primary-foreground" />
-              ) : (
-                <Smartphone className="h-8 w-8 text-primary-foreground" />
-              )}
+              <Smartphone className="h-8 w-8 text-primary-foreground" />
             </div>
             <div>
               <CardTitle className="text-2xl font-bold text-primary">
                 رمز التحقق
               </CardTitle>
               <CardDescription className="text-muted-foreground mt-2">
-                {authMethod === "email" 
-                  ? `أدخل الرمز المرسل إلى ${email}`
-                  : `أدخل الرمز المرسل إلى ${phone}`
-                }
+                {`أدخل الرمز المرسل إلى ${phone}`}
               </CardDescription>
             </div>
           </CardHeader>
@@ -433,67 +368,20 @@ export default function Login() {
             </Alert>
           )}
 
-          <Tabs defaultValue="password" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="password" className="text-xs sm:text-sm gap-1">
-                <KeyRound className="h-3 w-3 hidden sm:block" />
-                موظف
-              </TabsTrigger>
-              <TabsTrigger value="google" className="text-xs sm:text-sm">
-                Google
-              </TabsTrigger>
+          <Tabs defaultValue="email" className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="email" className="text-xs sm:text-sm gap-1">
                 <Mail className="h-3 w-3 hidden sm:block" />
                 بريد
+              </TabsTrigger>
+              <TabsTrigger value="google" className="text-xs sm:text-sm">
+                Google
               </TabsTrigger>
               <TabsTrigger value="sms" className="text-xs sm:text-sm gap-1">
                 <Smartphone className="h-3 w-3 hidden sm:block" />
                 رسالة
               </TabsTrigger>
             </TabsList>
-
-            <TabsContent value="password" className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label htmlFor="loginId">اسم المستخدم أو البريد الإلكتروني</Label>
-                <Input
-                  id="loginId"
-                  type="text"
-                  placeholder="username"
-                  value={loginId}
-                  onChange={(e) => setLoginId(e.target.value)}
-                  className="ltr-input"
-                  disabled={loading}
-                  autoComplete="username"
-                  onKeyDown={(e) => { if (e.key === "Enter") handlePasswordLogin(); }}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">كلمة المرور</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="ltr-input"
-                  disabled={loading}
-                  autoComplete="current-password"
-                  onKeyDown={(e) => { if (e.key === "Enter") handlePasswordLogin(); }}
-                />
-              </div>
-              <Button
-                className="w-full h-12 text-base gap-2"
-                onClick={handlePasswordLogin}
-                disabled={loading || !loginId || !password}
-              >
-                {loading ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  <KeyRound className="h-5 w-5" />
-                )}
-                {loading ? "جاري الدخول..." : "تسجيل الدخول"}
-              </Button>
-            </TabsContent>
 
             <TabsContent value="google" className="space-y-4 mt-4">
               <p className="text-sm text-muted-foreground text-center">
@@ -544,28 +432,44 @@ export default function Login() {
 
             <TabsContent value="email" className="space-y-4 mt-4">
               <div className="space-y-2">
-                <Label htmlFor="email">البريد الإلكتروني</Label>
+                <Label htmlFor="loginId">اسم المستخدم أو البريد الإلكتروني</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="your-email@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="loginId"
+                  type="text"
+                  placeholder="username@example.com"
+                  value={loginId}
+                  onChange={(e) => setLoginId(e.target.value)}
                   className="ltr-input"
                   disabled={loading}
+                  autoComplete="username"
+                  onKeyDown={(e) => { if (e.key === "Enter") handlePasswordLogin(); }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">كلمة المرور</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="ltr-input"
+                  disabled={loading}
+                  autoComplete="current-password"
+                  onKeyDown={(e) => { if (e.key === "Enter") handlePasswordLogin(); }}
                 />
               </div>
               <Button
                 className="w-full h-12 text-base gap-2"
-                onClick={handleEmailStart}
-                disabled={loading || !email}
+                onClick={handlePasswordLogin}
+                disabled={loading || !loginId || !password}
               >
                 {loading ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
                 ) : (
-                  <Mail className="h-5 w-5" />
+                  <KeyRound className="h-5 w-5" />
                 )}
-                {loading ? "جاري الإرسال..." : "إرسال رمز التحقق"}
+                {loading ? "جاري الدخول..." : "تسجيل الدخول"}
               </Button>
             </TabsContent>
 
