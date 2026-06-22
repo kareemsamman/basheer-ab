@@ -148,24 +148,93 @@ export default function Dashboard() {
     fetchProduction();
   }, [fetchProduction]);
 
-  // Fetch company debts from the canonical ledger-based RPC so the dashboard
-  // matches each company's wallet page ("المتبقي للشركة"). The RPC
-  // (dashboard_company_debts) sums ab_ledger per company and returns only
-  // companies with outstanding > 0, already sorted descending.
+  // Company debts shown on the dashboard:
+  //   owed = SUM(payed_for_company) for non-transferred, non-cancelled,
+  //          non-ELZAMI policies (issue_date >= 2026-01-01) — ELZAMI excluded
+  //   paid = company_settlements (non-refused) + سند صرف expenses
+  //          (entity_type=company, voucher_type=payment, excluding [مبيعات] sales)
+  //   outstanding per company = owed - paid; only companies still owed (>0) shown
+  //   total = sum of the shown rows, so the footer always matches the rows.
+  // NOTE: the ledger RPC (dashboard_company_debts) is intentionally NOT used
+  // here because it includes ELZAMI and does not subtract سند صرف expenses.
   const fetchCompanyDebts = useCallback(async () => {
     setCompanyDebtsLoading(true);
     try {
-      const { data, error } = await supabase.rpc('dashboard_company_debts');
-      if (error) throw error;
+      const FROM = '2026-01-01';
 
-      const rows: CompanyDebt[] = (data || []).map((r) => ({
-        company_id: r.company_id,
-        company_name: r.company_name || '',
-        outstanding: Number(r.outstanding) || 0,
-      }));
+      // 1) Policies (paginated to bypass the 1000-row limit) — ELZAMI excluded
+      type Pol = { company_id: string | null; payed_for_company: number | null; transferred: boolean | null };
+      const polRows: Pol[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from('policies')
+          .select('company_id, payed_for_company, transferred')
+          .is('deleted_at', null)
+          .eq('cancelled', false)
+          .neq('policy_type_parent', 'ELZAMI')
+          .not('company_id', 'is', null)
+          .gte('issue_date', FROM)
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        const batch = (data || []) as Pol[];
+        polRows.push(...batch);
+        if (batch.length < pageSize) break;
+        from += pageSize;
+      }
 
+      // 2) Company settlements (exclude refused)
+      const { data: settlements, error: sErr } = await supabase
+        .from('company_settlements')
+        .select('company_id, total_amount, status, refused')
+        .gte('created_at', FROM);
+      if (sErr) throw sErr;
+
+      // 2b) سند صرف payments stored as company expenses
+      const { data: payExpenses, error: peErr } = await supabase
+        .from('expenses')
+        .select('entity_id, amount, description')
+        .eq('entity_type', 'company')
+        .eq('voucher_type', 'payment')
+        .gte('created_at', FROM);
+      if (peErr) throw peErr;
+
+      // 3) Companies (exclude broker-linked — tracked under the broker)
+      const { data: companies, error: cErr } = await supabase
+        .from('insurance_companies')
+        .select('id, name, name_ar, broker_id');
+      if (cErr) throw cErr;
+
+      const owedMap = new Map<string, number>();
+      for (const p of polRows) {
+        if (!p.company_id || p.transferred) continue;
+        owedMap.set(p.company_id, (owedMap.get(p.company_id) || 0) + (Number(p.payed_for_company) || 0));
+      }
+      const paidMap = new Map<string, number>();
+      for (const s of (settlements || []) as any[]) {
+        if (!s.company_id) continue;
+        if (s.status === 'refused' || s.refused === true) continue;
+        paidMap.set(s.company_id, (paidMap.get(s.company_id) || 0) + (Number(s.total_amount) || 0));
+      }
+      for (const e of (payExpenses || []) as any[]) {
+        if (!e.entity_id) continue;
+        // Sales entries ("[مبيعات]") are tracked separately, not as company payments
+        if (typeof e.description === 'string' && e.description.startsWith('[مبيعات]')) continue;
+        paidMap.set(e.entity_id, (paidMap.get(e.entity_id) || 0) + (Number(e.amount) || 0));
+      }
+
+      const rows: CompanyDebt[] = [];
+      for (const c of (companies || []) as any[]) {
+        if (c.broker_id) continue;
+        const outstanding = (owedMap.get(c.id) || 0) - (paidMap.get(c.id) || 0);
+        if (outstanding > 0) {
+          rows.push({ company_id: c.id, company_name: c.name_ar || c.name || '', outstanding });
+        }
+      }
+      rows.sort((a, b) => b.outstanding - a.outstanding);
       setCompanyDebts(rows);
-      // Total = sum of the displayed rows, so the footer matches the rows exactly.
+      // Total = sum of the shown rows, so the footer matches the table exactly.
       setCompanyDebtsNetTotal(rows.reduce((s, r) => s + r.outstanding, 0));
     } catch (e) {
       console.error('Error fetching company debts:', e);
