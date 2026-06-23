@@ -15,10 +15,11 @@ interface ExpiringPolicy {
   policy_type_parent: string;
   policy_type_child: string | null;
   insurance_price: number;
-  client: { full_name: string } | null;
-  car: { car_number: string } | null;
-  company: { name: string; name_ar: string | null } | null;
-  renewal_tracking: { renewal_status: string | null }[] | null;
+  client_full_name: string | null;
+  car_number: string | null;
+  company_name: string | null;
+  company_name_ar: string | null;
+  renewal_status: string | null;
 }
 
 const renewalStatusLabels: Record<string, { label: string; color: string }> = {
@@ -41,35 +42,17 @@ export function ExpiringPolicies() {
 
   const fetchExpiringPolicies = async () => {
     try {
-      const today = new Date();
-      const thirtyDaysLater = new Date();
-      thirtyDaysLater.setDate(today.getDate() + 30);
-
-      const { data, error } = await supabase
-        .from("policies")
-        .select(`
-          id, end_date, policy_type_parent, policy_type_child, insurance_price,
-          client:clients(full_name),
-          car:cars(car_number),
-          company:insurance_companies(name, name_ar),
-          renewal_tracking:policy_renewal_tracking(renewal_status)
-        `)
-        .is("deleted_at", null)
-        .eq("cancelled", false)
-        .gte("end_date", today.toISOString().split("T")[0])
-        .lte("end_date", thirtyDaysLater.toISOString().split("T")[0])
-        .order("end_date", { ascending: true })
-        .limit(6);
+      // The server RPC applies the canonical renewal rule: any policy already
+      // renewed (client has a newer policy within the renewal window) is excluded
+      // automatically — no manual policy_renewal_tracking flag needed.
+      const { data, error } = await (supabase as any).rpc("get_dashboard_expiring_policies", {
+        p_days: 30,
+        p_limit: 6,
+      });
 
       if (error) throw error;
 
-      // Filter out renewed policies - they shouldn't appear in expiring list
-      const filteredPolicies = (data || []).filter(policy => {
-        const renewalStatus = policy.renewal_tracking?.[0]?.renewal_status;
-        return renewalStatus !== 'renewed';
-      });
-
-      setPolicies(filteredPolicies);
+      setPolicies((data as ExpiringPolicy[]) || []);
     } catch (error) {
       console.error("Error fetching expiring policies:", error);
     } finally {
@@ -115,9 +98,8 @@ export function ExpiringPolicies() {
           </div>
         ) : (
           policies.map((policy) => {
-            const renewalStatus = policy.renewal_tracking?.[0]?.renewal_status;
-            const statusInfo = renewalStatus ? renewalStatusLabels[renewalStatus] : null;
-            
+            const statusInfo = policy.renewal_status ? renewalStatusLabels[policy.renewal_status] : null;
+
             return (
               <div 
                 key={policy.id} 
@@ -127,8 +109,8 @@ export function ExpiringPolicies() {
                 <div className="flex items-center gap-3">
                   <ExpiryBadge endDate={policy.end_date} showDays={true} />
                   <div>
-                    <p className="font-medium text-foreground">{policy.client?.full_name || "غير معروف"}</p>
-                    <p className="text-sm text-muted-foreground"><bdi>{policy.car?.car_number || "-"}</bdi></p>
+                    <p className="font-medium text-foreground">{policy.client_full_name || "غير معروف"}</p>
+                    <p className="text-sm text-muted-foreground"><bdi>{policy.car_number || "-"}</bdi></p>
                   </div>
                 </div>
                 <div className="text-left flex flex-col items-end gap-1">

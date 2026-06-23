@@ -122,6 +122,21 @@ serve(async (req) => {
     console.log(`[cron-renewal-reminders] Found ${policiesOneMonth?.length || 0} policies for 1-month reminder`);
     console.log(`[cron-renewal-reminders] Found ${policiesOneWeek?.length || 0} policies for 1-week reminder`);
 
+    // Exclude policies already renewed (client has a newer policy within the renewal
+    // window) so renewed clients never receive a renewal reminder.
+    const allCandidateIds = [
+      ...(policiesOneMonth || []).map((p: any) => p.id),
+      ...(policiesOneWeek || []).map((p: any) => p.id),
+    ];
+    let renewedSet = new Set<string>();
+    if (allCandidateIds.length > 0) {
+      const { data: renewedRows } = await supabase.rpc('get_renewed_policy_ids', { p_policy_ids: allCandidateIds });
+      renewedSet = new Set((renewedRows || []).map((r: any) => r.policy_id));
+      if (renewedSet.size > 0) {
+        console.log(`[cron-renewal-reminders] Excluding ${renewedSet.size} already-renewed policies`);
+      }
+    }
+
     // Helper to send SMS
     const sendSms = async (
       policy: any, 
@@ -253,14 +268,14 @@ serve(async (req) => {
 
     // Process 1 month reminders
     if (smsSettings.renewal_reminder_1month_enabled !== false) {
-      for (const policy of (policiesOneMonth || [])) {
+      for (const policy of (policiesOneMonth || []).filter((p: any) => !renewedSet.has(p.id))) {
         await sendSms(policy, template1Month, '1month');
       }
     }
 
-    // Process 1 week reminders  
+    // Process 1 week reminders
     if (smsSettings.renewal_reminder_1week_enabled !== false) {
-      for (const policy of (policiesOneWeek || [])) {
+      for (const policy of (policiesOneWeek || []).filter((p: any) => !renewedSet.has(p.id))) {
         await sendSms(policy, template1Week, '1week');
       }
     }

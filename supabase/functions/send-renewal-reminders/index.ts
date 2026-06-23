@@ -175,6 +175,20 @@ serve(async (req) => {
       }
 
       policyIdsToProcess = filteredIds;
+
+      // Exclude policies already renewed (client has a newer policy within the renewal
+      // window) so we never send a "please renew" SMS to a client who already renewed.
+      if (policyIdsToProcess.length > 0) {
+        const { data: renewedRows } = await supabase.rpc('get_renewed_policy_ids', { p_policy_ids: policyIdsToProcess });
+        const renewedSet = new Set((renewedRows || []).map((r: any) => r.policy_id));
+        const beforeCount = policyIdsToProcess.length;
+        policyIdsToProcess = policyIdsToProcess.filter((id) => !renewedSet.has(id));
+        const renewedExcluded = beforeCount - policyIdsToProcess.length;
+        if (renewedExcluded > 0) {
+          console.log(`[send-renewal-reminders] Excluded ${renewedExcluded} already-renewed policies`);
+        }
+      }
+
       // Add initial skipped to running count
       if (initialSkipped > 0) {
         console.log(`[send-renewal-reminders] Skipped ${initialSkipped} policies (cooldown/no client)`);

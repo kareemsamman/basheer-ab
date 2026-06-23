@@ -111,11 +111,22 @@ export function RenewalAssistant({ open, onOpenChange, month, onActionComplete }
 
       const excludedClientIds = new Set((followups || []).map(f => f.client_id));
 
+      // Clients the system already considers renewed (newer policy within the renewal
+      // window) are NOT returned by report_renewals — so we keep only clients that still
+      // appear there. This auto-drops renewed clients even without a manual follow-up flag.
+      const { data: pendingRows } = await (supabase as any).rpc('report_renewals', {
+        p_start_date: startDate,
+        p_end_date: endDate,
+        p_page_size: 100000,
+        p_page: 1,
+      });
+      const pendingClientIds = new Set((pendingRows || []).map((r: any) => r.client_id));
+
       // Group by client
       const clientMap = new Map<string, AssistantClient>();
       for (const p of (policies || [])) {
         const clientData = p.clients as any;
-        if (!clientData || excludedClientIds.has(clientData.id)) continue;
+        if (!clientData || excludedClientIds.has(clientData.id) || !pendingClientIds.has(clientData.id)) continue;
 
         if (!clientMap.has(clientData.id)) {
           clientMap.set(clientData.id, {
