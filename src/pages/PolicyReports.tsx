@@ -58,7 +58,6 @@ import {
   Banknote,
   Package,
   Users,
-  PlayCircle,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -614,10 +613,6 @@ export default function PolicyReports() {
   useEffect(() => {
     if (activeTab === 'renewals') {
       fetchRenewals();
-      // Auto-open assistant first time
-      if (renewalSubTab === 'pending') {
-        setAssistantOpen(true);
-      }
     }
   }, [activeTab, renewalsPage, renewalsMonth, renewalsDaysFilter, renewalsPolicyTypeFilter, renewalsCreatedByFilter, renewalsSearch]);
 
@@ -1461,11 +1456,6 @@ export default function PolicyReports() {
                 </div>
 
                 <div className="flex gap-2 mr-auto">
-                  {/* Renewal Assistant */}
-                  <Button variant="glow" onClick={() => setAssistantOpen(true)} className="gap-2">
-                    <PlayCircle className="h-4 w-4" />
-                    مساعد التجديد
-                  </Button>
                   {/* PDF للمسؤولين فقط */}
                   {isAdmin && (
                     <Button variant="outline" onClick={handleGeneratePdf} disabled={generatingPdf}>
