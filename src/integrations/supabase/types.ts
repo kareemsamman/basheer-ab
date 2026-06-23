@@ -5334,6 +5334,27 @@ export type Database = {
           total_payable: number
         }[]
       }
+      get_dashboard_expiring_policies: {
+        Args: { p_days?: number; p_limit?: number }
+        Returns: {
+          car_number: string
+          client_full_name: string
+          company_name: string
+          company_name_ar: string
+          end_date: string
+          id: string
+          insurance_price: number
+          policy_type_child: string
+          policy_type_parent: string
+          renewal_status: string
+        }[]
+      }
+      get_renewed_policy_ids: {
+        Args: { p_policy_ids: string[] }
+        Returns: {
+          policy_id: string
+        }[]
+      }
       get_tasks_with_users: {
         Args: { target_date: string }
         Returns: {
@@ -5411,6 +5432,7 @@ export type Database = {
         Returns: string
       }
       is_active_user: { Args: { _user_id: string }; Returns: boolean }
+      is_renewed: { Args: { p_policy_id: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
       report_client_debts:
         | {
