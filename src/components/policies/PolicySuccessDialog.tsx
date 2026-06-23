@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Printer, MessageSquare, X, Loader2, Check, AlertCircle, Receipt, FileText } from "lucide-react";
+import { Printer, MessageSquare, MessageCircle, X, Loader2, Check, AlertCircle, Receipt, FileText } from "lucide-react";
 
 interface PolicySuccessDialogProps {
   open: boolean;
@@ -35,6 +35,12 @@ export function PolicySuccessDialog({
   const [sendingSms, setSendingSms] = useState(false);
   const [smsSent, setSmsSent] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // WhatsApp states
+  const [sendingInvoiceWa, setSendingInvoiceWa] = useState(false);
+  const [invoiceWaSent, setInvoiceWaSent] = useState(false);
+  const [sendingReceiptWa, setSendingReceiptWa] = useState(false);
+  const [receiptWaSent, setReceiptWaSent] = useState(false);
 
   // Receipt states
   const [paymentIds, setPaymentIds] = useState<string[]>([]);
@@ -230,6 +236,97 @@ export function PolicySuccessDialog({
     }
   };
 
+  // Open WhatsApp Web directly with the customer's phone + a prefilled message.
+  // web.whatsapp.com/send skips the wa.me "Continue to Chat" page, so on the
+  // office desktop (already logged in) the chat opens ready to send.
+  const buildWhatsAppUrl = (phone: string, message: string) => {
+    let digits = phone.replace(/\D/g, '');
+    if (digits.startsWith('0')) {
+      digits = '972' + digits.slice(1);
+    } else if (!digits.startsWith('972')) {
+      digits = '972' + digits;
+    }
+    return `https://web.whatsapp.com/send?phone=${digits}&text=${encodeURIComponent(message)}`;
+  };
+
+  const handleSendInvoiceWhatsApp = async () => {
+    if (!clientPhone) {
+      toast.error("لا يوجد رقم هاتف للعميل");
+      return;
+    }
+
+    setSendingInvoiceWa(true);
+    setErrorMessage(null);
+    // Pre-open a tab inside the user gesture so the popup blocker allows it
+    const waWindow = window.open('', '_blank');
+
+    try {
+      let result;
+
+      if (isPackage) {
+        const { data: mainPolicy, error: mainPolicyError } = await supabase
+          .from('policies')
+          .select('group_id')
+          .eq('id', policyId)
+          .single();
+        if (mainPolicyError) throw mainPolicyError;
+        const groupId = mainPolicy?.group_id;
+
+        if (!groupId) {
+          result = await supabase.functions.invoke('send-invoice-sms', {
+            body: { policy_id: policyId, skip_sms: true }
+          });
+        } else {
+          const { data: groupPolicies, error: fetchError } = await supabase
+            .from('policies')
+            .select('id')
+            .eq('group_id', groupId);
+          if (fetchError) throw fetchError;
+          const policyIds = groupPolicies?.map(p => p.id) || [policyId];
+          result = await supabase.functions.invoke('send-package-invoice-sms', {
+            body: { policy_ids: policyIds, skip_sms: true }
+          });
+        }
+      } else {
+        result = await supabase.functions.invoke('send-invoice-sms', {
+          body: { policy_id: policyId, skip_sms: true }
+        });
+      }
+
+      if (result.error || result.data?.error) {
+        const errorMsg = await extractErrorMessage(result);
+        setErrorMessage(errorMsg);
+        toast.error(errorMsg);
+        waWindow?.close();
+        return;
+      }
+
+      const invoiceUrl = result.data?.package_invoice_url || result.data?.ab_invoice_url || result.data?.invoice_url;
+      if (invoiceUrl) {
+        const waUrl = buildWhatsAppUrl(clientPhone, `مرحباً، إليك بوليصة التأمين الخاصة بك:\n${invoiceUrl}`);
+        if (waWindow) {
+          waWindow.location.href = waUrl;
+        } else {
+          window.open(waUrl, '_blank');
+        }
+        setInvoiceWaSent(true);
+        toast.success("تم فتح واتساب");
+      } else {
+        setErrorMessage("لم يتم العثور على رابط الفاتورة");
+        toast.error("لم يتم العثور على رابط الفاتورة");
+        waWindow?.close();
+      }
+    } catch (error) {
+      console.error('Send invoice WhatsApp error:', error);
+      const errorMsg = error instanceof Error ? error.message : "فشل في إرسال الفاتورة عبر واتساب";
+      setErrorMessage(errorMsg);
+      toast.error(errorMsg);
+      waWindow?.close();
+    } finally {
+      setSendingInvoiceWa(false);
+    }
+  };
+
   const handlePrintReceipt = async () => {
     if (paymentIds.length === 0) return;
     setPrintingReceipt(true);
@@ -318,6 +415,58 @@ export function PolicySuccessDialog({
       toast.error(errorMsg);
     } finally {
       setSendingReceiptSms(false);
+    }
+  };
+
+  const handleSendReceiptWhatsApp = async () => {
+    if (!clientPhone || paymentIds.length === 0) {
+      toast.error("لا يوجد رقم هاتف أو دفعات");
+      return;
+    }
+
+    setSendingReceiptWa(true);
+    setErrorMessage(null);
+    // Pre-open a tab inside the user gesture so the popup blocker allows it
+    const waWindow = window.open('', '_blank');
+
+    try {
+      // First generate the receipt to get URL
+      const receiptResult = await supabase.functions.invoke('generate-payment-receipt', {
+        body: { payment_id: paymentIds[0] }
+      });
+
+      if (receiptResult.error || receiptResult.data?.error) {
+        const errorMsg = await extractErrorMessage(receiptResult);
+        setErrorMessage(errorMsg);
+        toast.error(errorMsg);
+        waWindow?.close();
+        return;
+      }
+
+      const receiptUrl = receiptResult.data?.receipt_url;
+      if (!receiptUrl) {
+        setErrorMessage("لم يتم العثور على رابط الإيصال");
+        toast.error("لم يتم العثور على رابط الإيصال");
+        waWindow?.close();
+        return;
+      }
+
+      const waUrl = buildWhatsAppUrl(clientPhone, `مرحباً، إليك إيصال الدفع الخاص بك:\n${receiptUrl}`);
+      if (waWindow) {
+        waWindow.location.href = waUrl;
+      } else {
+        window.open(waUrl, '_blank');
+      }
+      setReceiptWaSent(true);
+      toast.success("تم فتح واتساب");
+    } catch (error) {
+      console.error('Send receipt WhatsApp error:', error);
+      const errorMsg = error instanceof Error ? error.message : "فشل في إرسال الإيصال عبر واتساب";
+      setErrorMessage(errorMsg);
+      toast.error(errorMsg);
+      waWindow?.close();
+    } finally {
+      setSendingReceiptWa(false);
     }
   };
 
@@ -414,7 +563,7 @@ export function PolicySuccessDialog({
             تم إنشاء الوثيقة بنجاح
           </DialogTitle>
           <DialogDescription>
-            يمكنك طباعة بوليصة التأمين أو فاتورة الدفع أو إرسالها للعميل عبر SMS
+            يمكنك طباعة بوليصة التأمين أو فاتورة الدفع أو إرسالها للعميل عبر SMS أو واتساب
           </DialogDescription>
         </DialogHeader>
 
@@ -458,6 +607,22 @@ export function PolicySuccessDialog({
             {smsSent ? "تم إرسال بوليصة التأمين SMS" : "إرسال بوليصة التأمين SMS"}
           </Button>
 
+          <Button
+            variant="outline"
+            className="w-full gap-2 h-12 border-green-600/30 text-green-700 hover:bg-green-50 hover:text-green-800"
+            onClick={handleSendInvoiceWhatsApp}
+            disabled={sendingInvoiceWa || !clientPhone}
+          >
+            {sendingInvoiceWa ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : invoiceWaSent ? (
+              <Check className="h-5 w-5 text-success" />
+            ) : (
+              <MessageCircle className="h-5 w-5" />
+            )}
+            إرسال بوليصة التأمين واتساب
+          </Button>
+
           {/* Receipt Section - only show if payments exist */}
           {paymentIds.length > 0 && (
             <>
@@ -494,6 +659,22 @@ export function PolicySuccessDialog({
                 {receiptSmsSent ? "تم إرسال فاتورة الدفع SMS" : "إرسال فاتورة الدفع SMS"}
               </Button>
 
+              <Button
+                variant="outline"
+                className="w-full gap-2 h-12 border-green-600/30 text-green-700 hover:bg-green-50 hover:text-green-800"
+                onClick={handleSendReceiptWhatsApp}
+                disabled={sendingReceiptWa || !clientPhone}
+              >
+                {sendingReceiptWa ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : receiptWaSent ? (
+                  <Check className="h-5 w-5 text-success" />
+                ) : (
+                  <MessageCircle className="h-5 w-5" />
+                )}
+                إرسال فاتورة الدفع واتساب
+              </Button>
+
               {/* Tranzila Invoice Button - only for visa payments */}
               {hasVisaPayment && (
                 <Button
@@ -517,7 +698,7 @@ export function PolicySuccessDialog({
 
           {!clientPhone && (
             <p className="text-xs text-muted-foreground text-center">
-              لا يوجد رقم هاتف للعميل لإرسال SMS
+              لا يوجد رقم هاتف للعميل لإرسال SMS أو واتساب
             </p>
           )}
 
