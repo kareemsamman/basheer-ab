@@ -236,9 +236,11 @@ export function PolicySuccessDialog({
     }
   };
 
-  // Open WhatsApp Web directly with the customer's phone + a prefilled message.
-  // web.whatsapp.com/send skips the wa.me "Continue to Chat" page, so on the
-  // office desktop (already logged in) the chat opens ready to send.
+  // Use WhatsApp's official api.whatsapp.com link (not web.whatsapp.com) so the
+  // OS opens the installed WhatsApp app — desktop or phone — when one is present,
+  // and falls back to WhatsApp Web otherwise. The number is normalised to
+  // international format (Israel +972) since WhatsApp requires a full
+  // country-coded number.
   const buildWhatsAppUrl = (phone: string, message: string) => {
     let digits = phone.replace(/\D/g, '');
     if (digits.startsWith('0')) {
@@ -246,7 +248,7 @@ export function PolicySuccessDialog({
     } else if (!digits.startsWith('972')) {
       digits = '972' + digits;
     }
-    return `https://web.whatsapp.com/send?phone=${digits}&text=${encodeURIComponent(message)}`;
+    return `https://api.whatsapp.com/send?phone=${digits}&text=${encodeURIComponent(message)}`;
   };
 
   const handleSendInvoiceWhatsApp = async () => {

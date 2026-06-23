@@ -560,7 +560,12 @@ export function PolicyYearTimeline({
 
   const handleOpenWhatsApp = async (e: React.MouseEvent, pkg: PolicyPackage) => {
     e.stopPropagation();
+    // Pre-open a tab inside the click gesture so the popup blocker allows it
+    // (the edge-function call below is async). api.whatsapp.com opens the
+    // installed WhatsApp app when present, and falls back to WhatsApp Web.
+    const waWindow = window.open('', '_blank');
     try {
+      const isPackage = pkg.allPolicyIds.length > 1;
       const policyId = pkg.allPolicyIds[0];
       const { data: policyData } = await supabase
         .from('policies')
@@ -572,14 +577,31 @@ export function PolicyYearTimeline({
       const rawPhone: string | null = client?.phone_number || null;
       if (!rawPhone) {
         toast.error('لا يوجد رقم هاتف لهذا العميل');
+        waWindow?.close();
         return;
       }
 
-      // Normalize to international (+972) format for wa.me
+      // Normalize to international (+972) format
       let digits = rawPhone.replace(/[^0-9]/g, '');
       if (digits.startsWith('00')) digits = digits.slice(2);
       if (digits.startsWith('0')) digits = '972' + digits.slice(1);
       else if (!digits.startsWith('972')) digits = '972' + digits;
+
+      // Generate the policy document link (same source the success dialog uses)
+      // so the WhatsApp message actually carries the document, not just text.
+      const result = isPackage
+        ? await supabase.functions.invoke('send-package-invoice-sms', {
+            body: { policy_ids: pkg.allPolicyIds, skip_sms: true },
+          })
+        : await supabase.functions.invoke('send-invoice-sms', {
+            body: { policy_id: policyId, skip_sms: true },
+          });
+
+      const docUrl: string | null =
+        result.data?.package_invoice_url ||
+        result.data?.ab_invoice_url ||
+        result.data?.invoice_url ||
+        null;
 
       const main = pkg.mainPolicy || pkg.addons[0];
       const typeLabel = main ? getDisplayLabel(main) : 'وثيقة التأمين';
@@ -590,11 +612,20 @@ export function PolicyYearTimeline({
         greeting,
         `بخصوص وثيقة التأمين (${typeLabel})${company ? ' لدى ' + company : ''}${carNumber ? ' للسيارة ' + carNumber : ''}.`,
       ];
+      if (docUrl) lines.push(docUrl);
       const message = encodeURIComponent(lines.join('\n'));
-      window.open(`https://wa.me/${digits}?text=${message}`, '_blank');
+      const waUrl = `https://api.whatsapp.com/send?phone=${digits}&text=${message}`;
+      if (waWindow) waWindow.location.href = waUrl;
+      else window.open(waUrl, '_blank');
+
+      if (!docUrl) {
+        // The chat still opens, but warn that the document link couldn't be built.
+        toast.warning('تم فتح واتساب، لكن تعذّر تجهيز رابط الوثيقة');
+      }
     } catch (err) {
       console.error('WhatsApp open error:', err);
       toast.error('فشل فتح واتساب');
+      waWindow?.close();
     }
   };
 
