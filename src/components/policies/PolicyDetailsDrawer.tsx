@@ -1196,8 +1196,11 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                             <p className="text-lg font-bold">
                               {policy.insurance_companies?.name_ar || policy.insurance_companies?.name || policy.brokers?.name}
                             </p>
-                            {policy.insurance_companies && policy.brokers && (
-                              <p className="text-sm text-muted-foreground mt-1">الوسيط: {policy.brokers.name}</p>
+                            {policy.brokers && (
+                              <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-violet-500/10 border border-violet-500/30 px-2.5 py-1 text-violet-700 dark:text-violet-300">
+                                <ArrowLeftRight className="h-3.5 w-3.5" />
+                                <span className="text-sm font-medium">تمت عن طريق وسيط: {policy.brokers.name}</span>
+                              </div>
                             )}
                           </div>
                         </Section>

@@ -308,6 +308,13 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
           is_under_24: formData.under24_type !== 'none',
           notes: formData.notes || null,
           broker_id: formData.broker_id === NO_BROKER ? null : formData.broker_id,
+          // Clear the direction when the broker is removed; default a NEWLY assigned
+          // broker to "to_broker" (broker owes the agency). When the policy already had
+          // a broker, leave its direction untouched (undefined is dropped by the client)
+          // so company-linked "from_broker" deals are not flipped on edit.
+          broker_direction: formData.broker_id === NO_BROKER
+            ? null
+            : (policy.broker_id ? undefined : ('to_broker' as Enums<'broker_direction'>)),
           updated_at: new Date().toISOString(),
         })
         .eq('id', policy.id);

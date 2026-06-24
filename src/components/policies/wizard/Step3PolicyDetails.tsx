@@ -633,8 +633,9 @@ export function Step3PolicyDetails({
     );
   };
 
-  // Check if broker is required for this policy type
-  const requiresBroker = CAR_POLICY_TYPES.find(t => t.value === policy.policy_type_parent)?.requiresBroker || false;
+  // Broker selection is available for ALL policy types, so any policy can be
+  // marked as issued through a broker. When a broker is set, the policy amount
+  // is tracked as a debt on the broker (not the client) until the broker settles.
 
   return (
     <div className="space-y-6">
@@ -927,8 +928,8 @@ export function Step3PolicyDetails({
         );
       })()}
 
-      {/* Broker Section - Auto-detection or manual selection */}
-      {requiresBroker && (() => {
+      {/* Broker Section - Auto-detection or manual selection (available for all policy types) */}
+      {policy.policy_type_parent && (() => {
         const selectedCompany = companies.find(c => c.id === policy.company_id);
         const isCompanyLinkedToBroker = !!selectedCompany?.broker_id;
         const linkedBroker = isCompanyLinkedToBroker 

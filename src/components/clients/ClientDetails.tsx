@@ -158,9 +158,12 @@ interface PolicyRecord {
   transferred_from_policy_id: string | null;
   group_id: string | null;
   notes: string | null;
+  broker_id: string | null;
+  broker_direction: string | null;
   company: { name: string; name_ar: string | null } | null;
   car: { id: string; car_number: string } | null;
   creator: { full_name: string | null; email: string } | null;
+  broker: { name: string } | null;
 }
 
 interface PaymentSummary {
@@ -440,13 +443,14 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
       const { data, error } = await supabase
         .from('policies')
         .select(`
-          id, policy_number, policy_type_parent, policy_type_child, start_date, end_date, 
+          id, policy_number, policy_type_parent, policy_type_child, start_date, end_date,
           insurance_price, office_commission, profit, cancelled, transferred, group_id,
           transferred_car_number, transferred_to_car_number, transferred_from_policy_id,
-          created_at, branch_id, notes,
+          created_at, branch_id, notes, broker_id, broker_direction,
           company:insurance_companies(name, name_ar),
           car:cars(id, car_number),
-          creator:profiles!policies_created_by_admin_id_fkey(full_name, email)
+          creator:profiles!policies_created_by_admin_id_fkey(full_name, email),
+          broker:brokers(name)
         `)
         .eq('client_id', client.id)
         .is('deleted_at', null)

@@ -60,9 +60,12 @@ interface PolicyRecord {
   transferred_from_policy_id: string | null;
   group_id: string | null;
   notes: string | null;
+  broker_id?: string | null;
+  broker_direction?: string | null;
   company: { name: string; name_ar: string | null } | null;
   car: { id: string; car_number: string } | null;
   creator: { full_name: string | null; email: string } | null;
+  broker?: { name: string } | null;
   branch_id?: string | null;
   created_at?: string;
 }
@@ -889,6 +892,13 @@ function PolicyPackageCard({
   const isPkg = isPackageProp || (pkg.addons.length > 0 && pkg.mainPolicy !== null);
   const hasUnpaid = !paymentStatus.isPaid;
 
+  // Broker indicator: a policy/package issued through a broker. The amount is a
+  // debt on the broker (not the client), so we surface it clearly on the card.
+  const brokerName =
+    (pkg.mainPolicy?.broker_id ? pkg.mainPolicy?.broker?.name : null) ||
+    pkg.addons.find(a => a.broker_id)?.broker?.name ||
+    null;
+
   // Check if this policy was created from a transfer (has transferred_car_number = FROM which car)
   const wasTransferredFrom = policy.transferred_car_number;
   // Check if this policy was transferred TO another car (has transferred_to_car_number)
@@ -976,6 +986,14 @@ function PolicyPackageCard({
           ) : (
             <Badge className={cn("border text-xs font-semibold", policyTypeColors[policy.policy_type_parent])}>
               {getTypeLabel()}
+            </Badge>
+          )}
+
+          {/* Broker indicator - issued through a broker (debt tracked on the broker) */}
+          {brokerName && (
+            <Badge variant="outline" className="gap-1 text-xs bg-violet-500/10 border-violet-500/30 text-violet-700 dark:text-violet-300">
+              <ArrowRightLeft className="h-3 w-3" />
+              عن طريق وسيط: {brokerName}
             </Badge>
           )}
 
