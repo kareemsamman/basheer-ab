@@ -549,6 +549,9 @@ function buildDetailedReportHtml(clients: ClientWithPolicies[], totalPolicies: n
       .main-table thead { display: table-header-group; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .client-row { page-break-inside: avoid; }
       .policy-row { page-break-inside: avoid; }
+      /* Hide the grand-total card when printing; keep the layout balanced */
+      .price-total-card { display: none; }
+      .summary-cards { grid-template-columns: repeat(3, 1fr); }
     }
     
     @media (max-width: 768px) {
@@ -592,7 +595,7 @@ function buildDetailedReportHtml(clients: ClientWithPolicies[], totalPolicies: n
         <div class="card-label">عاجل (≤7 أيام)</div>
         <div class="card-value urgent">${urgentCount}</div>
       </div>
-      <div class="summary-card">
+      <div class="summary-card price-total-card">
         <div class="card-label">إجمالي السعر</div>
         <div class="card-value teal">₪${totalPrice.toLocaleString('en-US')}</div>
       </div>
