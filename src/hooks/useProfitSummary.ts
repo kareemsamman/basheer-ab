@@ -54,7 +54,15 @@ export function useProfitSummary() {
     setLoading(true);
     try {
       const now = new Date();
-      const today = now.toISOString().split('T')[0];
+      // "اليوم" بالتوقيت المحلي (إسرائيل) وليس UTC — toISOString() بيرجّع تاريخ UTC
+      // وبيسبب عدم تطابق بالأيام قريب من منتصف الليل
+      const toLocalDateStr = (d: Date) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      };
+      const today = toLocalDateStr(now);
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
       const yearStart = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
 
@@ -63,8 +71,9 @@ export function useProfitSummary() {
       const { data: policies, error } = await supabase
         .from('policies')
         .select(`
-          start_date, 
-          profit, 
+          start_date,
+          created_at,
+          profit,
           payed_for_company, 
           insurance_price,
           policy_type_parent,
@@ -107,6 +116,11 @@ export function useProfitSummary() {
 
       policies?.forEach((policy) => {
         const isElzami = policy.policy_type_parent === 'ELZAMI';
+        // "أرباح اليوم" تُحسب حسب تاريخ إدخال البوليصة على النظام (created_at) وليس
+        // تاريخ بدء سريانها (start_date) — هيك ما يظهر ربح قبل إدخال أي معاملة اليوم
+        const enteredToday = policy.created_at
+          ? toLocalDateStr(new Date(policy.created_at)) === today
+          : false;
         
         let policyProfit: number;
         let policyRevenue: number;
@@ -125,7 +139,7 @@ export function useProfitSummary() {
             monthElzamiCost += elzamiCost;
             monthElzamiCommission += elzamiCost;
           }
-          if (policy.start_date === today) {
+          if (enteredToday) {
             todayElzamiCost += elzamiCost;
           }
         } else {
@@ -165,7 +179,7 @@ export function useProfitSummary() {
           monthRevenue += policyRevenue;
         }
 
-        if (policy.start_date === today) {
+        if (enteredToday) {
           todayProfit += policyProfit;
           todayRevenue += policyRevenue;
         }
