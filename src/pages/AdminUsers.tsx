@@ -57,6 +57,8 @@ import {
   Phone,
   History,
   UserPlus,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -116,6 +118,84 @@ export default function AdminUsers() {
   const [newUserName, setNewUserName] = useState('');
   const [newUserRole, setNewUserRole] = useState<'admin' | 'worker'>('worker');
   const [newUserBranch, setNewUserBranch] = useState('');
+
+  // Edit user dialog state
+  const [editUserOpen, setEditUserOpen] = useState(false);
+  const [editUserLoading, setEditUserLoading] = useState(false);
+  const [editUser, setEditUser] = useState<UserWithRole | null>(null);
+  const [editFullName, setEditFullName] = useState('');
+  const [editUsername, setEditUsername] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [editRole, setEditRole] = useState<'admin' | 'worker'>('worker');
+
+  // Delete user dialog state
+  const [deleteUser, setDeleteUser] = useState<UserWithRole | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const openEditUser = (u: UserWithRole) => {
+    setEditUser(u);
+    setEditFullName(u.full_name || '');
+    setEditUsername((u as any).username || '');
+    setEditEmail(u.email || '');
+    setEditPassword('');
+    setEditRole(u.role || 'worker');
+    setEditUserOpen(true);
+  };
+
+  const handleSaveEditUser = async () => {
+    if (!editUser) return;
+    setEditUserLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-user', {
+        body: {
+          action: 'update',
+          user_id: editUser.id,
+          full_name: editFullName.trim() || null,
+          username: editUsername.trim() || null,
+          email: editEmail.trim() || null,
+          password: editPassword.trim() || undefined,
+          role: editRole,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) {
+        toast({ title: 'خطأ', description: data.error, variant: 'destructive' });
+        return;
+      }
+      toast({ title: 'تم الحفظ', description: 'تم تحديث بيانات المستخدم' });
+      setEditUserOpen(false);
+      fetchUsers();
+    } catch (err) {
+      console.error('Edit user error:', err);
+      toast({ title: 'خطأ', description: 'فشل تحديث المستخدم', variant: 'destructive' });
+    } finally {
+      setEditUserLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deleteUser) return;
+    setDeleteLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-user', {
+        body: { action: 'delete', user_id: deleteUser.id },
+      });
+      if (error) throw error;
+      if (data?.error) {
+        toast({ title: 'خطأ', description: data.error, variant: 'destructive' });
+        return;
+      }
+      toast({ title: 'تم الحذف', description: 'تم حذف المستخدم بالكامل' });
+      setDeleteUser(null);
+      fetchUsers();
+    } catch (err) {
+      console.error('Delete user error:', err);
+      toast({ title: 'خطأ', description: 'فشل حذف المستخدم', variant: 'destructive' });
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   const resetAddUserForm = () => {
     setNewUserEmail('');
