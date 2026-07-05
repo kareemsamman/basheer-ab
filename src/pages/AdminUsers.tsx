@@ -57,6 +57,8 @@ import {
   Phone,
   History,
   UserPlus,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -116,6 +118,84 @@ export default function AdminUsers() {
   const [newUserName, setNewUserName] = useState('');
   const [newUserRole, setNewUserRole] = useState<'admin' | 'worker'>('worker');
   const [newUserBranch, setNewUserBranch] = useState('');
+
+  // Edit user dialog state
+  const [editUserOpen, setEditUserOpen] = useState(false);
+  const [editUserLoading, setEditUserLoading] = useState(false);
+  const [editUser, setEditUser] = useState<UserWithRole | null>(null);
+  const [editFullName, setEditFullName] = useState('');
+  const [editUsername, setEditUsername] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [editRole, setEditRole] = useState<'admin' | 'worker'>('worker');
+
+  // Delete user dialog state
+  const [deleteUser, setDeleteUser] = useState<UserWithRole | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const openEditUser = (u: UserWithRole) => {
+    setEditUser(u);
+    setEditFullName(u.full_name || '');
+    setEditUsername((u as any).username || '');
+    setEditEmail(u.email || '');
+    setEditPassword('');
+    setEditRole(u.role || 'worker');
+    setEditUserOpen(true);
+  };
+
+  const handleSaveEditUser = async () => {
+    if (!editUser) return;
+    setEditUserLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-user', {
+        body: {
+          action: 'update',
+          user_id: editUser.id,
+          full_name: editFullName.trim() || null,
+          username: editUsername.trim() || null,
+          email: editEmail.trim() || null,
+          password: editPassword.trim() || undefined,
+          role: editRole,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) {
+        toast({ title: 'خطأ', description: data.error, variant: 'destructive' });
+        return;
+      }
+      toast({ title: 'تم الحفظ', description: 'تم تحديث بيانات المستخدم' });
+      setEditUserOpen(false);
+      fetchUsers();
+    } catch (err) {
+      console.error('Edit user error:', err);
+      toast({ title: 'خطأ', description: 'فشل تحديث المستخدم', variant: 'destructive' });
+    } finally {
+      setEditUserLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deleteUser) return;
+    setDeleteLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-user', {
+        body: { action: 'delete', user_id: deleteUser.id },
+      });
+      if (error) throw error;
+      if (data?.error) {
+        toast({ title: 'خطأ', description: data.error, variant: 'destructive' });
+        return;
+      }
+      toast({ title: 'تم الحذف', description: 'تم حذف المستخدم بالكامل' });
+      setDeleteUser(null);
+      fetchUsers();
+    } catch (err) {
+      console.error('Delete user error:', err);
+      toast({ title: 'خطأ', description: 'فشل حذف المستخدم', variant: 'destructive' });
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   const resetAddUserForm = () => {
     setNewUserEmail('');
@@ -594,6 +674,80 @@ export default function AdminUsers() {
           </DialogContent>
         </Dialog>
 
+        {/* Edit User Dialog */}
+        <Dialog open={editUserOpen} onOpenChange={setEditUserOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>تعديل بيانات المستخدم</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>الاسم الكامل</Label>
+                <Input value={editFullName} onChange={(e) => setEditFullName(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>اسم المستخدم</Label>
+                <Input dir="ltr" value={editUsername} onChange={(e) => setEditUsername(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>البريد الإلكتروني</Label>
+                <Input type="email" dir="ltr" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>كلمة مرور جديدة (اختياري)</Label>
+                <Input
+                  type="password"
+                  dir="ltr"
+                  placeholder="اترك فارغاً للإبقاء على الحالية"
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>الدور</Label>
+                <Select value={editRole} onValueChange={(v) => setEditRole(v as 'admin' | 'worker')}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="worker">موظف</SelectItem>
+                    <SelectItem value="admin">مدير</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditUserOpen(false)}>إلغاء</Button>
+              <Button onClick={handleSaveEditUser} disabled={editUserLoading}>
+                {editUserLoading && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
+                حفظ
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete User Confirmation */}
+        <AlertDialog open={!!deleteUser} onOpenChange={(open) => !open && setDeleteUser(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>حذف المستخدم نهائياً؟</AlertDialogTitle>
+              <AlertDialogDescription>
+                سيتم حذف <b>{deleteUser?.full_name || deleteUser?.email}</b> بشكل نهائي من قاعدة البيانات ونظام المصادقة. لا يمكن التراجع.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>إلغاء</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteUser}
+                disabled={deleteLoading}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleteLoading && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
+                حذف نهائياً
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="rounded-lg border bg-card p-4">
@@ -853,34 +1007,56 @@ export default function AdminUsers() {
                         </TableCell>
                         <TableCell>{getStatusBadge(user.status)}</TableCell>
                         <TableCell>
-                          {user.email !== 'morshed500@gmail.com' && (
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => setConfirmDialog({
-                                open: true,
-                                userId: user.id,
-                                action: 'block',
-                                userName: user.full_name || user.email,
-                              })}
-                              disabled={actionLoading === user.id}
-                            >
-                              {actionLoading === user.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <>
-                                  <UserX className="h-4 w-4 ml-1" />
-                                  حظر
-                                </>
-                              )}
-                            </Button>
-                          )}
-                          {user.email === 'morshed500@gmail.com' && (
-                            <Badge variant="outline" className="bg-primary/10 text-primary">
-                              <Shield className="h-3 w-3 ml-1" />
-                              مدير النظام
-                            </Badge>
-                          )}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {user.email !== 'morshed500@gmail.com' && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openEditUser(user)}
+                                  disabled={actionLoading === user.id}
+                                >
+                                  <Pencil className="h-4 w-4 ml-1" />
+                                  تعديل
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => setConfirmDialog({
+                                    open: true,
+                                    userId: user.id,
+                                    action: 'block',
+                                    userName: user.full_name || user.email,
+                                  })}
+                                  disabled={actionLoading === user.id}
+                                >
+                                  {actionLoading === user.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <>
+                                      <UserX className="h-4 w-4 ml-1" />
+                                      حظر
+                                    </>
+                                  )}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-destructive hover:text-destructive"
+                                  onClick={() => setDeleteUser(user)}
+                                >
+                                  <Trash2 className="h-4 w-4 ml-1" />
+                                  حذف
+                                </Button>
+                              </>
+                            )}
+                            {user.email === 'morshed500@gmail.com' && (
+                              <Badge variant="outline" className="bg-primary/10 text-primary">
+                                <Shield className="h-3 w-3 ml-1" />
+                                مدير النظام
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
