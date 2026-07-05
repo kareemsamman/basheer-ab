@@ -674,6 +674,80 @@ export default function AdminUsers() {
           </DialogContent>
         </Dialog>
 
+        {/* Edit User Dialog */}
+        <Dialog open={editUserOpen} onOpenChange={setEditUserOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>تعديل بيانات المستخدم</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>الاسم الكامل</Label>
+                <Input value={editFullName} onChange={(e) => setEditFullName(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>اسم المستخدم</Label>
+                <Input dir="ltr" value={editUsername} onChange={(e) => setEditUsername(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>البريد الإلكتروني</Label>
+                <Input type="email" dir="ltr" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>كلمة مرور جديدة (اختياري)</Label>
+                <Input
+                  type="password"
+                  dir="ltr"
+                  placeholder="اترك فارغاً للإبقاء على الحالية"
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>الدور</Label>
+                <Select value={editRole} onValueChange={(v) => setEditRole(v as 'admin' | 'worker')}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="worker">موظف</SelectItem>
+                    <SelectItem value="admin">مدير</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditUserOpen(false)}>إلغاء</Button>
+              <Button onClick={handleSaveEditUser} disabled={editUserLoading}>
+                {editUserLoading && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
+                حفظ
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete User Confirmation */}
+        <AlertDialog open={!!deleteUser} onOpenChange={(open) => !open && setDeleteUser(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>حذف المستخدم نهائياً؟</AlertDialogTitle>
+              <AlertDialogDescription>
+                سيتم حذف <b>{deleteUser?.full_name || deleteUser?.email}</b> بشكل نهائي من قاعدة البيانات ونظام المصادقة. لا يمكن التراجع.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>إلغاء</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteUser}
+                disabled={deleteLoading}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleteLoading && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
+                حذف نهائياً
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="rounded-lg border bg-card p-4">
