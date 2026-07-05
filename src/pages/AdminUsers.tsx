@@ -933,34 +933,56 @@ export default function AdminUsers() {
                         </TableCell>
                         <TableCell>{getStatusBadge(user.status)}</TableCell>
                         <TableCell>
-                          {user.email !== 'morshed500@gmail.com' && (
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => setConfirmDialog({
-                                open: true,
-                                userId: user.id,
-                                action: 'block',
-                                userName: user.full_name || user.email,
-                              })}
-                              disabled={actionLoading === user.id}
-                            >
-                              {actionLoading === user.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <>
-                                  <UserX className="h-4 w-4 ml-1" />
-                                  حظر
-                                </>
-                              )}
-                            </Button>
-                          )}
-                          {user.email === 'morshed500@gmail.com' && (
-                            <Badge variant="outline" className="bg-primary/10 text-primary">
-                              <Shield className="h-3 w-3 ml-1" />
-                              مدير النظام
-                            </Badge>
-                          )}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {user.email !== 'morshed500@gmail.com' && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openEditUser(user)}
+                                  disabled={actionLoading === user.id}
+                                >
+                                  <Pencil className="h-4 w-4 ml-1" />
+                                  تعديل
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => setConfirmDialog({
+                                    open: true,
+                                    userId: user.id,
+                                    action: 'block',
+                                    userName: user.full_name || user.email,
+                                  })}
+                                  disabled={actionLoading === user.id}
+                                >
+                                  {actionLoading === user.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <>
+                                      <UserX className="h-4 w-4 ml-1" />
+                                      حظر
+                                    </>
+                                  )}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-destructive hover:text-destructive"
+                                  onClick={() => setDeleteUser(user)}
+                                >
+                                  <Trash2 className="h-4 w-4 ml-1" />
+                                  حذف
+                                </Button>
+                              </>
+                            )}
+                            {user.email === 'morshed500@gmail.com' && (
+                              <Badge variant="outline" className="bg-primary/10 text-primary">
+                                <Shield className="h-3 w-3 ml-1" />
+                                مدير النظام
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
