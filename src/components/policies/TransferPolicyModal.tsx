@@ -432,6 +432,27 @@ export function TransferPolicyModal({
         if (moveFilesError) throw moveFilesError;
       }
 
+      // 5b. If customer paid an extra amount at transfer, record it as a cash payment on the new main policy
+      if (adjustmentType === "customer_pays" && adjustmentAmount) {
+        const newMainPolicyId = policyIdMap.get(policyId);
+        const paidAmt = parseFloat(adjustmentAmount);
+        if (newMainPolicyId && paidAmt > 0) {
+          const { error: payError } = await supabase
+            .from("policy_payments")
+            .insert({
+              policy_id: newMainPolicyId,
+              payment_type: "cash",
+              amount: paidAmt,
+              payment_date: transferDate,
+              notes: `دفعة عند تحويل الوثيقة من سيارة ${currentCar?.car_number || ""}${adjustmentNote ? ` - ${adjustmentNote}` : ""}`.trim(),
+              created_by_admin_id: user?.id,
+              branch_id: branchId,
+              source: "transfer_adjustment",
+            } as any);
+          if (payError) throw payError;
+        }
+      }
+
       // 6. Create wallet transaction only for refunds (customer_pays is already added to insurance_price)
       if (adjustmentType === "refund" && adjustmentAmount && newPolicyIds.length > 0) {
         const { error: walletError } = await supabase
