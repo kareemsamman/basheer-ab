@@ -316,6 +316,7 @@ export function TransferPolicyModal({
       // Build mapping of old policy ID -> new policy ID
       const policyIdMap: Map<string, string> = new Map();
       const newPolicyIds: string[] = [];
+      const servicePolicyTypes = ["ROAD_SERVICE", "ACCIDENT_FEE_EXEMPTION"];
 
       // PHASE 1: Mark all original policies as transferred and create all new policies
       // This ensures the new group has the full price total before we move payments
@@ -502,8 +503,13 @@ export function TransferPolicyModal({
       // Notify X-Service about transfer for service-type policies
       const selectedCar2 = cars.find(c => c.id === selectedCarId);
       const xServiceSyncFailures: string[] = [];
-      for (const origPolicy of originalPolicies) {
-        if (origPolicy.policy_type_parent === "ROAD_SERVICE" || origPolicy.policy_type_parent === "ACCIDENT_FEE_EXEMPTION") {
+      const servicePoliciesToSync = originalPolicies.filter((origPolicy) =>
+        servicePolicyTypes.includes(origPolicy.policy_type_parent)
+      );
+
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      for (const origPolicy of servicePoliciesToSync) {
           try {
             const { data: notifyData, error: notifyError } = await supabase.functions.invoke("notify-xservice-change", {
               body: {
@@ -543,7 +549,6 @@ export function TransferPolicyModal({
               console.error("X-Service sync (new policy) error:", e);
             }
           }
-        }
       }
 
       if (xServiceSyncFailures.length > 0) {
