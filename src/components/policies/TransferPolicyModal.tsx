@@ -316,6 +316,7 @@ export function TransferPolicyModal({
       // Build mapping of old policy ID -> new policy ID
       const policyIdMap: Map<string, string> = new Map();
       const newPolicyIds: string[] = [];
+      const servicePolicyTypes = ["ROAD_SERVICE", "ACCIDENT_FEE_EXEMPTION"];
 
       // PHASE 1: Mark all original policies as transferred and create all new policies
       // This ensures the new group has the full price total before we move payments
@@ -501,10 +502,16 @@ export function TransferPolicyModal({
 
       // Notify X-Service about transfer for service-type policies
       const selectedCar2 = cars.find(c => c.id === selectedCarId);
-      for (const origPolicy of originalPolicies) {
-        if (origPolicy.policy_type_parent === "ROAD_SERVICE" || origPolicy.policy_type_parent === "ACCIDENT_FEE_EXEMPTION") {
+      const xServiceSyncFailures: string[] = [];
+      const servicePoliciesToSync = originalPolicies.filter((origPolicy) =>
+        servicePolicyTypes.includes(origPolicy.policy_type_parent)
+      );
+
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      for (const origPolicy of servicePoliciesToSync) {
           try {
-            const { error: notifyError } = await supabase.functions.invoke("notify-xservice-change", {
+            const { data: notifyData, error: notifyError } = await supabase.functions.invoke("notify-xservice-change", {
               body: {
                 action: "transfer",
                 policy_id: origPolicy.id,
@@ -516,8 +523,8 @@ export function TransferPolicyModal({
                 },
               },
             });
-            if (notifyError) {
-              console.error("X-Service transfer notification failed:", notifyError);
+            if (notifyError || notifyData?.success === false) {
+              console.error("X-Service transfer notification failed:", notifyError || notifyData);
             }
           } catch (e) {
             console.error("X-Service transfer notification error:", e);
@@ -527,26 +534,40 @@ export function TransferPolicyModal({
           const newPolicyIdForSync = policyIdMap.get(origPolicy.id);
           if (newPolicyIdForSync) {
             try {
-              const { error: syncError } = await supabase.functions.invoke("sync-to-xservice", {
+              const { data: syncData, error: syncError } = await supabase.functions.invoke("sync-to-xservice", {
                 body: { policy_id: newPolicyIdForSync },
               });
-              if (syncError) {
-                console.error("X-Service sync (new policy) failed:", syncError);
+              if (syncError || syncData?.error || syncData?.success === false) {
+                const label = POLICY_TYPE_LABELS[origPolicy.policy_type_parent] || origPolicy.policy_type_parent;
+                const message = syncError?.message || syncData?.error || "فشل غير معروف";
+                xServiceSyncFailures.push(`${label}: ${message}`);
+                console.error("X-Service sync (new policy) failed:", syncError || syncData);
               }
             } catch (e) {
+              const label = POLICY_TYPE_LABELS[origPolicy.policy_type_parent] || origPolicy.policy_type_parent;
+              xServiceSyncFailures.push(`${label}: ${String(e)}`);
               console.error("X-Service sync (new policy) error:", e);
             }
           }
-        }
+      }
+
+      if (xServiceSyncFailures.length > 0) {
+        toast({
+          title: "تم التحويل لكن مزامنة X فشلت",
+          description: xServiceSyncFailures.join(" | "),
+          variant: "destructive",
+        });
       }
 
       const transferCount = policiesToTransfer.length;
-      toast({ 
-        title: "تم التحويل بنجاح", 
-        description: transferCount > 1 
-          ? `تم تحويل ${transferCount} وثائق - الوثائق القديمة انتهت بتاريخ التحويل ووثائق جديدة تم إنشاؤها للسيارة الجديدة`
-          : "تم تحويل الوثيقة - الوثيقة القديمة انتهت بتاريخ التحويل ووثيقة جديدة تم إنشاؤها للسيارة الجديدة"
-      });
+      if (xServiceSyncFailures.length === 0) {
+        toast({ 
+          title: "تم التحويل بنجاح", 
+          description: transferCount > 1 
+            ? `تم تحويل ${transferCount} وثائق - الوثائق القديمة انتهت بتاريخ التحويل ووثائق جديدة تم إنشاؤها للسيارة الجديدة`
+            : "تم تحويل الوثيقة - الوثيقة القديمة انتهت بتاريخ التحويل ووثيقة جديدة تم إنشاؤها للسيارة الجديدة"
+        });
+      }
       onTransferred();
       onOpenChange(false);
       
