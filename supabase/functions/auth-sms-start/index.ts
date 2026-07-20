@@ -59,8 +59,9 @@ async function sendSmsOTP(
   smsSource: string,
   phone: string,
   message: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; shipmentId?: string }> {
   try {
+    const dlr = crypto.randomUUID();
     const xmlPayload = `<?xml version="1.0" encoding="UTF-8"?>
 <sms>
   <user>
@@ -68,7 +69,7 @@ async function sendSmsOTP(
   </user>
   <source>${escapeXml(smsSource)}</source>
   <destinations>
-    <phone>${escapeXml(phone)}</phone>
+    <phone id="${escapeXml(dlr)}">${escapeXml(phone)}</phone>
   </destinations>
   <message>${escapeXml(message)}</message>
 </sms>`;
@@ -87,14 +88,23 @@ async function sendSmsOTP(
     const responseText = await response.text();
     console.log("019 SMS Response:", responseText);
 
-    if (responseText.includes("<status>0</status>") || responseText.includes("OK")) {
-      return { success: true };
-    }
+    const extractTag = (xml: string, tag: string) => {
+      const match = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "i"));
+      return match?.[1]?.trim() ?? null;
+    };
 
-    const errorMatch = responseText.match(/<message>(.*?)<\/message>/);
-    const errorMsg = errorMatch ? errorMatch[1] : "Unknown SMS error";
+    const status = extractTag(responseText, "status");
+    const apiMessage = extractTag(responseText, "message");
+    const shipmentId = extractTag(responseText, "shipment_id");
+
+    if (response.ok && status === "0") {
+      return { success: true, shipmentId: shipmentId || dlr };
+    }
     
-    return { success: false, error: errorMsg };
+    return {
+      success: false,
+      error: apiMessage || `SMS API error (status=${status ?? "unknown"}, http=${response.status})`,
+    };
   } catch (error: unknown) {
     console.error("SMS sending error:", error);
     return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
@@ -169,10 +179,12 @@ serve(async (req) => {
     const { data: smsSettings } = smsSettingsResult;
     const { data: recentOtps } = rateLimitResult;
 
-    // Resolve SMS credentials: prefer sms_settings (same as test/send-sms), fallback to auth_settings
-    const smsUser = smsSettings?.sms_user || authSettings?.sms_019_user;
-    const smsToken = smsSettings?.sms_token || authSettings?.sms_019_token;
-    const smsSource = smsSettings?.sms_source || authSettings?.sms_019_source;
+    // Resolve SMS credentials: OTP uses the dedicated auth source first. The
+    // general SMS sender may be a branded name that the gateway accepts but
+    // some carriers silently do not deliver for login OTP messages.
+    const smsUser = authSettings?.sms_019_user || smsSettings?.sms_user;
+    const smsToken = authSettings?.sms_019_token || smsSettings?.sms_token;
+    const smsSource = authSettings?.sms_019_source || smsSettings?.sms_source;
 
     // Case 1: Profile exists
     if (existingProfile) {
@@ -346,7 +358,7 @@ serve(async (req) => {
       .replace(/{code}/g, otp);
 
     // Send SMS using resolved credentials (from sms_settings or auth_settings)
-    console.log("Using SMS credentials from:", smsSettings?.sms_user ? "sms_settings" : "auth_settings");
+    console.log("Using SMS credentials from:", authSettings?.sms_019_user ? "auth_settings" : "sms_settings");
     const smsResult = await sendSmsOTP(
       smsUser,
       smsToken,
@@ -358,10 +370,12 @@ serve(async (req) => {
     if (!smsResult.success) {
       console.error("SMS send failed:", smsResult.error);
       return new Response(
-        JSON.stringify({ success: false, error: "فشل في إرسال الرسالة النصية" }),
+        JSON.stringify({ success: false, error: smsResult.error || "فشل في إرسال الرسالة النصية" }),
         { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
+
+    console.log("OTP SMS accepted by gateway. Shipment:", smsResult.shipmentId || "unknown");
 
     // Get IP and User-Agent from request for OTP
     const ip_address_otp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() 
