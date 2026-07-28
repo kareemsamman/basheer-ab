@@ -1,22 +1,32 @@
--- Tranzila payments are inserted as pending (refused = true), which skips the
--- insurance_price cap entirely, and are only flipped to refused = false once the
--- processor confirms the charge. By then the customer's card has already been
--- charged, so raising on the cap at that point does not prevent anything -- it just
--- leaves a real, collected payment stuck showing as "راجع" with no way to correct it.
+-- Tranzila payments are inserted as pending (refused = true), which skips the cap
+-- entirely, and are only flipped to refused = false once the processor confirms the
+-- charge. By then the customer's card has already been charged, so raising on the cap
+-- at that point does not prevent anything -- it just leaves a real, collected payment
+-- stuck showing as "راجع" with no way to correct it.
 --
--- Let that one transition through. Everything else (manual entries, cheques, plain
--- inserts, and any non-tranzila update) keeps the existing cap unchanged.
+-- Let that one transition through. Everything else keeps the existing behaviour: this
+-- is the 20260317073924 definition with a single added clause.
 
 CREATE OR REPLACE FUNCTION public.validate_policy_payment_total()
 RETURNS trigger
 LANGUAGE plpgsql
-SET search_path TO 'public'
-AS $$
+AS $function$
 DECLARE
   v_policy_price numeric;
+  v_group_id uuid;
   v_existing_total numeric;
   v_new_total numeric;
 BEGIN
+  -- Skip batch cheque entries from the cheques page (managed by application logic)
+  IF NEW.batch_id IS NOT NULL AND NEW.notes = 'شيك من صفحة الشيكات' THEN
+    RETURN NEW;
+  END IF;
+
+  -- Skip batch debt payment entries (managed by application logic)
+  IF NEW.batch_id IS NOT NULL AND NEW.notes = 'تسديد دين' THEN
+    RETURN NEW;
+  END IF;
+
   -- Only validate for inserts/updates where payment is not refused
   IF COALESCE(NEW.refused, false) = true THEN
     RETURN NEW;
@@ -29,9 +39,9 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- Load policy price
-  SELECT p.insurance_price
-  INTO v_policy_price
+  -- Load policy price (including office commission) and group_id
+  SELECT p.insurance_price + COALESCE(p.office_commission, 0), p.group_id
+  INTO v_policy_price, v_group_id
   FROM public.policies p
   WHERE p.id = NEW.policy_id;
 
@@ -39,13 +49,29 @@ BEGIN
     RAISE EXCEPTION 'Policy not found for payment';
   END IF;
 
-  -- Sum existing payments excluding refused and excluding current row (for updates)
-  SELECT COALESCE(SUM(pp.amount), 0)
-  INTO v_existing_total
-  FROM public.policy_payments pp
-  WHERE pp.policy_id = NEW.policy_id
-    AND COALESCE(pp.refused, false) = false
-    AND (TG_OP <> 'UPDATE' OR pp.id <> NEW.id);
+  IF v_group_id IS NOT NULL THEN
+    SELECT COALESCE(SUM(pkg.insurance_price + COALESCE(pkg.office_commission, 0)), 0)
+    INTO v_policy_price
+    FROM public.policies pkg
+    WHERE pkg.group_id = v_group_id
+      AND pkg.deleted_at IS NULL;
+
+    SELECT COALESCE(SUM(pp.amount), 0)
+    INTO v_existing_total
+    FROM public.policy_payments pp
+    JOIN public.policies pol ON pol.id = pp.policy_id
+    WHERE pol.group_id = v_group_id
+      AND pol.deleted_at IS NULL
+      AND COALESCE(pp.refused, false) = false
+      AND (TG_OP <> 'UPDATE' OR pp.id <> NEW.id);
+  ELSE
+    SELECT COALESCE(SUM(pp.amount), 0)
+    INTO v_existing_total
+    FROM public.policy_payments pp
+    WHERE pp.policy_id = NEW.policy_id
+      AND COALESCE(pp.refused, false) = false
+      AND (TG_OP <> 'UPDATE' OR pp.id <> NEW.id);
+  END IF;
 
   v_new_total := v_existing_total + COALESCE(NEW.amount, 0);
 
@@ -55,4 +81,4 @@ BEGIN
 
   RETURN NEW;
 END;
-$$;
+$function$;
