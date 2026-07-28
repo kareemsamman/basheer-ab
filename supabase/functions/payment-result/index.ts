@@ -70,7 +70,10 @@ Deno.serve(async (req) => {
   const confirmationCode = url.searchParams.get('ConfirmationCode') || url.searchParams.get('confirmationcode') || ''
   const tranzilaIndex = url.searchParams.get('index') || url.searchParams.get('Index') || ''
   const myid = url.searchParams.get('myid') || url.searchParams.get('Myid') || ''
-  
+  // tranzila-init sends our tracking reference in `pdesc`; keep `myid` for older links.
+  const pdesc = url.searchParams.get('pdesc') || url.searchParams.get('Pdesc') || ''
+  const ourIndex = myid || pdesc
+
   // Card and installment details from Tranzila
   const ccno = url.searchParams.get('ccno') || url.searchParams.get('Ccno') || '' // Card number (masked)
   const expdate = url.searchParams.get('expdate') || url.searchParams.get('Expdate') || '' // MMYY
@@ -81,8 +84,8 @@ Deno.serve(async (req) => {
   const cResp = url.searchParams.get('CResp') || url.searchParams.get('cresp') || ''
   const sum = url.searchParams.get('sum') || url.searchParams.get('Sum') || ''
   
-  console.log('Payment result page loaded:', { 
-    status, paymentId, responseCode, myid, cResp, reason,
+  console.log('Payment result page loaded:', {
+    status, paymentId, responseCode, myid, pdesc, cResp, reason,
     ccno: ccno ? `****${ccno.slice(-4)}` : 'none',
     expdate,
     npay,
@@ -115,65 +118,104 @@ Deno.serve(async (req) => {
   // URL-encode for safe embedding in JavaScript
   const errorMessageEncoded = encodeURIComponent(errorMessage)
 
-  // Only update DB if we have a definitive status (not pending)
+  // Only update DB if we have a definitive status (not pending).
+  // This endpoint is public (verify_jwt = false), so the write is gated on an actual
+  // Tranzila Response code - the `status` URL param alone is caller-controlled and only
+  // drives what the page displays. If Tranzila ever omits it, the webhook and the modal
+  // still record the payment.
   let updatedPayment: any = null
-  if ((myid || paymentId) && finalStatus !== 'pending') {
+  if ((ourIndex || paymentId) && finalStatus !== 'pending' && responseCode) {
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!
       const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
       const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-      if (myid) {
-        // Find payment by tranzila_index
-        const { data: payment } = await supabase
+      // Locate the payment: by our tracking reference first, then by the payment_id
+      // we put on the success/fail URL ourselves.
+      let payment: any = null
+
+      if (ourIndex) {
+        const { data, error } = await supabase
           .from('policy_payments')
           .select('id, tranzila_response_code, policy_id')
-          .eq('tranzila_index', myid)
-          .single()
+          .eq('tranzila_index', ourIndex)
+          .maybeSingle()
 
-        if (payment && !payment.tranzila_response_code) {
-          // Update payment status with card details
-          if (finalStatus === 'success') {
-            const { data: updated } = await supabase
-              .from('policy_payments')
-              .update({
-                refused: false,
-                tranzila_response_code: responseCode || '000',
-                tranzila_approval_code: confirmationCode,
-                tranzila_transaction_id: tranzilaIndex,
-                card_last_four: cardLastFour || null,
-                card_expiry: expdate || null,
-                installments_count: npay ? parseInt(npay, 10) : 1,
-              })
-              .eq('id', payment.id)
-              .select(`
-                *,
-                policy:policies!policy_id (
+        if (data) payment = data
+        else console.log(`Lookup by tranzila_index "${ourIndex}" failed:`, error?.message)
+      }
+
+      if (!payment && paymentId) {
+        const { data, error } = await supabase
+          .from('policy_payments')
+          .select('id, tranzila_response_code, policy_id')
+          .eq('id', paymentId)
+          .maybeSingle()
+
+        if (data) {
+          payment = data
+          console.log('Payment found via payment_id fallback:', paymentId)
+        } else {
+          console.error(`Lookup by payment_id "${paymentId}" failed:`, error?.message)
+        }
+      }
+
+      if (!payment) {
+        console.error('Payment not found. index:', ourIndex, 'payment_id:', paymentId)
+      } else if (payment.tranzila_response_code) {
+        console.log('Payment already processed:', payment.id, payment.tranzila_response_code)
+      } else {
+        // Update payment status with card details
+        if (finalStatus === 'success') {
+          const { data: updated, error: updateError } = await supabase
+            .from('policy_payments')
+            .update({
+              refused: false,
+              tranzila_response_code: responseCode || '000',
+              tranzila_approval_code: confirmationCode,
+              tranzila_transaction_id: tranzilaIndex,
+              card_last_four: cardLastFour || null,
+              card_expiry: expdate || null,
+              installments_count: npay ? parseInt(npay, 10) : 1,
+            })
+            .eq('id', payment.id)
+            .select(`
+              *,
+              policy:policies!policy_id (
+                id,
+                policy_number,
+                client:clients!client_id (
                   id,
-                  policy_number,
-                  client:clients!client_id (
-                    id,
-                    full_name,
-                    phone_number
-                  )
+                  full_name,
+                  phone_number
                 )
-              `)
-              .single()
-            
-            updatedPayment = updated
-            
-            // Send SMS receipt if payment was successful
-            if (updated?.policy?.client?.phone_number) {
-              await sendPaymentReceiptSms(supabase, updated)
-            }
-          } else if (finalStatus === 'failed') {
-            await supabase
-              .from('policy_payments')
-              .update({
-                refused: true,
-                tranzila_response_code: responseCode || 'FAILED',
-              })
-              .eq('id', payment.id)
+              )
+            `)
+            .single()
+
+          if (updateError) {
+            console.error('Failed to mark payment as paid:', payment.id, updateError)
+          } else {
+            console.log('Payment marked as paid:', payment.id)
+          }
+
+          updatedPayment = updated
+
+          // Send SMS receipt if payment was successful
+          if (updated?.policy?.client?.phone_number) {
+            await sendPaymentReceiptSms(supabase, updated)
+          }
+        } else if (finalStatus === 'failed') {
+          const { error: updateError } = await supabase
+            .from('policy_payments')
+            .update({
+              refused: true,
+              tranzila_response_code: responseCode || 'FAILED',
+            })
+            .eq('id', payment.id)
+
+          if (updateError) {
+            console.error('Failed to mark payment as failed:', payment.id, updateError)
           }
         }
       }

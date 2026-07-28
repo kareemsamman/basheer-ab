@@ -84,6 +84,33 @@ export function TranzilaPaymentModal({
     }
   }, [status, formFields, formSubmitted]);
 
+  // The server (payment-result / tranzila-webhook) is the source of truth for marking a
+  // payment as paid. This only covers the case where neither reached the DB in time.
+  // Returns false when the charge went through at Tranzila but we could not record it.
+  const ensurePaymentMarkedPaid = async (pmtId: string): Promise<boolean> => {
+    const readRefused = async () => {
+      const { data } = await supabase
+        .from('policy_payments')
+        .select('refused')
+        .eq('id', pmtId)
+        .maybeSingle();
+      return (data as any)?.refused;
+    };
+
+    if ((await readRefused()) === false) return true;
+
+    const { error } = await supabase
+      .from('policy_payments')
+      .update({ refused: false } as any)
+      .eq('id', pmtId);
+
+    if (!error) return true;
+
+    console.error('Failed to mark payment as paid:', error);
+    // The server may have won the race while we were writing.
+    return (await readRefused()) === false;
+  };
+
   // Listen for postMessage from payment success/fail pages loaded in iframe
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
@@ -99,19 +126,26 @@ export function TranzilaPaymentModal({
 
         if (paymentStatus === 'success') {
           setStatus('success');
-          // Mark payment as not refused (was created with refused=true as pending)
-          if (paymentId) {
-            await supabase.from('policy_payments').update({ refused: false } as any).eq('id', paymentId);
+          const recorded = paymentId ? await ensurePaymentMarkedPaid(paymentId) : true;
+
+          if (recorded) {
+            toast({
+              title: "تم الدفع بنجاح",
+              description: "تم استلام الدفع بنجاح",
+            });
+          } else {
+            toast({
+              variant: "destructive",
+              title: "تم الخصم لكن لم يُسجَّل في النظام",
+              description: "نجحت العملية لدى شركة الائتمان، لكن تعذّر تحديث حالة الدفعة. الدفعة ستظهر كـ\"راجع\" وتحتاج تعديل يدوي.",
+            });
           }
-          toast({
-            title: "تم الدفع بنجاح",
-            description: "تم استلام الدفع بنجاح",
-          });
+
           // Fast close - user already saw success in iframe with countdown
           setTimeout(() => {
             onSuccess();
             onOpenChange(false);
-          }, 500);
+          }, recorded ? 500 : 6000);
         } else if (paymentStatus === 'failed') {
           setStatus('failed');
           // Use detailed error message from Tranzila if available
@@ -203,15 +237,22 @@ export function TranzilaPaymentModal({
         if (statusData.status === 'paid') {
           clearInterval(pollingRef.current!);
           pollingRef.current = null;
-          // Mark payment as not refused (was created with refused=true as pending)
-          if (pmtId) {
-            await supabase.from('policy_payments').update({ refused: false } as any).eq('id', pmtId);
-          }
           setStatus('success');
-          toast({
-            title: "تم الدفع بنجاح",
-            description: `رقم المعاملة: ${statusData.transaction_id || 'N/A'}`,
-          });
+
+          const recorded = pmtId ? await ensurePaymentMarkedPaid(pmtId) : true;
+          if (recorded) {
+            toast({
+              title: "تم الدفع بنجاح",
+              description: `رقم المعاملة: ${statusData.transaction_id || 'N/A'}`,
+            });
+          } else {
+            toast({
+              variant: "destructive",
+              title: "تم الخصم لكن لم يُسجَّل في النظام",
+              description: "نجحت العملية لدى شركة الائتمان، لكن تعذّر تحديث حالة الدفعة. الدفعة ستظهر كـ\"راجع\" وتحتاج تعديل يدوي.",
+            });
+          }
+
           setTimeout(() => {
             onSuccess();
             onOpenChange(false);
@@ -241,7 +282,20 @@ export function TranzilaPaymentModal({
     // Delete the pending payment record to prevent orphaned records
     if (paymentId && status !== 'success' && status !== 'test_success') {
       try {
-        await supabase.from('policy_payments').delete().eq('id', paymentId).eq('refused', true);
+        // Never delete a charge Tranzila approved - the card was already debited, and
+        // dropping the row would erase the only trace of it on our side.
+        const { data: current } = await supabase
+          .from('policy_payments')
+          .select('refused, tranzila_response_code')
+          .eq('id', paymentId)
+          .maybeSingle();
+
+        const code = String((current as any)?.tranzila_response_code ?? '');
+        const charged = (current as any)?.refused === false || code === '000' || code === '0';
+
+        if (!charged) {
+          await supabase.from('policy_payments').delete().eq('id', paymentId).eq('refused', true);
+        }
       } catch (e) {
         console.error('Failed to cleanup pending payment:', e);
       }
