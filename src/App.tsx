@@ -374,9 +374,9 @@ const App = () => (
                 </AdminRoute>
               } />
               <Route path="/card-search" element={
-                <AdminRoute>
+                <ProtectedRoute>
                   <CardSearch />
-                </AdminRoute>
+                </ProtectedRoute>
               } />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
