@@ -23,11 +23,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, Save, CheckCircle } from 'lucide-react';
+import { Loader2, Save, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -81,6 +91,60 @@ interface CarDrawerProps {
   onSaved: () => void;
 }
 
+const normalizeCarNumber = (value: string) => (value || '').replace(/[-\s]/g, '').trim();
+
+interface CarNumberMatch {
+  id: string;
+  clientId: string;
+  ownerName: string | null;
+}
+
+/**
+ * Finds active cars already using this number, ignoring `excludeId` (the car being edited).
+ * Returns `'error'` when the lookup itself failed, so callers can tell "no duplicate" from "unknown".
+ *
+ * Note: the DB no longer enforces uniqueness on car_number (dropped so the same plate can exist
+ * for more than one client), so this check is the only guard — a same-client duplicate is blocked,
+ * a different-client duplicate is only warned about.
+ */
+async function lookupCarNumber(
+  carNumber: string,
+  excludeId?: string
+): Promise<CarNumberMatch[] | 'error'> {
+  let query = supabase
+    .from('cars')
+    .select('id, client_id, clients(full_name)')
+    .eq('car_number', carNumber)
+    .is('deleted_at', null)
+    .limit(10);
+
+  if (excludeId) {
+    query = query.neq('id', excludeId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error('Car number lookup error:', error);
+    return 'error';
+  }
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    clientId: row.client_id,
+    ownerName: row.clients?.full_name ?? null,
+  }));
+}
+
+type CarNumberCheck =
+  | { status: 'idle' }
+  | { status: 'checking' }
+  | { status: 'available' }
+  /** Same client already has this number — a real duplicate, blocked. */
+  | { status: 'duplicate' }
+  /** Another client has this number — allowed, but confirmed first. */
+  | { status: 'other-client'; ownerNames: string[] };
+
 const CAR_TYPES = [
   { value: 'car', label: 'خصوصي' },
   { value: 'cargo', label: 'تجاري' },
@@ -96,8 +160,16 @@ export function CarDrawer({ open, onOpenChange, clientId, car, onSaved }: CarDra
   const [fetchedFromGov, setFetchedFromGov] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [loadingClients, setLoadingClients] = useState(false);
+  const [numberCheck, setNumberCheck] = useState<CarNumberCheck>({ status: 'idle' });
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    data: CarFormData;
+    isRename: boolean;
+    policyCount: number;
+    otherOwners: string[];
+  } | null>(null);
 
   const isEditMode = !!car;
+  const originalCarNumber = normalizeCarNumber(car?.car_number || '');
 
   const form = useForm<CarFormData>({
     resolver: zodResolver(carSchema),
@@ -173,8 +245,58 @@ export function CarDrawer({ open, onOpenChange, clientId, car, onSaved }: CarDra
         });
       }
       setFetchedFromGov(false);
+      setNumberCheck({ status: 'idle' });
+      setPendingConfirm(null);
     }
   }, [open, clientId, car]);
+
+  const watchedCarNumber = form.watch('car_number');
+  const watchedClientId = form.watch('client_id');
+  const isRenamingNumber =
+    isEditMode &&
+    !!normalizeCarNumber(watchedCarNumber) &&
+    normalizeCarNumber(watchedCarNumber) !== originalCarNumber;
+
+  const classifyMatches = (matches: CarNumberMatch[], ownerClientId: string): CarNumberCheck => {
+    if (matches.length === 0) return { status: 'available' };
+    if (matches.some((m) => m.clientId === ownerClientId)) return { status: 'duplicate' };
+    return {
+      status: 'other-client',
+      ownerNames: Array.from(new Set(matches.map((m) => m.ownerName).filter(Boolean) as string[])),
+    };
+  };
+
+  // Live duplicate check on the car number (debounced)
+  useEffect(() => {
+    if (!open) return;
+
+    const normalized = normalizeCarNumber(watchedCarNumber);
+
+    // Nothing to check: empty, too short, or unchanged in edit mode
+    if (!normalized || normalized.length < 5 || normalized === originalCarNumber) {
+      setNumberCheck({ status: 'idle' });
+      return;
+    }
+
+    let cancelled = false;
+    setNumberCheck({ status: 'checking' });
+
+    const timer = setTimeout(async () => {
+      const matches = await lookupCarNumber(normalized, car?.id);
+      if (cancelled) return;
+
+      if (matches === 'error') {
+        setNumberCheck({ status: 'idle' });
+        return;
+      }
+      setNumberCheck(classifyMatches(matches, watchedClientId));
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [open, watchedCarNumber, watchedClientId, originalCarNumber, car?.id]);
 
   const fetchVehicleData = async () => {
     const carNumber = form.getValues('car_number');
@@ -240,10 +362,64 @@ export function CarDrawer({ open, onOpenChange, clientId, car, onSaved }: CarDra
   };
 
   const onSubmit = async (data: CarFormData) => {
+    const normalized = normalizeCarNumber(data.car_number);
+
+    if (!normalized) {
+      form.setError('car_number', { message: 'رقم السيارة مطلوب' });
+      return;
+    }
+
+    const isRename = isEditMode && normalized !== originalCarNumber;
+    let otherOwners: string[] = [];
+
+    // Authoritative duplicate check right before writing (the debounced one can be stale)
+    if (!isEditMode || isRename) {
+      setSaving(true);
+      const matches = await lookupCarNumber(normalized, car?.id);
+      setSaving(false);
+
+      if (matches === 'error') {
+        toast.error('تعذر التحقق من رقم السيارة، حاول مرة أخرى');
+        return;
+      }
+
+      const check = classifyMatches(matches, data.client_id);
+      setNumberCheck(check);
+
+      if (check.status === 'duplicate') {
+        form.setError('car_number', { message: 'رقم السيارة مسجل مسبقاً لدى هذا العميل' });
+        return;
+      }
+      if (check.status === 'other-client') {
+        otherOwners = check.ownerNames;
+      }
+    }
+
+    // Renaming affects every policy linked to this car, and reusing another client's
+    // number is allowed but unusual — both deserve an explicit confirmation.
+    if (isRename || otherOwners.length > 0) {
+      let policyCount = 0;
+      if (isRename) {
+        const { count } = await supabase
+          .from('policies')
+          .select('id', { count: 'exact', head: true })
+          .eq('car_id', car!.id)
+          .is('deleted_at', null);
+        policyCount = count || 0;
+      }
+
+      setPendingConfirm({ data, isRename, policyCount, otherOwners });
+      return;
+    }
+
+    await saveCar(data);
+  };
+
+  const saveCar = async (data: CarFormData) => {
     setSaving(true);
     try {
       const carData = {
-        car_number: data.car_number.replace(/[-\s]/g, '').trim(),
+        car_number: normalizeCarNumber(data.car_number),
         client_id: data.client_id,
         manufacturer_name: data.manufacturer_name || null,
         model: data.model || null,
@@ -264,7 +440,15 @@ export function CarDrawer({ open, onOpenChange, clientId, car, onSaved }: CarDra
           .update(carData)
           .eq('id', car.id);
 
-        if (error) throw error;
+        if (error) {
+          if (error.code === '23505') {
+            toast.error('رقم السيارة موجود مسبقاً في النظام');
+            form.setError('car_number', { message: 'رقم السيارة موجود مسبقاً في النظام' });
+            setNumberCheck({ status: 'duplicate' });
+            return;
+          }
+          throw error;
+        }
         toast.success('تم تحديث السيارة بنجاح');
       } else {
         // Insert new car
@@ -275,6 +459,8 @@ export function CarDrawer({ open, onOpenChange, clientId, car, onSaved }: CarDra
         if (error) {
           if (error.code === '23505') {
             toast.error('رقم السيارة موجود مسبقاً في النظام');
+            form.setError('car_number', { message: 'رقم السيارة موجود مسبقاً في النظام' });
+            setNumberCheck({ status: 'duplicate' });
             return;
           }
           throw error;
@@ -313,31 +499,68 @@ export function CarDrawer({ open, onOpenChange, clientId, car, onSaved }: CarDra
                     <FormLabel className="text-right block">رقم السيارة *</FormLabel>
                     <div className="relative">
                       <FormControl>
-                        <Input 
-                          placeholder="أدخل رقم السيارة (7-8 أرقام)" 
-                          {...field} 
+                        <Input
+                          placeholder="أدخل رقم السيارة (7-8 أرقام)"
+                          {...field}
+                          onChange={(e) => {
+                            field.onChange(e.target.value.replace(/[^\d-]/g, ''));
+                            form.clearErrors('car_number');
+                          }}
                           onBlur={(e) => {
                             field.onBlur();
                             handleCarNumberBlur();
                           }}
                           onKeyDown={handleCarNumberKeyDown}
                           className="text-right"
-                          disabled={isEditMode}
                           maxLength={8}
                           inputMode="numeric"
                         />
                       </FormControl>
-                      {fetching && (
+                      {(fetching || numberCheck.status === 'checking') && (
                         <div className="absolute left-3 top-1/2 -translate-y-1/2">
                           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                         </div>
                       )}
+                      {!fetching && numberCheck.status === 'available' && (
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                          <CheckCircle className="h-4 w-4 text-green-600" />
+                        </div>
+                      )}
+                      {!fetching && numberCheck.status === 'duplicate' && (
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                          <XCircle className="h-4 w-4 text-destructive" />
+                        </div>
+                      )}
+                      {!fetching && numberCheck.status === 'other-client' && (
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                          <AlertTriangle className="h-4 w-4 text-amber-600" />
+                        </div>
+                      )}
                     </div>
                     <FormMessage className="text-right" />
+                    {numberCheck.status === 'duplicate' && !form.formState.errors.car_number && (
+                      <p className="text-right text-sm font-medium text-destructive">
+                        رقم السيارة مسجل مسبقاً لدى هذا العميل
+                      </p>
+                    )}
+                    {numberCheck.status === 'other-client' && (
+                      <p className="text-right text-sm text-amber-600 flex items-center justify-end gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        {numberCheck.ownerNames.length > 0
+                          ? `هذا الرقم مسجل أيضاً لدى: ${numberCheck.ownerNames.join('، ')}`
+                          : 'هذا الرقم مسجل أيضاً لدى عميل آخر'}
+                      </p>
+                    )}
+                    {isRenamingNumber && numberCheck.status !== 'duplicate' && (
+                      <p className="text-right text-sm text-muted-foreground flex items-center justify-end gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        سيتم تغيير الرقم من {originalCarNumber} — وسيظهر الرقم الجديد في كل الوثائق المرتبطة
+                      </p>
+                    )}
                   </FormItem>
                 )}
               />
-              
+
               {fetchedFromGov && (
                 <Badge className="bg-green-500 gap-1">
                   <CheckCircle className="h-3 w-3" />
@@ -517,7 +740,10 @@ export function CarDrawer({ open, onOpenChange, clientId, car, onSaved }: CarDra
               >
                 إلغاء
               </Button>
-              <Button type="submit" disabled={saving}>
+              <Button
+                type="submit"
+                disabled={saving || numberCheck.status === 'checking' || numberCheck.status === 'duplicate'}
+              >
                 {saving ? (
                   <Loader2 className="h-4 w-4 ml-2 animate-spin" />
                 ) : (
@@ -529,6 +755,68 @@ export function CarDrawer({ open, onOpenChange, clientId, car, onSaved }: CarDra
           </form>
         </Form>
       </DialogContent>
+
+      <AlertDialog
+        open={!!pendingConfirm}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setPendingConfirm(null);
+        }}
+      >
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-right">
+              {pendingConfirm?.isRename ? 'تأكيد تغيير رقم السيارة' : 'تأكيد رقم السيارة'}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-right space-y-2">
+              {pendingConfirm?.isRename && (
+                <span className="block">
+                  سيتم تغيير رقم السيارة من{' '}
+                  <span className="font-bold ltr-nums">{originalCarNumber}</span> إلى{' '}
+                  <span className="font-bold ltr-nums">
+                    {normalizeCarNumber(pendingConfirm.data.car_number)}
+                  </span>
+                  .
+                </span>
+              )}
+              {!!pendingConfirm?.policyCount && (
+                <span className="block">
+                  هذه السيارة مرتبطة بـ{' '}
+                  <span className="font-bold">{pendingConfirm.policyCount}</span> وثيقة، وسيظهر فيها
+                  الرقم الجديد.
+                </span>
+              )}
+              {!!pendingConfirm?.otherOwners.length && (
+                <span className="block text-amber-600">
+                  تنبيه: هذا الرقم مسجل أيضاً لدى{' '}
+                  <span className="font-bold">{pendingConfirm.otherOwners.join('، ')}</span>. النظام
+                  يسمح بذلك، تأكد أنه ليس خطأ.
+                </span>
+              )}
+              {pendingConfirm?.isRename && (
+                <span className="block text-muted-foreground">
+                  ملاحظة: السجلات التي حُفظ فيها الرقم كنص (مثل الإيصالات وعمليات نقل الوثائق) ستبقى
+                  بالرقم القديم.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel disabled={saving}>إلغاء</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={saving}
+              onClick={(e) => {
+                e.preventDefault();
+                const data = pendingConfirm?.data;
+                if (!data) return;
+                setPendingConfirm(null);
+                saveCar(data);
+              }}
+            >
+              تأكيد
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
