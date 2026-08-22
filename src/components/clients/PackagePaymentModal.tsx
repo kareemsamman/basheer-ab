@@ -507,6 +507,7 @@ export function PackagePaymentModal({
     } catch (error: any) {
 
       console.error('Error adding payments:', error);
+      if (printWindow) printWindow.close();
       if (error.message?.includes('Payment total exceeds')) {
         toast.error('مجموع الدفعات يتجاوز سعر التأمين');
       } else {
