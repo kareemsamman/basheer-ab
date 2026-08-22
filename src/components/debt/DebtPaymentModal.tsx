@@ -765,7 +765,9 @@ export function DebtPaymentModal({
 
     } catch (error: any) {
       console.error('Error saving payments:', error);
+      if (printWindow) printWindow.close();
       toast.error(error.message || 'خطأ في حفظ الدفعات');
+
     } finally {
       setSaving(false);
     }
