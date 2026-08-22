@@ -661,6 +661,8 @@ export function DebtPaymentModal({
     }
 
     setSaving(true);
+    const printWindow = openReceiptPrintWindow();
+
     
     // Collect all created payment IDs for bulk receipt
     const allCreatedPaymentIds: string[] = [];
