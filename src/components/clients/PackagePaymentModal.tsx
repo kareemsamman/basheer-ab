@@ -18,6 +18,8 @@ import { useToast } from '@/hooks/use-toast';
 import type { Enums } from "@/integrations/supabase/types";
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import { getInsuranceTypeLabel } from '@/lib/insuranceTypes';
+import { autoPrintPaymentReceipt, openReceiptPrintWindow } from '@/lib/autoPrintReceipt';
+
 
 interface PaymentLine {
   id: string;
@@ -451,6 +453,8 @@ export function PackagePaymentModal({
     }
 
     setSaving(true);
+    const printWindow = openReceiptPrintWindow();
+    const createdPaymentIds: string[] = [];
     try {
       // Use primary policy (first one) for all payments — trigger validates across the whole group
       const primaryPolicyId = policies[0]?.policyId;
@@ -484,6 +488,7 @@ export function PackagePaymentModal({
           .single();
 
         if (error) throw error;
+        if (data) createdPaymentIds.push(data.id);
 
         // Upload images for this payment
         if (paymentLine.pendingImages && paymentLine.pendingImages.length > 0 && data) {
@@ -492,10 +497,17 @@ export function PackagePaymentModal({
       }
 
       toast.success(`تمت إضافة الدفعات بنجاح`);
+
+      // Open the receipt directly with the printer dialog
+      const totalPaid = paymentLines.reduce((sum, p) => sum + (p.amount || 0), 0);
+      autoPrintPaymentReceipt(createdPaymentIds, totalPaid, printWindow).catch(console.error);
+
       await onSuccess();
       onOpenChange(false);
     } catch (error: any) {
+
       console.error('Error adding payments:', error);
+      if (printWindow) printWindow.close();
       if (error.message?.includes('Payment total exceeds')) {
         toast.error('مجموع الدفعات يتجاوز سعر التأمين');
       } else {

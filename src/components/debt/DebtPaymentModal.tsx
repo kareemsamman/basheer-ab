@@ -18,6 +18,8 @@ import { ChequeScannerDialog } from '@/components/payments/ChequeScannerDialog';
 import { sanitizeChequeNumber, CHEQUE_NUMBER_MAX_LENGTH } from '@/lib/chequeUtils';
 import { useToast } from '@/hooks/use-toast';
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
+import { autoPrintPaymentReceipt, openReceiptPrintWindow } from '@/lib/autoPrintReceipt';
+
 
 // Represents each policy inside a debt item
 interface PolicyComponent {
@@ -659,6 +661,8 @@ export function DebtPaymentModal({
     }
 
     setSaving(true);
+    const printWindow = openReceiptPrintWindow();
+
     
     // Collect all created payment IDs for bulk receipt
     const allCreatedPaymentIds: string[] = [];
@@ -742,7 +746,14 @@ export function DebtPaymentModal({
       }
 
       toast.success('تم تسديد الدفعات بنجاح');
-      
+
+      // Open the receipt directly with the printer dialog
+      if (allCreatedPaymentIds.length > 0) {
+        autoPrintPaymentReceipt(allCreatedPaymentIds, totalPaymentAmount, printWindow).catch(console.error);
+      } else if (printWindow) {
+        printWindow.close();
+      }
+
       // Close modal and refresh immediately - don't wait for SMS
       onOpenChange(false);
       onSuccess();
@@ -751,9 +762,12 @@ export function DebtPaymentModal({
       if (allCreatedPaymentIds.length > 0) {
         sendPaymentConfirmationSms(totalPaymentAmount, allCreatedPaymentIds).catch(console.error);
       }
+
     } catch (error: any) {
       console.error('Error saving payments:', error);
+      if (printWindow) printWindow.close();
       toast.error(error.message || 'خطأ في حفظ الدفعات');
+
     } finally {
       setSaving(false);
     }
