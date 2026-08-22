@@ -742,7 +742,14 @@ export function DebtPaymentModal({
       }
 
       toast.success('تم تسديد الدفعات بنجاح');
-      
+
+      // Open the receipt directly with the printer dialog
+      if (allCreatedPaymentIds.length > 0) {
+        autoPrintPaymentReceipt(allCreatedPaymentIds, totalPaymentAmount, printWindow).catch(console.error);
+      } else if (printWindow) {
+        printWindow.close();
+      }
+
       // Close modal and refresh immediately - don't wait for SMS
       onOpenChange(false);
       onSuccess();
@@ -751,6 +758,7 @@ export function DebtPaymentModal({
       if (allCreatedPaymentIds.length > 0) {
         sendPaymentConfirmationSms(totalPaymentAmount, allCreatedPaymentIds).catch(console.error);
       }
+
     } catch (error: any) {
       console.error('Error saving payments:', error);
       toast.error(error.message || 'خطأ في حفظ الدفعات');
