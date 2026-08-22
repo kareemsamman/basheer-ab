@@ -18,6 +18,8 @@ import { useToast } from '@/hooks/use-toast';
 import type { Enums } from "@/integrations/supabase/types";
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import { getInsuranceTypeLabel } from '@/lib/insuranceTypes';
+import { autoPrintPaymentReceipt, openReceiptPrintWindow } from '@/lib/autoPrintReceipt';
+
 
 interface PaymentLine {
   id: string;
