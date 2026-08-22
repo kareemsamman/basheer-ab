@@ -18,6 +18,8 @@ import { ChequeScannerDialog } from '@/components/payments/ChequeScannerDialog';
 import { sanitizeChequeNumber, CHEQUE_NUMBER_MAX_LENGTH } from '@/lib/chequeUtils';
 import { useToast } from '@/hooks/use-toast';
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
+import { autoPrintPaymentReceipt, openReceiptPrintWindow } from '@/lib/autoPrintReceipt';
+
 
 // Represents each policy inside a debt item
 interface PolicyComponent {
