@@ -387,6 +387,8 @@ export function SinglePolicyPaymentModal({
     }
 
     setSaving(true);
+    const printWindow = openReceiptPrintWindow();
+    const createdPaymentIds: string[] = [];
     try {
       for (const paymentLine of paymentLines) {
         // Skip already paid visa payments (already recorded via Tranzila)
@@ -411,6 +413,7 @@ export function SinglePolicyPaymentModal({
           .single();
 
         if (error) throw error;
+        if (data) createdPaymentIds.push(data.id);
 
         // Upload images if any
         if (paymentLine.pendingImages && paymentLine.pendingImages.length > 0 && data) {
@@ -419,8 +422,14 @@ export function SinglePolicyPaymentModal({
       }
 
       toast.success(`تمت إضافة ${paymentLines.length} دفعة بنجاح`);
+
+      // Open the receipt directly with the printer dialog
+      const totalPaid = paymentLines.reduce((sum, p) => sum + (p.amount || 0), 0);
+      autoPrintPaymentReceipt(createdPaymentIds, totalPaid, printWindow).catch(console.error);
+
       await onSuccess();
       onOpenChange(false);
+
     } catch (error: any) {
       console.error('Error adding payments:', error);
       if (error.message?.includes('Payment total exceeds')) {
