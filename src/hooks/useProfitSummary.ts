@@ -63,8 +63,10 @@ export function useProfitSummary() {
         return `${y}-${m}-${day}`;
       };
       const today = toLocalDateStr(now);
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-      const yearStart = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
+      // لازم تكون بالتوقيت المحلي كمان — toISOString() كان بيرجّع آخر يوم من الشهر/السنة
+      // السابقة (إسرائيل UTC+2/+3) فبتتسرّب بوالص من الشهر اللي قبل
+      const monthStart = toLocalDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
+      const yearStart = toLocalDateStr(new Date(now.getFullYear(), 0, 1));
 
       // Fetch all active policies for the year with profit data and policy type
       // Include company data to check if company is broker-linked
@@ -86,7 +88,9 @@ export function useProfitSummary() {
         `)
         .is('deleted_at', null)
         .eq('cancelled', false)
-        .gte('start_date', '2026-01-01');
+        // بوليصة انحطّت على النظام هالسنة بس سريانها بدأ السنة اللي قبل لازم تنحسب كمان،
+        // لأنّ الأرباح بتتحسب حسب تاريخ الإدخال (created_at)
+        .or(`start_date.gte.${yearStart},created_at.gte.${yearStart}`);
 
       if (error) throw error;
 
@@ -95,7 +99,7 @@ export function useProfitSummary() {
         .from('broker_settlements')
         .select('direction, total_amount, status')
         .eq('status', 'completed')
-        .gte('created_at', '2026-01-01');
+        .gte('created_at', yearStart);
 
       let todayProfit = 0;
       let monthProfit = 0;
@@ -116,12 +120,14 @@ export function useProfitSummary() {
 
       policies?.forEach((policy) => {
         const isElzami = policy.policy_type_parent === 'ELZAMI';
-        // "أرباح اليوم" تُحسب حسب تاريخ إدخال البوليصة على النظام (created_at) وليس
-        // تاريخ بدء سريانها (start_date) — هيك ما يظهر ربح قبل إدخال أي معاملة اليوم
-        const enteredToday = policy.created_at
-          ? toLocalDateStr(new Date(policy.created_at)) === today
-          : false;
-        
+        // الأرباح كلها (اليوم/الشهر/السنة) تُحسب حسب تاريخ إدخال البوليصة على النظام
+        // (created_at) وليس تاريخ بدء سريانها (start_date) — هيك ما يظهر ربح قبل إدخال
+        // أي معاملة، والفلاتر الثلاثة بتقيس نفس الشي
+        const enteredOn = policy.created_at ? toLocalDateStr(new Date(policy.created_at)) : null;
+        const enteredToday = enteredOn === today;
+        const enteredThisMonth = enteredOn != null && enteredOn >= monthStart;
+        const enteredThisYear = enteredOn != null && enteredOn >= yearStart;
+
         let policyProfit: number;
         let policyRevenue: number;
         
@@ -132,10 +138,13 @@ export function useProfitSummary() {
           policyRevenue = 0; // الإيراد لا يُحسب لأنه يذهب للشركة
           
           // تسجيل تكلفة الإلزامي (كقيمة موجبة للعرض، لكنها خصم)
-          totalElzamiCost += elzamiCost;
-          elzamiCommission += elzamiCost; // للتوافق مع القديم
-          
-          if (policy.start_date >= monthStart) {
+          // مقيّدة بالسنة مثل yearProfit لأنّ netProfit = yearProfit - totalElzamiCost
+          if (enteredThisYear) {
+            totalElzamiCost += elzamiCost;
+            elzamiCommission += elzamiCost; // للتوافق مع القديم
+          }
+
+          if (enteredThisMonth) {
             monthElzamiCost += elzamiCost;
             monthElzamiCommission += elzamiCost;
           }
@@ -153,8 +162,10 @@ export function useProfitSummary() {
             totalCompanyPaymentDue += Number(policy.payed_for_company) || 0;
           }
           
-          otherProfit += policyProfit;
-          if (policy.start_date >= monthStart) {
+          if (enteredThisYear) {
+            otherProfit += policyProfit;
+          }
+          if (enteredThisMonth) {
             monthOtherProfit += policyProfit;
           }
           
@@ -171,10 +182,12 @@ export function useProfitSummary() {
           }
         }
 
-        yearProfit += policyProfit;
-        yearRevenue += policyRevenue;
+        if (enteredThisYear) {
+          yearProfit += policyProfit;
+          yearRevenue += policyRevenue;
+        }
 
-        if (policy.start_date >= monthStart) {
+        if (enteredThisMonth) {
           monthProfit += policyProfit;
           monthRevenue += policyRevenue;
         }
