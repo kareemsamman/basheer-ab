@@ -108,7 +108,17 @@ function buildBulkReceiptHtml(
     @media print {
       body { padding: 0; background: white; }
       .no-print { display: none !important; }
-      .container { box-shadow: none; border: none; }
+      .container {
+        box-shadow: none;
+        border: 2px solid #1a3a5c;
+        min-height: 100vh;
+        page-break-inside: avoid;
+      }
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
     }
     body {
       font-family: Arial, Tahoma, 'Segoe UI', sans-serif;
@@ -124,7 +134,14 @@ function buildBulkReceiptHtml(
       margin: 0 auto;
       background: white;
       border: 2px solid #1a3a5c;
-      min-height: 600px;
+      min-height: calc(100vh - 40px);
+      display: flex;
+      flex-direction: column;
+    }
+    .content-grow {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
     }
     .header {
       display: flex;
@@ -317,51 +334,53 @@ function buildBulkReceiptHtml(
       </div>
     </div>
 
-    <div class="receipt-meta">
-      <div class="receipt-title-block">
-        <span class="receipt-label">קבלה</span>
-        <span class="receipt-num">${receiptId}</span>
+    <div class="content-grow">
+      <div class="receipt-meta">
+        <div class="receipt-title-block">
+          <span class="receipt-label">קבלה</span>
+          <span class="receipt-num">${receiptId}</span>
+        </div>
+        <span class="receipt-origin">מקור</span>
       </div>
-      <span class="receipt-origin">מקור</span>
-    </div>
 
-    <div class="client-row">
-      <div><span>לכבוד: </span><span class="client-name">${client?.full_name || '-'}</span>${client?.id_number ? ` (ת.ז. ${client.id_number})` : ''}</div>
-      <div>תאריך: ${formatDate(paymentDate)}</div>
-    </div>
-
-    <div class="subject-bar">
-      ביטוח רכב${car?.car_number ? ` / רכב ${car.car_number}` : ''} / ${client?.full_name || ''}
-    </div>
-
-    <div class="table-section">
-      <div class="table-header-label">פרטי תשלומים</div>
-      <table>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>אמצעי תשלום</th>
-            <th>פירוט</th>
-            <th>תאריך</th>
-            <th>סכום</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${paymentRows}
-        </tbody>
-      </table>
-    </div>
-
-    <div class="total-row">
-      <span class="total-label">סה"כ</span>
-      <span class="total-value">₪${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-    </div>
-
-    <div class="signature-section">
-      <div class="signature-stamp">
-        ${logoUrl ? `<img src="${logoUrl}" alt="Stamp" class="stamp-img" />` : ''}
+      <div class="client-row">
+        <div><span>לכבוד: </span><span class="client-name">${client?.full_name || '-'}</span>${client?.id_number ? ` (ת.ז. ${client.id_number})` : ''}</div>
+        <div>תאריך: ${formatDate(paymentDate)}</div>
       </div>
-      <div class="signature-line">:חתימה</div>
+
+      <div class="subject-bar">
+        ביטוח רכב${car?.car_number ? ` / רכב ${car.car_number}` : ''} / ${client?.full_name || ''}
+      </div>
+
+      <div class="table-section">
+        <div class="table-header-label">פרטי תשלומים</div>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>אמצעי תשלום</th>
+              <th>פירוט</th>
+              <th>תאריך</th>
+              <th>סכום</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${paymentRows}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="total-row">
+        <span class="total-label">סה"כ</span>
+        <span class="total-value">₪${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+      </div>
+
+      <div class="signature-section">
+        <div class="signature-stamp">
+          ${logoUrl ? `<img src="${logoUrl}" alt="Stamp" class="stamp-img" />` : ''}
+        </div>
+        <div class="signature-line">:חתימה</div>
+      </div>
     </div>
 
     <div class="footer">
