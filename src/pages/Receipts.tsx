@@ -783,6 +783,10 @@ export default function Receipts() {
 
   const groupedReceipts = filteredReceipts ? groupReceipts(filteredReceipts) : [];
 
+  // The table shows newest first; groupedReceipts stays ascending because the
+  // ריכוז report and the bulk PDF export must keep their chronological order.
+  const displayGroups = useMemo(() => [...groupedReceipts].reverse(), [groupedReceipts]);
+
   // All receipt IDs in current filtered view (flattened)
   const allFilteredIds = useMemo(() => {
     return new Set(groupedReceipts.flatMap(g => g.receipts.map(r => r.id)));
@@ -1462,8 +1466,8 @@ export default function Receipts() {
                     ))}
                   </TableRow>
                 ))
-              ) : groupedReceipts.length > 0 ? (
-                groupedReceipts.map((group) => {
+              ) : displayGroups.length > 0 ? (
+                displayGroups.map((group) => {
                   const isMulti = group.receipts.length > 1;
                   const isExpanded = expandedGroups.has(group.key);
                   const primary = group.receipts[0];
