@@ -381,15 +381,16 @@ export function buildReceiptPrintHtml(data: ReceiptPrintData, settings: CompanyS
       </div>
 
       <div class="total-row">
-      <span class="total-label">סה"כ</span>
-      <span class="total-value">₪${data.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-    </div>
-
-    <div class="signature-section">
-      <div class="signature-stamp">
-        ${settings.logoUrl ? `<img src="${settings.logoUrl}" alt="Stamp" class="stamp-img" />` : ''}
+        <span class="total-label">סה"כ</span>
+        <span class="total-value">₪${data.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
       </div>
-      <div class="signature-line">:חתימה</div>
+
+      <div class="signature-section">
+        <div class="signature-stamp">
+          ${settings.logoUrl ? `<img src="${settings.logoUrl}" alt="Stamp" class="stamp-img" />` : ''}
+        </div>
+        <div class="signature-line">:חתימה</div>
+      </div>
     </div>
 
     <div class="footer">
