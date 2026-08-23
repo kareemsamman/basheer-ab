@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { autoPrintPaymentReceipt } from "@/lib/autoPrintReceipt";
 import { Printer, MessageSquare, MessageCircle, X, Loader2, Check, AlertCircle, Receipt, FileText } from "lucide-react";
+
 
 interface PolicySuccessDialogProps {
   open: boolean;
@@ -44,6 +46,7 @@ export function PolicySuccessDialog({
 
   // Receipt states
   const [paymentIds, setPaymentIds] = useState<string[]>([]);
+  const [paymentsTotal, setPaymentsTotal] = useState(0);
   const [printingReceipt, setPrintingReceipt] = useState(false);
   const [sendingReceiptSms, setSendingReceiptSms] = useState(false);
   const [receiptSmsSent, setReceiptSmsSent] = useState(false);
@@ -81,11 +84,12 @@ export function PolicySuccessDialog({
 
         const { data: payments } = await supabase
           .from('policy_payments')
-          .select('id, payment_type, tranzila_receipt_url')
+          .select('id, amount, payment_type, tranzila_receipt_url')
           .in('policy_id', policyIds);
 
         if (payments && payments.length > 0) {
           setPaymentIds(payments.map(p => p.id));
+          setPaymentsTotal(payments.reduce((s, p) => s + (Number(p.amount) || 0), 0));
           const visaPayment = payments.find(p => p.payment_type === 'visa');
           if (visaPayment) {
             setHasVisaPayment(true);
@@ -101,6 +105,21 @@ export function PolicySuccessDialog({
 
     fetchPayments();
   }, [open, policyId, isPackage]);
+
+  // Auto-open the receipt with the browser print dialog as soon as the success
+  // dialog appears and the payments are known (user can still print manually).
+  const autoPrintedRef = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      autoPrintedRef.current = false;
+      return;
+    }
+    if (autoPrintedRef.current || paymentIds.length === 0) return;
+    autoPrintedRef.current = true;
+    autoPrintPaymentReceipt(paymentIds, paymentsTotal).catch(console.error);
+  }, [open, paymentIds]);
+
+
 
   const extractErrorMessage = async (result: { data: any; error: any }): Promise<string> => {
     if (result.error) {
