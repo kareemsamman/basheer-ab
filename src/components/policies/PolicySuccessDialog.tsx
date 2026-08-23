@@ -116,7 +116,7 @@ export function PolicySuccessDialog({
     }
     if (autoPrintedRef.current || paymentIds.length === 0) return;
     autoPrintedRef.current = true;
-    autoPrintPaymentReceipt(paymentIds).catch(console.error);
+    autoPrintPaymentReceipt(paymentIds, paymentsTotal).catch(console.error);
   }, [open, paymentIds]);
 
 
