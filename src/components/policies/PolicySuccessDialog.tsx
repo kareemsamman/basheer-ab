@@ -104,6 +104,21 @@ export function PolicySuccessDialog({
     fetchPayments();
   }, [open, policyId, isPackage]);
 
+  // Auto-open the receipt with the browser print dialog as soon as the success
+  // dialog appears and the payments are known (user can still print manually).
+  const autoPrintedRef = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      autoPrintedRef.current = false;
+      return;
+    }
+    if (autoPrintedRef.current || paymentIds.length === 0) return;
+    autoPrintedRef.current = true;
+    autoPrintPaymentReceipt(paymentIds).catch(console.error);
+  }, [open, paymentIds]);
+
+
+
   const extractErrorMessage = async (result: { data: any; error: any }): Promise<string> => {
     if (result.error) {
       if (typeof result.error === 'string') return result.error;
