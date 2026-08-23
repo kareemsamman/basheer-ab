@@ -70,29 +70,60 @@ export function useProfitSummary() {
 
       // Fetch all active policies for the year with profit data and policy type
       // Include company data to check if company is broker-linked
-      const { data: policies, error } = await supabase
-        .from('policies')
-        .select(`
-          start_date,
-          created_at,
-          profit,
-          payed_for_company, 
-          insurance_price,
-          policy_type_parent,
-          elzami_cost,
-          broker_id,
-          broker_direction,
-          broker_buy_price,
-          company_id,
-          insurance_companies!policies_company_id_fkey(broker_id)
-        `)
-        .is('deleted_at', null)
-        .eq('cancelled', false)
-        // بوليصة انحطّت على النظام هالسنة بس سريانها بدأ السنة اللي قبل لازم تنحسب كمان،
-        // لأنّ الأرباح بتتحسب حسب تاريخ الإدخال (created_at)
-        .or(`start_date.gte.${yearStart},created_at.gte.${yearStart}`);
+      //
+      // مُرقّم (paginated) لتجاوز حدّ الـ1000 صف في PostgREST — بدونه كانت البوالص
+      // الأحدث (يعني بوالص اليوم) بتنقطع من النتيجة وتظهر "أرباح اليوم" صفر
+      // بينما جدول الإنتاج (RPC بيجمّع على السيرفر) بيعرض الأرقام الصحيحة.
+      // نفس نمط الترقيم المستعمل في fetchCompanyDebts داخل Dashboard.tsx
+      type PolicyRow = {
+        start_date: string | null;
+        created_at: string | null;
+        profit: number | null;
+        payed_for_company: number | null;
+        insurance_price: number | null;
+        policy_type_parent: string | null;
+        elzami_cost: number | null;
+        broker_id: string | null;
+        broker_direction: string | null;
+        broker_buy_price: number | null;
+        company_id: string | null;
+        insurance_companies: { broker_id: string | null } | null;
+      };
+      const policies: PolicyRow[] = [];
+      const pageSize = 1000;
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from('policies')
+          .select(`
+            start_date,
+            created_at,
+            profit,
+            payed_for_company,
+            insurance_price,
+            policy_type_parent,
+            elzami_cost,
+            broker_id,
+            broker_direction,
+            broker_buy_price,
+            company_id,
+            insurance_companies!policies_company_id_fkey(broker_id)
+          `)
+          .is('deleted_at', null)
+          .eq('cancelled', false)
+          // بوليصة انحطّت على النظام هالسنة بس سريانها بدأ السنة اللي قبل لازم تنحسب كمان،
+          // لأنّ الأرباح بتتحسب حسب تاريخ الإدخال (created_at)
+          .or(`start_date.gte.${yearStart},created_at.gte.${yearStart}`)
+          // ترتيب ثابت ضروري مع range() وإلا ممكن يتكرّر أو ينقص صف بين الصفحات
+          .order('created_at', { ascending: true })
+          .range(from, from + pageSize - 1);
 
-      if (error) throw error;
+        if (error) throw error;
+        const batch = (data || []) as unknown as PolicyRow[];
+        policies.push(...batch);
+        if (batch.length < pageSize) break;
+        from += pageSize;
+      }
 
       // Fetch broker settlements to calculate net broker debt
       const { data: brokerSettlements } = await supabase
@@ -118,7 +149,7 @@ export function useProfitSummary() {
       let monthElzamiCost = 0;
       let todayElzamiCost = 0;
 
-      policies?.forEach((policy) => {
+      policies.forEach((policy) => {
         const isElzami = policy.policy_type_parent === 'ELZAMI';
         // الأرباح كلها (اليوم/الشهر/السنة) تُحسب حسب تاريخ إدخال البوليصة على النظام
         // (created_at) وليس تاريخ بدء سريانها (start_date) — هيك ما يظهر ربح قبل إدخال
