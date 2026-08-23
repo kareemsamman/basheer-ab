@@ -46,6 +46,7 @@ export function PolicySuccessDialog({
 
   // Receipt states
   const [paymentIds, setPaymentIds] = useState<string[]>([]);
+  const [paymentsTotal, setPaymentsTotal] = useState(0);
   const [printingReceipt, setPrintingReceipt] = useState(false);
   const [sendingReceiptSms, setSendingReceiptSms] = useState(false);
   const [receiptSmsSent, setReceiptSmsSent] = useState(false);
