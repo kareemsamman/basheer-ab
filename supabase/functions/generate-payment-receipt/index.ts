@@ -403,10 +403,11 @@ function buildReceiptHtml(
       </div>
 
       <div class="signature-section">
-      <div class="signature-stamp">
-        ${logoUrl ? `<img src="${logoUrl}" alt="Stamp" class="stamp-img" />` : ''}
+        <div class="signature-stamp">
+          ${logoUrl ? `<img src="${logoUrl}" alt="Stamp" class="stamp-img" />` : ''}
+        </div>
+        <div class="signature-line">:חתימה</div>
       </div>
-      <div class="signature-line">:חתימה</div>
     </div>
 
     <div class="footer">
