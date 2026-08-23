@@ -83,11 +83,12 @@ export function PolicySuccessDialog({
 
         const { data: payments } = await supabase
           .from('policy_payments')
-          .select('id, payment_type, tranzila_receipt_url')
+          .select('id, amount, payment_type, tranzila_receipt_url')
           .in('policy_id', policyIds);
 
         if (payments && payments.length > 0) {
           setPaymentIds(payments.map(p => p.id));
+          setPaymentsTotal(payments.reduce((s, p) => s + (Number(p.amount) || 0), 0));
           const visaPayment = payments.find(p => p.payment_type === 'visa');
           if (visaPayment) {
             setHasVisaPayment(true);
