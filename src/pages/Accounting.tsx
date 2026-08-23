@@ -770,8 +770,12 @@ export default function Accounting() {
     const policyProfit = policyDetails.reduce((s, pol) => s + pol.profit, 0);
     const remainingToCompany = owedToCompany - p;
     const netProfit = policyProfit - manualExpensesTotal;
-    return { issuances: i, refunds: rf, payments: p, sales: sl, receipts: rc, net: i - rf - p - sl + rc, owedToCompany, policyProfit, remainingToCompany, manualExpenses: manualExpensesTotal, netProfit };
-  }, [rows, policyDetails, manualExpensesTotal]);
+    // Broker / other: صافي الحساب is a real balance — positive = he owes me, negative = I owe him.
+    // Issuances, payment vouchers and sales raise his debt; refunds and receipt vouchers lower it.
+    // Company tab keeps the legacy cash-flow formula (it has "المتبقي للشركات" as its real balance).
+    const net = entityType === "company" ? i - rf - p - sl + rc : i + p + sl - rf - rc;
+    return { issuances: i, refunds: rf, payments: p, sales: sl, receipts: rc, net, owedToCompany, policyProfit, remainingToCompany, manualExpenses: manualExpensesTotal, netProfit };
+  }, [rows, policyDetails, manualExpensesTotal, entityType]);
 
   const showReceipt = true; // All entity types support payment + receipt
 
@@ -1426,16 +1430,21 @@ export default function Accounting() {
         {/* Summary */}
         <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
           {[
-            { l: "إجمالي الإصدارات", v: summary.issuances, c: "text-primary", bg: "bg-primary/10", I: TrendingUp },
-            { l: "إجمالي المرتجعات", v: summary.refunds, c: "text-destructive", bg: "bg-destructive/10", I: TrendingDown },
-            { l: "سندات الصرف", v: summary.payments, c: "text-amber-600", bg: "bg-amber-100", I: ArrowUpRight },
-            { l: "مبيعات", v: summary.sales, c: "text-blue-700", bg: "bg-blue-50", I: FileText },
-            { l: "سندات القبض", v: summary.receipts, c: "text-blue-600", bg: "bg-blue-100", I: ArrowDownLeft },
-            { l: "صافي الحساب", v: summary.net, c: summary.net >= 0 ? "text-green-600" : "text-destructive", bg: "bg-green-100", I: Landmark },
+            { l: "إجمالي الإصدارات", v: summary.issuances, c: "text-primary", bg: "bg-primary/10", I: TrendingUp, signed: false },
+            { l: "إجمالي المرتجعات", v: summary.refunds, c: "text-destructive", bg: "bg-destructive/10", I: TrendingDown, signed: false },
+            { l: "سندات الصرف", v: summary.payments, c: "text-amber-600", bg: "bg-amber-100", I: ArrowUpRight, signed: false },
+            { l: "مبيعات", v: summary.sales, c: "text-blue-700", bg: "bg-blue-50", I: FileText, signed: false },
+            { l: "سندات القبض", v: summary.receipts, c: "text-blue-600", bg: "bg-blue-100", I: ArrowDownLeft, signed: false },
+            // signed: fmtCur strips the sign, and a negative balance (I owe him) must stay distinguishable
+            { l: "صافي الحساب", v: summary.net, c: summary.net >= 0 ? "text-green-600" : "text-destructive", bg: "bg-green-100", I: Landmark, signed: true },
           ].map((s, i) => (
             <Card key={i} className="p-4"><div className="flex items-center justify-between">
               <div><p className="text-xs text-muted-foreground">{s.l}</p>
-                {loading ? <Skeleton className="h-7 w-20 mt-1" /> : <p className={cn("text-xl font-bold", s.c)}>{fmtCur(s.v)}</p>}
+                {loading ? <Skeleton className="h-7 w-20 mt-1" /> : (
+                  <p className={cn("text-xl font-bold", s.c)}>
+                    <span dir="ltr" className="inline-block">{s.signed && s.v < 0 ? "-" : ""}{fmtCur(s.v)}</span>
+                  </p>
+                )}
               </div>
               <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center", s.bg)}><s.I className={cn("h-4 w-4", s.c)} /></div>
             </div></Card>
