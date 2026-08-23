@@ -88,6 +88,11 @@ export function buildReceiptPrintHtml(data: ReceiptPrintData, settings: CompanyS
       .no-print { display: none !important; }
       .container { box-shadow: none; border: none; }
     }
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
     body {
       font-family: Arial, Tahoma, 'Segoe UI', sans-serif;
       font-size: 14px;
@@ -102,7 +107,14 @@ export function buildReceiptPrintHtml(data: ReceiptPrintData, settings: CompanyS
       margin: 0 auto;
       background: white;
       border: 2px solid #1a3a5c;
-      min-height: 600px;
+      min-height: calc(100vh - 40px);
+      display: flex;
+      flex-direction: column;
+    }
+    .content-grow {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
     }
     .header {
       display: flex;
