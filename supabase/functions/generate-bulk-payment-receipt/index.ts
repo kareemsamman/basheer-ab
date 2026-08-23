@@ -375,11 +375,12 @@ function buildBulkReceiptHtml(
         <span class="total-value">₪${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
       </div>
 
-    <div class="signature-section">
-      <div class="signature-stamp">
-        ${logoUrl ? `<img src="${logoUrl}" alt="Stamp" class="stamp-img" />` : ''}
+      <div class="signature-section">
+        <div class="signature-stamp">
+          ${logoUrl ? `<img src="${logoUrl}" alt="Stamp" class="stamp-img" />` : ''}
+        </div>
+        <div class="signature-line">:חתימה</div>
       </div>
-      <div class="signature-line">:חתימה</div>
     </div>
 
     <div class="footer">
