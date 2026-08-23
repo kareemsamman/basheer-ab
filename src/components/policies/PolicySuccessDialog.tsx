@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { autoPrintPaymentReceipt } from "@/lib/autoPrintReceipt";
 import { Printer, MessageSquare, MessageCircle, X, Loader2, Check, AlertCircle, Receipt, FileText } from "lucide-react";
+
 
 interface PolicySuccessDialogProps {
   open: boolean;
