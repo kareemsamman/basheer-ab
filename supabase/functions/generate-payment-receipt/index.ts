@@ -107,7 +107,12 @@ function buildReceiptHtml(
     @media print {
       body { padding: 0; background: white; }
       .no-print { display: none !important; }
-      .container { box-shadow: none; border: none; }
+      .container {
+        box-shadow: none;
+        border: 2px solid #1a3a5c;
+        min-height: 100vh;
+        page-break-inside: avoid;
+      }
     }
     html, body {
       height: 100%;
