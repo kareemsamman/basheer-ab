@@ -334,45 +334,46 @@ function buildBulkReceiptHtml(
       </div>
     </div>
 
-    <div class="receipt-meta">
-      <div class="receipt-title-block">
-        <span class="receipt-label">קבלה</span>
-        <span class="receipt-num">${receiptId}</span>
+    <div class="content-grow">
+      <div class="receipt-meta">
+        <div class="receipt-title-block">
+          <span class="receipt-label">קבלה</span>
+          <span class="receipt-num">${receiptId}</span>
+        </div>
+        <span class="receipt-origin">מקור</span>
       </div>
-      <span class="receipt-origin">מקור</span>
-    </div>
 
-    <div class="client-row">
-      <div><span>לכבוד: </span><span class="client-name">${client?.full_name || '-'}</span>${client?.id_number ? ` (ת.ז. ${client.id_number})` : ''}</div>
-      <div>תאריך: ${formatDate(paymentDate)}</div>
-    </div>
+      <div class="client-row">
+        <div><span>לכבוד: </span><span class="client-name">${client?.full_name || '-'}</span>${client?.id_number ? ` (ת.ז. ${client.id_number})` : ''}</div>
+        <div>תאריך: ${formatDate(paymentDate)}</div>
+      </div>
 
-    <div class="subject-bar">
-      ביטוח רכב${car?.car_number ? ` / רכב ${car.car_number}` : ''} / ${client?.full_name || ''}
-    </div>
+      <div class="subject-bar">
+        ביטוח רכב${car?.car_number ? ` / רכב ${car.car_number}` : ''} / ${client?.full_name || ''}
+      </div>
 
-    <div class="table-section">
-      <div class="table-header-label">פרטי תשלומים</div>
-      <table>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>אמצעי תשלום</th>
-            <th>פירוט</th>
-            <th>תאריך</th>
-            <th>סכום</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${paymentRows}
-        </tbody>
-      </table>
-    </div>
+      <div class="table-section">
+        <div class="table-header-label">פרטי תשלומים</div>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>אמצעי תשלום</th>
+              <th>פירוט</th>
+              <th>תאריך</th>
+              <th>סכום</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${paymentRows}
+          </tbody>
+        </table>
+      </div>
 
-    <div class="total-row">
-      <span class="total-label">סה"כ</span>
-      <span class="total-value">₪${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-    </div>
+      <div class="total-row">
+        <span class="total-label">סה"כ</span>
+        <span class="total-value">₪${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+      </div>
 
     <div class="signature-section">
       <div class="signature-stamp">
