@@ -334,52 +334,53 @@ export function buildReceiptPrintHtml(data: ReceiptPrintData, settings: CompanyS
       </div>
     </div>
 
-    <div class="receipt-meta">
-      <div class="receipt-title-block">
-        <span class="receipt-label">${data.receiptTypeLabel}</span>
-        <span class="receipt-num">#${data.receiptNumber}</span>
+    <div class="content-grow">
+      <div class="receipt-meta">
+        <div class="receipt-title-block">
+          <span class="receipt-label">${data.receiptTypeLabel}</span>
+          <span class="receipt-num">#${data.receiptNumber}</span>
+        </div>
+        <span class="receipt-origin">${sourceLabel}</span>
       </div>
-      <span class="receipt-origin">${sourceLabel}</span>
-    </div>
 
-    <div class="client-row">
-      <div>
-        <div><span>לכבוד: </span><span class="client-name">${data.clientName}</span></div>
-        ${data.clientIdNumber ? `<div style="font-size:12px;color:#666;margin-top:2px;">ת.ז: ${data.clientIdNumber}</div>` : ''}
+      <div class="client-row">
+        <div>
+          <div><span>לכבוד: </span><span class="client-name">${data.clientName}</span></div>
+          ${data.clientIdNumber ? `<div style="font-size:12px;color:#666;margin-top:2px;">ת.ז: ${data.clientIdNumber}</div>` : ''}
+        </div>
+        <div>תאריך: ${formatDateHe(new Date().toISOString())}</div>
       </div>
-      <div>תאריך: ${formatDateHe(new Date().toISOString())}</div>
-    </div>
 
-    <div class="subject-bar">
-      ביטוח רכב${data.carNumber ? ` / רכב ${data.carNumber}` : ''} / ${data.clientName}
-    </div>
+      <div class="subject-bar">
+        ביטוח רכב${data.carNumber ? ` / רכב ${data.carNumber}` : ''} / ${data.clientName}
+      </div>
 
-    <div class="table-section">
-      <div class="table-header-label">פרטי תשלומים</div>
-      <table>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>אמצעי תשלום</th>
-            <th>פירוט</th>
-            <th>תאריך</th>
-            <th>סכום</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>1</td>
-            <td>${PAYMENT_METHOD_LABELS[data.paymentMethod || ''] || (data.receiptType === 'accident_fee' ? 'דמי תאונות' : 'תשלום')}</td>
-            <td>${data.paymentMethod === 'cheque' && data.chequeNumber ? `שיק מס׳ ${data.chequeNumber}${data.chequeDate ? ' - ' + formatDateHe(data.chequeDate) : ''}` : ((data.paymentMethod === 'visa' || data.paymentMethod === 'credit_card') && data.cardLastFour ? `כרטיס ****${data.cardLastFour}` : (data.notes || '-'))}</td>
-            <td>${formatDateHe(data.receiptDate)}</td>
-            <td class="amount-cell">₪${data.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-          </tr>
-          ${accidentRows}
-        </tbody>
-      </table>
-    </div>
+      <div class="table-section">
+        <div class="table-header-label">פרטי תשלומים</div>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>אמצעי תשלום</th>
+              <th>פירוט</th>
+              <th>תאריך</th>
+              <th>סכום</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td>${PAYMENT_METHOD_LABELS[data.paymentMethod || ''] || (data.receiptType === 'accident_fee' ? 'דמי תאונות' : 'תשלום')}</td>
+              <td>${data.paymentMethod === 'cheque' && data.chequeNumber ? `שיק מס׳ ${data.chequeNumber}${data.chequeDate ? ' - ' + formatDateHe(data.chequeDate) : ''}` : ((data.paymentMethod === 'visa' || data.paymentMethod === 'credit_card') && data.cardLastFour ? `כרטיס ****${data.cardLastFour}` : (data.notes || '-'))}</td>
+              <td>${formatDateHe(data.receiptDate)}</td>
+              <td class="amount-cell">₪${data.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+            ${accidentRows}
+          </tbody>
+        </table>
+      </div>
 
-    <div class="total-row">
+      <div class="total-row">
       <span class="total-label">סה"כ</span>
       <span class="total-value">₪${data.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>
