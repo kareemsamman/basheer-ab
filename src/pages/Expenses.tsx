@@ -47,7 +47,7 @@ import { he } from "date-fns/locale";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { POLICY_TYPE_LABELS } from "@/lib/insuranceTypes";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
-import { buildExpenseInvoiceHtml, openExpenseInvoicePrint } from "@/lib/expenseInvoiceBuilder";
+import { buildExpenseInvoiceHtml, openExpenseInvoicePrint, openBlankInvoiceWindow, printVoucherInvoice, type VoucherPrintRow } from "@/lib/expenseInvoiceBuilder";
 
 interface Expense {
   id: string;
@@ -500,6 +500,18 @@ export default function Expenses() {
     }
   };
 
+  // Name printed in the "גורם" column of the voucher
+  const resolveVoucherContactName = (): string | null => {
+    if (formData.contact_name) return formData.contact_name;
+    if (formData.entity_type === 'company') {
+      return companiesList.find(c => c.id === formData.entity_id)?.name || null;
+    }
+    if (formData.entity_type === 'broker') {
+      return brokersList.find(b => b.id === formData.entity_id)?.name || null;
+    }
+    return null;
+  };
+
   const handleSubmit = async () => {
     if (!formData.category || !formData.expense_date) {
       toast.error('يرجى ملء جميع الحقول المطلوبة');
@@ -528,6 +540,12 @@ export default function Expenses() {
         toast.error('رقم الشيك مطلوب لدفعات الشيكات');
         return;
       }
+
+      // Opened here, still inside the click gesture, so the popup blocker allows it.
+      const willPrint = !editingExpense && (formData.voucher_type === 'receipt' || formData.voucher_type === 'payment');
+      const printWin = willPrint ? openBlankInvoiceWindow() : null;
+      const printRows: VoucherPrintRow[] = [];
+      let printed = false;
 
       setSaving(true);
       try {
@@ -565,6 +583,16 @@ export default function Expenses() {
 
           const { error } = await supabase.from('expenses').insert(expenseData);
           if (error) throw error;
+
+          printRows.push({
+            description: expenseData.description,
+            amount,
+            expense_date: payment.payment_date,
+            category: formData.category,
+            contact_name: resolveVoucherContactName(),
+            payment_method: paymentMethod,
+            reference_number: expenseData.reference_number,
+          });
 
           // If customer cheques were used, update them as transferred
           if (payment.payment_type === 'customer_cheque' && customerChequeIds.length > 0) {
@@ -622,6 +650,16 @@ export default function Expenses() {
           }
         }
 
+        if (willPrint) {
+          printed = printVoucherInvoice(
+            printWin,
+            printRows,
+            formData.voucher_type as 'receipt' | 'payment',
+            siteSettings?.logo_url || null,
+            siteSettings?.site_title || 'AB Insurance',
+          );
+        }
+
         toast.success(`تم إضافة ${validLines.length} دفعة بنجاح`);
         setIsDialogOpen(false);
         setEditingExpense(null);
@@ -631,6 +669,7 @@ export default function Expenses() {
         console.error('Error saving:', error);
         toast.error('حدث خطأ في الحفظ');
       } finally {
+        if (printWin && !printed) printWin.close();
         setSaving(false);
       }
     } else {
@@ -639,6 +678,11 @@ export default function Expenses() {
         toast.error('يرجى ملء جميع الحقول المطلوبة');
         return;
       }
+
+      // Opened here, still inside the click gesture, so the popup blocker allows it.
+      const willPrint = !editingExpense && (formData.voucher_type === 'receipt' || formData.voucher_type === 'payment');
+      const printWin = willPrint ? openBlankInvoiceWindow() : null;
+      let printed = false;
 
       setSaving(true);
       try {
@@ -686,6 +730,24 @@ export default function Expenses() {
             });
           }
 
+          if (willPrint) {
+            printed = printVoucherInvoice(
+              printWin,
+              [{
+                description: expenseData.description,
+                amount: expenseData.amount,
+                expense_date: expenseData.expense_date,
+                category: expenseData.category,
+                contact_name: resolveVoucherContactName(),
+                payment_method: expenseData.payment_method,
+                reference_number: expenseData.reference_number,
+              }],
+              formData.voucher_type as 'receipt' | 'payment',
+              siteSettings?.logo_url || null,
+              siteSettings?.site_title || 'AB Insurance',
+            );
+          }
+
           toast.success(formData.voucher_type === 'receipt' ? 'تم إضافة سند القبض' : 'تم إضافة سند الصرف');
         }
 
@@ -697,6 +759,7 @@ export default function Expenses() {
         console.error('Error saving:', error);
         toast.error('حدث خطأ في الحفظ');
       } finally {
+        if (printWin && !printed) printWin.close();
         setSaving(false);
       }
     }

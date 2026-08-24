@@ -303,14 +303,77 @@ export function openExpenseInvoicePrint(html: string) {
     alert('אנא אפשרו חלונות קופצים / Please allow popups');
     return;
   }
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
+  renderInvoiceInWindow(printWindow, html);
+}
 
-  printWindow.onafterprint = () => {
-    printWindow.close();
+/**
+ * Opens a placeholder tab synchronously, inside the click handler, so the popup
+ * blocker lets it through; the voucher is written into it once it is saved.
+ */
+export function openBlankInvoiceWindow(): Window | null {
+  const w = window.open('', '_blank');
+  if (w) {
+    w.document.write(
+      `<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>קבלה</title></head>` +
+        `<body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#334155">` +
+        `جاري تحضير السند للطباعة...</body></html>`
+    );
+    w.document.close();
+  }
+  return w;
+}
+
+/** Writes the invoice into a window and fires the print dialog once it is ready. */
+export function renderInvoiceInWindow(win: Window, html: string) {
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+
+  let printed = false;
+  const doPrint = () => {
+    if (printed || win.closed) return;
+    printed = true;
+    win.print();
   };
-  printWindow.onload = () => {
-    setTimeout(() => printWindow.print(), 400);
-  };
+  win.onafterprint = () => win.close();
+  win.onload = () => setTimeout(doPrint, 400);
+  // A reused window may have fired `load` before the handler was attached.
+  setTimeout(doPrint, 1500);
+}
+
+export interface VoucherPrintRow {
+  description: string | null;
+  amount: number;
+  expense_date: string;
+  category: string;
+  contact_name: string | null;
+  payment_method: string;
+  reference_number: string | null;
+}
+
+/**
+ * Prints the קבלה / חשבונית זיכוי for a voucher that was just saved.
+ * Returns false when there is nothing to print, so the caller can close the
+ * placeholder window it opened up front.
+ */
+export function printVoucherInvoice(
+  win: Window | null,
+  rows: VoucherPrintRow[],
+  type: 'receipt' | 'payment',
+  logoUrl: string | null,
+  businessName: string,
+): boolean {
+  if (rows.length === 0) return false;
+  const transactionType = type === 'receipt' ? 'סנד קבץ' : 'סנד שרף';
+  const dateLabel = new Date(rows[0].expense_date).toLocaleDateString('en-GB');
+  const html = buildExpenseInvoiceHtml(
+    rows.map(r => ({ ...r, transaction_type: transactionType })),
+    type,
+    dateLabel,
+    logoUrl,
+    businessName,
+  );
+  if (win) renderInvoiceInWindow(win, html);
+  else openExpenseInvoicePrint(html);
+  return true;
 }

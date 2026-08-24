@@ -106,6 +106,33 @@ export function buildAccountingStatementHtml(opts: {
     padding: 14px 18px;
     font-size: 12px;
   }
+  .toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    gap: 8px;
+    padding: 8px 0 14px;
+    background: #fff;
+  }
+  .toolbar button {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #1e293b;
+    cursor: pointer;
+  }
+  .toolbar button:hover { background: #f1f5f9; }
+  .toolbar button.primary {
+    background: #0f766e;
+    border-color: #0f766e;
+    color: #fff;
+  }
+  .toolbar button.primary:hover { background: #0d635c; }
   .top-bar {
     background: #d9d9d9;
     padding: 6px 10px;
@@ -221,6 +248,11 @@ export function buildAccountingStatementHtml(opts: {
 </style>
 </head>
 <body>
+  <div class="toolbar no-print">
+    <button type="button" class="primary" onclick="window.print()">🖨️ طباعة</button>
+    <button type="button" onclick="window.close()">إغلاق</button>
+  </div>
+
   <div class="ab-header">
     <div class="ab-tax">${taxId}</div>
     <div class="ab-logo-wrap">
@@ -272,12 +304,17 @@ export function buildAccountingStatementHtml(opts: {
     </tfoot>
   </table>
 
-  <div class="footer">AB Insurance CRM &bull; تم الإنشاء تلقائياً &bull; ${new Date().toLocaleString('en-GB')}</div>
+  <div class="footer">تم الإنشاء تلقائياً &bull; ${new Date().toLocaleString('en-GB')}</div>
 </body>
 </html>`;
 }
 
-export function openAccountingStatementPrint(html: string) {
+/**
+ * Opens the statement in its own tab so it can be read on screen. Printing is
+ * left to the toolbar button inside the page — nothing is sent to the printer
+ * on open.
+ */
+export function openAccountingStatementWindow(html: string) {
   const w = window.open('', '_blank');
   if (!w) {
     alert('الرجاء السماح بالنوافذ المنبثقة / Please allow popups');
@@ -286,6 +323,4 @@ export function openAccountingStatementPrint(html: string) {
   w.document.open();
   w.document.write(html);
   w.document.close();
-  w.onafterprint = () => w.close();
-  w.onload = () => setTimeout(() => w.print(), 400);
 }

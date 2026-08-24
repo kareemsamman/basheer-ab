@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   BookOpen, FileText, RotateCcw, PlusCircle, MoreVertical,
-  Download, TrendingUp, TrendingDown, Landmark, Trash2, Pencil, XCircle,
+  TrendingUp, TrendingDown, Landmark, Trash2, Pencil, XCircle,
   ChevronLeft, ChevronRight, ChevronDown, Building2, Users, UserPlus,
   ArrowUpRight, ArrowDownLeft,
 } from "lucide-react";
@@ -33,8 +33,8 @@ import { cn } from "@/lib/utils";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { ArabicMonthPicker } from "@/components/ui/arabic-month-picker";
 import { ExpensePaymentLines, PaymentLine } from "@/components/expenses/ExpensePaymentLines";
-import { buildExpenseInvoiceHtml, openExpenseInvoicePrint } from "@/lib/expenseInvoiceBuilder";
-import { buildAccountingStatementHtml, openAccountingStatementPrint, type StatementRow } from "@/lib/accountingStatementBuilder";
+import { buildExpenseInvoiceHtml, openExpenseInvoicePrint, openBlankInvoiceWindow, printVoucherInvoice, type VoucherPrintRow } from "@/lib/expenseInvoiceBuilder";
+import { buildAccountingStatementHtml, openAccountingStatementWindow, type StatementRow } from "@/lib/accountingStatementBuilder";
 import abLogo from "@/assets/ab-insurance-logo.png";
 import { InlineEditCell } from "@/components/accounting/InlineEditCell";
 import { AuditDialog, type AuditResult, type AuditDbRow, computeDiff } from "@/components/accounting/AuditDialog";
@@ -779,10 +779,10 @@ export default function Accounting() {
 
   const showReceipt = true; // All entity types support payment + receipt
 
-  // Export as Arabic account statement (كشف حساب مختصر)
-  const handleExportInvoice = () => {
+  // Open the Arabic account statement (كشف حساب مختصر) in its own tab
+  const handleOpenStatement = () => {
     const data = filtered.length > 0 ? filtered : rows;
-    if (data.length === 0) { toast.error("لا توجد بيانات للتصدير"); return; }
+    if (data.length === 0) { toast.error("لا توجد بيانات لعرضها"); return; }
 
     // Movement labels per tab
     const movementLabels: Record<string, string> = {
@@ -816,22 +816,39 @@ export default function Accounting() {
       };
     });
 
-    const businessName = siteSettings?.site_title || "بشير أبو سنينة";
     const rawLogo = siteSettings?.logo_url || abLogo;
     const logoUrl = rawLogo?.startsWith("http")
       ? rawLogo
       : `${window.location.origin}${rawLogo}`;
 
+    // اسم الزبون = the party the statement is about (broker / company / contact).
+    // When the filter is "الكل" but every row belongs to one party, use that name.
+    const partyNames = new Set(
+      (entityType === "broker"
+        ? data.map(r => r.extra)
+        : entityType === "company"
+          ? data.map(r => r.company_name)
+          : [otherName]
+      ).filter(Boolean)
+    );
+    const fallbackName = entityType === "broker"
+      ? (selectedBrokerId !== "all" ? brokers.find(b => b.id === selectedBrokerId)?.name || "كل الوكلاء" : "كل الوكلاء")
+      : entityType === "company"
+        ? (selectedCompanyIds.length === 1
+            ? companies.find(c => c.id === selectedCompanyIds[0])?.name_ar || companies.find(c => c.id === selectedCompanyIds[0])?.name || "كل الشركات"
+            : "كل الشركات")
+        : otherName || "شخص آخر";
+    const customerName = partyNames.size === 1 ? [...partyNames][0] as string : fallbackName;
+
     const html = buildAccountingStatementHtml({
       rows: statementRows,
       fromDate,
       toDate,
-      customerName: businessName,
+      customerName,
       title: "كشف حساب - مختصر",
       logoUrl,
-      businessName,
     });
-    openAccountingStatementPrint(html);
+    openAccountingStatementWindow(html);
   };
 
   // Delete settlement
@@ -1080,6 +1097,12 @@ export default function Accounting() {
   const resolvedBrokerId = addDialogBrokerId || (selectedBrokerId !== "all" ? selectedBrokerId : "");
 
   const handleSave = async () => {
+    // Vouchers print their קבלה as soon as they are saved. The tab is opened here,
+    // still inside the click gesture, so the popup blocker lets it through.
+    const willPrint = addVoucherType === "receipt" || addVoucherType === "payment";
+    const printWin = willPrint ? openBlankInvoiceWindow() : null;
+    const printRows: VoucherPrintRow[] = [];
+    let printed = false;
     setSaving(true);
     try {
       // SALE: simple entry without payment method
@@ -1137,6 +1160,15 @@ export default function Accounting() {
               cheque_image_url: entry.cheque_image_url,
               customer_cheque_ids: entry.customer_cheque_ids,
             } as any);
+            printRows.push({
+              description: addDesc.trim() || null,
+              amount: entry.amount,
+              expense_date: entry.expense_date,
+              category: "other",
+              contact_name: otherName.trim(),
+              payment_method: entry.payment_method,
+              reference_number: entry.reference_number,
+            });
           }
         }
         // Refresh saved contacts
@@ -1171,6 +1203,15 @@ export default function Accounting() {
               customer_cheque_ids: entry.customer_cheque_ids,
             } as any);
             if (insertErr) { console.error("Company expense insert error:", insertErr); throw insertErr; }
+            printRows.push({
+              description: addDesc.trim() || null,
+              amount: entry.amount,
+              expense_date: entry.expense_date,
+              category: "insurance_company",
+              contact_name: companyName,
+              payment_method: entry.payment_method,
+              reference_number: entry.reference_number,
+            });
           }
           if (customerChequeIds.length > 0) {
             await supabase.from("policy_payments").update({ refused: false } as any).in("id", customerChequeIds);
@@ -1202,14 +1243,35 @@ export default function Accounting() {
               customer_cheque_ids: entry.customer_cheque_ids,
             } as any);
             if (insertErr) { console.error("Broker expense insert error:", insertErr); throw insertErr; }
+            printRows.push({
+              description: addDesc.trim() || null,
+              amount: entry.amount,
+              expense_date: entry.expense_date,
+              category: "broker_payment",
+              contact_name: brokerName,
+              payment_method: entry.payment_method,
+              reference_number: entry.reference_number,
+            });
           }
         }
+      }
+      if (willPrint) {
+        printed = printVoucherInvoice(
+          printWin,
+          printRows,
+          addVoucherType as "receipt" | "payment",
+          siteSettings?.logo_url || null,
+          siteSettings?.site_title || "بشير أبو سنينة",
+        );
       }
       toast.success("تم الإضافة بنجاح");
       setAddOpen(false); resetAddDialog();
       fetchData();
     } catch (err) { console.error(err); toast.error("فشل في الإضافة"); }
-    finally { setSaving(false); }
+    finally {
+      if (printWin && !printed) printWin.close();
+      setSaving(false);
+    }
   };
 
   // ─── Render ──────────────────────────────────────────
@@ -1387,7 +1449,7 @@ export default function Accounting() {
               </>
             )}
 
-            <Button variant="outline" className="gap-2" onClick={handleExportInvoice}><Download className="h-4 w-4" />تصدير קבלה</Button>
+            <Button variant="outline" className="gap-2" onClick={handleOpenStatement}><FileText className="h-4 w-4" />كشف حساب</Button>
             <Button
               variant="outline"
               className="gap-2 border-primary/40 text-primary hover:bg-primary/5"
