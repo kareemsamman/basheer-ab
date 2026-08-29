@@ -623,7 +623,7 @@ serve(async (req) => {
         success: true, 
         receipt_url: receiptUrl,
         total_amount: finalTotal,
-        payment_count: payments.length
+        payment_count: paymentsFinal.length
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
