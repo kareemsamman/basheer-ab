@@ -496,8 +496,45 @@ serve(async (req) => {
       );
     }
 
-    const calculatedTotal = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-    const finalTotal = total_amount || calculatedTotal;
+    // ELZAMI (חובה/حوباه) must NEVER appear on a receipt — filter it out,
+    // including payments whose amount matches the ELZAMI sibling price within
+    // the same package group (money recorded on another policy of the group).
+    const groupIds = [...new Set(payments.map((p: any) => p.policy?.group_id).filter(Boolean))];
+    const groupElzamiPrices = new Map<string, number[]>();
+    if (groupIds.length > 0) {
+      const { data: elzamiSiblings } = await supabase
+        .from("policies")
+        .select("group_id, insurance_price")
+        .in("group_id", groupIds)
+        .eq("policy_type_parent", "ELZAMI");
+      for (const s of elzamiSiblings || []) {
+        if (!s.group_id) continue;
+        const list = groupElzamiPrices.get(s.group_id) || [];
+        list.push(Number(s.insurance_price) || 0);
+        groupElzamiPrices.set(s.group_id, list);
+      }
+    }
+
+    const filteredPayments = payments.filter((p: any) => {
+      const policy = p.policy;
+      if (policy?.policy_type_parent === "ELZAMI") return false;
+      const prices = policy?.group_id ? groupElzamiPrices.get(policy.group_id) : undefined;
+      if (prices?.some((price) => price > 0 && Math.abs(price - Number(p.amount)) < 0.01)) return false;
+      return true;
+    });
+
+    console.log(`[generate-bulk-payment-receipt] Filtered ${payments.length - filteredPayments.length} ELZAMI payments`);
+
+    if (filteredPayments.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "لا يمكن إصدار קבלה — كل الدفعات تخص تأمين الحوباه (חובה)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const calculatedTotal = filteredPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const finalTotal = total_amount && total_amount <= calculatedTotal ? total_amount : calculatedTotal;
+    const paymentsFinal = filteredPayments;
 
     const firstPolicy = (payments[0] as any).policy;
     const client = firstPolicy?.client?.[0] || firstPolicy?.client || {};
