@@ -481,7 +481,7 @@ serve(async (req) => {
         cheque_number, cheque_date, card_last_four, card_expiry,
         installments_count, tranzila_approval_code,
         policy:policies(
-          id, policy_type_parent, policy_type_child,
+          id, policy_type_parent, policy_type_child, group_id,
           client:clients(id, full_name, id_number, phone_number),
           car:cars(car_number, manufacturer_name, model, year)
         )
@@ -496,16 +496,53 @@ serve(async (req) => {
       );
     }
 
-    const calculatedTotal = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-    const finalTotal = total_amount || calculatedTotal;
+    // ELZAMI (חובה/حوباه) must NEVER appear on a receipt — filter it out,
+    // including payments whose amount matches the ELZAMI sibling price within
+    // the same package group (money recorded on another policy of the group).
+    const groupIds = [...new Set(payments.map((p: any) => p.policy?.group_id).filter(Boolean))];
+    const groupElzamiPrices = new Map<string, number[]>();
+    if (groupIds.length > 0) {
+      const { data: elzamiSiblings } = await supabase
+        .from("policies")
+        .select("group_id, insurance_price")
+        .in("group_id", groupIds)
+        .eq("policy_type_parent", "ELZAMI");
+      for (const s of elzamiSiblings || []) {
+        if (!s.group_id) continue;
+        const list = groupElzamiPrices.get(s.group_id) || [];
+        list.push(Number(s.insurance_price) || 0);
+        groupElzamiPrices.set(s.group_id, list);
+      }
+    }
 
-    const firstPolicy = (payments[0] as any).policy;
+    const filteredPayments = payments.filter((p: any) => {
+      const policy = p.policy;
+      if (policy?.policy_type_parent === "ELZAMI") return false;
+      const prices = policy?.group_id ? groupElzamiPrices.get(policy.group_id) : undefined;
+      if (prices?.some((price) => price > 0 && Math.abs(price - Number(p.amount)) < 0.01)) return false;
+      return true;
+    });
+
+    console.log(`[generate-bulk-payment-receipt] Filtered ${payments.length - filteredPayments.length} ELZAMI payments`);
+
+    if (filteredPayments.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "لا يمكن إصدار קבלה — كل الدفعات تخص تأمين الحوباه (חובה)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const calculatedTotal = filteredPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const finalTotal = total_amount && total_amount <= calculatedTotal ? total_amount : calculatedTotal;
+    const paymentsFinal = filteredPayments;
+
+    const firstPolicy = (paymentsFinal[0] as any).policy;
     const client = firstPolicy?.client?.[0] || firstPolicy?.client || {};
     const car = firstPolicy?.car?.[0] || firstPolicy?.car || {};
 
     // Collect unique policy types
     const policyTypeKeys: string[] = [];
-    for (const payment of payments) {
+    for (const payment of paymentsFinal) {
       const policy = (payment as any).policy;
       if (policy?.policy_type_parent) {
         if (policy.policy_type_parent === 'THIRD_FULL' && policy.policy_type_child) {
@@ -522,16 +559,16 @@ serve(async (req) => {
     const { data: receiptRow } = await supabase
       .from("receipts")
       .select("receipt_number")
-      .eq("payment_id", payments[0]?.id)
+      .eq("payment_id", paymentsFinal[0]?.id)
       .maybeSingle();
     const receiptId = receiptRow?.receipt_number
       ? String(receiptRow.receipt_number).padStart(2, '0')
-      : payments[0]?.id?.slice(0, 8).toUpperCase() || crypto.randomUUID().slice(0, 8);
+      : paymentsFinal[0]?.id?.slice(0, 8).toUpperCase() || crypto.randomUUID().slice(0, 8);
 
     console.log(`[generate-bulk-payment-receipt] Total: ${finalTotal}, Types: ${policyTypesText}`);
 
     const receiptHtml = buildBulkReceiptHtml(
-      payments,
+      paymentsFinal,
       finalTotal,
       client,
       car,
@@ -586,7 +623,7 @@ serve(async (req) => {
         success: true, 
         receipt_url: receiptUrl,
         total_amount: finalTotal,
-        payment_count: payments.length
+        payment_count: paymentsFinal.length
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
