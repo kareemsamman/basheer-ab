@@ -536,13 +536,13 @@ serve(async (req) => {
     const finalTotal = total_amount && total_amount <= calculatedTotal ? total_amount : calculatedTotal;
     const paymentsFinal = filteredPayments;
 
-    const firstPolicy = (payments[0] as any).policy;
+    const firstPolicy = (paymentsFinal[0] as any).policy;
     const client = firstPolicy?.client?.[0] || firstPolicy?.client || {};
     const car = firstPolicy?.car?.[0] || firstPolicy?.car || {};
 
     // Collect unique policy types
     const policyTypeKeys: string[] = [];
-    for (const payment of payments) {
+    for (const payment of paymentsFinal) {
       const policy = (payment as any).policy;
       if (policy?.policy_type_parent) {
         if (policy.policy_type_parent === 'THIRD_FULL' && policy.policy_type_child) {
@@ -559,16 +559,16 @@ serve(async (req) => {
     const { data: receiptRow } = await supabase
       .from("receipts")
       .select("receipt_number")
-      .eq("payment_id", payments[0]?.id)
+      .eq("payment_id", paymentsFinal[0]?.id)
       .maybeSingle();
     const receiptId = receiptRow?.receipt_number
       ? String(receiptRow.receipt_number).padStart(2, '0')
-      : payments[0]?.id?.slice(0, 8).toUpperCase() || crypto.randomUUID().slice(0, 8);
+      : paymentsFinal[0]?.id?.slice(0, 8).toUpperCase() || crypto.randomUUID().slice(0, 8);
 
     console.log(`[generate-bulk-payment-receipt] Total: ${finalTotal}, Types: ${policyTypesText}`);
 
     const receiptHtml = buildBulkReceiptHtml(
-      payments,
+      paymentsFinal,
       finalTotal,
       client,
       car,
