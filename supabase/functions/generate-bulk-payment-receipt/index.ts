@@ -481,7 +481,7 @@ serve(async (req) => {
         cheque_number, cheque_date, card_last_four, card_expiry,
         installments_count, tranzila_approval_code,
         policy:policies(
-          id, policy_type_parent, policy_type_child,
+          id, policy_type_parent, policy_type_child, group_id,
           client:clients(id, full_name, id_number, phone_number),
           car:cars(car_number, manufacturer_name, model, year)
         )
