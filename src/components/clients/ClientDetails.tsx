@@ -1767,7 +1767,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                       <TableHead className="text-right">المبلغ</TableHead>
                       <TableHead className="text-right">التاريخ</TableHead>
                       <TableHead className="text-right">طريقة الدفع</TableHead>
-                      <TableHead className="text-right">نوع التأمين</TableHead>
+                      
                       <TableHead className="text-right">رقم الشيك</TableHead>
                       <TableHead className="text-right">الحالة</TableHead>
                       <TableHead className="text-right">ملفات</TableHead>
@@ -1801,15 +1801,6 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                                 *{group.card_last_four}
                               </span>
                             )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {group.policyTypes.map(type => (
-                              <Badge key={type} className={cn("border", policyTypeColors[type])}>
-                                {getInsuranceTypeLabel(type as any, null)}
-                              </Badge>
-                            ))}
                           </div>
                         </TableCell>
                         <TableCell className="font-mono">{group.cheque_number || '-'}</TableCell>
