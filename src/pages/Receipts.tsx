@@ -168,16 +168,18 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
         .filter((r: any) => {
           const linkedPolicyId = r.policy_payments?.policy_id || r.policy_id;
           const parent = r.policy_payments?.policy?.policy_type_parent;
+          const gid = linkedPolicyId ? policyToGroup.get(linkedPolicyId) : null;
+          const elzPrice = gid ? groupElzamiPrice.get(gid) : undefined;
+
+          // Inside a package, payments are often recorded on the ELZAMI policy
+          // even when they cover the other components — block only the payment
+          // whose amount equals the ELZAMI price.
+          if (elzPrice && Math.abs(Number(r.amount) - elzPrice) < 0.01) return false;
+          if (elzPrice) return true;
+
+          // Standalone ELZAMI policy → never gets a receipt.
           if (parent === "ELZAMI") return false;
           if (linkedPolicyId && elzamiPolicyIds.has(linkedPolicyId)) return false;
-          // Exclude payments whose amount matches the ELZAMI sibling price within the same group
-          if (linkedPolicyId) {
-            const gid = policyToGroup.get(linkedPolicyId);
-            if (gid) {
-              const elzPrice = groupElzamiPrice.get(gid);
-              if (elzPrice && Math.abs(Number(r.amount) - elzPrice) < 0.01) return false;
-            }
-          }
           return true;
         })
         .map((r: any) => ({
