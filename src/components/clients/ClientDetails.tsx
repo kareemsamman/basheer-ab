@@ -1803,15 +1803,6 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {group.policyTypes.map(type => (
-                              <Badge key={type} className={cn("border", policyTypeColors[type])}>
-                                {getInsuranceTypeLabel(type as any, null)}
-                              </Badge>
-                            ))}
-                          </div>
-                        </TableCell>
                         <TableCell className="font-mono">{group.cheque_number || '-'}</TableCell>
                         <TableCell>
                           {group.refused ? (
