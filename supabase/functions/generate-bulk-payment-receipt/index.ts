@@ -517,9 +517,11 @@ serve(async (req) => {
 
     const filteredPayments = payments.filter((p: any) => {
       const policy = p.policy;
-      if (policy?.policy_type_parent === "ELZAMI") return false;
       const prices = policy?.group_id ? groupElzamiPrices.get(policy.group_id) : undefined;
+      // Only the payment that equals the ELZAMI price is blocked inside a package.
       if (prices?.some((price) => price > 0 && Math.abs(price - Number(p.amount)) < 0.01)) return false;
+      // Standalone ELZAMI policy (not part of a package) never gets a receipt.
+      if (policy?.policy_type_parent === "ELZAMI" && !prices?.length) return false;
       return true;
     });
 

@@ -532,29 +532,29 @@ serve(async (req) => {
 
     const policy = (payment as any).policy;
 
-    // ELZAMI (חובה/حوباه) must NEVER appear on a receipt
-    if (policy?.policy_type_parent === "ELZAMI") {
-      return new Response(
-        JSON.stringify({ error: "لا يمكن إصدار קבלה لتأمين الحوباه (חובה)" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // If the payment amount matches the ELZAMI sibling price within the same
-    // package group, this payment actually belongs to ELZAMI — block it too.
+    // ELZAMI (חובה/حوباه) must NEVER appear on a receipt.
+    // Inside a package, payments are often recorded on the ELZAMI policy even
+    // when they belong to the other components, so only the payment whose
+    // amount equals the ELZAMI price is blocked.
+    let elzamiPrices: number[] = [];
     if (policy?.group_id) {
       const { data: elzamiSiblings } = await supabase
         .from("policies")
         .select("insurance_price")
         .eq("group_id", policy.group_id)
         .eq("policy_type_parent", "ELZAMI");
-      const elzamiPrices = (elzamiSiblings || []).map((s: any) => Number(s.insurance_price) || 0);
-      if (elzamiPrices.some((price: number) => price > 0 && Math.abs(price - Number(payment.amount)) < 0.01)) {
-        return new Response(
-          JSON.stringify({ error: "لا يمكن إصدار קבלה لدفعة الحوباه (חובה)" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+      elzamiPrices = (elzamiSiblings || []).map((s: any) => Number(s.insurance_price) || 0);
+    }
+
+    const matchesElzamiAmount = elzamiPrices.some(
+      (price: number) => price > 0 && Math.abs(price - Number(payment.amount)) < 0.01
+    );
+
+    if (matchesElzamiAmount || (policy?.policy_type_parent === "ELZAMI" && elzamiPrices.length === 0)) {
+      return new Response(
+        JSON.stringify({ error: "لا يمكن إصدار קבלה لتأمين الحوباه (חובה)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const client = policy?.client?.[0] || policy?.client || {};
