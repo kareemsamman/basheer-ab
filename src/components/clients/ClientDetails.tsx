@@ -978,7 +978,24 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
         body: { payment_id: paymentId }
       });
 
-      if (error) throw error;
+      if (error) {
+        // Try to surface the real reason returned by the function (e.g. ELZAMI blocked)
+        let reason = '';
+        try {
+          const res = (error as any)?.context;
+          if (res && typeof res.json === 'function') {
+            const body = await res.json();
+            reason = body?.error || '';
+          }
+        } catch { /* ignore */ }
+        toast.error(reason || "فشل في توليد الإيصال");
+        return;
+      }
+
+      if (data?.error) {
+        toast.error(data.error);
+        return;
+      }
 
       if (data?.receipt_url) {
         window.open(data.receipt_url, '_blank');
@@ -992,6 +1009,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
       setGeneratingReceipt(null);
     }
   };
+
 
   const getPolicyStatus = (policy: PolicyRecord) => {
     if (policy.cancelled) return { label: 'ملغاة', variant: 'destructive' as const, color: 'text-destructive' };
