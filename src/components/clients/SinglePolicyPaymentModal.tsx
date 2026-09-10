@@ -271,7 +271,7 @@ export function SinglePolicyPaymentModal({
       newPayments.push({
         id: crypto.randomUUID(),
         amount,
-        paymentType: 'cash',
+        paymentType: inheritedPaymentType(),
         paymentDate: paymentDate.toISOString().split('T')[0],
       });
     }
