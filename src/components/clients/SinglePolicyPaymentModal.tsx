@@ -218,13 +218,19 @@ export function SinglePolicyPaymentModal({
     }
   };
 
+  /** Keep the payment method the user already chose instead of forcing cash */
+  const inheritedPaymentType = (): PaymentLine['paymentType'] => {
+    const last = paymentLines[paymentLines.length - 1];
+    return last && last.paymentType !== 'visa' ? last.paymentType : 'cash';
+  };
+
   const addPaymentLine = () => {
     setPaymentLines([
       ...paymentLines,
       {
         id: crypto.randomUUID(),
         amount: 0,
-        paymentType: 'cash',
+        paymentType: inheritedPaymentType(),
         paymentDate: new Date().toISOString().split('T')[0],
       },
     ]);
@@ -265,7 +271,7 @@ export function SinglePolicyPaymentModal({
       newPayments.push({
         id: crypto.randomUUID(),
         amount,
-        paymentType: 'cash',
+        paymentType: inheritedPaymentType(),
         paymentDate: paymentDate.toISOString().split('T')[0],
       });
     }

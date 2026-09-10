@@ -1,0 +1,1 @@
+REVOKE ALL ON FUNCTION public.sync_receipt_on_payment_update() FROM PUBLIC, anon, authenticated;
