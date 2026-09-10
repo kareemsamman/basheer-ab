@@ -479,7 +479,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
       // Get ALL active policies for this client (including ELZAMI for complete view)
       const { data: policiesData } = await supabase
         .from('policies')
-        .select('id, insurance_price, office_commission, profit, policy_type_parent, cancelled, transferred')
+        .select('id, group_id, insurance_price, office_commission, profit, policy_type_parent, cancelled, transferred')
         .eq('client_id', client.id)
         .eq('cancelled', false)
         .eq('transferred', false)
@@ -490,31 +490,44 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
         return;
       }
 
-      // Total insurance = ALL policies INCLUDING ELZAMI (for customer view)
-      const totalInsurance = policiesData.reduce((sum, p) => sum + (p.insurance_price || 0) + (p.office_commission || 0), 0);
-      
       // Total profit from all policies (ELZAMI profit = 0 by design)
       const totalProfit = policiesData.reduce((sum, p) => sum + (p.profit || 0), 0);
 
       // Get ALL payments for ALL policies (including ELZAMI)
       const allPolicyIds = policiesData.map(p => p.id);
       let totalPaid = 0;
-      
+      const paidByPolicy: Record<string, number> = {};
+
       if (allPolicyIds.length > 0) {
         const { data: paymentsData } = await supabase
           .from('policy_payments')
-          .select('amount, refused')
+          .select('policy_id, amount, refused')
           .in('policy_id', allPolicyIds);
 
-        totalPaid = (paymentsData || [])
+        (paymentsData || [])
           .filter(p => !p.refused)
-          .reduce((sum, p) => sum + (p.amount || 0), 0);
+          .forEach(p => {
+            const amt = p.amount || 0;
+            totalPaid += amt;
+            paidByPolicy[p.policy_id] = (paidByPolicy[p.policy_id] || 0) + amt;
+          });
       }
 
-      // Remaining = Total Insurance - Total Paid (simple and clear)
+      // Remaining is computed per package (group) so that overpaid packages
+      // never cancel out real debts in other packages
+      const groups: Record<string, { price: number; paid: number }> = {};
+      policiesData.forEach(p => {
+        const key = (p.group_id as string) || p.id;
+        if (!groups[key]) groups[key] = { price: 0, paid: 0 };
+        groups[key].price += (p.insurance_price || 0) + (p.office_commission || 0);
+        groups[key].paid += paidByPolicy[p.id] || 0;
+      });
+      const totalRemaining = Object.values(groups)
+        .reduce((sum, g) => sum + Math.max(0, g.price - g.paid), 0);
+
       setPaymentSummary({
         total_paid: totalPaid,
-        total_remaining: Math.max(0, totalInsurance - totalPaid),
+        total_remaining: totalRemaining,
         total_profit: totalProfit,
       });
     } catch (error) {
