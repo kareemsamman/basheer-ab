@@ -93,6 +93,7 @@ export default function CardSearch() {
     if (parent === "THIRD_FULL") return child === "FULL" ? "شامل" : "ثالث";
     if (parent === "ROAD_SERVICE") return "خدمة طريق";
     if (parent === "ACCIDENT_FEE") return "رسوم حوادث";
+    if (parent === "CIVIL_LIABILITY") return "مسؤولية مدنية";
     return parent;
   };
 

@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBranches } from "@/hooks/useBranches";
 import { supabase } from "@/integrations/supabase/client";
 import { digitsOnly, isValidIsraeliId, isValidPhoneNumber10 } from "@/lib/validation";
+import { isCivilLiabilityCarType } from "@/lib/insuranceTypes";
 import type {
   InsuranceCategory,
   Client,
@@ -186,6 +187,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
           company_id: renewalData.companyId,
           insurance_price: String(renewalData.insurancePrice),
           broker_buy_price: renewalData.brokerBuyPrice ? String(renewalData.brokerBuyPrice) : '',
+          company_cost: renewalData.companyCost != null ? String(renewalData.companyCost) : '',
           start_date: newStartDate,
           end_date: newEndDate,
           notes: renewalData.notes || '',
@@ -201,8 +203,9 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
             { type: "third_full", enabled: false, company_id: "", insurance_price: "", policy_type_child: "THIRD", broker_buy_price: "", start_date: "", end_date: "" },
             { type: "road_service", enabled: false, road_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
             { type: "accident_fee_exemption", enabled: false, accident_fee_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
+            { type: "civil_liability", enabled: false, company_id: "", insurance_price: "", company_cost: "", start_date: "", end_date: "" },
           ];
-          
+
           renewalData.packageAddons.forEach(addon => {
             const idx = newAddons.findIndex(a => a.type === addon.type);
             if (idx !== -1) {
@@ -215,6 +218,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
                 accident_fee_service_id: addon.accidentFeeServiceId,
                 policy_type_child: addon.policyTypeChild as '' | 'THIRD' | 'FULL' || '',
                 broker_buy_price: addon.brokerBuyPrice ? String(addon.brokerBuyPrice) : '',
+                company_cost: addon.companyCost != null ? String(addon.companyCost) : '',
                 start_date: newStartDate,
                 end_date: newEndDate,
               };
@@ -301,6 +305,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     broker_buy_price: "",
     full_car_value: "",
     office_commission: "0",
+    company_cost: "",
     cancelled: false,
     transferred: false,
     notes: "",
@@ -322,6 +327,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     { type: "third_full", enabled: false, company_id: "", insurance_price: "", policy_type_child: "THIRD", broker_buy_price: "", start_date: "", end_date: "" },
     { type: "road_service", enabled: false, road_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
     { type: "accident_fee_exemption", enabled: false, accident_fee_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
+    { type: "civil_liability", enabled: false, company_id: "", insurance_price: "", company_cost: "", start_date: "", end_date: "" },
   ]);
   const [packageRoadServices, setPackageRoadServices] = useState<RoadService[]>([]);
   const [packageRoadServiceCompanies, setPackageRoadServiceCompanies] = useState<Company[]>([]);
@@ -329,6 +335,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
   const [packageAccidentFeeServices, setPackageAccidentFeeServices] = useState<AccidentFeeService[]>([]);
   const [packageElzamiCompanies, setPackageElzamiCompanies] = useState<Company[]>([]);
   const [packageThirdFullCompanies, setPackageThirdFullCompanies] = useState<Company[]>([]);
+  const [packageCivilLiabilityCompanies, setPackageCivilLiabilityCompanies] = useState<Company[]>([]);
 
   // Payments
   const [payments, setPayments] = useState<PaymentLine[]>([]);
@@ -361,14 +368,18 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     // Accident fee addon
     const accidentAddon = packageAddons.find(a => a.type === 'accident_fee_exemption');
     const accidentFeePrice = packageMode && accidentAddon?.enabled ? parseFloat(accidentAddon.insurance_price) || 0 : 0;
-    
+
+    // Civil liability addon
+    const civilAddon = packageAddons.find(a => a.type === 'civil_liability');
+    const civilLiabilityPrice = packageMode && civilAddon?.enabled ? parseFloat(civilAddon.insurance_price) || 0 : 0;
+
     // Office commission - from main policy (if ELZAMI) or from ELZAMI addon
     const mainIsElzami = policy.policy_type_parent === 'ELZAMI';
     const mainCommission = mainIsElzami ? parseFloat(policy.office_commission) || 0 : 0;
     const addonCommission = packageMode && elzamiAddon?.enabled ? parseFloat(elzamiAddon.office_commission || '0') || 0 : 0;
     const officeCommission = mainCommission + addonCommission;
     
-    const totalPrice = basePrice + elzamiPrice + thirdFullPrice + roadServicePrice + accidentFeePrice;
+    const totalPrice = basePrice + elzamiPrice + thirdFullPrice + roadServicePrice + accidentFeePrice + civilLiabilityPrice;
     
     // If main policy is ELZAMI, its price doesn't go to client wallet
     // If ELZAMI is an addon, addon price doesn't go to client wallet
@@ -382,6 +393,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
       thirdFullPrice,
       roadServicePrice,
       accidentFeePrice,
+      civilLiabilityPrice,
       officeCommission,
       totalPrice,
       payablePrice,
@@ -393,6 +405,10 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
   const displayTotal = pricing.totalPrice + pricing.officeCommission;
   const remainingToPay = displayTotal - totalPaidPayments;
   const paymentsExceedPrice = totalPaidPayments > displayTotal && displayTotal > 0;
+
+  // Civil liability is offered for cargo and bus cars only, and its company share is entered by hand
+  const currentCarType = createNewCar ? newCar.car_type : (selectedCar?.car_type || existingCar?.car_type || null);
+  const isFilledAmount = (value?: string) => !!value && value.trim() !== '' && parseFloat(value) >= 0;
 
   // Steps configuration with validation
   const steps: WizardStep[] = useMemo(() => {
@@ -412,16 +428,25 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
        (thirdFullAddon.policy_type_child !== 'FULL' || !!(thirdFullAddon.car_value && parseFloat(thirdFullAddon.car_value) > 0) || !!(selectedCar?.car_value && selectedCar.car_value > 0)));
     const roadServiceAddonValid = !packageMode || !roadServiceAddon?.enabled || 
       (roadServiceAddon.road_service_id && roadServiceAddon.company_id && parseFloat(roadServiceAddon.insurance_price) > 0);
-    const accidentFeeAddonValid = !packageMode || !accidentFeeAddon?.enabled || 
+    const accidentFeeAddonValid = !packageMode || !accidentFeeAddon?.enabled ||
       (accidentFeeAddon.accident_fee_service_id && accidentFeeAddon.company_id && parseFloat(accidentFeeAddon.insurance_price) > 0);
-    
+
+    const civilCarAllowed = isCivilLiabilityCarType(currentCarType);
+    const civilAddon = packageAddons.find(a => a.type === 'civil_liability');
+    const civilAddonValid = !packageMode || !civilAddon?.enabled ||
+      (civilCarAllowed && civilAddon.company_id && parseFloat(civilAddon.insurance_price) > 0 && isFilledAmount(civilAddon.company_cost));
+    // Broker-linked company: the broker's price is the company share
+    const mainCompanyHasBroker = !!companies.find(c => c.id === policy.company_id)?.broker_id;
+    const civilMainValid = policy.policy_type_parent !== 'CIVIL_LIABILITY' ||
+      (civilCarAllowed && (mainCompanyHasBroker ? isFilledAmount(policy.broker_buy_price) : isFilledAmount(policy.company_cost)));
+
     // FULL insurance requires car value to be entered
     const fullInsuranceCarValueValid = 
       policy.policy_type_parent !== 'THIRD_FULL' || 
       policy.policy_type_child !== 'FULL' ||
       !!(policy.full_car_value && parseFloat(policy.full_car_value) > 0);
     
-    const step3Valid = !!(policy.company_id && policy.start_date && policy.end_date && policy.insurance_price && fullInsuranceCarValueValid && elzamiAddonValid && thirdFullAddonValid && roadServiceAddonValid && accidentFeeAddonValid);
+    const step3Valid = !!(policy.company_id && policy.start_date && policy.end_date && policy.insurance_price && fullInsuranceCarValueValid && elzamiAddonValid && thirdFullAddonValid && roadServiceAddonValid && accidentFeeAddonValid && civilAddonValid && civilMainValid);
     const step4Valid = !paymentsExceedPrice;
 
     if (isLightMode) {
@@ -441,7 +466,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
   }, [
     selectedClient, createNewClient, newClient, selectedCategory, isLightMode,
     selectedCar, existingCar, createNewCar, newCar, carConflict,
-    policy, paymentsExceedPrice, packageMode, packageAddons,
+    policy, paymentsExceedPrice, packageMode, packageAddons, companies,
   ]);
 
   // Get current step index for the steps array
@@ -478,6 +503,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
       broker_buy_price: "",
       full_car_value: "",
       office_commission: "0",
+      company_cost: "",
       cancelled: false,
       transferred: false,
       notes: "",
@@ -492,6 +518,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
       { type: "third_full", enabled: false, company_id: "", insurance_price: "", policy_type_child: "THIRD", broker_buy_price: "", start_date: "", end_date: "" },
       { type: "road_service", enabled: false, road_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
       { type: "accident_fee_exemption", enabled: false, accident_fee_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
+      { type: "civil_liability", enabled: false, company_id: "", insurance_price: "", company_cost: "", start_date: "", end_date: "" },
     ]);
   }, [selectedCategory, defaultBrokerId]);
 
@@ -597,6 +624,18 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
         if (policy.policy_type_parent === "ROAD_SERVICE" && !policy.road_service_id) {
           newErrors.road_service_id = "الرجاء اختيار خدمة الطريق";
         }
+        if (policy.policy_type_parent === "CIVIL_LIABILITY") {
+          if (!isCivilLiabilityCarType(currentCarType)) {
+            newErrors.policy_type_parent = "المسؤولية المدنية متاحة لسيارات الشحن والاوتوبس فقط";
+          }
+          // Broker-linked company: the broker's price is the company share
+          const companyHasBroker = !!companies.find(c => c.id === policy.company_id)?.broker_id;
+          if (policy.company_id && companyHasBroker && !isFilledAmount(policy.broker_buy_price)) {
+            newErrors.broker_buy_price = "سعر الشراء من الوسيط مطلوب";
+          } else if (policy.company_id && !companyHasBroker && !isFilledAmount(policy.company_cost)) {
+            newErrors.company_cost = "المبلغ للشركة مطلوب";
+          }
+        }
         if (policyBrokerId && policyBrokerId !== "none" && !brokerDirection) {
           newErrors.broker_direction = "الرجاء اختيار نوع التعامل مع الوسيط";
         }
@@ -640,6 +679,17 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
             newErrors.addon_accident_price = "السعر مطلوب";
           }
         }
+        const civilAddon = packageAddons.find(a => a.type === 'civil_liability');
+        if (packageMode && civilAddon?.enabled) {
+          if (!isCivilLiabilityCarType(currentCarType)) {
+            newErrors.addon_civil_car = "المسؤولية المدنية متاحة لسيارات الشحن والاوتوبس فقط";
+          }
+          if (!civilAddon.company_id) newErrors.addon_civil_company = "الرجاء اختيار الشركة";
+          if (!civilAddon.insurance_price || parseFloat(civilAddon.insurance_price) <= 0) {
+            newErrors.addon_civil_price = "السعر مطلوب";
+          }
+          if (!isFilledAmount(civilAddon.company_cost)) newErrors.addon_civil_cost = "المبلغ للشركة مطلوب";
+        }
         break;
 
       case "payments":
@@ -655,7 +705,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     steps, selectedCategory, selectedClient, createNewClient, newClient,
     selectedCar, existingCar, createNewCar, newCar, carConflict,
     policy, policyBrokerId, brokerDirection, paymentsExceedPrice,
-    packageMode, packageAddons,
+    packageMode, packageAddons, companies,
   ]);
 
   // Navigate to step
@@ -774,6 +824,8 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     setPackageElzamiCompanies,
     packageThirdFullCompanies,
     setPackageThirdFullCompanies,
+    packageCivilLiabilityCompanies,
+    setPackageCivilLiabilityCompanies,
 
     // Payments
     payments,

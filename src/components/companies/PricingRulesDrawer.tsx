@@ -61,6 +61,7 @@ const POLICY_TYPE_LABELS: Record<Enums<'policy_type_parent'>, string> = {
   THIRD_FULL: 'طرف ثالث / شامل',
   ROAD_SERVICE: 'خدمات الطريق',
   ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
+  CIVIL_LIABILITY: 'مسؤولية مدنية',
   HEALTH: 'التأمين الصحي',
   LIFE: 'تأمين الحياة',
   PROPERTY: 'تأمين الممتلكات',
@@ -403,7 +404,8 @@ export function PricingRulesDrawer({ open, onClose, company }: PricingRulesDrawe
                   <SelectValue placeholder="اختر نوع الوثيقة" />
                 </SelectTrigger>
                 <SelectContent align="end">
-                  {Object.entries(POLICY_TYPE_LABELS).map(([value, label]) => (
+                  {/* No civil liability: its company cost is entered on each policy, not by pricing rules */}
+                  {Object.entries(POLICY_TYPE_LABELS).filter(([value]) => value !== 'CIVIL_LIABILITY').map(([value, label]) => (
                     <SelectItem key={value} value={value}>
                       {label}
                     </SelectItem>

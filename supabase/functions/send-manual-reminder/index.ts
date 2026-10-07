@@ -19,6 +19,7 @@ const POLICY_TYPE_LABELS: Record<string, string> = {
   'THIRD_ONLY': 'طرف ثالث',
   'ROAD_SERVICE': 'خدمات طريق',
   'ACCIDENT_FEE_EXEMPTION': 'إعفاء رسوم',
+  'CIVIL_LIABILITY': 'مسؤولية مدنية',
 };
 
 const getPolicyTypeLabel = (parent: string | null, child: string | null): string => {

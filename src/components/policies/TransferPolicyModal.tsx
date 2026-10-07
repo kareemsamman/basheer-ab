@@ -77,6 +77,7 @@ const POLICY_TYPE_LABELS: Record<string, string> = {
   THIRD_FULL: "ثالث/شامل",
   ROAD_SERVICE: "خدمات الطريق",
   ACCIDENT_FEE_EXEMPTION: "إعفاء رسوم حادث",
+  CIVIL_LIABILITY: "مسؤولية مدنية",
 };
 
 type AdjustmentType = "none" | "customer_pays" | "refund";

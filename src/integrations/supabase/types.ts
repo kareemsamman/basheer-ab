@@ -5917,6 +5917,7 @@ export type Database = {
         | "THIRD_FULL"
         | "ROAD_SERVICE"
         | "ACCIDENT_FEE_EXEMPTION"
+        | "CIVIL_LIABILITY"
         | "HEALTH"
         | "LIFE"
         | "PROPERTY"
@@ -6119,6 +6120,7 @@ export const Constants = {
         "THIRD_FULL",
         "ROAD_SERVICE",
         "ACCIDENT_FEE_EXEMPTION",
+        "CIVIL_LIABILITY",
         "HEALTH",
         "LIFE",
         "PROPERTY",

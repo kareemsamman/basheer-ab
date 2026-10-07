@@ -13,6 +13,7 @@ interface CalculateProfitParams {
   roadServiceId?: string | null; // For ROAD_SERVICE policies
   accidentFeeServiceId?: string | null; // For ACCIDENT_FEE_EXEMPTION policies
   brokerBuyPrice?: number | null; // When company is linked to broker - this is the cost we pay to broker
+  companyCost?: number | null; // CIVIL_LIABILITY: the company's share, entered by hand on each policy
 }
 
 interface ProfitResult {
@@ -37,7 +38,17 @@ export async function calculatePolicyProfit(params: CalculateProfitParams): Prom
     insurancePrice,
     roadServiceId,
     brokerBuyPrice,
+    companyCost,
   } = params;
+
+  // CIVIL_LIABILITY: no pricing rules - the company's share is entered by hand on each
+  // policy (or is the broker's price when the company is linked to a broker)
+  if (policyTypeParent === 'CIVIL_LIABILITY') {
+    const companyPayment = companyCost != null && Number.isFinite(companyCost)
+      ? companyCost
+      : (brokerBuyPrice && brokerBuyPrice > 0 ? brokerBuyPrice : 0);
+    return { companyPayment, profit: insurancePrice - companyPayment };
+  }
 
   // If broker buy price is provided and > 0, use it for profit calculation
   // This takes priority over pricing rules when dealing with broker-linked companies
@@ -326,6 +337,8 @@ export async function recalculatePolicyProfit(policyId: string): Promise<ProfitR
       brokerBuyPrice: policy.broker_buy_price,
       roadServiceId: policy.road_service_id,
       accidentFeeServiceId: policy.accident_fee_service_id,
+      // CIVIL_LIABILITY keeps the company share that was entered by hand
+      companyCost: policy.payed_for_company,
     });
 
     // Update the policy with new values

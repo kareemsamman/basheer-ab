@@ -88,6 +88,7 @@ const POLICY_TYPE_LABELS: Record<string, string> = {
   ELZAMI: "إلزامي",
   ROAD_SERVICE: "خدمة طريق",
   ACCIDENT_FEE_EXEMPTION: "إعفاء رسوم حادث",
+  CIVIL_LIABILITY: "مسؤولية مدنية",
   HEALTH: "صحي",
   LIFE: "حياة",
   TRAVEL: "سفر",

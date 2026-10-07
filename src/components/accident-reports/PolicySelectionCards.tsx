@@ -46,6 +46,7 @@ const policyTypeLabels: Record<string, string> = {
   THIRD_FULL: 'ثالث/شامل',
   ROAD_SERVICE: 'خدمات الطريق',
   ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
+  CIVIL_LIABILITY: 'مسؤولية مدنية',
   HEALTH: 'تأمين صحي',
   LIFE: 'تأمين حياة',
   PROPERTY: 'تأمين ممتلكات',
@@ -59,11 +60,12 @@ const policyTypeColors: Record<string, string> = {
   THIRD_FULL: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
   ROAD_SERVICE: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
   ACCIDENT_FEE_EXEMPTION: 'bg-green-500/10 text-green-600 border-green-500/20',
+  CIVIL_LIABILITY: 'bg-lime-500/10 text-lime-700 border-lime-500/30',
   HEALTH: 'bg-pink-500/10 text-pink-600 border-pink-500/20',
 };
 
 // Types eligible for accident reports (exclude ELZAMI)
-const ACCIDENT_ELIGIBLE_TYPES = ['THIRD_FULL', 'ROAD_SERVICE', 'ACCIDENT_FEE_EXEMPTION'];
+const ACCIDENT_ELIGIBLE_TYPES = ['THIRD_FULL', 'CIVIL_LIABILITY', 'ROAD_SERVICE', 'ACCIDENT_FEE_EXEMPTION'];
 
 const formatDate = (dateStr: string | null) => {
   if (!dateStr) return '-';
@@ -199,7 +201,7 @@ export function PolicySelectionCards({
       <div className="text-center py-12 text-muted-foreground">
         <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
         <p>لا توجد وثائق مؤهلة لإنشاء بلاغ حادث</p>
-        <p className="text-sm mt-2">يجب أن تكون الوثيقة من نوع ثالث/شامل أو خدمات طريق أو إعفاء رسوم</p>
+        <p className="text-sm mt-2">يجب أن تكون الوثيقة من نوع ثالث/شامل أو مسؤولية مدنية أو خدمات طريق أو إعفاء رسوم</p>
       </div>
     );
   }

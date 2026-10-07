@@ -12,6 +12,7 @@ import { AlertCircle, Package, ArrowLeftRight, ImageIcon, FolderOpen, Upload, X,
 import { toast } from "sonner";
 import '@/types/scanner.d.ts';
 import { cn } from "@/lib/utils";
+import { isCivilLiabilityCarType } from "@/lib/insuranceTypes";
 import { PricingCard } from "./PricingCard";
 import { PackageBuilderSection } from "./PackageBuilderSection";
 import type {
@@ -75,7 +76,9 @@ interface Step3Props {
   setPackageElzamiCompanies: (companies: Company[]) => void;
   packageThirdFullCompanies: Company[];
   setPackageThirdFullCompanies: (companies: Company[]) => void;
-  
+  packageCivilLiabilityCompanies: Company[];
+  setPackageCivilLiabilityCompanies: (companies: Company[]) => void;
+
   // Pricing
   pricing: PricingBreakdown;
   
@@ -132,6 +135,8 @@ export function Step3PolicyDetails({
   setPackageElzamiCompanies,
   packageThirdFullCompanies,
   setPackageThirdFullCompanies,
+  packageCivilLiabilityCompanies,
+  setPackageCivilLiabilityCompanies,
   pricing,
   selectedCar,
   existingCar,
@@ -548,6 +553,18 @@ export function Step3PolicyDetails({
       setPackageThirdFullCompanies(thirdFullData as Company[]);
     }
 
+    // Fetch Civil Liability companies
+    const { data: civilData } = await supabase
+      .from('insurance_companies')
+      .select('id, name, name_ar, category_parent, elzami_commission, broker_id')
+      .eq('active', true)
+      .contains('category_parent', ['CIVIL_LIABILITY'])
+      .order('name');
+
+    if (civilData) {
+      setPackageCivilLiabilityCompanies(civilData as Company[]);
+    }
+
     // Fetch Road Service companies
     const { data: rsCompanies } = await supabase
       .from('insurance_companies')
@@ -653,13 +670,29 @@ export function Step3PolicyDetails({
           <Label>نوع الوثيقة *</Label>
           <Select 
             value={policy.policy_type_parent} 
-            onValueChange={(v) => setPolicy({ ...policy, policy_type_parent: v, policy_type_child: "", company_id: "" })}
+            onValueChange={(v) => {
+              setPolicy({
+                ...policy,
+                policy_type_parent: v,
+                policy_type_child: "",
+                company_id: "",
+                // Fields that belong to one type only must not leak into another
+                company_cost: "",
+                office_commission: "0",
+                road_service_id: "",
+                accident_fee_service_id: "",
+              });
+              // Packages exist only for ELZAMI / THIRD_FULL - a hidden package must not be saved
+              if (v !== 'ELZAMI' && v !== 'THIRD_FULL') setPackageMode(false);
+            }}
           >
             <SelectTrigger className={cn(errors.policy_type_parent ? "border-destructive" : "")}>
               <SelectValue placeholder="اختر نوع الوثيقة" />
             </SelectTrigger>
             <SelectContent>
-              {CAR_POLICY_TYPES.map((type) => (
+              {CAR_POLICY_TYPES
+                .filter((type) => !type.civilLiabilityOnly || isCivilLiabilityCarType(getCarType()) || policy.policy_type_parent === type.value)
+                .map((type) => (
                 <SelectItem key={type.value} value={type.value}>
                   {type.label}
                 </SelectItem>
@@ -807,6 +840,40 @@ export function Step3PolicyDetails({
         </div>
       )}
 
+      {/* Company share for CIVIL_LIABILITY - entered by hand (broker-linked companies use the broker pricing below) */}
+      {policy.policy_type_parent === 'CIVIL_LIABILITY' && policy.company_id && !companies.find(c => c.id === policy.company_id)?.broker_id && (() => {
+        const companyCost = parseFloat(policy.company_cost) || 0;
+        const profit = (parseFloat(policy.insurance_price) || 0) - companyCost;
+
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <Label>المبلغ للشركة (₪) *</Label>
+              <Input
+                type="number"
+                value={policy.company_cost}
+                onChange={(e) => setPolicy({ ...policy, company_cost: e.target.value })}
+                placeholder="أدخل المبلغ"
+                className={cn("text-lg", errors.company_cost ? "border-destructive" : "")}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                المبلغ الذي يُدفع لشركة التأمين عن هذه الوثيقة
+              </p>
+              <FieldError error={errors.company_cost} />
+            </div>
+            <div>
+              <Label>الربح (₪)</Label>
+              <div className={cn(
+                "h-10 flex items-center justify-center rounded-md text-lg font-bold",
+                profit >= 0 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+              )}>
+                ₪{profit.toLocaleString()}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Office Commission for ELZAMI main policy */}
       {policy.policy_type_parent === 'ELZAMI' && policy.company_id && (
         <div>
@@ -884,10 +951,11 @@ export function Step3PolicyDetails({
                 <div>
                   <Label className="text-base font-medium">إضافات الباقة</Label>
                   <p className="text-sm text-muted-foreground">
-                    {policy.policy_type_parent === 'ELZAMI' 
+                    {policy.policy_type_parent === 'ELZAMI'
                       ? 'ثالث/شامل، خدمات الطريق، إعفاء رسوم حادث'
                       : 'إلزامي، خدمات الطريق، إعفاء رسوم حادث'
                     }
+                    {isCivilLiabilityCarType(getCarType()) && '، مسؤولية مدنية'}
                   </p>
                   {!canEnablePackage && (
                     <p className="text-xs text-amber-600 mt-1">
@@ -917,6 +985,7 @@ export function Step3PolicyDetails({
                   accidentFeeCompanies={packageAccidentCompanies}
                   elzamiCompanies={packageElzamiCompanies}
                   thirdFullCompanies={packageThirdFullCompanies}
+                  civilLiabilityCompanies={packageCivilLiabilityCompanies}
                   carType={getCarType() || undefined}
                   errors={errors}
                   ageBand={clientLessThan24 ? 'UNDER_24' : 'UP_24'}
@@ -1029,8 +1098,9 @@ export function Step3PolicyDetails({
                   value={policy.broker_buy_price}
                   onChange={(e) => setPolicy({ ...policy, broker_buy_price: e.target.value })}
                   placeholder="0"
-                  className="text-lg"
+                  className={cn("text-lg", errors.broker_buy_price ? "border-destructive" : "")}
                 />
+                <FieldError error={errors.broker_buy_price} />
               </div>
               
               {/* Selling Price */}

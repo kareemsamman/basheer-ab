@@ -17,6 +17,7 @@ const POLICY_TYPE_LABELS = {
   THIRD_FULL: 'ثالث/شامل',
   ROAD_SERVICE: 'خدمات الطريق',
   ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
+  CIVIL_LIABILITY: 'مسؤولية مدنية',
   THIRD: 'ثالث',
   FULL: 'شامل',
 };

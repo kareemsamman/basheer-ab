@@ -236,6 +236,7 @@ const policyTypeLabels: Record<string, string> = {
   THIRD_FULL: 'ثالث/شامل',
   ROAD_SERVICE: 'خدمات الطريق',
   ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
+  CIVIL_LIABILITY: 'مسؤولية مدنية',
   HEALTH: 'تأمين صحي',
   LIFE: 'تأمين حياة',
   PROPERTY: 'تأمين ممتلكات',
@@ -249,6 +250,7 @@ const policyTypeColors: Record<string, string> = {
   THIRD_FULL: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
   ROAD_SERVICE: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
   ACCIDENT_FEE_EXEMPTION: 'bg-green-500/10 text-green-600 border-green-500/20',
+  CIVIL_LIABILITY: 'bg-lime-500/10 text-lime-600 border-lime-500/20',
   HEALTH: 'bg-pink-500/10 text-pink-600 border-pink-500/20',
   LIFE: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20',
   PROPERTY: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
@@ -852,7 +854,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
       
       // Determine category slug
       let categorySlug = policy.policy_type_parent;
-      if (policy.policy_type_parent === 'ELZAMI' || policy.policy_type_parent === 'THIRD_FULL') {
+      if (policy.policy_type_parent === 'ELZAMI' || policy.policy_type_parent === 'THIRD_FULL' || policy.policy_type_parent === 'CIVIL_LIABILITY') {
         categorySlug = 'THIRD_FULL';
       }
       
@@ -865,6 +867,8 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
         companyId: policy.company_id,
         insurancePrice: policy.insurance_price,
         brokerBuyPrice: policy.broker_buy_price,
+        // CIVIL_LIABILITY: the company share was entered by hand - carry it over
+        companyCost: policy.policy_type_parent === 'CIVIL_LIABILITY' ? policy.payed_for_company : null,
         notes: policy.notes,
         childrenIds: policy.policy_children?.map((pc: any) => pc.child_id) || [],
         originalEndDate: policy.end_date,
@@ -891,22 +895,24 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
         return;
       }
       
-      // Find main policy (THIRD_FULL first, then ELZAMI, then others)
+      // Find main policy (THIRD_FULL first, then ELZAMI, then CIVIL_LIABILITY, then others)
       const mainPolicy = policiesData.find(p => p.policy_type_parent === 'THIRD_FULL') 
         || policiesData.find(p => p.policy_type_parent === 'ELZAMI')
+        || policiesData.find(p => p.policy_type_parent === 'CIVIL_LIABILITY')
         || policiesData[0];
       
       // Build addons from other policies
       const addons = policiesData
         .filter(p => p.id !== mainPolicy.id)
         .map(p => ({
-          type: p.policy_type_parent.toLowerCase() as 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption',
+          type: p.policy_type_parent.toLowerCase() as 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption' | 'civil_liability',
           companyId: p.company_id,
           insurancePrice: p.insurance_price,
           roadServiceId: p.road_service_id,
           accidentFeeServiceId: p.accident_fee_service_id,
           policyTypeChild: p.policy_type_child,
           brokerBuyPrice: p.broker_buy_price,
+          companyCost: p.policy_type_parent === 'CIVIL_LIABILITY' ? p.payed_for_company : null,
         }));
       
       // Collect all children IDs (deduplicated)
@@ -923,6 +929,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
         companyId: mainPolicy.company_id,
         insurancePrice: mainPolicy.insurance_price,
         brokerBuyPrice: mainPolicy.broker_buy_price,
+        companyCost: mainPolicy.policy_type_parent === 'CIVIL_LIABILITY' ? mainPolicy.payed_for_company : null,
         notes: mainPolicy.notes,
         packageAddons: addons,
         childrenIds: allChildrenIds,

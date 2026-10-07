@@ -21,6 +21,22 @@ const extractXmlTag = (xml: string, tag: string) => {
   return match?.[1]?.trim() ?? null;
 };
 
+const POLICY_TYPE_LABELS: Record<string, string> = {
+  ELZAMI: 'إلزامي',
+  THIRD_FULL: 'ثالث/شامل',
+  ROAD_SERVICE: 'خدمات الطريق',
+  ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
+  CIVIL_LIABILITY: 'مسؤولية مدنية',
+};
+
+function getDisplayLabel(parent: string, child: string | null): string {
+  if (parent === 'THIRD_FULL' && child) {
+    const childLabels: Record<string, string> = { THIRD: 'ثالث', FULL: 'شامل' };
+    return childLabels[child] || child;
+  }
+  return POLICY_TYPE_LABELS[parent] || parent;
+}
+
 interface SendRemindersRequest {
   month?: string;
   days_remaining?: number;
@@ -217,7 +233,7 @@ serve(async (req) => {
     // Fetch policy details for current batch
     const { data: batchPolicies } = await supabase
       .from('policies')
-      .select('id, end_date, policy_type_parent, client_id, car_id, company_id')
+      .select('id, end_date, policy_type_parent, policy_type_child, client_id, car_id, company_id')
       .in('id', currentBatch);
 
     // Group policies by client_id so we send ONE SMS per client
@@ -268,7 +284,7 @@ serve(async (req) => {
           .replace('{client_name}', client.full_name || 'العميل')
           .replace('{car_number}', carNumbersStr)
           .replace('{policy_end_date}', endDate)
-          .replace('{policy_type}', clientPolicies.map(p => p.policy_type_parent).join(', '))
+          .replace('{policy_type}', clientPolicies.map(p => getDisplayLabel(p.policy_type_parent, p.policy_type_child)).join(', '))
           .replace('{company}', [...new Set(clientPolicies.map(p => {
             const co = companiesMap.get(p.company_id);
             return co?.name_ar || co?.name || '';

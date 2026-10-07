@@ -93,6 +93,7 @@ const policyTypeLabels: Record<string, string> = {
   THIRD_FULL: 'ثالث/شامل',
   ROAD_SERVICE: 'خدمات طريق',
   ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم',
+  CIVIL_LIABILITY: 'مسؤولية مدنية',
   HEALTH: 'صحي',
   LIFE: 'حياة',
   PROPERTY: 'ممتلكات',
@@ -106,6 +107,7 @@ const policyTypeColors: Record<string, string> = {
   THIRD_FULL: 'bg-purple-500/10 text-purple-700 border-purple-500/30',
   ROAD_SERVICE: 'bg-orange-500/10 text-orange-700 border-orange-500/30',
   ACCIDENT_FEE_EXEMPTION: 'bg-green-500/10 text-green-700 border-green-500/30',
+  CIVIL_LIABILITY: 'bg-lime-500/10 text-lime-700 border-lime-500/30',
   HEALTH: 'bg-pink-500/10 text-pink-700 border-pink-500/30',
   LIFE: 'bg-indigo-500/10 text-indigo-700 border-indigo-500/30',
   PROPERTY: 'bg-amber-500/10 text-amber-700 border-amber-500/30',
@@ -115,7 +117,7 @@ const policyTypeColors: Record<string, string> = {
 };
 
 // Main policy types vs add-ons
-const MAIN_POLICY_TYPES = ['ELZAMI', 'THIRD_FULL', 'HEALTH', 'LIFE', 'PROPERTY', 'TRAVEL', 'BUSINESS', 'OTHER'];
+const MAIN_POLICY_TYPES = ['ELZAMI', 'THIRD_FULL', 'CIVIL_LIABILITY', 'HEALTH', 'LIFE', 'PROPERTY', 'TRAVEL', 'BUSINESS', 'OTHER'];
 
 // Child type labels (for THIRD_FULL)
 const policyChildLabels: Record<string, string> = {
@@ -192,6 +194,7 @@ interface PolicyPackage {
   mainPolicy: PolicyRecord | null;
   addons: PolicyRecord[];
   allPolicyIds: string[];
+  allPolicies: PolicyRecord[]; // Fallback when no policy is a known main/add-on type
   status: PolicyStatus;
   totalPrice: number;
   debtPrice: number; // Excludes ELZAMI for debt calculations
@@ -419,9 +422,10 @@ export function PolicyYearTimeline({
         const members: PolicyRecord[] = [];
         
         if (mainPolicies.length > 0) {
-          // Prioritize THIRD_FULL as main, then ELZAMI, then others
+          // Prioritize THIRD_FULL as main, then ELZAMI, then CIVIL_LIABILITY, then others
           mainPolicy = mainPolicies.find(p => p.policy_type_parent === 'THIRD_FULL') 
             || mainPolicies.find(p => p.policy_type_parent === 'ELZAMI')
+            || mainPolicies.find(p => p.policy_type_parent === 'CIVIL_LIABILITY')
             || mainPolicies[0];
           
           // Other main policies become "members" (like addons but they're main types)
@@ -430,6 +434,8 @@ export function PolicyYearTimeline({
               members.push(p);
             }
           });
+          // Show members in type order (ELZAMI before CIVIL_LIABILITY), not insert order
+          members.sort((a, b) => MAIN_POLICY_TYPES.indexOf(a.policy_type_parent) - MAIN_POLICY_TYPES.indexOf(b.policy_type_parent));
         }
         
         // Real addons (ROAD_SERVICE, ACCIDENT_FEE_EXEMPTION)
@@ -450,6 +456,7 @@ export function PolicyYearTimeline({
           mainPolicy,
           addons,
           allPolicyIds: allIds,
+          allPolicies: groupPolicies,
           status,
           totalPrice,
           debtPrice
@@ -463,6 +470,7 @@ export function PolicyYearTimeline({
           mainPolicy: MAIN_POLICY_TYPES.includes(policy.policy_type_parent) ? policy : null,
           addons: ADDON_POLICY_TYPES.includes(policy.policy_type_parent) ? [policy] : [],
           allPolicyIds: [policy.id],
+          allPolicies: [policy],
           status: getPolicyStatus(policy),
           totalPrice: policy.insurance_price + (policy.office_commission || 0),
           debtPrice: policy.insurance_price + (policy.office_commission || 0)
@@ -770,7 +778,7 @@ export function PolicyYearTimeline({
                 {yearGroup.packages.map((pkg, pkgIndex) => {
                   const accidentCount = pkg.allPolicyIds.reduce((sum, id) => sum + (accidentInfo[id] || 0), 0);
                   const childrenCount = pkg.allPolicyIds.reduce((sum, id) => sum + (childrenInfo[id] || 0), 0);
-                    const mainPolicy = pkg.mainPolicy || pkg.addons[0];
+                    const mainPolicy = pkg.mainPolicy || pkg.addons[0] || pkg.allPolicies[0];
                     return (
                       <PolicyPackageCard
                         key={pkgIndex}
@@ -883,7 +891,8 @@ function PolicyPackageCard({
   onNotesValueChange?: (value: string) => void;
   onSaveNotes?: (policyId: string) => void;
 }) {
-  const policy = pkg.mainPolicy || pkg.addons[0];
+  // Fall back to the first policy so a type that is neither main nor add-on never vanishes
+  const policy = pkg.mainPolicy || pkg.addons[0] || pkg.allPolicies[0];
   if (!policy) return null;
 
   const isActive = pkg.status === 'active';

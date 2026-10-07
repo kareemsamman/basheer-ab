@@ -76,6 +76,7 @@ const policyTypeLabels: Record<string, string> = {
   THIRD: 'ثالث',
   ROAD_SERVICE: 'خدمات الطريق',
   ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
+  CIVIL_LIABILITY: 'مسؤولية مدنية',
   HEALTH: 'تأمين صحي',
   LIFE: 'تأمين حياة',
   PROPERTY: 'تأمين ممتلكات',
@@ -91,6 +92,7 @@ const policyTypeFilterLabels: Record<string, string> = {
   THIRD_FULL: 'ثالث/شامل',
   ROAD_SERVICE: 'خدمات الطريق',
   ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
+  CIVIL_LIABILITY: 'مسؤولية مدنية',
   HEALTH: 'تأمين صحي',
   LIFE: 'تأمين حياة',
   PROPERTY: 'تأمين ممتلكات',
@@ -862,19 +864,40 @@ export default function PolicyReports() {
         return;
       }
       
-      // Determine main policy (THIRD_FULL or ELZAMI takes priority)
-      const mainPolicy = policies.find((p: RenewalPolicy) => 
-        p.policy_type_parent === 'THIRD_FULL' || p.policy_type_parent === 'ELZAMI'
-      ) || policies[0];
+      // Determine main policy (THIRD_FULL first, then ELZAMI, then CIVIL_LIABILITY, then others)
+      const mainPolicy = policies.find((p: RenewalPolicy) => p.policy_type_parent === 'THIRD_FULL')
+        || policies.find((p: RenewalPolicy) => p.policy_type_parent === 'ELZAMI')
+        || policies.find((p: RenewalPolicy) => p.policy_type_parent === 'CIVIL_LIABILITY')
+        || policies[0];
+
+      // CIVIL_LIABILITY: carry over the company share that was entered by hand on the old policy
+      // (a broker-linked company's share is the broker's price, which the wizard asks for instead)
+      const civilLiabilityIds = policies
+        .filter((p: RenewalPolicy) => p.policy_type_parent === 'CIVIL_LIABILITY')
+        .map((p: RenewalPolicy) => p.id);
+      const companyCostById = new Map<string, number | null>();
+      const brokerBuyPriceById = new Map<string, number | null>();
+      if (civilLiabilityIds.length > 0) {
+        const { data: costs, error: costsError } = await supabase
+          .from('policies')
+          .select('id, payed_for_company, broker_buy_price')
+          .in('id', civilLiabilityIds);
+        if (costsError) throw costsError;
+        costs?.forEach(c => {
+          companyCostById.set(c.id, c.payed_for_company);
+          brokerBuyPriceById.set(c.id, c.broker_buy_price);
+        });
+      }
       
       // Build addons from other policies
       const addons = policies
         .filter((p: RenewalPolicy) => p.id !== mainPolicy.id)
         .map((p: RenewalPolicy) => ({
-          type: p.policy_type_parent.toLowerCase() as 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption',
+          type: p.policy_type_parent.toLowerCase() as 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption' | 'civil_liability',
           companyId: p.company_id || '',
           insurancePrice: p.insurance_price,
           policyTypeChild: p.policy_type_child || undefined,
+          companyCost: companyCostById.get(p.id),
         }));
       
       // Prepare renewal data
@@ -886,6 +909,8 @@ export default function PolicyReports() {
         policyTypeChild: mainPolicy.policy_type_child || undefined,
         companyId: mainPolicy.company_id || '',
         insurancePrice: mainPolicy.insurance_price,
+        brokerBuyPrice: brokerBuyPriceById.get(mainPolicy.id),
+        companyCost: companyCostById.get(mainPolicy.id),
         packageAddons: addons.length > 0 ? addons : undefined,
         originalEndDate: mainPolicy.end_date,
       };

@@ -50,7 +50,7 @@ const fmt = (d: string | null) => d ? new Date(d).toLocaleDateString("en-GB") : 
 const fmtCur = (n: number) => `₪${Math.abs(n).toLocaleString()}`;
 
 const typeLabel: Record<string, string> = {
-  THIRD: "ثالث", FULL: "شامل", THIRD_FULL: "ثالث/شامل",
+  THIRD: "ثالث", FULL: "شامل", THIRD_FULL: "ثالث/شامل", CIVIL_LIABILITY: "مسؤولية مدنية",
   ROAD_SERVICE: "خدمات الطريق", ACCIDENT_FEE_EXEMPTION: "إعفاء رسوم حادث",
   HEALTH: "تأمين صحي", LIFE: "تأمين حياة", PROPERTY: "تأمين ممتلكات",
   TRAVEL: "تأمين سفر", BUSINESS: "تأمين أعمال", OTHER: "أخرى",
@@ -1380,6 +1380,7 @@ export default function Accounting() {
                     </button>
                     {[
                       { v: "THIRD", l: "ثالث" }, { v: "FULL", l: "شامل" },
+                      { v: "CIVIL_LIABILITY", l: "مسؤولية مدنية" },
                       { v: "ROAD_SERVICE", l: "خدمات الطريق" },
                       { v: "ACCIDENT_FEE_EXEMPTION", l: "إعفاء رسوم حادث" },
                       { v: "HEALTH", l: "تأمين صحي" },
@@ -1997,6 +1998,7 @@ export default function Accounting() {
                               <SelectContent>
                                 <SelectItem value="THIRD">ثالث</SelectItem>
                                 <SelectItem value="FULL">شامل</SelectItem>
+                                <SelectItem value="CIVIL_LIABILITY">مسؤولية مدنية</SelectItem>
                                 <SelectItem value="ROAD_SERVICE">خدمات الطريق</SelectItem>
                                 <SelectItem value="ACCIDENT_FEE_EXEMPTION">إعفاء رسوم حادث</SelectItem>
                                 <SelectItem value="HEALTH">تأمين صحي</SelectItem>

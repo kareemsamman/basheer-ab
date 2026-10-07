@@ -36,6 +36,7 @@ import {
   CircleDollarSign,
   Truck,
   FileCheck,
+  Scale,
   MapPin,
   Hash,
   Palette,
@@ -183,6 +184,7 @@ const policyTypeLabels: Record<string, string> = {
   THIRD_FULL: "ثالث/شامل",
   ROAD_SERVICE: "خدمات الطريق",
   ACCIDENT_FEE_EXEMPTION: "إعفاء رسوم حادث",
+  CIVIL_LIABILITY: "مسؤولية مدنية",
 };
 
 const policyChildLabels: Record<string, string> = {
@@ -219,6 +221,13 @@ const policyTypeConfig: Record<string, { icon: React.ElementType; gradient: stri
     bg: "bg-emerald-50",
     border: "border-emerald-200",
     text: "text-emerald-700"
+  },
+  CIVIL_LIABILITY: {
+    icon: Scale,
+    gradient: "from-lime-600 to-lime-700",
+    bg: "bg-lime-50",
+    border: "border-lime-200",
+    text: "text-lime-700"
   },
 };
 

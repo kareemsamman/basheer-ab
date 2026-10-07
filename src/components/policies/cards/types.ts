@@ -87,6 +87,7 @@ export const policyTypeLabels: Record<string, string> = {
   THIRD_FULL: 'ثالث/شامل',
   ROAD_SERVICE: 'خدمات الطريق',
   ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
+  CIVIL_LIABILITY: 'مسؤولية مدنية',
 };
 
 export const policyChildLabels: Record<string, string> = {
@@ -99,6 +100,7 @@ export const policyTypeColors: Record<string, string> = {
   THIRD_FULL: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
   ROAD_SERVICE: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
   ACCIDENT_FEE_EXEMPTION: 'bg-green-500/10 text-green-600 border-green-500/20',
+  CIVIL_LIABILITY: 'bg-lime-500/10 text-lime-700 border-lime-500/30',
 };
 
 export const getDisplayLabel = (policy: PolicyRecord) => {

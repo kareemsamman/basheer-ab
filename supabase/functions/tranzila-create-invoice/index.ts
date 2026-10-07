@@ -41,6 +41,7 @@ const POLICY_TYPE_LABELS: Record<string, string> = {
   THIRD_FULL: 'شامل/ثالث',
   ROAD_SERVICE: 'خدمات الطريق',
   ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
+  CIVIL_LIABILITY: 'مسؤولية مدنية',
 };
 
 const PAYMENT_METHOD_MAP: Record<string, string> = {

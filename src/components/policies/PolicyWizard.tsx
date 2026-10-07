@@ -142,6 +142,8 @@ export function PolicyWizard({
     setPackageElzamiCompanies,
     packageThirdFullCompanies,
     setPackageThirdFullCompanies,
+    packageCivilLiabilityCompanies,
+    setPackageCivilLiabilityCompanies,
     payments,
     setPayments,
     insuranceFiles,
@@ -516,22 +518,30 @@ export function PolicyWizard({
 
       // Temp policy for Visa = First enabled addon in package mode, OR main policy
       // This is because the Visa payment processes the first component
-      let policyTypeParentValue = (selectedCategory?.slug || policy.policy_type_parent) as PolicyTypeParent;
+      // (car flow: the type picked in Step 3 - the car category's slug is THIRD_FULL for every type)
+      let policyTypeParentValue = (isLightMode
+        ? (selectedCategory?.slug || policy.policy_type_parent)
+        : (policy.policy_type_parent || selectedCategory?.slug)) as PolicyTypeParent;
       let policyTypeChildValue = (policy.policy_type_child || null) as PolicyTypeChild | null;
       let tempCompanyId = policy.company_id;
       let tempInsurancePrice = pricing.totalPrice || parseFloat(policy.insurance_price) || 0;
+      // Same cost inputs as handleSave: broker price for broker-linked companies, company share for civil liability
+      const tempCompanyHasBroker = !!companies.find(c => c.id === policy.company_id)?.broker_id;
+      let tempBrokerBuyPrice = tempCompanyHasBroker && policy.broker_buy_price ? parseFloat(policy.broker_buy_price) : null;
+      let tempCompanyCost = !tempCompanyHasBroker && policy.company_cost ? parseFloat(policy.company_cost) : null;
 
       // For packages with Visa: use the FIRST enabled addon for temp policy type/company
       // BUT keep tempInsurancePrice as pricing.totalPrice (full package price) to pass validation
       // The correct individual price will be set in handleSave after group_id is created
       if (packageMode && packageAddons.some(a => a.enabled)) {
-        // Priority: elzami > third_full > road_service > accident_fee
+        // Priority: elzami > third_full > road_service > accident_fee > civil_liability
         const elzamiAddon = packageAddons.find(a => a.type === 'elzami' && a.enabled);
         const thirdAddon = packageAddons.find(a => a.type === 'third_full' && a.enabled);
         const roadAddon = packageAddons.find(a => a.type === 'road_service' && a.enabled);
         const accidentAddon = packageAddons.find(a => a.type === 'accident_fee_exemption' && a.enabled);
+        const civilAddon = packageAddons.find(a => a.type === 'civil_liability' && a.enabled);
         
-        const firstAddon = elzamiAddon || thirdAddon || roadAddon || accidentAddon;
+        const firstAddon = elzamiAddon || thirdAddon || roadAddon || accidentAddon || civilAddon;
         
         if (firstAddon) {
           const addonTypeMap: Record<string, PolicyTypeParent> = {
@@ -539,12 +549,17 @@ export function PolicyWizard({
             'third_full': 'THIRD_FULL',
             'road_service': 'ROAD_SERVICE',
             'accident_fee_exemption': 'ACCIDENT_FEE_EXEMPTION',
+            'civil_liability': 'CIVIL_LIABILITY',
           };
           policyTypeParentValue = addonTypeMap[firstAddon.type] as PolicyTypeParent;
           policyTypeChildValue = firstAddon.type === 'third_full' && firstAddon.policy_type_child 
             ? firstAddon.policy_type_child as PolicyTypeChild 
             : null;
           tempCompanyId = firstAddon.company_id || policy.company_id;
+          tempBrokerBuyPrice = null;
+          tempCompanyCost = firstAddon.type === 'civil_liability' && firstAddon.company_cost
+            ? parseFloat(firstAddon.company_cost)
+            : null;
           // DO NOT override tempInsurancePrice here - keep pricing.totalPrice
           // This allows all package payments (including locked ELZAMI) to pass validation
           // The correct component price will be set in handleSave after package is created
@@ -563,6 +578,8 @@ export function PolicyWizard({
         carValue: policy.full_car_value ? parseFloat(policy.full_car_value) : (selectedCar?.car_value || (newCar.car_value ? parseFloat(newCar.car_value) : null)),
         carYear: selectedCar?.year || (newCar.year ? parseInt(newCar.year) : null),
         insurancePrice: tempInsurancePrice,
+        brokerBuyPrice: tempBrokerBuyPrice,
+        companyCost: tempCompanyCost,
         roadServiceId: policy.road_service_id || null,
         accidentFeeServiceId: policy.accident_fee_service_id || null,
       });
@@ -583,10 +600,13 @@ export function PolicyWizard({
           company_id: tempCompanyId || null,
           start_date: policy.start_date,
           end_date: policy.end_date,
+          issue_date: policy.issue_date || policy.start_date,
           insurance_price: tempInsurancePrice,
           profit: profitData.profit,
           payed_for_company: profitData.companyPayment,
           company_cost_snapshot: profitData.companyPayment,
+          broker_buy_price: tempBrokerBuyPrice || 0,
+          office_commission: parseFloat(policy.office_commission) || 0,
           is_under_24: isUnder24,
           broker_id: policyBrokerId || null,
           broker_direction: brokerDir,
@@ -615,7 +635,7 @@ export function PolicyWizard({
   }, [
     steps, validateStep, goToStep, toast, selectedClient, selectedCar, createNewClient,
     newClient, effectiveBranchId, user, isLightMode, createNewCar, newCar, selectedCategory,
-    policy, pricing, policyBrokerId, brokerDirection, packageMode, packageAddons,
+    policy, pricing, policyBrokerId, brokerDirection, packageMode, packageAddons, companies,
   ]);
 
   // Delete temporary policy on payment failure
@@ -770,6 +790,7 @@ export function PolicyWizard({
           carYear: selectedCar?.year || (newCar.year ? parseInt(newCar.year) : null),
           insurancePrice: parseFloat(policy.insurance_price) || pricing.totalPrice,
           brokerBuyPrice: brokerBuyPriceValue,
+          companyCost: !isCompanyLinkedToBroker && policy.company_cost ? parseFloat(policy.company_cost) : null,
           roadServiceId: policy.road_service_id || null,
           accidentFeeServiceId: policy.accident_fee_service_id || null,
         });
@@ -849,6 +870,7 @@ export function PolicyWizard({
               'third_full': 'THIRD_FULL',
               'road_service': 'ROAD_SERVICE',
               'accident_fee_exemption': 'ACCIDENT_FEE_EXEMPTION',
+              'civil_liability': 'CIVIL_LIABILITY',
             };
             const addonTypeParent = addonTypeMap[addon.type] as PolicyTypeParent;
             const addonInsurancePrice = parseFloat(addon.insurance_price) || 0;
@@ -873,6 +895,7 @@ export function PolicyWizard({
               carValue: addonCarValue,
               carYear: selectedCar?.year || (newCar.year ? parseInt(newCar.year) : null),
               insurancePrice: addonInsurancePrice,
+              companyCost: addon.type === 'civil_liability' && addon.company_cost ? parseFloat(addon.company_cost) : null,
               roadServiceId: addon.road_service_id || null,
               accidentFeeServiceId: addon.accident_fee_service_id || null,
             });
@@ -979,7 +1002,8 @@ export function PolicyWizard({
           const thirdAddon = packageAddons.find(a => a.type === 'third_full' && a.enabled);
           const roadAddon = packageAddons.find(a => a.type === 'road_service' && a.enabled);
           const accidentAddon = packageAddons.find(a => a.type === 'accident_fee_exemption' && a.enabled);
-          const firstAddon = elzamiAddon || thirdAddon || roadAddon || accidentAddon;
+          const civilAddon = packageAddons.find(a => a.type === 'civil_liability' && a.enabled);
+          const firstAddon = elzamiAddon || thirdAddon || roadAddon || accidentAddon || civilAddon;
           const firstAddonType = firstAddon?.type || null;
           _pkgFirstAddonType = firstAddonType;
 
@@ -1001,6 +1025,7 @@ export function PolicyWizard({
             carYear: carYearForCalc,
             insurancePrice: mainInsurancePrice,
             brokerBuyPrice: brokerBuyPriceValue,
+            companyCost: !isCompanyLinkedToBroker && policy.company_cost ? parseFloat(policy.company_cost) : null,
             roadServiceId: policy.road_service_id || null,
             accidentFeeServiceId: policy.accident_fee_service_id || null,
           });
@@ -1012,6 +1037,7 @@ export function PolicyWizard({
             'third_full': 'THIRD_FULL',
             'road_service': 'ROAD_SERVICE',
             'accident_fee_exemption': 'ACCIDENT_FEE_EXEMPTION',
+            'civil_liability': 'CIVIL_LIABILITY',
           };
           const tempPolicyTypeParent = firstAddon ? addonTypeMapForTemp[firstAddon.type] : policy.policy_type_parent as PolicyTypeParent;
           const tempPolicyTypeChild = firstAddon?.type === 'third_full' && (firstAddon as any).policy_type_child
@@ -1033,6 +1059,7 @@ export function PolicyWizard({
             carYear: carYearForCalc,
             insurancePrice: firstAddonPrice,
             brokerBuyPrice: firstAddonBrokerBuyPrice,
+            companyCost: firstAddon?.type === 'civil_liability' && firstAddon.company_cost ? parseFloat(firstAddon.company_cost) : null,
             roadServiceId: firstAddon?.road_service_id || null,
             accidentFeeServiceId: firstAddon?.accident_fee_service_id || null,
           });
@@ -1077,6 +1104,7 @@ export function PolicyWizard({
               'third_full': 'THIRD_FULL',
               'road_service': 'ROAD_SERVICE',
               'accident_fee_exemption': 'ACCIDENT_FEE_EXEMPTION',
+              'civil_liability': 'CIVIL_LIABILITY',
             };
             const addonTypeParent = addonTypeMap[addon.type] as PolicyTypeParent;
             const addonInsurancePrice = parseFloat(addon.insurance_price) || 0;
@@ -1096,6 +1124,7 @@ export function PolicyWizard({
               carValue: policy.full_car_value ? parseFloat(policy.full_car_value) : carValueForCalc,
               carYear: carYearForCalc,
               insurancePrice: addonInsurancePrice,
+              companyCost: addon.type === 'civil_liability' && addon.company_cost ? parseFloat(addon.company_cost) : null,
               roadServiceId: addon.road_service_id || null,
               accidentFeeServiceId: addon.accident_fee_service_id || null,
             });
@@ -1161,6 +1190,7 @@ export function PolicyWizard({
               payed_for_company: mainProfitData.companyPayment,
               company_cost_snapshot: mainProfitData.companyPayment,
               broker_buy_price: brokerBuyPriceValue || 0,
+              office_commission: parseFloat(policy.office_commission) || 0,
               road_service_id: policy.road_service_id || null,
               accident_fee_service_id: policy.accident_fee_service_id || null,
               group_id: groupId,
@@ -1674,6 +1704,8 @@ export function PolicyWizard({
                 setPackageElzamiCompanies={setPackageElzamiCompanies}
                 packageThirdFullCompanies={packageThirdFullCompanies}
                 setPackageThirdFullCompanies={setPackageThirdFullCompanies}
+                packageCivilLiabilityCompanies={packageCivilLiabilityCompanies}
+                setPackageCivilLiabilityCompanies={setPackageCivilLiabilityCompanies}
                 pricing={pricing}
                 selectedCar={selectedCar}
                 existingCar={existingCar}

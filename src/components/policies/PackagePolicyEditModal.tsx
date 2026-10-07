@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Save, X, Shield, Car, Truck, FileCheck, Package, Calculator, User, Plus, Check, Phone, Calendar } from "lucide-react";
+import { Loader2, Save, X, Shield, Car, Truck, FileCheck, Scale, Package, Calculator, User, Plus, Check, Phone, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { calculatePolicyProfit } from "@/lib/pricingCalculator";
 import { formatCurrency } from "@/lib/utils";
@@ -60,6 +60,7 @@ interface PolicyData {
   start_date: string;
   end_date: string;
   insurance_price: number;
+  payed_for_company: number | null;
   is_under_24?: boolean | null;
   group_id: string | null;
   insurance_companies?: {
@@ -102,6 +103,7 @@ interface EditState {
   issueDate: string;
   insurancePrice: string;
   companyId: string;
+  companyCost: string; // CIVIL_LIABILITY: the company's share, entered by hand
 }
 
 interface CompanyOption {
@@ -114,6 +116,7 @@ const policyTypeLabels: Record<string, string> = {
   THIRD_FULL: "ثالث/شامل",
   ROAD_SERVICE: "خدمات الطريق",
   ACCIDENT_FEE_EXEMPTION: "إعفاء رسوم حادث",
+  CIVIL_LIABILITY: "مسؤولية مدنية",
 };
 
 const policyChildLabels: Record<string, string> = {
@@ -126,14 +129,16 @@ const policyTypeConfig: Record<string, { icon: React.ElementType; bg: string; te
   THIRD_FULL: { icon: Car, bg: "bg-purple-500/10", text: "text-purple-700", border: "border-purple-500/30" },
   ROAD_SERVICE: { icon: Truck, bg: "bg-orange-500/10", text: "text-orange-700", border: "border-orange-500/30" },
   ACCIDENT_FEE_EXEMPTION: { icon: FileCheck, bg: "bg-green-500/10", text: "text-green-700", border: "border-green-500/30" },
+  CIVIL_LIABILITY: { icon: Scale, bg: "bg-lime-500/10", text: "text-lime-700", border: "border-lime-500/30" },
 };
 
 // Sort order for policy types
 const policyTypeSortOrder: Record<string, number> = {
   THIRD_FULL: 1,
   ELZAMI: 2,
-  ROAD_SERVICE: 3,
-  ACCIDENT_FEE_EXEMPTION: 4,
+  CIVIL_LIABILITY: 3,
+  ROAD_SERVICE: 4,
+  ACCIDENT_FEE_EXEMPTION: 5,
 };
 
 export function PackagePolicyEditModal({
@@ -178,6 +183,7 @@ export function PackagePolicyEditModal({
           end_date,
           issue_date,
           insurance_price,
+          payed_for_company,
           is_under_24,
           group_id,
           client_id,
@@ -214,6 +220,7 @@ export function PackagePolicyEditModal({
           issueDate: (p as any).issue_date || p.start_date || "",
           insurancePrice: p.insurance_price?.toString() || "0",
           companyId: cid,
+          companyCost: p.payed_for_company?.toString() || "",
         };
       });
       setEditStates(states);
@@ -229,7 +236,7 @@ export function PackagePolicyEditModal({
           const { data } = await supabase.from("accident_fee_services").select("id, name, name_ar").eq("active", true).order("name");
           opts[type] = (data || []).map(r => ({ id: r.id, name: r.name_ar || r.name }));
         } else {
-          // ELZAMI, THIRD_FULL → insurance_companies filtered by category_parent
+          // ELZAMI, THIRD_FULL, CIVIL_LIABILITY → insurance_companies filtered by category_parent
           const { data } = await supabase
             .from("insurance_companies")
             .select("id, name, name_ar, category_parent")
@@ -445,6 +452,23 @@ export function PackagePolicyEditModal({
       return;
     }
 
+    // Civil liability needs the company's share (entered by hand, zero or more)
+    const hasInvalidCompanyCost = policies.some(p => {
+      const state = editStates[p.id];
+      if (!state || p.policy_type_parent !== "CIVIL_LIABILITY") return false;
+      const companyCost = parseFloat(state.companyCost);
+      return !Number.isFinite(companyCost) || companyCost < 0;
+    });
+
+    if (hasInvalidCompanyCost) {
+      toast({
+        title: "خطأ في البيانات",
+        description: "يجب إدخال المبلغ للشركة لوثيقة المسؤولية المدنية (صفر أو أكثر)",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSaving(true);
     try {
       // 1. Create new children if any
@@ -559,6 +583,22 @@ export function PackagePolicyEditModal({
             carValue: policy.cars?.car_value || null,
             carYear: policy.cars?.year || null,
             insurancePrice: price,
+          });
+          companyPayment = result.companyPayment;
+          profit = result.profit;
+        } else if (policy.policy_type_parent === "CIVIL_LIABILITY") {
+          // The company's share is entered by hand on each policy
+          const ageBand: Enums<"age_band"> = policy.is_under_24 ? "UNDER_24" : "UP_24";
+          const result = await calculatePolicyProfit({
+            policyTypeParent: "CIVIL_LIABILITY",
+            policyTypeChild: null,
+            companyId: selectedCompanyId,
+            carType: (policy.cars?.car_type || "car") as Enums<"car_type">,
+            ageBand,
+            carValue: policy.cars?.car_value || null,
+            carYear: policy.cars?.year || null,
+            insurancePrice: price,
+            companyCost: parseFloat(state.companyCost),
           });
           companyPayment = result.companyPayment;
           profit = result.profit;
@@ -742,6 +782,22 @@ export function PackagePolicyEditModal({
                             min="0"
                           />
                         </div>
+                        {/* Company share - only for CIVIL_LIABILITY (entered by hand) */}
+                        {policy.policy_type_parent === "CIVIL_LIABILITY" && (
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">
+                              المبلغ للشركة (₪) <span className="text-destructive">*</span>
+                            </Label>
+                            <Input
+                              type="number"
+                              value={state?.companyCost || ""}
+                              onChange={(e) => updateEditState(policy.id, "companyCost", e.target.value)}
+                              className="h-8 text-left ltr-nums text-sm"
+                              placeholder="0"
+                              min="0"
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

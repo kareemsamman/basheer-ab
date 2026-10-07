@@ -11,7 +11,7 @@ interface PricingCardProps {
 }
 
 export function PricingCard({ pricing, showAddons = true, className }: PricingCardProps) {
-  const hasAddons = pricing.roadServicePrice > 0 || pricing.accidentFeePrice > 0 || pricing.elzamiPrice > 0 || pricing.thirdFullPrice > 0;
+  const hasAddons = pricing.roadServicePrice > 0 || pricing.accidentFeePrice > 0 || pricing.elzamiPrice > 0 || pricing.thirdFullPrice > 0 || pricing.civilLiabilityPrice > 0;
   const hasCommission = pricing.officeCommission > 0;
   
   return (
@@ -68,6 +68,13 @@ export function PricingCard({ pricing, showAddons = true, className }: PricingCa
           <div className="flex justify-between text-muted-foreground">
             <span>+ إعفاء رسوم حادث:</span>
             <span className="ltr-nums">₪{pricing.accidentFeePrice.toLocaleString()}</span>
+          </div>
+        )}
+
+        {showAddons && pricing.civilLiabilityPrice > 0 && (
+          <div className="flex justify-between text-muted-foreground">
+            <span>+ مسؤولية مدنية:</span>
+            <span className="ltr-nums">₪{pricing.civilLiabilityPrice.toLocaleString()}</span>
           </div>
         )}
 

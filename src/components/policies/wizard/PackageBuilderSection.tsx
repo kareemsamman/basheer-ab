@@ -3,15 +3,16 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Package, Route, Shield, FileCheck, Loader2, Check, AlertCircle, Car, Calendar } from "lucide-react";
+import { Package, Route, Shield, FileCheck, Loader2, Check, AlertCircle, Car, Calendar, Scale } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
+import { isCivilLiabilityCarType } from "@/lib/insuranceTypes";
 import type { PackageAddon, Company, RoadService, AccidentFeeService, CarRecord } from "./types";
 
 // Addon Card Component - extracted outside to prevent re-creation on parent re-render
 interface AddonCardProps {
-  type: 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption';
+  type: PackageAddon['type'];
   title: string;
   icon: typeof FileCheck;
   iconColor: string;
@@ -93,6 +94,7 @@ interface PackageBuilderSectionProps {
   accidentFeeCompanies: Company[];
   elzamiCompanies: Company[];
   thirdFullCompanies: Company[];
+  civilLiabilityCompanies: Company[];
   carType?: string;
   disabled?: boolean;
   errors?: Record<string, string>;
@@ -112,6 +114,7 @@ export function PackageBuilderSection({
   accidentFeeCompanies,
   elzamiCompanies,
   thirdFullCompanies,
+  civilLiabilityCompanies,
   carType,
   disabled,
   errors = {},
@@ -127,8 +130,9 @@ export function PackageBuilderSection({
   const thirdFullAddon = addons.find(a => a.type === 'third_full') || { type: 'third_full' as const, enabled: false, company_id: '', insurance_price: '', policy_type_child: '' as '' | 'THIRD' | 'FULL', broker_buy_price: '' };
   const roadServiceAddon = addons.find(a => a.type === 'road_service') || { type: 'road_service' as const, enabled: false, road_service_id: '', company_id: '', insurance_price: '' };
   const accidentFeeAddon = addons.find(a => a.type === 'accident_fee_exemption') || { type: 'accident_fee_exemption' as const, enabled: false, accident_fee_service_id: '', company_id: '', insurance_price: '' };
+  const civilLiabilityAddon = addons.find(a => a.type === 'civil_liability') || { type: 'civil_liability' as const, enabled: false, company_id: '', insurance_price: '', company_cost: '' };
 
-  const updateAddon = (type: 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption', updates: Partial<PackageAddon>) => {
+  const updateAddon = (type: PackageAddon['type'], updates: Partial<PackageAddon>) => {
     // When enabling an addon, auto-fill dates
     if (updates.enabled === true) {
       const thirdFullAddon = addons.find(a => a.type === 'third_full');
@@ -229,6 +233,8 @@ export function PackageBuilderSection({
   const showThirdFullAddon = mainPolicyType === 'ELZAMI';
   const showRoadServiceAddon = true;
   const showAccidentFeeAddon = true;
+  // Civil liability: cargo and bus cars only (kept visible if already enabled, so its error shows)
+  const showCivilLiabilityAddon = isCivilLiabilityCarType(carType) || civilLiabilityAddon.enabled;
 
   // Auto-initialize addon dates from main policy or third_full when enabled
   useEffect(() => {
@@ -882,6 +888,127 @@ export function PackageBuilderSection({
                   <ArabicDatePicker
                     value={accidentFeeAddon.end_date}
                     onChange={(d) => updateAddon('accident_fee_exemption', { end_date: d })}
+                    disabled={disabled}
+                    compact
+                  />
+                </div>
+              </div>
+            </div>
+          </AddonCard>
+        )}
+
+        {/* Civil Liability Addon - cargo and bus cars only */}
+        {showCivilLiabilityAddon && (
+          <AddonCard
+            type="civil_liability"
+            title="مسؤولية مدنية"
+            icon={Scale}
+            iconColor="text-lime-700"
+            bgColor="bg-lime-50 dark:bg-lime-950/30"
+            borderColor="border-lime-400 dark:border-lime-800"
+            addon={civilLiabilityAddon}
+            disabled={disabled}
+            onToggle={() => updateAddon('civil_liability', { enabled: !civilLiabilityAddon.enabled })}
+          >
+            <div className="space-y-2.5">
+              {errors.addon_civil_car && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {errors.addon_civil_car}
+                </p>
+              )}
+              <div>
+                <Label className="text-xs mb-1 block">الشركة</Label>
+                <Select
+                  value={civilLiabilityAddon.company_id || ""}
+                  onValueChange={(v) => updateAddon('civil_liability', { company_id: v })}
+                  disabled={disabled}
+                >
+                  <SelectTrigger className={cn("h-8 text-xs", errors.addon_civil_company && "border-destructive")}>
+                    <SelectValue placeholder="اختر الشركة" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {civilLiabilityCompanies.length === 0 ? (
+                      <div className="p-2 text-center text-sm text-muted-foreground">لا توجد شركات</div>
+                    ) : (
+                      civilLiabilityCompanies.map(c => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name_ar || c.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                {errors.addon_civil_company && (
+                  <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.addon_civil_company}
+                  </p>
+                )}
+              </div>
+              <div>
+                <Label className="text-xs mb-1 block">السعر (₪)</Label>
+                <Input
+                  type="number"
+                  value={civilLiabilityAddon.insurance_price}
+                  onChange={(e) => updateAddon('civil_liability', { insurance_price: e.target.value })}
+                  placeholder="0"
+                  className={cn("h-8 text-xs font-bold", errors.addon_civil_price && "border-destructive")}
+                  disabled={disabled}
+                />
+                {errors.addon_civil_price && (
+                  <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.addon_civil_price}
+                  </p>
+                )}
+              </div>
+              <div>
+                <Label className="text-xs mb-1 block">المبلغ للشركة (₪)</Label>
+                <Input
+                  type="number"
+                  value={civilLiabilityAddon.company_cost || ''}
+                  onChange={(e) => updateAddon('civil_liability', { company_cost: e.target.value })}
+                  placeholder="0"
+                  className={cn("h-8 text-xs font-bold", errors.addon_civil_cost && "border-destructive")}
+                  disabled={disabled}
+                />
+                {errors.addon_civil_cost ? (
+                  <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.addon_civil_cost}
+                  </p>
+                ) : civilLiabilityAddon.company_cost ? (
+                  <p className={cn(
+                    "text-xs mt-1 font-medium",
+                    (parseFloat(civilLiabilityAddon.insurance_price) || 0) - (parseFloat(civilLiabilityAddon.company_cost) || 0) >= 0 ? "text-green-700" : "text-destructive"
+                  )}>
+                    الربح: ₪{((parseFloat(civilLiabilityAddon.insurance_price) || 0) - (parseFloat(civilLiabilityAddon.company_cost) || 0)).toLocaleString()}
+                  </p>
+                ) : null}
+              </div>
+              {/* Date Fields */}
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-dashed">
+                <div>
+                  <Label className="text-xs mb-1 block flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    البداية
+                  </Label>
+                  <ArabicDatePicker
+                    value={civilLiabilityAddon.start_date}
+                    onChange={(d) => handleAddonStartDateChange('civil_liability', d)}
+                    disabled={disabled}
+                    compact
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs mb-1 block flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    النهاية
+                  </Label>
+                  <ArabicDatePicker
+                    value={civilLiabilityAddon.end_date}
+                    onChange={(d) => updateAddon('civil_liability', { end_date: d })}
                     disabled={disabled}
                     compact
                   />

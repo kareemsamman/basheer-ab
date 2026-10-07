@@ -161,6 +161,7 @@ export function SupplementFormDialog({ open, onOpenChange, editingSupplement, co
                   <SelectItem value="شامل">شامل</SelectItem>
                   <SelectItem value="خدمة طريق">خدمة طريق</SelectItem>
                   <SelectItem value="إعفاء رسوم">إعفاء رسوم</SelectItem>
+                  <SelectItem value="مسؤولية مدنية">مسؤولية مدنية</SelectItem>
                   <SelectItem value="أخرى">أخرى</SelectItem>
                 </SelectContent>
               </Select>

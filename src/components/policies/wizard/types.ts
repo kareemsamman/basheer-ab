@@ -68,7 +68,7 @@ export interface AccidentFeeService {
 }
 
 export interface PackageAddon {
-  type: 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption';
+  type: 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption' | 'civil_liability';
   enabled: boolean;
   road_service_id?: string;
   accident_fee_service_id?: string;
@@ -84,6 +84,8 @@ export interface PackageAddon {
   policy_type_child?: '' | 'THIRD' | 'FULL';
   broker_buy_price?: string;
   car_value?: string; // Car value for FULL insurance pricing
+  // CIVIL_LIABILITY specific: the company's share, entered by hand (profit = price - company_cost)
+  company_cost?: string;
 }
 
 export interface PendingPaymentImages {
@@ -150,6 +152,7 @@ export interface PolicyForm {
   broker_buy_price: string; // Price we buy from broker (when company has broker_id)
   full_car_value: string; // Car value for FULL insurance pricing (entered in Step 3)
   office_commission: string; // عمولة للمكتب - commission AB charges for ELZAMI handling
+  company_cost: string; // المبلغ للشركة - CIVIL_LIABILITY company share, entered by hand
   cancelled: boolean;
   transferred: boolean;
   notes: string;
@@ -172,6 +175,7 @@ export interface PricingBreakdown {
   thirdFullPrice: number;
   roadServicePrice: number;
   accidentFeePrice: number;
+  civilLiabilityPrice: number;
   officeCommission: number;
   totalPrice: number;
   /** Amount that goes through client wallet/debt (excludes ELZAMI but includes office commission) */
@@ -188,16 +192,18 @@ export interface RenewalData {
   companyId: string;
   insurancePrice: number;
   brokerBuyPrice?: number | null;
+  companyCost?: number | null; // CIVIL_LIABILITY: last policy's company share
   notes?: string | null;
   // Package addons
   packageAddons?: {
-    type: 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption';
+    type: 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption' | 'civil_liability';
     companyId: string;
     insurancePrice: number;
     roadServiceId?: string;
     accidentFeeServiceId?: string;
     policyTypeChild?: string;
     brokerBuyPrice?: number | null;
+    companyCost?: number | null; // CIVIL_LIABILITY: last policy's company share
   }[];
   // Additional drivers
   childrenIds?: string[];
@@ -211,6 +217,8 @@ export const CAR_POLICY_TYPES = [
   { value: "THIRD_FULL", label: "ثالث/شامل", hasChild: true, requiresBroker: true },
   { value: "ROAD_SERVICE", label: "خدمات الطريق", requiresBroker: false },
   { value: "ACCIDENT_FEE_EXEMPTION", label: "إعفاء رسوم حادث", requiresBroker: false },
+  // Only for cargo and bus cars (see isCivilLiabilityCarType)
+  { value: "CIVIL_LIABILITY", label: "مسؤولية مدنية", requiresBroker: false, civilLiabilityOnly: true },
 ];
 
 export const CAR_TYPES = [

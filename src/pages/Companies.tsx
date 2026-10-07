@@ -33,6 +33,7 @@ const POLICY_TYPES = [
   { value: "THIRD_FULL", label: "ثالث/شامل" },
   { value: "ROAD_SERVICE", label: "خدمات الطريق" },
   { value: "ACCIDENT_FEE_EXEMPTION", label: "إعفاء رسوم حادث" },
+  { value: "CIVIL_LIABILITY", label: "مسؤولية مدنية" },
 ];
 
 export default function Companies() {
@@ -311,7 +312,8 @@ export default function Companies() {
                           </Button>
                         )}
                         {(company.category_parent?.includes('THIRD_FULL') || 
-                          company.category_parent?.includes('ROAD_SERVICE')) && (
+                          company.category_parent?.includes('ROAD_SERVICE') ||
+                          company.category_parent?.includes('CIVIL_LIABILITY')) && (
                           <Button
                             variant="outline"
                             size="sm"

@@ -24,6 +24,7 @@ const POLICY_TYPE_LABELS: Record<string, string> = {
   THIRD_FULL: 'צד ג׳/מקיף',
   ROAD_SERVICE: 'שירותי דרך',
   ACCIDENT_FEE_EXEMPTION: 'פטור דמי תאונה',
+  CIVIL_LIABILITY: 'אחריות אזרחית',
   THIRD: 'צד ג׳',
   FULL: 'מקיף',
   HEALTH: 'בריאות',

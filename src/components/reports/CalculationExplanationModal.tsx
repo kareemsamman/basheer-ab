@@ -76,6 +76,7 @@ const POLICY_TYPE_LABELS: Record<string, string> = {
   THIRD_FULL: 'طرف ثالث / شامل',
   ROAD_SERVICE: 'خدمات الطريق',
   ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حادث',
+  CIVIL_LIABILITY: 'مسؤولية مدنية',
 };
 
 const POLICY_CHILD_LABELS: Record<string, string> = {
@@ -376,6 +377,23 @@ export function CalculationExplanationModal({
                 <p className="text-primary">المستحق للشركة = ₪{companyPayment.toLocaleString('en-US')}</p>
                 <Separator className="my-2" />
                 <p>الربح = سعر التأمين - المستحق للشركة</p>
+                <p className="text-success">الربح = ₪{profit.toLocaleString('en-US')}</p>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'CIVIL_LIABILITY':
+        return (
+          <div className="space-y-4">
+            <div className="bg-muted/50 p-4 rounded-lg space-y-2">
+              <h4 className="font-semibold text-sm">خطوات الحساب (مسؤولية مدنية):</h4>
+              <div className="text-sm space-y-1 font-mono">
+                <p>المستحق للشركة = المبلغ للشركة (يُدخل يدوياً على الوثيقة)</p>
+                <p className="text-primary">المستحق للشركة = ₪{companyPayment.toLocaleString('en-US')}</p>
+                <Separator className="my-2" />
+                <p>الربح = سعر التأمين - المستحق للشركة</p>
+                <p>الربح = ₪{insurancePrice.toLocaleString('en-US')} - ₪{companyPayment.toLocaleString('en-US')}</p>
                 <p className="text-success">الربح = ₪{profit.toLocaleString('en-US')}</p>
               </div>
             </div>

@@ -28,7 +28,7 @@ import {
   policyChildLabels,
 } from './cards/types';
 
-const MAIN_POLICY_TYPES = ['ELZAMI', 'THIRD_FULL'];
+const MAIN_POLICY_TYPES = ['ELZAMI', 'THIRD_FULL', 'CIVIL_LIABILITY'];
 
 interface PolicyTableViewProps {
   policies: PolicyRecord[];
@@ -143,9 +143,12 @@ export function PolicyTableView({
             group.mainPolicy = policy;
           } else {
             const currentMainType = group.mainPolicy.policy_type_parent;
+            // Main policy priority: THIRD_FULL > ELZAMI > CIVIL_LIABILITY
             if (
-              policy.policy_type_parent === 'THIRD_FULL' &&
-              currentMainType !== 'THIRD_FULL'
+              (policy.policy_type_parent === 'THIRD_FULL' &&
+                currentMainType !== 'THIRD_FULL') ||
+              (policy.policy_type_parent === 'ELZAMI' &&
+                currentMainType === 'CIVIL_LIABILITY')
             ) {
               group.addons.push(group.mainPolicy);
               group.mainPolicy = policy;

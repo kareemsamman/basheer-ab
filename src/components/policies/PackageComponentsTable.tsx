@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Shield, Car, Truck, FileCheck, Pencil } from "lucide-react";
+import { Shield, Car, Truck, FileCheck, Scale, Pencil } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
 interface PackagePolicy {
@@ -56,6 +56,7 @@ const policyTypeLabels: Record<string, string> = {
   THIRD_FULL: "ثالث/شامل",
   ROAD_SERVICE: "خدمات الطريق",
   ACCIDENT_FEE_EXEMPTION: "إعفاء رسوم حادث",
+  CIVIL_LIABILITY: "مسؤولية مدنية",
   HEALTH: "تأمين صحي",
   LIFE: "تأمين حياة",
   PROPERTY: "تأمين ممتلكات",
@@ -74,6 +75,7 @@ const policyTypeConfig: Record<string, { icon: React.ElementType; bg: string; te
   THIRD_FULL: { icon: Car, bg: "bg-cyan-50", text: "text-cyan-700" },
   ROAD_SERVICE: { icon: Truck, bg: "bg-emerald-50", text: "text-emerald-700" },
   ACCIDENT_FEE_EXEMPTION: { icon: FileCheck, bg: "bg-emerald-50", text: "text-emerald-700" },
+  CIVIL_LIABILITY: { icon: Scale, bg: "bg-lime-50", text: "text-lime-700" },
 };
 
 const syncableTypes = ['ROAD_SERVICE', 'ACCIDENT_FEE_EXEMPTION'];

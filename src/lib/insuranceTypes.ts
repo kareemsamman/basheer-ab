@@ -8,6 +8,7 @@ export const POLICY_TYPE_LABELS: Record<PolicyTypeParent, string> = {
   THIRD_FULL: 'طرف ثالث / شامل',
   ROAD_SERVICE: 'خدمات الطريق',
   ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم حوادث',
+  CIVIL_LIABILITY: 'مسؤولية مدنية',
   HEALTH: 'تأمين صحي',
   LIFE: 'تأمين حياة',
   PROPERTY: 'تأمين ممتلكات',
@@ -15,6 +16,13 @@ export const POLICY_TYPE_LABELS: Record<PolicyTypeParent, string> = {
   BUSINESS: 'تأمين أعمال',
   OTHER: 'أخرى',
 };
+
+/** Car types that can take a civil liability (مسؤولية مدنية) policy: cargo and buses */
+export const CIVIL_LIABILITY_CAR_TYPES: readonly string[] = ['cargo', 'small'];
+
+export function isCivilLiabilityCarType(carType: string | null | undefined): boolean {
+  return !!carType && CIVIL_LIABILITY_CAR_TYPES.includes(carType);
+}
 
 export const POLICY_CHILD_LABELS: Record<PolicyTypeChild, string> = {
   THIRD: 'ثالث',
@@ -47,6 +55,8 @@ export function getInsuranceTypeBadgeClass(type: PolicyTypeParent): string {
       return `${baseClass} bg-cyan-100 text-cyan-800 border-cyan-400 hover:bg-cyan-200`;
     case 'BUSINESS':
       return `${baseClass} bg-indigo-100 text-indigo-800 border-indigo-400 hover:bg-indigo-200`;
+    case 'CIVIL_LIABILITY':
+      return `${baseClass} bg-lime-100 text-lime-800 border-lime-500 hover:bg-lime-200`;
     case 'OTHER':
     default:
       return `${baseClass} bg-gray-200 text-gray-800 border-gray-400 hover:bg-gray-300`;

@@ -112,6 +112,7 @@ const policyTypeLabels: Record<string, string> = {
   THIRD_FULL: 'ثالث/شامل',
   ROAD_SERVICE: 'خدمات طريق',
   ACCIDENT_FEE_EXEMPTION: 'إعفاء رسوم',
+  CIVIL_LIABILITY: 'مسؤولية مدنية',
   HEALTH: 'صحي',
   LIFE: 'حياة',
   PROPERTY: 'ممتلكات',

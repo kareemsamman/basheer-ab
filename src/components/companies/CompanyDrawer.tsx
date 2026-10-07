@@ -33,6 +33,7 @@ const POLICY_TYPES: { value: PolicyTypeParent; label: string }[] = [
   { value: "THIRD_FULL", label: "ثالث/شامل" },
   { value: "ROAD_SERVICE", label: "خدمات الطريق" },
   { value: "ACCIDENT_FEE_EXEMPTION", label: "إعفاء رسوم حادث" },
+  { value: "CIVIL_LIABILITY", label: "مسؤولية مدنية" },
 ];
 
 interface CompanyDrawerProps {

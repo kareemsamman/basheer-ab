@@ -113,6 +113,7 @@ const POLICY_TYPE_LABELS: Record<string, string> = {
   FULL: "شامل",
   ROAD_SERVICE: "خدمة طريق",
   ACCIDENT_FEE_EXEMPTION: "إعفاء حوادث",
+  CIVIL_LIABILITY: "مسؤولية مدنية",
   HEALTH: "صحي",
   LIFE: "حياة",
   TRAVEL: "سفر",

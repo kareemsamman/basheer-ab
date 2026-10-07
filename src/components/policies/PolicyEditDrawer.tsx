@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Save, X } from "lucide-react";
 import { calculatePolicyProfit } from "@/lib/pricingCalculator";
+import { isCivilLiabilityCarType } from "@/lib/insuranceTypes";
 import type { Enums } from "@/integrations/supabase/types";
 
 interface PolicyEditDrawerProps {
@@ -84,6 +85,7 @@ const POLICY_TYPES = [
   { value: "THIRD_FULL", label: "ثالث/شامل", hasChild: true },
   { value: "ROAD_SERVICE", label: "خدمات الطريق" },
   { value: "ACCIDENT_FEE_EXEMPTION", label: "إعفاء رسوم حادث" },
+  { value: "CIVIL_LIABILITY", label: "مسؤولية مدنية" },
 ];
 
 export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: PolicyEditDrawerProps) {
@@ -96,6 +98,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
   const [showPackageDateSync, setShowPackageDateSync] = useState(false);
   const [pendingSave, setPendingSave] = useState<{ syncDates: boolean } | null>(null);
   const [originalDates, setOriginalDates] = useState({ start_date: '', end_date: '' });
+  const [brokerBuyPrice, setBrokerBuyPrice] = useState<number | null>(null); // Will be fetched from DB
 
   // Determine initial under24_type from client data or fallback to policy is_under_24
   const getInitialUnder24Type = (): 'none' | 'client' | 'additional_driver' => {
@@ -118,6 +121,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
     insurance_price: policy.insurance_price?.toString() || "0",
     office_commission: "0", // Will be fetched from DB
     issue_date: "", // Will be fetched from DB
+    company_cost: "", // Will be fetched from DB - CIVIL_LIABILITY company share (payed_for_company)
     cancelled: policy.cancelled || false,
     transferred: policy.transferred || false,
     transferred_car_number: policy.transferred_car_number || "",
@@ -153,6 +157,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
         insurance_price: policy.insurance_price?.toString() || "0",
         office_commission: "0",
         issue_date: "",
+        company_cost: "",
         cancelled: policy.cancelled || false,
         transferred: policy.transferred || false,
         transferred_car_number: policy.transferred_car_number || "",
@@ -166,12 +171,13 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
       
       setFormData(initialFormData);
       setOriginalDates({ start_date: policy.start_date, end_date: policy.end_date });
+      setBrokerBuyPrice(null);
 
-      // Fetch office_commission and issue_date from DB
+      // Fetch office_commission, issue_date, company share and broker price from DB
       const fetchExtraFields = async () => {
         const { data } = await supabase
           .from('policies')
-          .select('office_commission, issue_date')
+          .select('office_commission, issue_date, payed_for_company, broker_buy_price')
           .eq('id', policy.id)
           .single();
         if (data) {
@@ -179,7 +185,10 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
             ...f,
             office_commission: data.office_commission != null ? data.office_commission.toString() : "0",
             issue_date: data.issue_date || f.start_date || "",
+            // Only a CIVIL_LIABILITY policy's payed_for_company is a hand-entered share; a re-typed policy needs a fresh entry
+            company_cost: policy.policy_type_parent === 'CIVIL_LIABILITY' && data.payed_for_company != null ? data.payed_for_company.toString() : "",
           }));
+          setBrokerBuyPrice(data.broker_buy_price);
         }
       };
       fetchExtraFields();
@@ -242,6 +251,19 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
       }
     }
 
+    // CIVIL_LIABILITY: the company's share is entered by hand and is required
+    if (formData.policy_type_parent === 'CIVIL_LIABILITY') {
+      const companyCost = parseFloat(formData.company_cost);
+      if (!Number.isFinite(companyCost) || companyCost < 0) {
+        toast({
+          title: "خطأ",
+          description: "يجب إدخال المبلغ للشركة (صفر أو أكثر)",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+
     // Check if dates changed and there are package policies
     const datesChanged = formData.start_date !== originalDates.start_date || formData.end_date !== originalDates.end_date;
     if (datesChanged && packagePolicies.length > 0 && !pendingSave) {
@@ -263,6 +285,9 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
         companyPayment = insurancePrice;
       } else {
         const ageBand: Enums<'age_band'> = formData.under24_type !== 'none' ? 'UNDER_24' : 'UP_24';
+        // The stored broker price belongs to the policy's own company and type - drop it when either changes
+        const keepsBrokerPrice = formData.company_id === (policy.insurance_companies?.id || "") &&
+          formData.policy_type_parent === policy.policy_type_parent;
         const result = await calculatePolicyProfit({
           policyTypeParent: formData.policy_type_parent as Enums<'policy_type_parent'>,
           policyTypeChild: (formData.policy_type_child || null) as Enums<'policy_type_child'> | null,
@@ -272,6 +297,9 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
           carValue: policy.cars?.car_value || null,
           carYear: policy.cars?.year || null,
           insurancePrice,
+          brokerBuyPrice: keepsBrokerPrice ? brokerBuyPrice : null,
+          // CIVIL_LIABILITY: the company's share entered by hand
+          companyCost: formData.policy_type_parent === 'CIVIL_LIABILITY' ? parseFloat(formData.company_cost) : null,
         });
         companyPayment = result.companyPayment;
         profit = result.profit;
@@ -369,6 +397,15 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
 
   const selectedType = POLICY_TYPES.find(t => t.value === formData.policy_type_parent);
 
+  // Civil liability is offered for cargo and bus cars only (or when the policy already is one)
+  const typeOptions = POLICY_TYPES.filter(t =>
+    t.value !== 'CIVIL_LIABILITY' ||
+    isCivilLiabilityCarType(policy.cars?.car_type) ||
+    policy.policy_type_parent === 'CIVIL_LIABILITY'
+  );
+
+  const civilLiabilityProfit = (parseFloat(formData.insurance_price) || 0) - (parseFloat(formData.company_cost) || 0);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
@@ -404,7 +441,7 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
                     <SelectValue placeholder="اختر النوع" />
                   </SelectTrigger>
                   <SelectContent>
-                    {POLICY_TYPES.map(type => (
+                    {typeOptions.map(type => (
                       <SelectItem key={type.value} value={type.value} className="text-right">
                         {type.label}
                       </SelectItem>
@@ -521,6 +558,24 @@ export function PolicyEditDrawer({ open, onOpenChange, policy, onSaved }: Policy
                 className="h-9 text-left ltr-input"
               />
             </div>
+
+            {/* Company share - only for CIVIL_LIABILITY (entered by hand) */}
+            {formData.policy_type_parent === 'CIVIL_LIABILITY' && (
+              <div className="space-y-1.5">
+                <Label className="text-right block text-sm">المبلغ للشركة (₪) *</Label>
+                <Input
+                  type="number"
+                  value={formData.company_cost}
+                  onChange={(e) => setFormData(f => ({ ...f, company_cost: e.target.value }))}
+                  className="h-9 text-left ltr-input"
+                  placeholder="0"
+                  min="0"
+                />
+                <p className={`text-xs font-medium ${civilLiabilityProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  الربح: <span className="ltr-nums">₪{civilLiabilityProfit.toLocaleString()}</span>
+                </p>
+              </div>
+            )}
 
             {/* Office Commission - only for ELZAMI */}
             {formData.policy_type_parent === 'ELZAMI' && (

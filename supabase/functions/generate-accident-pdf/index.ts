@@ -80,6 +80,7 @@ interface AccidentReport {
   } | null;
   policies: {
     policy_number: string | null;
+    policy_type_parent: string;
     policy_type_child: string | null;
     start_date: string;
     end_date: string;
@@ -137,7 +138,7 @@ serve(async (req) => {
         *,
         clients!inner(full_name, id_number, phone_number),
         cars(car_number, manufacturer_name, model, year, color),
-        policies!inner(policy_number, policy_type_child, start_date, end_date),
+        policies!inner(policy_number, policy_type_parent, policy_type_child, start_date, end_date),
         insurance_companies(name, name_ar)
       `)
       .eq("id", accident_report_id)
@@ -304,13 +305,18 @@ serve(async (req) => {
   }
 });
 
+function getPolicyTypeLabel(policy: AccidentReport["policies"]): string {
+  if (policy.policy_type_parent === "CIVIL_LIABILITY") return "مسؤولية مدنية";
+  return policy.policy_type_child === "THIRD" ? "طرف ثالث" : "شامل";
+}
+
 function buildFieldValues(report: AccidentReport, thirdParties: ThirdParty[]): Record<string, string> {
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "";
     return new Date(dateStr).toLocaleDateString("en-GB");
   };
 
-  const policyTypeLabel = report.policies.policy_type_child === "THIRD" ? "طرف ثالث" : "شامل";
+  const policyTypeLabel = getPolicyTypeLabel(report.policies);
   const companyName = report.insurance_companies?.name_ar || report.insurance_companies?.name || "";
 
   const values: Record<string, string> = {
@@ -1360,7 +1366,7 @@ function generateHtmlReport(report: AccidentReport, thirdParties: ThirdParty[]):
     return new Date(dateStr).toLocaleDateString("en-GB");
   };
 
-  const policyTypeLabel = report.policies.policy_type_child === "THIRD" ? "طرف ثالث" : "شامل";
+  const policyTypeLabel = getPolicyTypeLabel(report.policies);
   const companyName = report.insurance_companies?.name_ar || report.insurance_companies?.name || "-";
 
   let thirdPartiesHtml = "";
