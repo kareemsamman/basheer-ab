@@ -1229,6 +1229,8 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
     const isExpanded = expandedChequeGroups.has(group.id);
     const chequeCountLabel = group.cheques.length === 1 ? 'شيك واحد' : `${group.cheques.length} شيكات`;
     const stateSummary = summarizeChequeStates(group.cheques);
+    const firstDueDate = group.cheques[0].due_date;
+    const lastDueDate = group.cheques[group.cheques.length - 1].due_date;
 
     return (
       <Fragment key={group.id}>
@@ -1245,10 +1247,19 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
             </div>
           </TableCell>
           <TableCell>
-            <div>{group.received_date ? formatDate(group.received_date) : '-'}</div>
-            <div className="text-[10px] text-muted-foreground">
-              {group.received_date ? 'تاريخ الاستلام' : 'من النظام القديم'}
-            </div>
+            {group.received_date ? (
+              <>
+                <div>{formatDate(group.received_date)}</div>
+                <div className="text-[10px] text-muted-foreground">تاريخ الاستلام</div>
+              </>
+            ) : (
+              <>
+                <div className="text-muted-foreground">من النظام القديم</div>
+                <div className="text-[10px] text-muted-foreground">
+                  استحقاق {formatDate(firstDueDate)}{lastDueDate !== firstDueDate && ` – ${formatDate(lastDueDate)}`}
+                </div>
+              </>
+            )}
           </TableCell>
           <TableCell>
             <Badge variant="outline" className="gap-1 cursor-pointer hover:bg-muted">
