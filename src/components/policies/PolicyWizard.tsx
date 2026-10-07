@@ -481,6 +481,19 @@ export function PolicyWizard({
 
       if (!clientId) throw new Error('Client ID is required');
 
+      // The client may already have this car (step 2's number lookup may not have finished) - reuse it
+      if (!isLightMode && createNewCar && !carId && newCar.car_number.trim()) {
+        const { data: clientCar } = await supabase
+          .from('cars')
+          .select('id')
+          .eq('client_id', clientId)
+          .eq('car_number', newCar.car_number.trim())
+          .is('deleted_at', null)
+          .limit(1)
+          .maybeSingle();
+        carId = clientCar?.id;
+      }
+
       // Create new car if needed
       if (!isLightMode && createNewCar && !carId) {
         const carType = (newCar.car_type || 'car') as CarType;
@@ -736,6 +749,19 @@ export function PolicyWizard({
         }
 
         if (!clientId) throw new Error('Client ID is required');
+
+        // The client may already have this car (step 2's number lookup may not have finished) - reuse it
+        if (!isLightMode && createNewCar && !carId && newCar.car_number.trim()) {
+          const { data: clientCar } = await supabase
+            .from('cars')
+            .select('id')
+            .eq('client_id', clientId)
+            .eq('car_number', newCar.car_number.trim())
+            .is('deleted_at', null)
+            .limit(1)
+            .maybeSingle();
+          carId = clientCar?.id;
+        }
 
         // Create new car if needed (for FULL mode)
         if (!isLightMode && createNewCar && !carId) {

@@ -66,7 +66,7 @@ import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import { ArabicMonthPicker } from '@/components/ui/arabic-month-picker';
 import { useAuth } from '@/hooks/useAuth';
 import { ClickablePhone } from '@/components/shared/ClickablePhone';
-import { getInsuranceTypeLabel } from '@/lib/insuranceTypes';
+import { getInsuranceTypeLabel, PACKAGE_ADDON_TYPES_BY_MAIN, type PolicyTypeParent } from '@/lib/insuranceTypes';
 import { ExpiryBadge } from '@/components/shared/ExpiryBadge';
 
 const policyTypeLabels: Record<string, string> = {
@@ -889,9 +889,33 @@ export default function PolicyReports() {
         });
       }
       
-      // Build addons from other policies
-      const addons = policies
-        .filter((p: RenewalPolicy) => p.id !== mainPolicy.id)
+      // A package belongs to one car and can only hold the add-ons the wizard shows for its main type
+      // (one of each); everything else is renewed separately
+      const allowedAddonTypes: string[] = PACKAGE_ADDON_TYPES_BY_MAIN[mainPolicy.policy_type_parent as PolicyTypeParent] || [];
+      const addonTypesTaken = new Set<string>();
+      const addonPolicies = policies.filter((p: RenewalPolicy) => {
+        if (p.id === mainPolicy.id || p.car_id !== mainPolicy.car_id) return false;
+        if (!allowedAddonTypes.includes(p.policy_type_parent) || addonTypesTaken.has(p.policy_type_parent)) return false;
+        addonTypesTaken.add(p.policy_type_parent);
+        return true;
+      });
+      const renewSeparately = policies.filter((p: RenewalPolicy) => p.id !== mainPolicy.id && !addonPolicies.includes(p));
+      if (renewSeparately.length > 0) {
+        const otherCars = [...new Set(renewSeparately
+          .filter((p: RenewalPolicy) => p.car_id && p.car_id !== mainPolicy.car_id)
+          .map((p: RenewalPolicy) => p.car_number || '?'))];
+        const sameCarCount = renewSeparately.filter((p: RenewalPolicy) => p.car_id && p.car_id === mainPolicy.car_id).length;
+        const noCarCount = renewSeparately.filter((p: RenewalPolicy) => !p.car_id).length;
+        const parts = [
+          ...otherCars.map(car => `السيارة ${car}`),
+          ...(sameCarCount > 0 ? [`${sameCarCount} وثيقة أخرى على نفس السيارة`] : []),
+          ...(noCarCount > 0 ? [`${noCarCount} وثيقة بدون سيارة`] : []),
+        ];
+        toast.warning(`جدّد بشكل منفصل (من ملف العميل): ${parts.join('، ')}`, { duration: 15000 });
+      }
+
+      // Build addons from the other policies of the same car
+      const addons = addonPolicies
         .map((p: RenewalPolicy) => ({
           type: p.policy_type_parent.toLowerCase() as 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption' | 'civil_liability',
           companyId: p.company_id || '',

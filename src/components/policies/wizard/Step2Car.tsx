@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,17 @@ import { Car, Plus, AlertCircle, CheckCircle, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Client, CarRecord, NewCarForm, ValidationErrors } from "./types";
 import { CAR_TYPES } from "./types";
+
+const EMPTY_NEW_CAR: NewCarForm = {
+  car_number: "",
+  manufacturer_name: "",
+  model: "",
+  year: "",
+  color: "",
+  car_type: "car",
+  car_value: "",
+  license_expiry: "",
+};
 
 interface Step2Props {
   selectedClient: Client | null;
@@ -60,6 +71,12 @@ export function Step2Car({
 }: Step2Props) {
   const { toast } = useToast();
 
+  // Latest form state, for registry answers that arrive after the user kept typing
+  const newCarRef = useRef(newCar);
+  newCarRef.current = newCar;
+  const createNewCarRef = useRef(createNewCar);
+  createNewCarRef.current = createNewCar;
+
   // Fetch client cars
   useEffect(() => {
     if (selectedClient?.id) {
@@ -93,37 +110,51 @@ export function Step2Car({
       return;
     }
     
+    let cancelled = false;
     const checkExistingCar = async () => {
-      const { data } = await supabase
+      // car_number is not unique - the same car can be on several clients
+      const { data: rows } = await supabase
         .from('cars')
         .select('*, clients(full_name)')
         .eq('car_number', newCar.car_number)
         .is('deleted_at', null)
-        .maybeSingle();
-      
-      if (data) {
-        const clientId = selectedClient?.id;
-        
-        if (data.client_id === clientId) {
-          setExistingCar(data as CarRecord);
-          setCarConflict(null);
-        } else {
-          // Allow same car number for multiple customers - just show info, don't block
-          setExistingCar(null);
-          setCarConflict(null);
-          toast({
-            title: "ملاحظة",
-            description: `هذه السيارة مسجلة أيضاً على: ${(data as any).clients?.full_name || 'عميل آخر'}. سيتم إضافتها للعميل الحالي.`,
-          });
-        }
+        .order('created_at', { ascending: false });
+      // The number changed or the form closed while we were waiting
+      if (cancelled) return;
+
+      const ownCar = rows?.find(r => r.client_id === selectedClient?.id);
+      if (ownCar) {
+        // The client already has this car - select it, so its stored type (e.g. شحن) is the one used.
+        // Drop the abandoned form, or its values would be saved onto whichever car is used.
+        setSelectedCar(ownCar as CarRecord);
+        setCreateNewCar(false);
+        setNewCar(EMPTY_NEW_CAR);
+        setCarDataFetched(false);
+        setExistingCar(null);
+        setCarConflict(null);
+        toast({
+          title: "السيارة موجودة لدى العميل",
+          description: "تم اختيار السيارة الموجودة",
+        });
+      } else if (rows && rows.length > 0) {
+        // Allow same car number for multiple customers - just show info, don't block
+        setExistingCar(null);
+        setCarConflict(null);
+        toast({
+          title: "ملاحظة",
+          description: `هذه السيارة مسجلة أيضاً على: ${(rows[0] as any).clients?.full_name || 'عميل آخر'}. سيتم إضافتها للعميل الحالي.`,
+        });
       } else {
         setExistingCar(null);
         setCarConflict(null);
       }
     };
-    
+
     const timer = setTimeout(checkExistingCar, 500);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [newCar.car_number, createNewCar, selectedClient?.id]);
 
   const fetchCarData = async (carNumber?: string) => {
@@ -146,15 +177,21 @@ export function Step2Car({
 
       const vehicleData = data.data || data;
 
+      // Drop a late answer if the form closed or the number changed meanwhile, and keep
+      // anything the user edited during the lookup
+      const latest = newCarRef.current;
+      if (!createNewCarRef.current || latest.car_number !== numberToFetch) return;
+
       setNewCar({
-        ...newCar,
+        ...latest,
         car_number: numberToFetch,
         manufacturer_name: vehicleData.manufacturer_name || "",
         model: vehicleData.model || "",
         year: vehicleData.year?.toString() || "",
         color: vehicleData.color || "",
         license_expiry: vehicleData.license_expiry || "",
-        car_type: vehicleData.car_type || "car",
+        // The registry only knows private cars - keep a type the user already picked (e.g. شحن)
+        car_type: vehicleData.car_type && vehicleData.car_type !== "car" ? vehicleData.car_type : (latest.car_type || "car"),
       });
       setCarDataFetched(true);
       toast({ title: "تم جلب البيانات تلقائياً" });
@@ -191,21 +228,15 @@ export function Step2Car({
 
   const handleCreateNewClick = () => {
     setSelectedCar(null);
+    // Start empty - the last number typed may belong to a car that was just auto-selected
+    setNewCar(EMPTY_NEW_CAR);
+    setCarDataFetched(false);
     setCreateNewCar(true);
   };
 
   const handleCancelCreate = () => {
     setCreateNewCar(false);
-    setNewCar({
-      car_number: "",
-      manufacturer_name: "",
-      model: "",
-      year: "",
-      color: "",
-      car_type: "car",
-      car_value: "",
-      license_expiry: "",
-    });
+    setNewCar(EMPTY_NEW_CAR);
     setExistingCar(null);
     setCarConflict(null);
     setCarDataFetched(false);

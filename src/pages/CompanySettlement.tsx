@@ -1198,7 +1198,7 @@ export default function CompanySettlement() {
                                     <SelectTrigger className="w-28 h-8 text-xs"><SelectValue placeholder="نوع المركبة" /></SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value="car">خصوصي</SelectItem>
-                                      <SelectItem value="cargo">تجاري</SelectItem>
+                                      <SelectItem value="cargo">شحن</SelectItem>
                                       <SelectItem value="taxi">مونيت</SelectItem>
                                       <SelectItem value="small">اوتوبس زعير</SelectItem>
                                       <SelectItem value="tjeradown4">تجارة أقل من 4 طن</SelectItem>
@@ -1207,7 +1207,7 @@ export default function CompanySettlement() {
                                   </Select>
                                 ) : (
                                   (() => {
-                                    const labels: Record<string, string> = { car: 'خصوصي', cargo: 'تجاري', taxi: 'مونيت', small: 'اوتوبس زعير', tjeradown4: 'تجارة <4 طن', tjeraup4: 'تجارة >4 طن' };
+                                    const labels: Record<string, string> = { car: 'خصوصي', cargo: 'شحن', taxi: 'مونيت', small: 'اوتوبس زعير', tjeradown4: 'تجارة <4 طن', tjeraup4: 'تجارة >4 طن' };
                                     return policy.car_type ? (labels[policy.car_type] || policy.car_type) : '-';
                                   })()
                                 )}

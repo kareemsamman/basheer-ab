@@ -27,6 +27,15 @@ import type { ClientChild, NewChildForm } from "@/types/clientChildren";
 
 const DRAFT_KEY = "abcrm:policyWizardDraft:v3";
 
+// The package add-on slots, all off. A function so every reset gets fresh objects (saving tags them).
+const emptyPackageAddons = (): PackageAddon[] => [
+  { type: "elzami", enabled: false, company_id: "", insurance_price: "", elzami_commission: 0, start_date: "", end_date: "" },
+  { type: "third_full", enabled: false, company_id: "", insurance_price: "", policy_type_child: "THIRD", broker_buy_price: "", start_date: "", end_date: "" },
+  { type: "road_service", enabled: false, road_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
+  { type: "accident_fee_exemption", enabled: false, accident_fee_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
+  { type: "civil_liability", enabled: false, company_id: "", insurance_price: "", company_cost: "", start_date: "", end_date: "" },
+];
+
 interface UsePolicyWizardStateProps {
   open: boolean;
   defaultBrokerId?: string;
@@ -194,20 +203,18 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
         }));
 
         // 6. Set package mode and addons if exists
-        if (renewalData.packageAddons && renewalData.packageAddons.length > 0) {
+        // (packages exist only under an ELZAMI / THIRD_FULL main - a hidden package must not be saved)
+        const mainCanHavePackage = renewalData.policyTypeParent === 'ELZAMI' || renewalData.policyTypeParent === 'THIRD_FULL';
+        if (mainCanHavePackage && renewalData.packageAddons && renewalData.packageAddons.length > 0) {
           setPackageMode(true);
           
           // Build package addons from renewal data
-          const newAddons: PackageAddon[] = [
-            { type: "elzami", enabled: false, company_id: "", insurance_price: "", elzami_commission: 0, start_date: "", end_date: "" },
-            { type: "third_full", enabled: false, company_id: "", insurance_price: "", policy_type_child: "THIRD", broker_buy_price: "", start_date: "", end_date: "" },
-            { type: "road_service", enabled: false, road_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
-            { type: "accident_fee_exemption", enabled: false, accident_fee_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
-            { type: "civil_liability", enabled: false, company_id: "", insurance_price: "", company_cost: "", start_date: "", end_date: "" },
-          ];
+          const newAddons: PackageAddon[] = emptyPackageAddons();
 
           renewalData.packageAddons.forEach(addon => {
-            const idx = newAddons.findIndex(a => a.type === addon.type);
+            // The add-on of the main's own type is hidden in the package builder; keep the first of each type
+            if (addon.type === renewalData.policyTypeParent.toLowerCase()) return;
+            const idx = newAddons.findIndex(a => a.type === addon.type && !a.enabled);
             if (idx !== -1) {
               newAddons[idx] = {
                 ...newAddons[idx],
@@ -226,6 +233,10 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
           });
           
           setPackageAddons(newAddons);
+        } else {
+          // The wizard stays mounted between sessions: drop a package left over from an unsaved one
+          setPackageMode(false);
+          setPackageAddons(emptyPackageAddons());
         }
 
         // 7. Set selected children IDs
@@ -322,13 +333,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
 
   // Package mode
   const [packageMode, setPackageMode] = useState(false);
-  const [packageAddons, setPackageAddons] = useState<PackageAddon[]>([
-    { type: "elzami", enabled: false, company_id: "", insurance_price: "", elzami_commission: 0, start_date: "", end_date: "" },
-    { type: "third_full", enabled: false, company_id: "", insurance_price: "", policy_type_child: "THIRD", broker_buy_price: "", start_date: "", end_date: "" },
-    { type: "road_service", enabled: false, road_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
-    { type: "accident_fee_exemption", enabled: false, accident_fee_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
-    { type: "civil_liability", enabled: false, company_id: "", insurance_price: "", company_cost: "", start_date: "", end_date: "" },
-  ]);
+  const [packageAddons, setPackageAddons] = useState<PackageAddon[]>(emptyPackageAddons);
   const [packageRoadServices, setPackageRoadServices] = useState<RoadService[]>([]);
   const [packageRoadServiceCompanies, setPackageRoadServiceCompanies] = useState<Company[]>([]);
   const [packageAccidentCompanies, setPackageAccidentCompanies] = useState<Company[]>([]);
@@ -513,13 +518,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
     setPolicyBrokerId(defaultBrokerId || "");
     setBrokerDirection("");
     setPackageMode(false);
-    setPackageAddons([
-      { type: "elzami", enabled: false, company_id: "", insurance_price: "", elzami_commission: 0, start_date: "", end_date: "" },
-      { type: "third_full", enabled: false, company_id: "", insurance_price: "", policy_type_child: "THIRD", broker_buy_price: "", start_date: "", end_date: "" },
-      { type: "road_service", enabled: false, road_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
-      { type: "accident_fee_exemption", enabled: false, accident_fee_service_id: "", company_id: "", insurance_price: "", start_date: "", end_date: "" },
-      { type: "civil_liability", enabled: false, company_id: "", insurance_price: "", company_cost: "", start_date: "", end_date: "" },
-    ]);
+    setPackageAddons(emptyPackageAddons());
   }, [selectedCategory, defaultBrokerId]);
 
   const resetPayments = useCallback(() => {

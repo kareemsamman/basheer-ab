@@ -57,19 +57,31 @@ const EmptyState = ({ text }: { text: string }) => (
 );
 
 export function computeDiff(dbRows: AuditDbRow[], ext: AuditExtractedRow[]): Diff {
+  // A car can have several rows on either side (e.g. THIRD/FULL and civil liability with the
+  // same insurer), so compare per-car totals; the first row of the car is kept for "go to row"
   const dbByCar = new Map<string, AuditDbRow>();
   for (const r of dbRows) {
     const k = normalizeCar(r.car_number);
-    if (k) dbByCar.set(k, r);
+    if (!k) continue;
+    const prev = dbByCar.get(k);
+    dbByCar.set(k, prev ? { ...prev, auditAmount: (prev.auditAmount || 0) + (r.auditAmount || 0) } : r);
   }
   const usedDb = new Set<string>();
   const matched: Diff["matched"] = [];
   const amountMismatch: Diff["amountMismatch"] = [];
   const missingHere: AuditExtractedRow[] = [];
 
+  const extByCar = new Map<string, AuditExtractedRow>();
   for (const e of ext) {
     const k = normalizeCar(e.car_number);
     if (!k) { missingHere.push(e); continue; }
+    const prev = extByCar.get(k);
+    extByCar.set(k, prev
+      ? { ...prev, amount: (prev.amount || 0) + (e.amount || 0), raw_label: [prev.raw_label, e.raw_label].filter(Boolean).join(" + ") }
+      : e);
+  }
+
+  for (const [k, e] of extByCar) {
     const db = dbByCar.get(k);
     if (!db) { missingHere.push(e); continue; }
     usedDb.add(k);

@@ -147,7 +147,7 @@ type CarNumberCheck =
 
 const CAR_TYPES = [
   { value: 'car', label: 'خصوصي' },
-  { value: 'cargo', label: 'تجاري' },
+  { value: 'cargo', label: 'شحن' },
   { value: 'taxi', label: 'مونيت' },
   { value: 'small', label: 'اوتوبس زعير' },
   { value: 'tjeradown4', label: 'تجارة أقل من 4 طن' },
@@ -330,7 +330,10 @@ export function CarDrawer({ open, onOpenChange, clientId, car, onSaved }: CarDra
       form.setValue('license_type', vehicleData.license_type || '');
       form.setValue('license_expiry', vehicleData.license_expiry || '');
       form.setValue('last_license', vehicleData.last_license || '');
-      form.setValue('car_type', vehicleData.car_type || 'car');
+      // The registry only knows private cars - keep a type the user already picked (e.g. شحن)
+      if (vehicleData.car_type && vehicleData.car_type !== 'car') {
+        form.setValue('car_type', vehicleData.car_type);
+      }
       
       setFetchedFromGov(true);
       toast.success('تم جلب بيانات السيارة بنجاح');

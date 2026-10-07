@@ -92,7 +92,7 @@ import { AccidentReportWizard } from '@/components/accident-reports/AccidentRepo
 import { ClientAccidentsTab } from '@/components/clients/ClientAccidentsTab';
 import { useClientAccidentInfo } from '@/hooks/useClientAccidentInfo';
 import { cn } from '@/lib/utils';
-import { getInsuranceTypeLabel, type PolicyTypeParent } from '@/lib/insuranceTypes';
+import { getInsuranceTypeLabel, PACKAGE_ADDON_TYPES_BY_MAIN, type PolicyTypeParent } from '@/lib/insuranceTypes';
 import { ChequeImageGallery } from '@/components/shared/ChequeImageGallery';
 import { groupChequesByReceipt, getChequeState, summarizeChequeStates, type ChequeReceiptGroup } from '@/lib/chequeReceiptGroups';
 import { useBranches } from '@/hooks/useBranches';
@@ -901,9 +901,25 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
         || policiesData.find(p => p.policy_type_parent === 'CIVIL_LIABILITY')
         || policiesData[0];
       
+      // Only the add-ons the wizard offers for this main policy, one of each - the rest are renewed separately
+      const allowedAddonTypes: string[] = PACKAGE_ADDON_TYPES_BY_MAIN[mainPolicy.policy_type_parent as PolicyTypeParent] || [];
+      const addonTypesTaken = new Set<string>();
+      const addonPolicies = policiesData.filter(p => {
+        if (p.id === mainPolicy.id) return false;
+        if (!allowedAddonTypes.includes(p.policy_type_parent) || addonTypesTaken.has(p.policy_type_parent)) return false;
+        addonTypesTaken.add(p.policy_type_parent);
+        return true;
+      });
+      const renewSeparately = policiesData.filter(p => p.id !== mainPolicy.id && !addonPolicies.includes(p));
+      if (renewSeparately.length > 0) {
+        toast.warning(
+          `جدّد بشكل منفصل: ${renewSeparately.map(p => getInsuranceTypeLabel(p.policy_type_parent, p.policy_type_child)).join('، ')}`,
+          { duration: 15000 },
+        );
+      }
+
       // Build addons from other policies
-      const addons = policiesData
-        .filter(p => p.id !== mainPolicy.id)
+      const addons = addonPolicies
         .map(p => ({
           type: p.policy_type_parent.toLowerCase() as 'elzami' | 'third_full' | 'road_service' | 'accident_fee_exemption' | 'civil_liability',
           companyId: p.company_id,

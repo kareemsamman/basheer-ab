@@ -24,6 +24,12 @@ export function isCivilLiabilityCarType(carType: string | null | undefined): boo
   return !!carType && CIVIL_LIABILITY_CAR_TYPES.includes(carType);
 }
 
+/** Add-ons the policy wizard offers in a package, by main policy type (packages exist only under these) */
+export const PACKAGE_ADDON_TYPES_BY_MAIN: Partial<Record<PolicyTypeParent, PolicyTypeParent[]>> = {
+  THIRD_FULL: ['ELZAMI', 'ROAD_SERVICE', 'ACCIDENT_FEE_EXEMPTION', 'CIVIL_LIABILITY'],
+  ELZAMI: ['THIRD_FULL', 'ROAD_SERVICE', 'ACCIDENT_FEE_EXEMPTION', 'CIVIL_LIABILITY'],
+};
+
 export const POLICY_CHILD_LABELS: Record<PolicyTypeChild, string> = {
   THIRD: 'ثالث',
   FULL: 'شامل',

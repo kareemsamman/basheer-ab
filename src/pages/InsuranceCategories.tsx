@@ -130,6 +130,12 @@ export default function InsuranceCategories() {
       return;
     }
 
+    // Civil liability belongs to car insurance (cargo/bus cars, company share per policy) - not a category of its own
+    if (!editingCategory && formData.slug.trim() === 'CIVIL_LIABILITY') {
+      toast({ title: "خطأ", description: "المسؤولية المدنية جزء من تأمين السيارات - تُختار من نوع الوثيقة", variant: "destructive" });
+      return;
+    }
+
     setSaving(true);
     try {
       if (editingCategory) {
