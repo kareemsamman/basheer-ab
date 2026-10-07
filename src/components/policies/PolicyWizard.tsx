@@ -696,6 +696,10 @@ export function PolicyWizard({
       let policyIdToUse = tempPolicyId;
       let newlyCreatedClientId: string | null = null; // Track if we created a new client
       const _packageSyncPolicyIds = new Set<string>();
+      // Where the payments are recorded (set by the non-Visa flow once the package exists;
+      // otherwise everything goes on policyIdToUse)
+      let userPaymentPolicyId: string | null = null;
+      let elzamiPaymentPolicyId: string | null = null;
 
       if (!useTempPolicy) {
         // Create new policy (normal flow without Tranzila)
@@ -940,6 +944,21 @@ export function PolicyWizard({
         const fullAddonNonVisa = packageAddons.find(a => a.type === 'third_full' && a.enabled && a.policy_type_child === 'FULL' && a.car_value);
         if (fullAddonNonVisa && carId) {
           await supabase.from('cars').update({ car_value: parseFloat(fullAddonNonVisa.car_value!) }).eq('id', carId);
+        }
+
+        // The customer's money goes on a non-ELZAMI policy of the package (no receipt is ever issued
+        // for a payment on an ELZAMI policy), and the automatic ELZAMI payment on the ELZAMI policy.
+        // Debt is worked out per package, so this doesn't change any balance.
+        const savedAddonIds = (type: (a: { type: string }) => boolean) =>
+          packageMode && groupId
+            ? packageAddons.filter(a => a.enabled && type(a)).map(a => (a as any)._savedPolicyId as string | null).filter(Boolean) as string[]
+            : [];
+        if (newPolicy.policy_type_parent === 'ELZAMI') {
+          elzamiPaymentPolicyId = newPolicy.id;
+          userPaymentPolicyId = savedAddonIds(a => a.type !== 'elzami')[0] ?? newPolicy.id;
+        } else {
+          userPaymentPolicyId = newPolicy.id;
+          elzamiPaymentPolicyId = savedAddonIds(a => a.type === 'elzami')[0] ?? newPolicy.id;
         }
       } else {
         // ✅ PACKAGE HANDLING FOR VISA PAYMENTS (tempPolicyId exists)
@@ -1215,6 +1234,8 @@ export function PolicyWizard({
       }
 
       if (!policyIdToUse) throw new Error('Policy ID is required');
+      const userPaymentPolicy = userPaymentPolicyId || policyIdToUse;
+      const elzamiPaymentPolicy = elzamiPaymentPolicyId || userPaymentPolicy;
 
       // Create payments (skip visa payments that were already created by Tranzila)
       const nonVisaPayments = payments.filter(p => p.payment_type !== 'visa' || !p.tranzila_paid);
@@ -1222,7 +1243,7 @@ export function PolicyWizard({
         const paymentInserts = nonVisaPayments
           .filter(p => p.payment_type !== 'visa') // Skip visa - already handled by Tranzila
           .map(p => ({
-            policy_id: policyIdToUse,
+            policy_id: p.locked && p.source === 'system' ? elzamiPaymentPolicy : userPaymentPolicy,
             payment_type: p.payment_type as PaymentType,
             amount: p.amount,
             payment_date: p.payment_date,
