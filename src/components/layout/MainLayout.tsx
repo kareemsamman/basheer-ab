@@ -18,7 +18,7 @@ export function MainLayout({ children, onPolicyComplete }: MainLayoutProps) {
       {/* Mobile: full width with top padding for hamburger */}
       {/* Desktop: margin on right side for fixed sidebar */}
       {/* pb-40 to prevent content from being hidden behind sticky bottom toolbar */}
-      <main className="min-h-screen transition-all duration-300 p-4 pt-16 md:pt-6 md:p-6 md:mr-64 pb-40">
+      <main className="min-h-screen transition-all duration-300 p-4 pt-16 md:pt-6 md:p-6 md:mr-64 pb-40 md:pb-40">
         <div className="max-w-full">{children}</div>
       </main>
 
