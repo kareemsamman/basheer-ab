@@ -17,8 +17,23 @@ interface InvoiceRow {
 }
 
 interface SendToRivhitRequest {
-  rows: InvoiceRow[];
-  document_type?: number;
+  rows_json?: string;
+  exp?: number;
+  sig?: string;
+}
+
+// Rivhit document type the tax-invoice page sends (חשבונית מס)
+const DOCUMENT_TYPE = 1;
+
+// This endpoint has no login (the invoice page that calls it is a static file), so it only
+// accepts rows signed by generate-tax-invoice, before the signature expires
+async function isSignedByTaxInvoice(secret: string, exp: number, rowsJson: string, sig: string): Promise<boolean> {
+  if (!/^[0-9a-f]{64}$/i.test(sig)) return false;
+  const sigBytes = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) sigBytes[i] = parseInt(sig.slice(i * 2, i * 2 + 2), 16);
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+  return crypto.subtle.verify("HMAC", key, sigBytes, encoder.encode(`${exp}.${rowsJson}`));
 }
 
 serve(async (req) => {
@@ -36,7 +51,23 @@ serve(async (req) => {
     }
 
     const body: SendToRivhitRequest = await req.json();
-    const { rows, document_type = 1 } = body;
+    const { rows_json, exp, sig } = body;
+
+    const signingSecret = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (
+      !signingSecret
+      || typeof rows_json !== "string" || typeof exp !== "number" || typeof sig !== "string"
+      || exp <= Date.now()
+      || !(await isSignedByTaxInvoice(signingSecret, exp, rows_json, sig))
+    ) {
+      return new Response(JSON.stringify({ error: "رابط الفاتورة منتهي أو غير صالح — أنشئ الفاتورة من جديد" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const rows: InvoiceRow[] = JSON.parse(rows_json);
+    const document_type = DOCUMENT_TYPE;
 
     if (!rows || !Array.isArray(rows) || rows.length === 0) {
       return new Response(JSON.stringify({ error: "No rows provided" }), {

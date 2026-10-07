@@ -290,11 +290,51 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
+
+    // Admins only: every action below writes or deletes business data with the service role
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { data: roleData } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('role', 'admin')
+      .single();
+    if (!roleData) {
+      return new Response(JSON.stringify({ error: 'Admin access required' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const BUNNY_API_KEY = Deno.env.get('BUNNY_API_KEY');
     const BUNNY_STORAGE_ZONE = Deno.env.get('BUNNY_STORAGE_ZONE');
 
     const { action, data, entityType, batch, progressId } = await req.json();
+
+    // The system is live: wiping data, deleting companies or replacing imported payments
+    // would destroy real records, so these import steps can no longer run
+    if (action === 'clear' || action === 'deleteCompanies' || action === 'updatePoliciesOnly') {
+      return new Response(JSON.stringify({ error: 'هذه العملية معطّلة لأن النظام يعمل على بيانات حقيقية' }), {
+        status: 410,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Action: Preserve pricing rules before company deletion
     if (action === 'preservePricingRules') {

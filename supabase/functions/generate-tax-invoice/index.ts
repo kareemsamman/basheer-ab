@@ -30,6 +30,22 @@ interface InvoiceRow {
   paymentDates: string;
 }
 
+// The invoice page calls send-to-rivhit without a login, so send-to-rivhit only accepts rows
+// signed here. The signature expires a week after the invoice is generated.
+const RIVHIT_SIGNATURE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function signRivhitRows(secret: string, exp: number, rowsJson: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(`${exp}.${rowsJson}`));
+  return Array.from(new Uint8Array(signature)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// A string written into an inline <script> as a JS string literal
+function jsString(value: string): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -267,7 +283,11 @@ serve(async (req) => {
       filterDesc = "كل الفترات";
     }
 
-    const html = generateHtml(companyName, mergedRows, totalAmount, totalProfit, profit_percent, filterDesc, supabaseUrl, totalPolicyCount);
+    const rowsJson = JSON.stringify(mergedRows);
+    const rivhitExp = Date.now() + RIVHIT_SIGNATURE_TTL_MS;
+    const rivhitSig = await signRivhitRows(supabaseServiceKey, rivhitExp, rowsJson);
+
+    const html = generateHtml(companyName, mergedRows, totalAmount, totalProfit, profit_percent, filterDesc, supabaseUrl, totalPolicyCount, { rowsJson, exp: rivhitExp, sig: rivhitSig });
 
     if (bunnyApiKey) {
       const now = new Date();
@@ -351,7 +371,8 @@ function generateHtml(
   profitPercent: number,
   filterDesc: string,
   supabaseUrl: string,
-  totalPolicyCount: number
+  totalPolicyCount: number,
+  rivhit: { rowsJson: string; exp: number; sig: string }
 ): string {
   const today = new Date().toLocaleDateString("en-GB", { year: "numeric", month: "2-digit", day: "2-digit" });
 
@@ -372,8 +393,6 @@ function generateHtml(
       </td>
     </tr>
   `).join("");
-
-  const rowsJson = JSON.stringify(rows);
 
   return `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -492,7 +511,10 @@ function generateHtml(
   </div>
 
   <script>
-    const INVOICE_ROWS = ${rowsJson};
+    const INVOICE_ROWS_JSON = ${jsString(rivhit.rowsJson)};
+    const INVOICE_ROWS = JSON.parse(INVOICE_ROWS_JSON);
+    const INVOICE_EXP = ${rivhit.exp};
+    const INVOICE_SIG = "${rivhit.sig}";
     const SUPABASE_URL = "${supabaseUrl}";
 
     async function sendToRivhit() {
@@ -513,7 +535,7 @@ function generateHtml(
         const response = await fetch(SUPABASE_URL + '/functions/v1/send-to-rivhit', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rows: INVOICE_ROWS, document_type: 1 }),
+          body: JSON.stringify({ rows_json: INVOICE_ROWS_JSON, exp: INVOICE_EXP, sig: INVOICE_SIG }),
         });
 
         const data = await response.json();
