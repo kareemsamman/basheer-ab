@@ -464,8 +464,9 @@ export function PackagePaymentModal({
     const printWindow = openReceiptPrintWindow();
     const createdPaymentIds: string[] = [];
     try {
-      // Use primary policy (first one) for all payments — trigger validates across the whole group
-      const primaryPolicyId = policies[0]?.policyId;
+      // Record all payments on one non-ELZAMI policy — the trigger validates across the whole
+      // group, and no receipt is ever issued for a payment recorded on an ELZAMI policy
+      const primaryPolicyId = (policies.find(p => p.policyType !== 'ELZAMI') ?? policies[0])?.policyId;
       if (!primaryPolicyId) throw new Error('No policy found');
 
       // Generate a batch_id to group all payments in this batch
@@ -526,8 +527,10 @@ export function PackagePaymentModal({
     }
   };
 
-  // Get first policy for Tranzila
-  const firstPolicyId = policies.find(p => p.remaining > 0)?.policyId;
+  // Policy the Tranzila payment is recorded on (non-ELZAMI, so it gets a receipt)
+  const firstPolicyId = (
+    policies.find(p => p.remaining > 0 && p.policyType !== 'ELZAMI') ?? policies.find(p => p.remaining > 0)
+  )?.policyId;
   const activeVisaPayment = activeVisaPaymentIndex !== null ? paymentLines[activeVisaPaymentIndex] : null;
 
   return (
