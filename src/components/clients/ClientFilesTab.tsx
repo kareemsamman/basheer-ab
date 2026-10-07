@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Card } from '@/components/ui/card';
 import { FileText, FileImage, FileVideo, Download, Search, Eye, Loader2, Plus, ExternalLink, FolderOpen } from 'lucide-react';
 import { toast } from 'sonner';
+import { getInsuranceTypeLabel, type PolicyTypeParent, type PolicyTypeChild } from '@/lib/insuranceTypes';
 
 interface MediaFile {
   id: string;
@@ -30,7 +31,8 @@ interface MediaFileWithEntity extends MediaFile {
 interface PolicyInfo {
   id: string;
   policy_number: string | null;
-  policy_type_child: string | null;
+  policy_type_parent: PolicyTypeParent;
+  policy_type_child: PolicyTypeChild | null;
 }
 
 interface ClientFilesTabProps {
@@ -62,7 +64,7 @@ export function ClientFilesTab({ clientId }: ClientFilesTabProps) {
       // 1. Get all policy IDs for this client
       const { data: policyData } = await supabase
         .from('policies')
-        .select('id, policy_number, policy_type_child')
+        .select('id, policy_number, policy_type_parent, policy_type_child')
         .eq('client_id', clientId);
 
       const pols: PolicyInfo[] = policyData || [];
@@ -192,7 +194,7 @@ export function ClientFilesTab({ clientId }: ClientFilesTabProps) {
         </div>
 
         <Select value={filterPolicy} onValueChange={setFilterPolicy}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-[220px]">
             <SelectValue placeholder="كل البوالص" />
           </SelectTrigger>
           <SelectContent>
@@ -200,7 +202,7 @@ export function ClientFilesTab({ clientId }: ClientFilesTabProps) {
             <SelectItem value="client">ملفات العميل</SelectItem>
             {policies.map(p => (
               <SelectItem key={p.id} value={p.id}>
-                {p.policy_number || 'بدون رقم'} - {p.policy_type_child || ''}
+                {p.policy_number || 'بدون رقم'} - {getInsuranceTypeLabel(p.policy_type_parent, p.policy_type_child)}
               </SelectItem>
             ))}
           </SelectContent>

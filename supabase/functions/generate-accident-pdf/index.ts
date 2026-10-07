@@ -305,8 +305,18 @@ serve(async (req) => {
   }
 });
 
+// THIRD_FULL is labelled by its child; every other type by its own name
+const POLICY_TYPE_LABELS: Record<string, string> = {
+  ELZAMI: "إلزامي",
+  ROAD_SERVICE: "خدمات الطريق",
+  ACCIDENT_FEE_EXEMPTION: "إعفاء رسوم حادث",
+  CIVIL_LIABILITY: "مسؤولية مدنية",
+};
+
 function getPolicyTypeLabel(policy: AccidentReport["policies"]): string {
-  if (policy.policy_type_parent === "CIVIL_LIABILITY") return "مسؤولية مدنية";
+  if (policy.policy_type_parent !== "THIRD_FULL" && POLICY_TYPE_LABELS[policy.policy_type_parent]) {
+    return POLICY_TYPE_LABELS[policy.policy_type_parent];
+  }
   return policy.policy_type_child === "THIRD" ? "طرف ثالث" : "شامل";
 }
 
