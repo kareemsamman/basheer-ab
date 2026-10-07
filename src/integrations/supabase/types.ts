@@ -5270,6 +5270,7 @@ export type Database = {
           total_remaining: number
         }[]
       }
+      get_client_debt: { Args: { p_client_id: string }; Returns: number }
       get_client_renewal_policies:
         | {
             Args: { p_client_id: string; p_end_month: string }
