@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { useRecentClient } from '@/hooks/useRecentClient';
@@ -66,6 +66,7 @@ import {
   Send,
   AlertTriangle,
   FolderOpen,
+  ChevronDown,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -91,8 +92,9 @@ import { AccidentReportWizard } from '@/components/accident-reports/AccidentRepo
 import { ClientAccidentsTab } from '@/components/clients/ClientAccidentsTab';
 import { useClientAccidentInfo } from '@/hooks/useClientAccidentInfo';
 import { cn } from '@/lib/utils';
-import { getInsuranceTypeLabel } from '@/lib/insuranceTypes';
+import { getInsuranceTypeLabel, type PolicyTypeParent } from '@/lib/insuranceTypes';
 import { ChequeImageGallery } from '@/components/shared/ChequeImageGallery';
+import { groupChequesByReceipt, getChequeState, summarizeChequeStates, type ChequeReceiptGroup } from '@/lib/chequeReceiptGroups';
 import { useBranches } from '@/hooks/useBranches';
 import { useAuth } from '@/hooks/useAuth';
 import type { RenewalData } from '@/components/policies/wizard/types';
@@ -190,6 +192,8 @@ interface PaymentRecord {
   locked: boolean | null;
   policy_id: string;
   batch_id: string | null;
+  cheque_status: string | null;
+  created_at: string;
   policy: {
     id: string;
     policy_type_parent: string;
@@ -199,6 +203,7 @@ interface PaymentRecord {
 
 // Grouped payment for display (combines payments with same batch_id)
 interface GroupedPayment {
+  kind: 'payment';
   id: string; // batch_id or individual payment id
   totalAmount: number;
   payment_date: string;
@@ -212,6 +217,8 @@ interface GroupedPayment {
   payments: PaymentRecord[]; // Individual payments in this group
   policyTypes: string[]; // Unique policy types in this group
 }
+
+type PaymentHistoryRow = GroupedPayment | ChequeReceiptGroup<PaymentRecord>;
 
 interface ClientDetailsProps {
   client: Client;
@@ -328,7 +335,8 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
   // Payment filters
   const [paymentSearch, setPaymentSearch] = useState('');
   const [paymentTypeFilter, setPaymentTypeFilter] = useState<string>('all');
-  
+  const [expandedChequeGroups, setExpandedChequeGroups] = useState<Set<string>>(new Set());
+
   // Comprehensive invoice state
   const [generatingComprehensiveInvoice, setGeneratingComprehensiveInvoice] = useState(false);
   const [sendingComprehensiveInvoiceSms, setSendingComprehensiveInvoiceSms] = useState(false);
@@ -588,7 +596,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
       // Get all payments for these policies (include batch_id for grouping)
       const { data: paymentsData, error } = await supabase
         .from('policy_payments')
-        .select('id, amount, payment_date, payment_type, cheque_number, cheque_image_url, card_last_four, refused, notes, policy_id, locked, batch_id')
+        .select('id, amount, payment_date, payment_type, cheque_number, cheque_image_url, card_last_four, refused, notes, policy_id, locked, batch_id, cheque_status, created_at')
         .in('policy_id', policyIds)
         .order('payment_date', { ascending: false });
 
@@ -633,6 +641,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
       setNotesValue(client.notes || '');
       setInitialLoading(false);
     };
+    setExpandedChequeGroups(new Set());
     loadInitialData();
   }, [client.id]);
 
@@ -1077,10 +1086,11 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
     return Array.from(types);
   }, [policies]);
 
-  // Group payments by batch_id for unified display
-  const groupedPayments = useMemo((): GroupedPayment[] => {
+  // Group payments by batch_id for unified display. Cheques are instead grouped
+  // by the day they were received, and expand to show each cheque.
+  const groupedPayments = useMemo((): PaymentHistoryRow[] => {
     const groups = new Map<string, GroupedPayment>();
-    
+
     // Filter payments first based on search and type filter
     const filteredPayments = payments.filter(payment => {
       if (paymentSearch) {
@@ -1097,11 +1107,14 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
     });
 
     for (const payment of filteredPayments) {
+      if (payment.payment_type === 'cheque') continue;
+
       // Use batch_id if exists, otherwise use individual payment id
       const groupKey = payment.batch_id || payment.id;
-      
+
       if (!groups.has(groupKey)) {
         groups.set(groupKey, {
+          kind: 'payment',
           id: groupKey,
           totalAmount: 0,
           payment_date: payment.payment_date,
@@ -1142,11 +1155,205 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
       }
     }
     
+    const chequeGroups = groupChequesByReceipt(filteredPayments.filter(p => p.payment_type === 'cheque'));
+
     // Sort by date descending
-    return Array.from(groups.values()).sort((a, b) => 
-      new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()
+    const rowDate = (row: PaymentHistoryRow) => row.kind === 'cheques' ? row.sort_date : row.payment_date;
+    return [...groups.values(), ...chequeGroups].sort((a, b) =>
+      new Date(rowDate(b)).getTime() - new Date(rowDate(a)).getTime()
     );
   }, [payments, paymentSearch, paymentTypeFilter]);
+
+  const toggleChequeGroup = (groupId: string) => {
+    setExpandedChequeGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  };
+
+  // Receipt/edit/delete for a single record, or per-record edits when it spans several
+  const renderPaymentActionItems = (records: PaymentRecord[], locked: boolean | null, multiLabel: string) => (
+    records.length === 1 ? (
+      <>
+        <DropdownMenuItem
+          onClick={() => handleGeneratePaymentReceipt(records[0].id)}
+          disabled={generatingReceipt === records[0].id}
+        >
+          {generatingReceipt === records[0].id ? (
+            <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+          ) : (
+            <Receipt className="h-4 w-4 ml-2" />
+          )}
+          إيصال
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => handleEditPayment(records[0])}>
+          <Edit className="h-4 w-4 ml-2" />
+          تعديل
+        </DropdownMenuItem>
+        {!locked && (
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onClick={() => {
+              setDeletePaymentId(records[0].id);
+              setDeletePaymentDialogOpen(true);
+            }}
+          >
+            <Trash2 className="h-4 w-4 ml-2" />
+            حذف
+          </DropdownMenuItem>
+        )}
+      </>
+    ) : (
+      <>
+        <DropdownMenuItem disabled className="text-muted-foreground text-xs">
+          {multiLabel}
+        </DropdownMenuItem>
+        {records.map((payment) => (
+          <DropdownMenuItem
+            key={payment.id}
+            onClick={() => handleEditPayment(payment)}
+            className="text-sm"
+          >
+            <Edit className="h-3 w-3 ml-2" />
+            تعديل: ₪{payment.amount} - {getInsuranceTypeLabel(payment.policy?.policy_type_parent as any || '', null)}
+          </DropdownMenuItem>
+        ))}
+      </>
+    )
+  );
+
+  // One row per receipt day; clicking it lists every cheque with its due date and status
+  const renderChequeGroupRows = (group: ChequeReceiptGroup<PaymentRecord>) => {
+    const isExpanded = expandedChequeGroups.has(group.id);
+    const chequeCountLabel = group.cheques.length === 1 ? 'شيك واحد' : `${group.cheques.length} شيكات`;
+    const stateSummary = summarizeChequeStates(group.cheques);
+
+    return (
+      <Fragment key={group.id}>
+        <TableRow
+          className={cn('cursor-pointer', isExpanded && 'bg-muted/40')}
+          onClick={() => toggleChequeGroup(group.id)}
+        >
+          <TableCell className="font-semibold">
+            <div className="flex items-center gap-1">
+              ₪{group.totalAmount.toLocaleString()}
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                {chequeCountLabel}
+              </Badge>
+            </div>
+          </TableCell>
+          <TableCell>
+            <div>{group.received_date ? formatDate(group.received_date) : '-'}</div>
+            <div className="text-[10px] text-muted-foreground">
+              {group.received_date ? 'تاريخ الاستلام' : 'من النظام القديم'}
+            </div>
+          </TableCell>
+          <TableCell>
+            <Badge variant="outline" className="gap-1 cursor-pointer hover:bg-muted">
+              شيك
+              <ChevronDown className={cn('h-3 w-3 transition-transform', isExpanded && 'rotate-180')} />
+            </Badge>
+          </TableCell>
+          <TableCell className="font-mono">
+            {group.cheques.length === 1 ? (group.cheques[0].cheque_number || '-') : (
+              <span className="font-sans text-xs text-muted-foreground">{chequeCountLabel}</span>
+            )}
+          </TableCell>
+          <TableCell>
+            <div className="flex flex-wrap gap-1">
+              {stateSummary.map(s => (
+                <Badge key={s.key} variant={s.variant}>
+                  {group.cheques.length === 1 ? s.label : `${s.count} ${s.label}`}
+                </Badge>
+              ))}
+            </div>
+          </TableCell>
+          <TableCell onClick={(e) => e.stopPropagation()}>
+            <ChequeImageGallery
+              primaryImageUrl={group.cheques.find(c => c.cheque_image_url)?.cheque_image_url ?? null}
+              paymentId={group.payments[0].id}
+              batchPaymentIds={group.payments.map(p => p.id)}
+            />
+          </TableCell>
+          <TableCell>
+            <Button variant="ghost" size="icon" className="h-8 w-8" title={isExpanded ? 'إخفاء الشيكات' : 'عرض الشيكات'}>
+              <ChevronDown className={cn('h-4 w-4 transition-transform', isExpanded && 'rotate-180')} />
+            </Button>
+          </TableCell>
+        </TableRow>
+        {isExpanded && (
+          <TableRow className="hover:bg-transparent">
+            <TableCell colSpan={7} className="bg-muted/30 p-3">
+              <div className="rounded-lg border bg-background overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="text-right w-[40px]">#</TableHead>
+                      <TableHead className="text-right">رقم الشيك</TableHead>
+                      <TableHead className="text-right">المبلغ</TableHead>
+                      <TableHead className="text-right">تاريخ الاستحقاق</TableHead>
+                      <TableHead className="text-right">الحالة</TableHead>
+                      <TableHead className="text-right">الوثيقة</TableHead>
+                      <TableHead className="text-right">ملفات</TableHead>
+                      <TableHead className="text-right w-[60px]">إجراءات</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {group.cheques.map((cheque, idx) => {
+                      const state = getChequeState(cheque);
+                      return (
+                        <TableRow key={cheque.key}>
+                          <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
+                          <TableCell className="font-mono">{cheque.cheque_number || '-'}</TableCell>
+                          <TableCell className="font-semibold">₪{cheque.amount.toLocaleString()}</TableCell>
+                          <TableCell>{formatDate(cheque.due_date)}</TableCell>
+                          <TableCell>
+                            <Badge variant={state.variant}>{state.label}</Badge>
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {cheque.policyTypes.map(t => getInsuranceTypeLabel(t as PolicyTypeParent, null)).join('، ') || '-'}
+                          </TableCell>
+                          <TableCell>
+                            <ChequeImageGallery
+                              primaryImageUrl={cheque.cheque_image_url}
+                              paymentId={cheque.payments[0].id}
+                              batchPaymentIds={cheque.payments.map(p => p.id)}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {renderPaymentActionItems(cheque.payments, cheque.locked, `شيك موزّع على ${cheque.payments.length} سجلات`)}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t bg-muted/30 px-4 py-2 text-xs">
+                  <span className="font-semibold">المجموع: ₪{group.totalAmount.toLocaleString()}</span>
+                  {stateSummary.map(s => (
+                    <span key={s.key} className="text-muted-foreground">
+                      {s.label}: {s.count} ({`₪${s.amount.toLocaleString()}`})
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </TableCell>
+          </TableRow>
+        )}
+      </Fragment>
+    );
+  };
 
   // Loading skeleton
   if (initialLoading) {
@@ -1788,7 +1995,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {groupedPayments.map((group) => (
+                    {groupedPayments.map((group) => group.kind === 'cheques' ? renderChequeGroupRows(group) : (
                       <TableRow key={group.id}>
                         <TableCell className="font-semibold">
                           <div className="flex items-center gap-1">
@@ -1839,54 +2046,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              {group.payments.length === 1 && (
-                                <>
-                                  <DropdownMenuItem 
-                                    onClick={() => handleGeneratePaymentReceipt(group.payments[0].id)}
-                                    disabled={generatingReceipt === group.payments[0].id}
-                                  >
-                                    {generatingReceipt === group.payments[0].id ? (
-                                      <Loader2 className="h-4 w-4 ml-2 animate-spin" />
-                                    ) : (
-                                      <Receipt className="h-4 w-4 ml-2" />
-                                    )}
-                                    إيصال
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleEditPayment(group.payments[0])}>
-                                    <Edit className="h-4 w-4 ml-2" />
-                                    تعديل
-                                  </DropdownMenuItem>
-                                  {!group.locked && (
-                                    <DropdownMenuItem 
-                                      className="text-destructive focus:text-destructive"
-                                      onClick={() => {
-                                        setDeletePaymentId(group.payments[0].id);
-                                        setDeletePaymentDialogOpen(true);
-                                      }}
-                                    >
-                                      <Trash2 className="h-4 w-4 ml-2" />
-                                      حذف
-                                    </DropdownMenuItem>
-                                  )}
-                                </>
-                              )}
-                              {group.payments.length > 1 && (
-                                <>
-                                  <DropdownMenuItem disabled className="text-muted-foreground text-xs">
-                                    دفعة مجمعة ({group.payments.length} سجلات)
-                                  </DropdownMenuItem>
-                                  {group.payments.map((payment, idx) => (
-                                    <DropdownMenuItem 
-                                      key={payment.id}
-                                      onClick={() => handleEditPayment(payment)}
-                                      className="text-sm"
-                                    >
-                                      <Edit className="h-3 w-3 ml-2" />
-                                      تعديل: ₪{payment.amount} - {getInsuranceTypeLabel(payment.policy?.policy_type_parent as any || '', null)}
-                                    </DropdownMenuItem>
-                                  ))}
-                                </>
-                              )}
+                              {renderPaymentActionItems(group.payments, group.locked, `دفعة مجمعة (${group.payments.length} سجلات)`)}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
