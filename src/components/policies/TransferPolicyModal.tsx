@@ -293,6 +293,12 @@ export function TransferPolicyModal({
       if (!originalPolicies || originalPolicies.length === 0) {
         throw new Error("لم يتم العثور على الوثائق");
       }
+      // The transfer is not atomic: one that failed halfway has already marked
+      // the originals as transferred, and transferring them again would create
+      // a second copy of the new package
+      if (originalPolicies.some(p => p.transferred)) {
+        throw new Error("هذه الوثيقة محولة مسبقاً - حدّث الصفحة وافحص الوثيقة الجديدة قبل المحاولة مرة أخرى");
+      }
 
       // Generate new group_id if transferring package
       let newGroupId: string | null = null;
@@ -448,7 +454,11 @@ export function TransferPolicyModal({
               notes: `دفعة عند تحويل الوثيقة من سيارة ${currentCar?.car_number || ""}${adjustmentNote ? ` - ${adjustmentNote}` : ""}`.trim(),
               created_by_admin_id: user?.id,
               branch_id: branchId,
-              source: "transfer_adjustment",
+              // policy_payments.source only accepts 'user' | 'system'; 'system'
+              // is reserved for the locked ELZAMI payments the wizard generates.
+              // This one is a real payment an operator typed in, so it stays a
+              // normal editable payment — the transfer is recorded in notes.
+              source: "user",
             } as any);
           if (payError) throw payError;
         }
