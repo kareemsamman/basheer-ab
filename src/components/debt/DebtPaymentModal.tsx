@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Loader2, CreditCard, Banknote, Wallet, AlertCircle, CheckCircle, DollarSign, Plus, Trash2, Split, Upload, X, ImageIcon, HelpCircle, Car, Package, FileText, Info, Scan } from 'lucide-react';
+import { Loader2, CreditCard, Banknote, Wallet, AlertCircle, CheckCircle, DollarSign, Plus, Trash2, Split, Upload, X, ImageIcon, HelpCircle, Car, Package, FileText, Info, Scan, Smartphone } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -50,7 +50,7 @@ interface DebtItem {
 interface PaymentLine {
   id: string;
   amount: number;
-  paymentType: 'cash' | 'cheque' | 'transfer' | 'visa';
+  paymentType: 'cash' | 'cheque' | 'transfer' | 'visa' | 'bit';
   paymentDate: string;
   chequeNumber?: string;
   notes?: string;
@@ -96,6 +96,7 @@ const paymentTypes = [
   { value: 'cheque', label: 'شيك', icon: CreditCard },
   { value: 'visa', label: 'فيزا', icon: CreditCard },
   { value: 'transfer', label: 'تحويل', icon: Wallet },
+  { value: 'bit', label: 'Bit', icon: Smartphone },
 ];
 
 export function DebtPaymentModal({
@@ -716,7 +717,7 @@ export function DebtPaymentModal({
             }
 
             // Upload images
-            if ((paymentLine.paymentType === 'cash' || paymentLine.paymentType === 'cheque' || paymentLine.paymentType === 'transfer') && 
+            if ((paymentLine.paymentType === 'cash' || paymentLine.paymentType === 'cheque' || paymentLine.paymentType === 'transfer' || paymentLine.paymentType === 'bit') &&
                 paymentLine.pendingImages && paymentLine.pendingImages.length > 0 && 
                 insertedPayments && insertedPayments.length > 0) {
               
@@ -1097,11 +1098,11 @@ export function DebtPaymentModal({
                     )}
 
                     {/* Image Upload Section */}
-                    {(payment.paymentType === 'cash' || payment.paymentType === 'cheque' || payment.paymentType === 'transfer') && (
+                    {(payment.paymentType === 'cash' || payment.paymentType === 'cheque' || payment.paymentType === 'transfer' || payment.paymentType === 'bit') && (
                       <div className="pt-3 border-t border-border/50">
                         <div className="flex-1">
                           <Label className="text-xs text-muted-foreground mb-2 block">
-                            {payment.paymentType === 'cheque' ? 'صور الشيك (أمامي/خلفي)' : payment.paymentType === 'transfer' ? 'صور إيصال التحويل' : 'صور إيصال الدفع'}
+                            {payment.paymentType === 'cheque' ? 'صور الشيك (أمامي/خلفي)' : payment.paymentType === 'transfer' ? 'صور إيصال التحويل' : payment.paymentType === 'bit' ? 'صور إيصال Bit' : 'صور إيصال الدفع'}
                           </Label>
                           <div className="flex flex-wrap gap-2">
                             {getPreviewUrls(payment.id).map((url, imgIndex) => (

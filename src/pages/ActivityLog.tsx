@@ -64,6 +64,7 @@ const PAYMENT_TYPE_LABELS: Record<string, string> = {
   cheque: "شيك",
   visa: "فيزا",
   transfer: "حوالة",
+  bit: "Bit",
   credit_card: "بطاقة ائتمان",
 };
 
@@ -72,6 +73,7 @@ const PAYMENT_TYPE_COLORS: Record<string, string> = {
   cheque: "bg-amber-500/10 text-amber-600 border-amber-200",
   visa: "bg-blue-500/10 text-blue-600 border-blue-200",
   transfer: "bg-purple-500/10 text-purple-600 border-purple-200",
+  bit: "bg-cyan-500/10 text-cyan-600 border-cyan-200",
   credit_card: "bg-indigo-500/10 text-indigo-600 border-indigo-200",
 };
 

@@ -26,6 +26,7 @@ const PAYMENT_TYPE_LABELS = {
   cheque: 'شيك',
   visa: 'فيزا',
   transfer: 'تحويل',
+  bit: 'Bit',
 };
 
 const CAR_TYPE_LABELS: Record<string, string> = {

@@ -21,7 +21,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Pencil, Trash2, CreditCard, Loader2, ImageIcon, X, AlertCircle, Upload, ChevronLeft, ChevronRight, RotateCcw, Split, Banknote, Wallet, CheckCircle, FileText, Receipt, Scan } from "lucide-react";
+import { Plus, Pencil, Trash2, CreditCard, Loader2, ImageIcon, X, AlertCircle, Upload, ChevronLeft, ChevronRight, RotateCcw, Split, Banknote, Wallet, CheckCircle, FileText, Receipt, Scan, Smartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal";
@@ -65,7 +65,7 @@ interface PolicyPaymentsSectionProps {
 interface PaymentLine {
   id: string;
   amount: number;
-  paymentType: 'cash' | 'cheque' | 'transfer' | 'visa';
+  paymentType: 'cash' | 'cheque' | 'transfer' | 'visa' | 'bit';
   paymentDate: string;
   chequeNumber?: string;
   notes?: string;
@@ -92,12 +92,14 @@ const paymentTypeLabels: Record<string, string> = {
   "cheque": "شيك",
   "visa": "فيزا",
   "transfer": "تحويل",
+  "bit": "Bit",
 };
 
 const paymentTypes = [
   { value: 'cash', label: 'نقدي', icon: Banknote },
   { value: 'cheque', label: 'شيك', icon: CreditCard },
   { value: 'transfer', label: 'تحويل', icon: Wallet },
+  { value: 'bit', label: 'Bit', icon: Smartphone },
   { value: 'visa', label: 'بطاقة ائتمان', icon: CreditCard },
 ];
 
@@ -1121,11 +1123,11 @@ export function PolicyPaymentsSection({
                     </div>
                   )}
 
-                  {/* Image Upload for Cash/Cheque/Transfer */}
-                  {(payment.paymentType === 'cash' || payment.paymentType === 'cheque' || payment.paymentType === 'transfer') && (
+                  {/* Image Upload for Cash/Cheque/Transfer/Bit */}
+                  {(payment.paymentType === 'cash' || payment.paymentType === 'cheque' || payment.paymentType === 'transfer' || payment.paymentType === 'bit') && (
                     <div className="pt-3 border-t border-border/50">
                       <Label className="text-xs text-muted-foreground mb-2 block">
-                        {payment.paymentType === 'cheque' ? 'صور الشيك' : payment.paymentType === 'transfer' ? 'صور إيصال التحويل' : 'صور إيصال الدفع'}
+                        {payment.paymentType === 'cheque' ? 'صور الشيك' : payment.paymentType === 'transfer' ? 'صور إيصال التحويل' : payment.paymentType === 'bit' ? 'صور إيصال Bit' : 'صور إيصال الدفع'}
                       </Label>
                       <div className="flex flex-wrap gap-2">
                         {getPreviewUrls(payment.id).map((item, imgIndex) => (
@@ -1279,10 +1281,10 @@ export function PolicyPaymentsSection({
                 </div>
               </div>
             )}
-            {(editFormData.payment_type === 'cash' || editFormData.payment_type === 'cheque' || editFormData.payment_type === 'transfer') && (
+            {(editFormData.payment_type === 'cash' || editFormData.payment_type === 'cheque' || editFormData.payment_type === 'transfer' || editFormData.payment_type === 'bit') && (
               <div className="space-y-2">
                 <Label>
-                  {editFormData.payment_type === 'cheque' ? 'إضافة صور الشيك' : editFormData.payment_type === 'transfer' ? 'إضافة صور إيصال التحويل' : 'إضافة صور إيصال الدفع'}
+                  {editFormData.payment_type === 'cheque' ? 'إضافة صور الشيك' : editFormData.payment_type === 'transfer' ? 'إضافة صور إيصال التحويل' : editFormData.payment_type === 'bit' ? 'إضافة صور إيصال Bit' : 'إضافة صور إيصال الدفع'}
                 </Label>
                 <div className="flex flex-wrap gap-2">
                   {editPreviewUrls.map((item, index) => (

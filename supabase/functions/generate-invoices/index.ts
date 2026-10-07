@@ -40,12 +40,14 @@ const PAYMENT_TYPE_LABELS = {
     cheque: 'شيك',
     visa: 'فيزا',
     transfer: 'تحويل',
+    bit: 'Bit',
   },
   he: {
     cash: 'מזומן',
     cheque: "צ'ק",
     visa: 'ויזה',
     transfer: 'העברה',
+    bit: 'ביט',
   },
 };
 

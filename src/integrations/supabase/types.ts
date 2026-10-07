@@ -5909,7 +5909,7 @@ export type Database = {
         | "company_settlement_reversal"
       ledger_status: "posted" | "reversed" | "pending"
       payment_status: "paid" | "partial" | "unpaid"
-      payment_type: "cash" | "cheque" | "visa" | "transfer"
+      payment_type: "cash" | "cheque" | "visa" | "transfer" | "bit"
       policy_type_child: "THIRD" | "FULL"
       policy_type_parent:
         | "ELZAMI"
@@ -6111,7 +6111,7 @@ export const Constants = {
       ],
       ledger_status: ["posted", "reversed", "pending"],
       payment_status: ["paid", "partial", "unpaid"],
-      payment_type: ["cash", "cheque", "visa", "transfer"],
+      payment_type: ["cash", "cheque", "visa", "transfer", "bit"],
       policy_type_child: ["THIRD", "FULL"],
       policy_type_parent: [
         "ELZAMI",

@@ -49,6 +49,7 @@ const PAYMENT_METHODS = [
   { value: 'cash', label: 'نقدي' },
   { value: 'cheque', label: 'شيك' },
   { value: 'bank_transfer', label: 'تحويل بنكي' },
+  { value: 'bit', label: 'Bit' },
   { value: 'visa', label: 'فيزا' },
 ];
 

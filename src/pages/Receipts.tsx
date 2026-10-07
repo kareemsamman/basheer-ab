@@ -67,6 +67,7 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   credit_card: 'כרטיס אשראי',
   transfer: 'העברה בנקאית',
   bank_transfer: 'העברה בנקאית',
+  bit: 'ביט',
   accident_fee: 'דמי תאונות',
 };
 
@@ -1379,6 +1380,7 @@ export default function Receipts() {
                 <SelectItem value="cheque">שיק</SelectItem>
                 <SelectItem value="visa">כרטיס אשראי</SelectItem>
                 <SelectItem value="transfer">העברה בנקאית</SelectItem>
+                <SelectItem value="bit">ביט</SelectItem>
               </SelectContent>
             </Select>
 
@@ -1724,6 +1726,7 @@ export default function Receipts() {
                       <SelectItem value="cheque">שיק</SelectItem>
                       <SelectItem value="visa">כרטיס אשראי</SelectItem>
                       <SelectItem value="transfer">העברה בנקאית</SelectItem>
+                      <SelectItem value="bit">ביט</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

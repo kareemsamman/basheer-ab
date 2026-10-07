@@ -31,6 +31,7 @@ import {
   TrendingDown,
   CheckCircle2,
   FileText,
+  Smartphone,
 } from "lucide-react";
 import {
   Dialog,
@@ -93,7 +94,7 @@ interface CustomerChequeDetail {
   car_number: string | null;
 }
 
-type PaymentType = 'cash' | 'cheque' | 'bank_transfer' | 'visa' | 'customer_cheque';
+type PaymentType = 'cash' | 'cheque' | 'bank_transfer' | 'bit' | 'visa' | 'customer_cheque';
 
 interface PaymentLine {
   id: string;
@@ -118,6 +119,7 @@ const paymentTypeLabels: Record<PaymentType, string> = {
   cash: 'نقداً',
   cheque: 'شيك',
   bank_transfer: 'تحويل بنكي',
+  bit: 'Bit',
   visa: 'بطاقة ائتمان',
   customer_cheque: 'شيك عميل',
 };
@@ -128,6 +130,7 @@ const PaymentTypeIcon = ({ type }: { type: string }) => {
     case 'cheque': return <Receipt className="h-4 w-4" />;
     case 'customer_cheque': return <FileText className="h-4 w-4" />;
     case 'bank_transfer': return <Building2 className="h-4 w-4" />;
+    case 'bit': return <Smartphone className="h-4 w-4" />;
     case 'visa': return <CreditCard className="h-4 w-4" />;
     default: return <Wallet className="h-4 w-4" />;
   }
@@ -323,7 +326,7 @@ export default function CompanyWallet() {
             payment_type: payment.payment_type, // Keep actual payment type
             cheque_number: payment.payment_type === 'cheque' ? payment.cheque_number : null,
             cheque_image_url: payment.payment_type === 'cheque' ? payment.cheque_image_url : null,
-            bank_reference: payment.payment_type === 'bank_transfer' ? payment.bank_reference : null,
+            bank_reference: (payment.payment_type === 'bank_transfer' || payment.payment_type === 'bit') ? payment.bank_reference : null,
             receipt_images: mainReceiptImages,
             customer_cheque_ids: customerChequeIds,
             refused: false,
@@ -903,6 +906,7 @@ export default function CompanyWallet() {
                               <SelectItem value="cheque">شيك جديد</SelectItem>
                               <SelectItem value="customer_cheque">شيك عميل</SelectItem>
                               <SelectItem value="bank_transfer">تحويل بنكي</SelectItem>
+                              <SelectItem value="bit">Bit</SelectItem>
                               <SelectItem value="visa">بطاقة ائتمان</SelectItem>
                             </SelectContent>
                           </Select>
@@ -953,13 +957,13 @@ export default function CompanyWallet() {
                         </div>
                       )}
 
-                      {payment.payment_type === 'bank_transfer' && (
+                      {(payment.payment_type === 'bank_transfer' || payment.payment_type === 'bit') && (
                         <div className="space-y-2">
-                          <Label>رقم المرجع البنكي</Label>
+                          <Label>{payment.payment_type === 'bit' ? 'رقم عملية Bit' : 'رقم المرجع البنكي'}</Label>
                           <Input
                             value={payment.bank_reference || ''}
                             onChange={(e) => updatePaymentLine(payment.id, 'bank_reference', e.target.value)}
-                            placeholder="رقم الحوالة"
+                            placeholder={payment.payment_type === 'bit' ? 'رقم العملية' : 'رقم الحوالة'}
                             dir="ltr"
                           />
                         </div>

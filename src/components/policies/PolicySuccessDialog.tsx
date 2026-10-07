@@ -518,12 +518,12 @@ export function PolicySuccessDialog({
         .in('policy_id', policyIds)
         .order('created_at', { ascending: false });
 
-      // Prefer visa payment, fallback to first payment
+      // Prefer visa payment, fallback to first payment. Bit payments are never sent to Tranzila.
       const visaPayment = payments?.find(p => p.payment_type === 'visa');
-      const targetPayment = visaPayment || payments?.[0];
+      const targetPayment = visaPayment || payments?.find(p => p.payment_type !== 'bit');
 
       if (!targetPayment) {
-        setErrorMessage("لا يوجد دفعات");
+        setErrorMessage(payments?.length ? "دفعات Bit لا تُرسل إلى Tranzila" : "لا يوجد دفعات");
         return;
       }
 

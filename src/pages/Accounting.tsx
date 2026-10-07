@@ -112,7 +112,7 @@ interface PolicyDetail {
 
 const payMethodLabel: Record<string, string> = {
   cash: "نقدي", cheque: "شيك", bank_transfer: "تحويل بنكي",
-  visa: "فيزا", customer_cheque: "شيك عميل",
+  bit: "Bit", visa: "فيزا", customer_cheque: "شيك عميل",
 };
 
 interface ExpandedExpenseEntry {
@@ -959,7 +959,7 @@ export default function Accounting() {
         setEditNotes((expense as any).notes || "");
         const pm = (expense as any).payment_method as string | null;
         const validType: PaymentLine["payment_type"] =
-          pm === "cash" || pm === "cheque" || pm === "bank_transfer" || pm === "visa" ? pm : "cash";
+          pm === "cash" || pm === "cheque" || pm === "bank_transfer" || pm === "bit" || pm === "visa" ? pm : "cash";
         const ref = (expense as any).reference_number || "";
         setEditPaymentLines([{
           id: crypto.randomUUID(),
@@ -967,7 +967,7 @@ export default function Accounting() {
           amount: Number((expense as any).amount) || 0,
           payment_date: (expense as any).expense_date || new Date().toISOString().split("T")[0],
           cheque_number: validType === "cheque" ? ref : undefined,
-          bank_reference: validType === "bank_transfer" ? ref : undefined,
+          bank_reference: validType === "bank_transfer" || validType === "bit" ? ref : undefined,
         }]);
       }
     }

@@ -70,6 +70,7 @@ const paymentTypeLabels: Record<string, string> = {
   cheque: 'شيك',
   visa: 'بطاقة',
   transfer: 'تحويل',
+  bit: 'Bit',
 };
 
 export function PaymentEditDialog({
@@ -212,6 +213,7 @@ export function PaymentEditDialog({
                 <SelectItem value="cheque">شيك</SelectItem>
                 <SelectItem value="visa">بطاقة</SelectItem>
                 <SelectItem value="transfer">تحويل</SelectItem>
+                <SelectItem value="bit">Bit</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -79,6 +79,7 @@ interface RefundRecord {
 const paymentMethodLabels: Record<string, string> = {
   cash: 'نقدي',
   transfer: 'حوالة',
+  bit: 'Bit',
 };
 
 const transactionTypeLabels: Record<string, string> = {
@@ -430,6 +431,7 @@ export function RefundsTab({ clientId, branchId, onRefundAdded }: RefundsTabProp
                 <SelectContent>
                   <SelectItem value="cash">نقدي</SelectItem>
                   <SelectItem value="transfer">حوالة</SelectItem>
+                  <SelectItem value="bit">Bit</SelectItem>
                 </SelectContent>
               </Select>
             </div>

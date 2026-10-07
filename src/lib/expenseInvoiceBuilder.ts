@@ -35,6 +35,7 @@ const paymentMethodLabelsHe: Record<string, string> = {
   cheque: 'שיק',
   customer_cheque: 'שיק',
   bank_transfer: 'העברה בנקאית',
+  bit: 'ביט',
   visa: 'ויזה',
 };
 

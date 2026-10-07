@@ -162,6 +162,14 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Bit payments are recorded manually and never sent to Tranzila
+    if (payment.payment_type === 'bit') {
+      return new Response(
+        JSON.stringify({ success: false, error: 'دفعات Bit لا تُرسل إلى Tranzila' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Skip if already has a Tranzila receipt
     if (payment.tranzila_receipt_url) {
       return new Response(

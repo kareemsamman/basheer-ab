@@ -35,7 +35,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-export type PaymentType = 'cash' | 'cheque' | 'bank_transfer' | 'visa' | 'customer_cheque';
+export type PaymentType = 'cash' | 'cheque' | 'bank_transfer' | 'bit' | 'visa' | 'customer_cheque';
 
 export interface PaymentLine {
   id: string;
@@ -54,6 +54,7 @@ const PAYMENT_TYPES = [
   { value: 'cheque', label: 'شيك جديد' },
   { value: 'customer_cheque', label: 'شيك عميل' },
   { value: 'bank_transfer', label: 'تحويل بنكي' },
+  { value: 'bit', label: 'Bit' },
 ];
 
 interface ExpensePaymentLinesProps {
@@ -278,11 +279,11 @@ export function ExpensePaymentLines({
                       className="h-9 flex-1 font-mono"
                     />
                   )}
-                  {payment.payment_type === 'bank_transfer' && (
+                  {(payment.payment_type === 'bank_transfer' || payment.payment_type === 'bit') && (
                     <Input
                       value={payment.bank_reference || ''}
                       onChange={(e) => updatePaymentLine(payment.id, 'bank_reference', e.target.value)}
-                      placeholder="رقم التحويل"
+                      placeholder={payment.payment_type === 'bit' ? 'رقم عملية Bit' : 'رقم التحويل'}
                       className="h-9 flex-1"
                     />
                   )}

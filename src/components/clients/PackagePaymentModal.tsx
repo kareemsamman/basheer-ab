@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Card } from '@/components/ui/card';
-import { Loader2, CreditCard, Banknote, Wallet, AlertCircle, CheckCircle, Package, Plus, Trash2, Split, Upload, X, ImageIcon, Scan } from 'lucide-react';
+import { Loader2, CreditCard, Banknote, Wallet, AlertCircle, CheckCircle, Package, Plus, Trash2, Split, Upload, X, ImageIcon, Scan, Smartphone } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -24,7 +24,7 @@ import { autoPrintPaymentReceipt, openReceiptPrintWindow } from '@/lib/autoPrint
 interface PaymentLine {
   id: string;
   amount: number;
-  paymentType: 'cash' | 'cheque' | 'transfer' | 'visa';
+  paymentType: 'cash' | 'cheque' | 'transfer' | 'visa' | 'bit';
   paymentDate: string;
   chequeNumber?: string;
   chequeImageUrl?: string;
@@ -72,6 +72,7 @@ const paymentTypes = [
   { value: 'cheque', label: 'شيك', icon: CreditCard },
   { value: 'visa', label: 'فيزا', icon: CreditCard },
   { value: 'transfer', label: 'تحويل', icon: Wallet },
+  { value: 'bit', label: 'Bit', icon: Smartphone },
 ];
 
 export function PackagePaymentModal({
@@ -723,12 +724,12 @@ export function PackagePaymentModal({
                       </Button>
                     )}
 
-                    {/* Image Upload for cash/cheque/transfer */}
-                    {(payment.paymentType === 'cash' || payment.paymentType === 'cheque' || payment.paymentType === 'transfer') && !payment.tranzilaPaid && (
+                    {/* Image Upload for cash/cheque/transfer/bit */}
+                    {(payment.paymentType === 'cash' || payment.paymentType === 'cheque' || payment.paymentType === 'transfer' || payment.paymentType === 'bit') && !payment.tranzilaPaid && (
                       <div className="space-y-2">
                         <Label className="text-xs flex items-center gap-1">
                           <ImageIcon className="h-3 w-3" />
-                          {payment.paymentType === 'cheque' ? 'صورة الشيك' : payment.paymentType === 'transfer' ? 'صورة الحوالة' : 'صورة الإيصال'}
+                          {payment.paymentType === 'cheque' ? 'صورة الشيك' : payment.paymentType === 'transfer' ? 'صورة الحوالة' : payment.paymentType === 'bit' ? 'صورة إيصال Bit' : 'صورة الإيصال'}
                         </Label>
                         <div className="flex items-center gap-2 flex-wrap">
                           {getPreviewUrls(payment.id).map((url, imgIndex) => (

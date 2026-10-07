@@ -228,4 +228,5 @@ export const PAYMENT_TYPES = [
   { value: "customer_cheque", label: "شيك عميل" },
   { value: "visa", label: "فيزا" },
   { value: "transfer", label: "تحويل" },
+  { value: "bit", label: "Bit" },
 ];

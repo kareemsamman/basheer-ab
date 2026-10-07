@@ -24,6 +24,7 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   credit_card: 'כרטיס אשראי',
   transfer: 'העברה בנקאית',
   bank_transfer: 'העברה בנקאית',
+  bit: 'ביט',
   accident_fee: 'דמי תאונות',
 };
 

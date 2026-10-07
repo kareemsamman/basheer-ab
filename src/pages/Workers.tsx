@@ -26,7 +26,7 @@ const MONTHS_AR: Record<number, string> = {
 };
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  cash: 'نقدي', cheque: 'شيك', bank_transfer: 'تحويل بنكي', visa: 'فيزا',
+  cash: 'نقدي', cheque: 'شيك', bank_transfer: 'تحويل بنكي', bit: 'Bit', visa: 'فيزا',
 };
 
 interface MediaFile {

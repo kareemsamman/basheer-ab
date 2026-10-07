@@ -37,6 +37,7 @@ import {
   ChevronDown,
   ChevronUp,
   X,
+  Smartphone,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -107,6 +108,7 @@ const paymentMethodLabels: Record<string, { label: string; icon: any }> = {
   cash: { label: 'نقدي', icon: Banknote },
   cheque: { label: 'شيك', icon: FileText },
   bank_transfer: { label: 'تحويل بنكي', icon: Building },
+  bit: { label: 'Bit', icon: Smartphone },
   visa: { label: 'فيزا', icon: CreditCard },
 };
 
@@ -264,6 +266,7 @@ export default function Expenses() {
       case 'cheque': return 'cheque';
       case 'visa': return 'visa';
       case 'transfer': return 'bank_transfer';
+      case 'bit': return 'bit';
       default: return 'cash';
     }
   };
@@ -571,7 +574,7 @@ export default function Expenses() {
             created_by_admin_id: profile?.id,
             voucher_type: formData.voucher_type,
             payment_method: paymentMethod,
-            reference_number: payment.payment_type === 'cheque' ? payment.cheque_number : payment.payment_type === 'bank_transfer' ? payment.bank_reference : null,
+            reference_number: payment.payment_type === 'cheque' ? payment.cheque_number : (payment.payment_type === 'bank_transfer' || payment.payment_type === 'bit') ? payment.bank_reference : null,
             contact_name: formData.contact_name || null,
             entity_type: formData.entity_type || null,
             entity_id: formData.entity_id || null,
@@ -643,7 +646,7 @@ export default function Expenses() {
                 payment_type: paymentMethod,
                 cheque_number: payment.payment_type === 'cheque' ? payment.cheque_number : null,
                 cheque_image_url: payment.cheque_image_url || null,
-                bank_reference: payment.payment_type === 'bank_transfer' ? payment.bank_reference : null,
+                bank_reference: (payment.payment_type === 'bank_transfer' || payment.payment_type === 'bit') ? payment.bank_reference : null,
                 refused: false,
               });
             }
@@ -725,7 +728,7 @@ export default function Expenses() {
               created_by_admin_id: profile?.id,
               payment_type: formData.payment_method,
               cheque_number: formData.payment_method === 'cheque' ? formData.reference_number : null,
-              bank_reference: formData.payment_method === 'bank_transfer' ? formData.reference_number : null,
+              bank_reference: (formData.payment_method === 'bank_transfer' || formData.payment_method === 'bit') ? formData.reference_number : null,
               refused: false,
             });
           }

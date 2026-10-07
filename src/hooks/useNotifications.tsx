@@ -24,7 +24,7 @@ export interface PaymentDetails {
   client_name?: string;
   amount?: number;
   currency?: string;
-  method?: 'cash' | 'cheque' | 'visa' | 'transfer';
+  method?: 'cash' | 'cheque' | 'visa' | 'transfer' | 'bit';
   type?: 'premium' | 'renewal' | 'settlement' | 'commission' | 'debt_payment' | 'refund' | 'installment' | 'other';
   type_labels?: string[];
   reference?: string | null;
@@ -35,7 +35,7 @@ export interface PaymentDetails {
 
 export interface NotificationMetadata {
   // Legacy flat fields for backward compatibility
-  payment_method?: 'cash' | 'cheque' | 'visa' | 'transfer';
+  payment_method?: 'cash' | 'cheque' | 'visa' | 'transfer' | 'bit';
   amount?: number;
   client_name?: string;
   payment_id?: string;
@@ -66,6 +66,7 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   cheque: 'شيك',
   visa: 'فيزا',
   transfer: 'حوالة/تحويل',
+  bit: 'Bit',
 };
 
 // Payment type Arabic labels
@@ -81,7 +82,7 @@ export const PAYMENT_TYPE_LABELS: Record<string, string> = {
 };
 
 // Helper to get payment method from notification (supports both old and new structure)
-export function getPaymentMethod(metadata: NotificationMetadata | null): 'cash' | 'cheque' | 'visa' | 'transfer' | undefined {
+export function getPaymentMethod(metadata: NotificationMetadata | null): 'cash' | 'cheque' | 'visa' | 'transfer' | 'bit' | undefined {
   if (!metadata) return undefined;
   // New structure first
   if (metadata.payment?.method) return metadata.payment.method;

@@ -1974,6 +1974,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                     <SelectItem value="cheque">شيك</SelectItem>
                     <SelectItem value="visa">بطاقة</SelectItem>
                     <SelectItem value="transfer">تحويل</SelectItem>
+                    <SelectItem value="bit">Bit</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2025,7 +2026,8 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                               {group.payment_type === 'cash' ? 'نقدي' :
                                group.payment_type === 'cheque' ? 'شيك' :
                                group.payment_type === 'visa' ? 'بطاقة' :
-                               group.payment_type === 'transfer' ? 'تحويل' : group.payment_type}
+                               group.payment_type === 'transfer' ? 'تحويل' :
+                               group.payment_type === 'bit' ? 'Bit' : group.payment_type}
                             </Badge>
                             {group.payment_type === 'visa' && group.card_last_four && (
                               <span className="text-xs text-muted-foreground font-mono">

@@ -558,13 +558,13 @@ export function Step4Payments({
                     </div>
                   )}
 
-                  {/* Image Upload Section for Cash/Cheque/Transfer */}
-                  {(payment.payment_type === 'cash' || payment.payment_type === 'cheque' || payment.payment_type === 'transfer') && !visaPaid && (
+                  {/* Image Upload Section for Cash/Cheque/Transfer/Bit */}
+                  {(payment.payment_type === 'cash' || payment.payment_type === 'cheque' || payment.payment_type === 'transfer' || payment.payment_type === 'bit') && !visaPaid && (
                     <div className="mt-3 pt-3 border-t border-border/50">
                       <div className="flex items-start gap-3">
                         <div className="flex-1">
                           <Label className="text-xs text-muted-foreground mb-2 block">
-                            {payment.payment_type === 'cheque' ? 'صور الشيك (أمامي/خلفي)' : payment.payment_type === 'transfer' ? 'صور إيصال التحويل' : 'صور إيصال الدفع'}
+                            {payment.payment_type === 'cheque' ? 'صور الشيك (أمامي/خلفي)' : payment.payment_type === 'transfer' ? 'صور إيصال التحويل' : payment.payment_type === 'bit' ? 'صور إيصال Bit' : 'صور إيصال الدفع'}
                           </Label>
                           <div className="flex flex-wrap gap-2">
                             {/* Display cheque image from scanner (CDN URL) */}

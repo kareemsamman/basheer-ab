@@ -16,6 +16,7 @@ const PAYMENT_TYPE_LABELS: Record<string, string> = {
   cheque: 'שיק',
   visa: 'כרטיס אשראי',
   transfer: 'העברה בנקאית',
+  bit: 'ביט',
 };
 
 const POLICY_TYPE_LABELS: Record<string, string> = {
@@ -59,6 +60,9 @@ function buildPaymentDetail(payment: any): string {
   }
   if (payment.payment_type === 'transfer') {
     return 'העברה בנקאית';
+  }
+  if (payment.payment_type === 'bit') {
+    return 'ביט';
   }
   return 'מזומן';
 }

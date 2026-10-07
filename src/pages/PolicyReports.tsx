@@ -598,7 +598,10 @@ export default function PolicyReports() {
     cash: 'نقداً',
     cheque: 'شيك',
     credit: 'بطاقة',
+    visa: 'فيزا',
+    transfer: 'تحويل',
     bank_transfer: 'تحويل بنكي',
+    bit: 'Bit',
     tranzila: 'ترانزيلا',
     customer_cheque: 'شيك عميل',
   };

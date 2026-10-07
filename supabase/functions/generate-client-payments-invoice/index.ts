@@ -11,6 +11,7 @@ const PAYMENT_TYPE_LABELS: Record<string, string> = {
   cheque: 'شيك',
   visa: 'بطاقة ائتمان',
   transfer: 'تحويل بنكي',
+  bit: 'Bit',
 };
 
 const POLICY_TYPE_LABELS: Record<string, string> = {
@@ -248,6 +249,7 @@ function buildComprehensiveInvoiceHtml(
     .badge-visa { background: #dbeafe; color: #1e40af; }
     .badge-cheque { background: #fef3c7; color: #92400e; }
     .badge-transfer { background: #e9d5ff; color: #6b21a8; }
+    .badge-bit { background: #cffafe; color: #155e75; }
     .approved { color: #059669; font-weight: 600; }
     .refused { color: #dc2626; font-weight: 600; }
     .totals {
