@@ -323,6 +323,7 @@ export function AddCustomerChequeModal({
             notes: cheque.notes || 'شيك من صفحة الشيكات',
             branch_id: policy.branchId || branchId,
             batch_id: batchId,
+            created_by_admin_id: user?.id || null,
           });
 
           policy.remaining = Math.max(0, policy.remaining - assignable);
@@ -343,6 +344,7 @@ export function AddCustomerChequeModal({
             notes: cheque.notes || 'شيك من صفحة الشيكات',
             branch_id: lastPolicy.branchId || branchId,
             batch_id: batchId,
+            created_by_admin_id: user?.id || null,
           });
           totalExcess += remainingAmount;
         }

@@ -19,6 +19,7 @@ import type { Enums } from "@/integrations/supabase/types";
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import { getInsuranceTypeLabel } from '@/lib/insuranceTypes';
 import { autoPrintPaymentReceipt, openReceiptPrintWindow } from '@/lib/autoPrintReceipt';
+import { useAuth } from '@/hooks/useAuth';
 
 
 interface PaymentLine {
@@ -84,6 +85,7 @@ export function PackagePaymentModal({
   onSuccess,
 }: PackagePaymentModalProps) {
   const { toast: uiToast } = useToast();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [policies, setPolicies] = useState<PolicyPaymentInfo[]>([]);
@@ -492,6 +494,7 @@ export function PackagePaymentModal({
             notes: paymentLine.notes || `دفعة من باقة (${policies.length} وثائق)`,
             branch_id: branchId,
             batch_id: batchId,
+            created_by_admin_id: user?.id || null,
           })
           .select('id')
           .single();

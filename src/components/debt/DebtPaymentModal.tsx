@@ -19,6 +19,7 @@ import { sanitizeChequeNumber, CHEQUE_NUMBER_MAX_LENGTH } from '@/lib/chequeUtil
 import { useToast } from '@/hooks/use-toast';
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import { autoPrintPaymentReceipt, openReceiptPrintWindow } from '@/lib/autoPrintReceipt';
+import { useAuth } from '@/hooks/useAuth';
 
 
 // Represents each policy inside a debt item
@@ -110,6 +111,7 @@ export function DebtPaymentModal({
   onSuccess,
 }: DebtPaymentModalProps) {
   const { toast: uiToast } = useToast();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [debtItems, setDebtItems] = useState<DebtItem[]>([]);
@@ -701,6 +703,7 @@ export function DebtPaymentModal({
               notes: paymentLine.notes || `تسديد دين`,
               branch_id: split.branchId,
               batch_id: batchId,
+              created_by_admin_id: user?.id || null,
             }));
 
             const { data: insertedPayments, error } = await supabase

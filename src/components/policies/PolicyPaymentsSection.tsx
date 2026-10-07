@@ -28,6 +28,7 @@ import { TranzilaPaymentModal } from "@/components/payments/TranzilaPaymentModal
 import { ChequeScannerDialog } from "@/components/payments/ChequeScannerDialog";
 import type { Enums } from "@/integrations/supabase/types";
 import { sanitizeChequeNumber, CHEQUE_NUMBER_MAX_LENGTH } from "@/lib/chequeUtils";
+import { useAuth } from "@/hooks/useAuth";
 
 interface PaymentImage {
   id: string;
@@ -121,6 +122,7 @@ export function PolicyPaymentsSection({
   packageTotalPrice
 }: PolicyPaymentsSectionProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -503,6 +505,7 @@ export function PolicyPaymentsSection({
             refused: false,
             notes: paymentLine.notes || null,
             branch_id: branchId || null,
+            created_by_admin_id: user?.id || null,
           })
           .select('id')
           .single();

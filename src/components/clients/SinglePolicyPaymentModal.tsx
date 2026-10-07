@@ -18,6 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import type { Enums } from "@/integrations/supabase/types";
 import { ArabicDatePicker } from '@/components/ui/arabic-date-picker';
 import { autoPrintPaymentReceipt, openReceiptPrintWindow } from '@/lib/autoPrintReceipt';
+import { useAuth } from '@/hooks/useAuth';
 
 
 interface PaymentLine {
@@ -80,6 +81,7 @@ export function SinglePolicyPaymentModal({
   onSuccess,
 }: SinglePolicyPaymentModalProps) {
   const { toast: uiToast } = useToast();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [totalPaid, setTotalPaid] = useState(0);
@@ -417,6 +419,7 @@ export function SinglePolicyPaymentModal({
             refused: false,
             notes: paymentLine.notes || null,
             branch_id: branchId || null,
+            created_by_admin_id: user?.id || null,
           })
           .select('id')
           .single();
