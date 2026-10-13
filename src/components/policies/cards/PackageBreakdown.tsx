@@ -1,6 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import { PolicyRecord, policyTypeColors, getDisplayLabel } from './types';
-import { formatDate, formatCurrency } from '@/lib/utils';
+import { formatDate, formatCurrency, cn } from '@/lib/utils';
 
 interface PackageBreakdownProps {
   policies: PolicyRecord[];
