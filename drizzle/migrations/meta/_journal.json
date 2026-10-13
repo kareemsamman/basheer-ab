@@ -8,6 +8,13 @@
       "when": 1789655957618,
       "tag": "0000_fix_client_balance_per_group",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791895905209,
+      "tag": "0001_cars_inherit_client_branch",
+      "breakpoints": true
     }
   ]
 }
