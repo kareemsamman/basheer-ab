@@ -28,19 +28,23 @@ export function PackageBreakdown({ policies, onPolicyClick }: PackageBreakdownPr
             {policies.map((policy) => (
               <tr 
                 key={policy.id} 
-                className="border-t hover:bg-muted/20 cursor-pointer transition-colors"
+                className={cn(
+                  "border-t hover:bg-muted/20 cursor-pointer transition-colors",
+                  policy.cancelled && "opacity-60 bg-destructive/5"
+                )}
                 onClick={() => onPolicyClick(policy.id)}
               >
-                <td className="p-2 font-semibold">
+                <td className={cn("p-2 font-semibold", policy.cancelled && "line-through")}>
                   {formatCurrency(policy.insurance_price)}
                 </td>
-                <td className="p-2 text-xs text-muted-foreground">
-                  {formatDate(policy.end_date)} ← {formatDate(policy.start_date)}
-                </td>
+...
                 <td className="p-2">
                   <Badge className={policyTypeColors[policy.policy_type_parent]}>
                     {getDisplayLabel(policy)}
                   </Badge>
+                  {policy.cancelled && (
+                    <Badge variant="destructive" className="mr-1 text-xs">ملغاة</Badge>
+                  )}
                 </td>
                 <td className="p-2 text-muted-foreground">
                   {policy.insurance_companies?.name_ar || policy.insurance_companies?.name || '-'}
