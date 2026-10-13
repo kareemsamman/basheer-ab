@@ -28,6 +28,7 @@ interface CancelPolicyModalProps {
   clientPhone: string | null;
   branchId: string | null;
   insurancePrice: number;
+  groupId?: string | null;
   onCancelled: () => void;
 }
 
@@ -41,6 +42,7 @@ export function CancelPolicyModal({
   clientPhone,
   branchId,
   insurancePrice,
+  groupId,
   onCancelled,
 }: CancelPolicyModalProps) {
   const { toast } = useToast();
@@ -119,7 +121,23 @@ export function CancelPolicyModal({
       return;
     }
 
-    if (hasRefund && parseFloat(refundAmount) > insurancePrice) {
+    // Cancelling any policy of a package cancels the whole package
+    let targetIds: string[] = [policyId];
+    let maxRefund = insurancePrice;
+    if (groupId) {
+      const { data: siblings } = await supabase
+        .from("policies")
+        .select("id, insurance_price")
+        .eq("group_id", groupId)
+        .eq("cancelled", false)
+        .is("deleted_at", null);
+      if (siblings && siblings.length > 0) {
+        targetIds = Array.from(new Set([policyId, ...siblings.map(s => s.id)]));
+        maxRefund = siblings.reduce((sum, s) => sum + Number(s.insurance_price || 0), 0);
+      }
+    }
+
+    if (hasRefund && parseFloat(refundAmount) > maxRefund) {
       toast({ title: "خطأ", description: "مبلغ المرتجع لا يمكن أن يتجاوز سعر التأمين", variant: "destructive" });
       return;
     }
@@ -135,7 +153,7 @@ export function CancelPolicyModal({
           cancellation_date: cancellationDate,
           cancelled_by_admin_id: user?.id || null,
         })
-        .eq("id", policyId);
+        .in("id", targetIds);
 
       if (policyError) throw policyError;
 
@@ -187,14 +205,16 @@ export function CancelPolicyModal({
 
       // Notify X-Service about cancellation (fire-and-forget)
       try {
-        supabase.functions.invoke("notify-xservice-change", {
-          body: { action: "cancel", policy_id: policyId },
-        }).catch(err => console.error("X-Service cancel notification failed:", err));
+        targetIds.forEach(id => {
+          supabase.functions.invoke("notify-xservice-change", {
+            body: { action: "cancel", policy_id: id },
+          }).catch(err => console.error("X-Service cancel notification failed:", err));
+        });
       } catch (e) {
         console.error("X-Service cancel notification error:", e);
       }
 
-      toast({ title: "تم", description: "تم إلغاء الوثيقة بنجاح" });
+      toast({ title: "تم", description: targetIds.length > 1 ? "تم إلغاء الباقة كاملة بنجاح" : "تم إلغاء الوثيقة بنجاح" });
       onCancelled();
       onOpenChange(false);
       

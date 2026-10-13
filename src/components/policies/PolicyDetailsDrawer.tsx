@@ -1554,6 +1554,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
             clientPhone={policy.clients.phone_number}
             branchId={policy.branch_id}
             insurancePrice={policy.insurance_price}
+            groupId={policy.group_id}
             onCancelled={handleEditComplete}
           />
           <TransferPolicyModal
