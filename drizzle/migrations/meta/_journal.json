@@ -15,6 +15,13 @@
       "when": 1791895905209,
       "tag": "0001_cars_inherit_client_branch",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791897556374,
+      "tag": "0002_is_tranzila_enabled",
+      "breakpoints": true
     }
   ]
 }
