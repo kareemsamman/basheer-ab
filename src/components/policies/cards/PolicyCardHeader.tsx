@@ -14,6 +14,7 @@ interface PolicyCardHeaderProps {
   mainPolicy: PolicyRecord;
   paymentStatus: PaymentStatus;
   isPackage: boolean;
+  hasCancelledAddons?: boolean;
   sendingPolicy: string | null;
   onSendInvoice: (e: React.MouseEvent, policyId: string) => void;
   onPolicyClick: (policyId: string) => void;
