@@ -964,6 +964,12 @@ function PolicyPackageCard({
               ملغاة
             </Badge>
           )}
+          {!isCancelled && pkg.allPolicies.some(p => p.cancelled) && (
+            <Badge variant="destructive" className="gap-1">
+              <XCircle className="h-3 w-3" />
+              إلغاء جزئي
+            </Badge>
+          )}
 
           {/* Transfer FROM indicator - for policies created via transfer */}
           {wasTransferredFrom && !isTransferred && (
@@ -1348,12 +1354,16 @@ function PackageComponentRow({
   return (
     <div className={cn(
       "flex items-center justify-between text-xs rounded-md px-2.5 py-1.5",
-      isActive ? "bg-muted/40" : "bg-muted/20"
+      isActive ? "bg-muted/40" : "bg-muted/20",
+      policy.cancelled && "bg-destructive/5 opacity-70"
     )}>
       <div className="flex items-center gap-2 min-w-0">
         <Badge className={cn("text-[10px] px-1.5 py-0 h-5 font-medium border", typeColor)}>
           {typeLabel}
         </Badge>
+        {policy.cancelled && (
+          <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-5">ملغاة</Badge>
+        )}
         <span className={cn(
           "truncate max-w-[120px]",
           isActive ? "text-muted-foreground" : "text-muted-foreground/70"
@@ -1371,6 +1381,7 @@ function PackageComponentRow({
         <span className={cn(
           "font-semibold ltr-nums min-w-[60px] text-left",
           isActive ? "text-foreground" : "text-muted-foreground"
+          , policy.cancelled && "line-through"
         )}>
           ₪{policy.insurance_price.toLocaleString()}
         </span>
