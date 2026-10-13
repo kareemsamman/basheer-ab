@@ -5435,6 +5435,7 @@ export type Database = {
       is_active_user: { Args: { _user_id: string }; Returns: boolean }
       is_renewed: { Args: { p_policy_id: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
+      is_tranzila_enabled: { Args: never; Returns: boolean }
       report_client_debts:
         | {
             Args: {
