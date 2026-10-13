@@ -192,12 +192,8 @@ export function PolicyPaymentsSection({
   useEffect(() => {
     const checkTranzila = async () => {
       try {
-        const { data } = await supabase
-          .from('payment_settings')
-          .select('is_enabled')
-          .eq('provider', 'tranzila')
-          .single();
-        setTranzilaEnabled(data?.is_enabled || false);
+        const { data } = await supabase.rpc('is_tranzila_enabled');
+        setTranzilaEnabled(data === true);
       } catch {
         setTranzilaEnabled(false);
       }
