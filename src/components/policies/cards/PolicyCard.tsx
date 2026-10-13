@@ -62,6 +62,7 @@ export function PolicyCard({
           mainPolicy={mainPolicy}
           paymentStatus={paymentStatus}
           isPackage={isPackage}
+          hasCancelledAddons={group.addons.some(p => p.cancelled)}
           sendingPolicy={sendingPolicy}
           onSendInvoice={onSendInvoice}
           onPolicyClick={onPolicyClick}

@@ -58,9 +58,14 @@ export function PolicyCardInfo({
           {allPolicies.map((p) => (
             <Badge 
               key={p.id} 
-              className={cn("border text-xs", policyTypeColors[p.policy_type_parent])}
+              className={cn(
+                "border text-xs",
+                policyTypeColors[p.policy_type_parent],
+                p.cancelled && "line-through opacity-60"
+              )}
             >
               {getDisplayLabel(p)}
+              {p.cancelled && " (ملغاة)"}
             </Badge>
           ))}
         </div>

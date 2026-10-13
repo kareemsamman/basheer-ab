@@ -14,6 +14,7 @@ interface PolicyCardHeaderProps {
   mainPolicy: PolicyRecord;
   paymentStatus: PaymentStatus;
   isPackage: boolean;
+  hasCancelledAddons?: boolean;
   sendingPolicy: string | null;
   onSendInvoice: (e: React.MouseEvent, policyId: string) => void;
   onPolicyClick: (policyId: string) => void;
@@ -25,6 +26,7 @@ export function PolicyCardHeader({
   mainPolicy,
   paymentStatus,
   isPackage,
+  hasCancelledAddons,
   sendingPolicy,
   onSendInvoice,
   onPolicyClick,
@@ -38,17 +40,23 @@ export function PolicyCardHeader({
       {/* Right: Status Chips */}
       <div className="flex flex-wrap items-center gap-1.5">
         <Badge variant={status.variant}>{status.label}</Badge>
-        
+
         {paymentStatus.isPaid ? (
           <Badge variant="success">مدفوع</Badge>
         ) : (
           <Badge variant="destructive">غير مدفوع</Badge>
         )}
-        
+
         {isPackage && (
           <Badge variant="outline" className="bg-primary/5 border-primary/20 text-primary gap-1">
             <Package className="h-3 w-3" />
             باقة
+          </Badge>
+        )}
+
+        {hasCancelledAddons && !mainPolicy.cancelled && (
+          <Badge variant="destructive" className="gap-1">
+            إلغاء جزئي
           </Badge>
         )}
       </div>
