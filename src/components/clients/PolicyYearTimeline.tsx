@@ -689,18 +689,29 @@ export function PolicyYearTimeline({
   };
 
   const getPackagePaymentStatus = (pkg: PolicyPackage) => {
-    // Sum total paid across all package policies
+    // Same rule as the backend debt: ELZAMI is never agency debt.
+    // Money on the ELZAMI line up to its price covers ELZAMI only; any excess counts toward the package.
     let totalPaid = 0;
-    
-    pkg.allPolicyIds.forEach(id => {
-      totalPaid += paymentInfo[id]?.paid || 0;
+    let elzamiPaid = 0;
+    let elzamiPrice = 0;
+    let nonElzamiPrice = 0;
+
+    pkg.allPolicies.forEach(p => {
+      const paid = paymentInfo[p.id]?.paid || 0;
+      const price = p.insurance_price + (p.office_commission || 0);
+      totalPaid += paid;
+      if (p.policy_type_parent === 'ELZAMI') {
+        elzamiPaid += paid;
+        elzamiPrice += price;
+      } else {
+        nonElzamiPrice += price;
+      }
     });
-    
-    // Calculate remaining as package total - all payments
-    // This is the correct way for packages (same as drawer)
-    const remaining = Math.max(0, pkg.totalPrice - totalPaid);
+
+    const nonElzamiPaid = totalPaid - Math.min(elzamiPaid, elzamiPrice);
+    const remaining = Math.max(0, nonElzamiPrice - nonElzamiPaid);
     const isPaid = remaining <= 0 && pkg.totalPrice > 0;
-    
+
     return { totalPaid, remaining, isPaid };
   };
 
