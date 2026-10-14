@@ -694,18 +694,22 @@ export function PolicyYearTimeline({
     let totalPaid = 0;
     let elzamiPaid = 0;
     let elzamiPrice = 0;
+    let nonElzamiPrice = 0;
 
     pkg.allPolicies.forEach(p => {
       const paid = paymentInfo[p.id]?.paid || 0;
+      const price = p.insurance_price + (p.office_commission || 0);
       totalPaid += paid;
-      if (p.policy_type_parent === 'ELZAMI' && !p.cancelled) {
+      if (p.policy_type_parent === 'ELZAMI') {
         elzamiPaid += paid;
-        elzamiPrice += p.insurance_price + (p.office_commission || 0);
+        elzamiPrice += price;
+      } else {
+        nonElzamiPrice += price;
       }
     });
 
     const nonElzamiPaid = totalPaid - Math.min(elzamiPaid, elzamiPrice);
-    const remaining = Math.max(0, pkg.debtPrice - nonElzamiPaid);
+    const remaining = Math.max(0, nonElzamiPrice - nonElzamiPaid);
     const isPaid = remaining <= 0 && pkg.totalPrice > 0;
 
     return { totalPaid, remaining, isPaid };
