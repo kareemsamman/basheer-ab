@@ -3896,9 +3896,9 @@ export type Database = {
           accident_date: string | null
           accident_details: string | null
           amount: number
-          car_id: string | null
           cancel_reason: string | null
           cancelled_at: string | null
+          car_id: string | null
           car_number: string | null
           card_last_four: string | null
           cheque_date: string | null
@@ -3925,9 +3925,9 @@ export type Database = {
           accident_date?: string | null
           accident_details?: string | null
           amount?: number
-          car_id?: string | null
           cancel_reason?: string | null
           cancelled_at?: string | null
+          car_id?: string | null
           car_number?: string | null
           card_last_four?: string | null
           cheque_date?: string | null
@@ -3944,7 +3944,7 @@ export type Database = {
           payment_method?: string | null
           policy_id?: string | null
           receipt_date?: string
-          receipt_number?: number
+          receipt_number: number
           receipt_type?: string
           receipt_url?: string | null
           source?: string
@@ -3954,9 +3954,9 @@ export type Database = {
           accident_date?: string | null
           accident_details?: string | null
           amount?: number
-          car_id?: string | null
           cancel_reason?: string | null
           cancelled_at?: string | null
+          car_id?: string | null
           car_number?: string | null
           card_last_four?: string | null
           cheque_date?: string | null
@@ -5194,6 +5194,10 @@ export type Database = {
       }
       can_view_financials: { Args: { _user_id: string }; Returns: boolean }
       clear_data_for_import: { Args: never; Returns: Json }
+      create_receipt_for_payment: {
+        Args: { p: Database["public"]["Tables"]["policy_payments"]["Row"] }
+        Returns: undefined
+      }
       dashboard_company_debts: {
         Args: never
         Returns: {
