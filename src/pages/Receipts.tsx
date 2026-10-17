@@ -1457,7 +1457,9 @@ export default function Receipts() {
                   // For multi-receipt groups
                   const receiptRange = formatReceiptRange(group);
                   // Collect unique payment methods
-                  const methods = [...new Set(group.receipts.map(r => r.payment_method).filter(Boolean))];
+                  // The header describes the lines still in force (all of them once the receipt is cancelled)
+                  const shownLines = group.cancelled ? group.receipts : group.receipts.filter(r => !isCancelled(r));
+                  const methods = [...new Set(shownLines.map(r => r.payment_method).filter(Boolean))];
                   
                   return (
                     <React.Fragment key={group.key}>
@@ -1493,7 +1495,7 @@ export default function Receipts() {
                           {group.cancelled
                             ? <span className="line-through">₪{group.receipts.reduce((sum, r) => sum + r.amount, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
                             : <>₪{group.totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</>}
-                          <Badge variant="secondary" className="text-xs mr-1">{group.receipts.length} תשלומים</Badge>
+                          {shownLines.length > 1 && <Badge variant="secondary" className="text-xs mr-1">{shownLines.length} תשלומים</Badge>}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1 flex-wrap">
