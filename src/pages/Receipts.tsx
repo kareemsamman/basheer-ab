@@ -1047,6 +1047,9 @@ export default function Receipts() {
         car_number: formCarNumber || null,
         amount: parseFloat(formAmount) || 0,
         receipt_date: formDate,
+        // The DB trigger always assigns the real number; this only satisfies
+        // the generated insert type (receipt_number is NOT NULL, no default).
+        receipt_number: 0,
         issue_date: formIssueDate || null,
         accident_date: formType === "accident_fee" ? formAccidentDate || null : null,
         accident_details: formType === "accident_fee" ? formAccidentDetails || null : null,
