@@ -3897,6 +3897,8 @@ export type Database = {
           accident_details: string | null
           amount: number
           car_id: string | null
+          cancel_reason: string | null
+          cancelled_at: string | null
           car_number: string | null
           card_last_four: string | null
           cheque_date: string | null
@@ -3907,6 +3909,7 @@ export type Database = {
           created_by: string | null
           id: string
           issue_date: string | null
+          legacy_numbering: boolean
           notes: string | null
           payment_id: string | null
           payment_method: string | null
@@ -3923,6 +3926,8 @@ export type Database = {
           accident_details?: string | null
           amount?: number
           car_id?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
           car_number?: string | null
           card_last_four?: string | null
           cheque_date?: string | null
@@ -3933,6 +3938,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           issue_date?: string | null
+          legacy_numbering?: boolean
           notes?: string | null
           payment_id?: string | null
           payment_method?: string | null
@@ -3949,6 +3955,8 @@ export type Database = {
           accident_details?: string | null
           amount?: number
           car_id?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
           car_number?: string | null
           card_last_four?: string | null
           cheque_date?: string | null
@@ -3959,6 +3967,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           issue_date?: string | null
+          legacy_numbering?: boolean
           notes?: string | null
           payment_id?: string | null
           payment_method?: string | null

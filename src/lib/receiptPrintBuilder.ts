@@ -6,6 +6,8 @@ export interface ReceiptPrintData {
   clientIdNumber?: string | null;
   carNumber: string;
   receiptDate: string;
+  /** The receipt's own date (תאריך הנפקה); falls back to receiptDate */
+  issueDate?: string | null;
   amount: number;
   accidentDate: string;
   accidentDetails: string;
@@ -15,6 +17,8 @@ export interface ReceiptPrintData {
   chequeNumber?: string;
   chequeDate?: string;
   cardLastFour?: string;
+  /** Employee(s) who recorded the payment, printed above the signature */
+  receivedBy?: string | null;
 }
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -259,6 +263,15 @@ export function buildReceiptPrintHtml(data: ReceiptPrintData, settings: CompanyS
     }
     .signature-stamp { text-align: center; }
     .stamp-img { height: 60px; width: auto; opacity: 0.7; }
+    .signature-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .received-by {
+      font-size: 13px;
+      margin-bottom: 20px;
+    }
     .signature-line {
       width: 200px;
       border-top: 1px solid #999;
@@ -277,14 +290,6 @@ export function buildReceiptPrintHtml(data: ReceiptPrintData, settings: CompanyS
       font-size: 11px;
       color: #888;
       background: #fafafa;
-    }
-    .footer-badge {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      color: #1a3a5c;
-      font-weight: bold;
-      font-size: 11px;
     }
 
     .action-buttons {
@@ -349,7 +354,7 @@ export function buildReceiptPrintHtml(data: ReceiptPrintData, settings: CompanyS
           <div><span>לכבוד: </span><span class="client-name">${data.clientName}</span></div>
           ${data.clientIdNumber ? `<div style="font-size:12px;color:#666;margin-top:2px;">ת.ז: ${data.clientIdNumber}</div>` : ''}
         </div>
-        <div>תאריך: ${formatDateHe(new Date().toISOString())}</div>
+        <div>תאריך: ${formatDateHe(data.issueDate || data.receiptDate)}</div>
       </div>
 
       <div class="subject-bar">
@@ -364,7 +369,7 @@ export function buildReceiptPrintHtml(data: ReceiptPrintData, settings: CompanyS
               <th>#</th>
               <th>אמצעי תשלום</th>
               <th>פירוט</th>
-              <th>תאריך</th>
+              <th>תאריך תשלום/פירעון</th>
               <th>סכום</th>
             </tr>
           </thead>
@@ -390,12 +395,14 @@ export function buildReceiptPrintHtml(data: ReceiptPrintData, settings: CompanyS
         <div class="signature-stamp">
           ${settings.logoUrl ? `<img src="${settings.logoUrl}" alt="Stamp" class="stamp-img" />` : ''}
         </div>
-        <div class="signature-line">:חתימה</div>
+        <div class="signature-block">
+          ${data.receivedBy ? `<div class="received-by">התקבל ע״י: ${data.receivedBy}</div>` : ''}
+          <div class="signature-line">:חתימה</div>
+        </div>
       </div>
     </div>
 
     <div class="footer">
-      <div class="footer-badge">🔒 חתימה דיגיטלית מאובטחת</div>
       <div>הופק ב ${formatDateTimeHe(new Date().toISOString())} | ${data.receiptTypeLabel} ${data.receiptNumber}</div>
     </div>
   </div>

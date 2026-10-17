@@ -34,6 +34,16 @@ const POLICY_TYPE_LABELS: Record<string, string> = {
   OTHER: 'אחר',
 };
 
+// Main cover first, then the package add-ons
+const POLICY_TYPE_ORDER = ['THIRD_FULL', 'CIVIL_LIABILITY', 'ROAD_SERVICE', 'ACCIDENT_FEE_EXEMPTION'];
+
+// Payments imported from the old system were all created in one run on
+// 18/01/2026, so their created_at is not the day the money was received.
+const LEGACY_IMPORT_LAST_DAY = '2026-01-18';
+
+// The function runs in UTC; the receipt shows Israel time.
+const ISRAEL_TIME_ZONE = 'Asia/Jerusalem';
+
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
   const date = new Date(dateStr);
@@ -43,41 +53,128 @@ function formatDate(dateStr: string): string {
 function formatDateTime(dateStr: string): string {
   if (!dateStr) return '';
   const date = new Date(dateStr);
-  return date.toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' }) +
-    ' ' + date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  return date.toLocaleDateString('en-GB', { timeZone: ISRAEL_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }) +
+    ' ' + date.toLocaleTimeString('en-GB', { timeZone: ISRAEL_TIME_ZONE, hour: '2-digit', minute: '2-digit' });
+}
+
+/** YYYY-MM-DD of a timestamp in Israel time */
+function toIsraelDay(timestamp: string): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: ISRAEL_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date(timestamp));
+  const part = (type: string) => parts.find((p) => p.type === type)?.value || '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+/**
+ * The day the money was received: the earliest day the printed payments were
+ * entered. Imported payments only have their payment_date.
+ */
+function getReceivedDay(payments: { created_at?: string; payment_date: string }[]): string {
+  const days = payments
+    .map((p) => {
+      const createdDay = p.created_at ? toIsraelDay(p.created_at) : '';
+      return createdDay > LEGACY_IMPORT_LAST_DAY ? createdDay : p.payment_date;
+    })
+    .filter(Boolean)
+    .sort();
+  return days[0] || '';
+}
+
+/** e.g. "מקיף 123456 (01/10/2026–30/09/2027)" */
+function describePolicy(policy: any): string {
+  const typeKey = policy.policy_type_parent === 'THIRD_FULL' && policy.policy_type_child
+    ? policy.policy_type_child
+    : policy.policy_type_parent;
+  const label = POLICY_TYPE_LABELS[typeKey] || typeKey || '';
+  const number = policy.policy_number ? ` ${policy.policy_number}` : '';
+  const period = policy.start_date && policy.end_date
+    ? ` (${formatDate(policy.start_date)}–${formatDate(policy.end_date)})`
+    : '';
+  return `${label}${number}${period}`;
+}
+
+function policyTypeRank(type: string): number {
+  const index = POLICY_TYPE_ORDER.indexOf(type);
+  return index === -1 ? POLICY_TYPE_ORDER.length : index;
+}
+
+/**
+ * What the money paid for: each payment's policy and, for a package, the
+ * package's policies that are still live. ELZAMI (חובה) is never printed.
+ */
+function buildSubjectText(payments: any[], packagePolicies: any[]): string {
+  const livePackagePolicies = packagePolicies
+    .filter((p) => !p.deleted_at && !p.cancelled && p.policy_type_parent !== 'ELZAMI')
+    .sort((a, b) => policyTypeRank(a.policy_type_parent) - policyTypeRank(b.policy_type_parent));
+
+  const covered = new Map<string, any>();
+  const carNumbers = new Set<string>();
+  for (const payment of payments) {
+    const policy = payment.policy;
+    if (!policy) continue;
+    const members = policy.group_id ? livePackagePolicies.filter((p) => p.group_id === policy.group_id) : [];
+    for (const p of [...members, policy]) {
+      if (p.policy_type_parent !== 'ELZAMI' && !covered.has(p.id)) covered.set(p.id, p);
+    }
+    const car = policy.car?.[0] || policy.car;
+    if (car?.car_number) carNumbers.add(car.car_number);
+  }
+
+  const description = [...covered.values()].map(describePolicy).join(' + ') || 'ביטוח';
+  return carNumbers.size > 0 ? `${description} / רכב ${[...carNumbers].join(', ')}` : description;
+}
+
+/** "12" for one stored receipt number, "12–15" for several, null when none is stored */
+function formatReceiptNumbers(numbers: number[]): string | null {
+  const stored = numbers.filter((n) => n != null);
+  if (stored.length === 0) return null;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const min = Math.min(...stored);
+  const max = Math.max(...stored);
+  return min === max ? pad(min) : `${pad(min)}–${pad(max)}`;
+}
+
+/** Names of the employees who recorded the payments, in payment order */
+function joinReceiverNames(payments: any[], profiles: any[]): string {
+  const names = payments
+    .map((payment) => profiles.find((p) => p.id === payment.created_by_admin_id)?.full_name?.trim())
+    .filter(Boolean);
+  return [...new Set(names)].join(', ');
 }
 
 interface PhoneLink { phone: string; href: string; }
 
+// The method column already names the method, so only add what identifies it
 function buildPaymentDetail(payment: any): string {
-  if (payment.payment_type === 'visa') {
-    const card = payment.card_last_four ? `**** ${payment.card_last_four}` : '';
-    const inst = payment.installments_count && payment.installments_count > 1 ? ` / ${payment.installments_count} תשלומים` : ' / רגיל';
-    return `ויזה ${card}${inst}`;
-  }
   if (payment.payment_type === 'cheque') {
     return payment.cheque_number ? `שיק מס׳ ${payment.cheque_number}` : 'שיק';
   }
-  if (payment.payment_type === 'transfer') {
-    return 'העברה בנקאית';
+  if (payment.payment_type === 'visa') {
+    const parts: string[] = [];
+    if (payment.card_last_four) parts.push(`**** ${payment.card_last_four}`);
+    if (payment.installments_count && payment.installments_count > 1) parts.push(`${payment.installments_count} תשלומים`);
+    return parts.join(' · ') || '—';
   }
-  if (payment.payment_type === 'bit') {
-    return 'ביט';
-  }
-  return 'מזומן';
+  return '—';
 }
 
 function buildReceiptHtml(
-  payments: { payment_type: string; amount: number; payment_date: string; cheque_number?: string; cheque_date?: string; card_last_four?: string; installments_count?: number; tranzila_approval_code?: string; id: string }[],
+  payments: { payment_type: string; amount: number; payment_date: string; created_at?: string; cheque_number?: string; cheque_date?: string; card_last_four?: string; installments_count?: number; tranzila_approval_code?: string; id: string }[],
   totalAmount: number,
   client: any,
-  car: any,
-  policyTypesText: string,
-  receiptId: string,
+  subjectText: string,
+  receiptNumber: string | null,
+  receivedBy: string,
   logoUrl: string,
-  companySettings: { company_email?: string; company_phone_links?: PhoneLink[]; company_location?: string }
+  companySettings: { company_email?: string; company_phone_links?: PhoneLink[]; company_location?: string },
+  issueDate: string | null = null
 ): string {
-  const paymentDate = payments[0]?.payment_date || new Date().toISOString();
+  const receivedDay = issueDate || getReceivedDay(payments);
+  // Without a stored receipt number this is only a payment confirmation
+  const isDraft = !receiptNumber;
+  const docLabel = isDraft ? 'אישור תשלום' : 'קבלה';
+  const docTitle = isDraft ? docLabel : `${docLabel} ${receiptNumber}`;
 
   const paymentRows = payments.map((p, i) => {
     const typeLabel = PAYMENT_TYPE_LABELS[p.payment_type] || p.payment_type;
@@ -105,7 +202,7 @@ function buildReceiptHtml(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>קבלה ${receiptId} - ${client?.full_name || ''}</title>
+  <title>${docTitle} - ${client?.full_name || ''}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     @page { size: A4; margin: 15mm; }
@@ -293,6 +390,15 @@ function buildReceiptHtml(
       text-align: center;
     }
     .stamp-img { height: 60px; width: auto; opacity: 0.7; }
+    .signature-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .received-by {
+      font-size: 13px;
+      margin-bottom: 20px;
+    }
     .signature-line {
       width: 200px;
       border-top: 1px solid #999;
@@ -312,14 +418,6 @@ function buildReceiptHtml(
       font-size: 11px;
       color: #888;
       background: #fafafa;
-    }
-    .footer-badge {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      color: #1a3a5c;
-      font-weight: bold;
-      font-size: 11px;
     }
 
     /* Action buttons */
@@ -374,19 +472,19 @@ function buildReceiptHtml(
     <div class="content-grow">
       <div class="receipt-meta">
         <div class="receipt-title-block">
-          <span class="receipt-label">קבלה</span>
-          <span class="receipt-num">${receiptId}</span>
+          <span class="receipt-label">${docLabel}</span>
+          <span class="receipt-num">${isDraft ? 'טיוטה – אינה קבלה' : receiptNumber}</span>
         </div>
-        <span class="receipt-origin">מקור</span>
+        ${isDraft ? '' : '<span class="receipt-origin">מקור</span>'}
       </div>
 
       <div class="client-row">
         <div><span>לכבוד: </span><span class="client-name">${client?.full_name || '-'}</span>${client?.id_number ? ` (ת.ז. ${client.id_number})` : ''}</div>
-        <div>תאריך: ${formatDate(paymentDate)}</div>
+        <div>תאריך: ${formatDate(receivedDay)}</div>
       </div>
 
       <div class="subject-bar">
-        ביטוח רכב${car?.car_number ? ` / רכב ${car.car_number}` : ''} / ${client?.full_name || ''}
+        ${subjectText}
       </div>
 
       <div class="table-section">
@@ -397,7 +495,7 @@ function buildReceiptHtml(
               <th>#</th>
               <th>אמצעי תשלום</th>
               <th>פירוט</th>
-              <th>תאריך</th>
+              <th>תאריך תשלום/פירעון</th>
               <th>סכום</th>
             </tr>
           </thead>
@@ -416,13 +514,15 @@ function buildReceiptHtml(
         <div class="signature-stamp">
           ${logoUrl ? `<img src="${logoUrl}" alt="Stamp" class="stamp-img" />` : ''}
         </div>
-        <div class="signature-line">:חתימה</div>
+        <div class="signature-block">
+          ${receivedBy ? `<div class="received-by">התקבל ע״י: ${receivedBy}</div>` : ''}
+          <div class="signature-line">:חתימה</div>
+        </div>
       </div>
     </div>
 
     <div class="footer">
-      <div class="footer-badge">🔒 חתימה דיגיטלית מאובטחת</div>
-      <div>הופק ב ${formatDateTime(new Date().toISOString())} | קבלה ${receiptId}</div>
+      <div>הופק ב ${formatDateTime(new Date().toISOString())} | ${docTitle}</div>
     </div>
   </div>
 
@@ -439,9 +539,9 @@ function buildReceiptHtml(
     }
     function shareReceipt() {
       var url = window.location.href;
-      var text = 'קבלה: ' + url;
+      var text = '${docLabel}: ' + url;
       if (navigator.share) {
-        navigator.share({ title: 'קבלה', text: 'קבלת תשלום ביטוח', url: url }).catch(function(){});
+        navigator.share({ title: '${docLabel}', text: '${isDraft ? 'אישור תשלום ביטוח' : 'קבלת תשלום ביטוח'}', url: url }).catch(function(){});
       } else {
         window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
       }
@@ -510,12 +610,9 @@ serve(async (req) => {
       company_location: smsSettings?.company_location || '',
     };
 
-    // Get payment with policy and client info
-    const { data: payment, error: paymentError } = await supabase
-      .from("policy_payments")
-      .select(`
-        id, amount, payment_type, payment_date,
-        cheque_number, cheque_date, card_last_four, card_expiry,
+    const PAYMENT_SELECT = `
+        id, amount, payment_type, payment_date, created_at, refused, created_by_admin_id,
+        locked, source, cheque_number, cheque_date, card_last_four, card_expiry,
         installments_count, tranzila_approval_code, notes,
         policy:policies(
           id, policy_number, policy_type_parent, policy_type_child,
@@ -523,7 +620,12 @@ serve(async (req) => {
           client:clients(id, full_name, id_number, phone_number),
           car:cars(car_number, manufacturer_name, model, year)
         )
-      `)
+      `;
+
+    // Get payment with policy and client info
+    const { data: payment, error: paymentError } = await supabase
+      .from("policy_payments")
+      .select(PAYMENT_SELECT)
       .eq("id", payment_id)
       .single();
 
@@ -535,62 +637,110 @@ serve(async (req) => {
       );
     }
 
-    const policy = (payment as any).policy;
-
-    // ELZAMI (חובה/حوباه) must NEVER appear on a receipt.
-    // Inside a package, payments are often recorded on the ELZAMI policy even
-    // when they belong to the other components, so only the payment whose
-    // amount equals the ELZAMI price is blocked.
-    let elzamiPrices: number[] = [];
-    if (policy?.group_id) {
-      const { data: elzamiSiblings } = await supabase
-        .from("policies")
-        .select("insurance_price")
-        .eq("group_id", policy.group_id)
-        .eq("policy_type_parent", "ELZAMI");
-      elzamiPrices = (elzamiSiblings || []).map((s: any) => Number(s.insurance_price) || 0);
-    }
-
-    const matchesElzamiAmount = elzamiPrices.some(
-      (price: number) => price > 0 && Math.abs(price - Number(payment.amount)) < 0.01
-    );
-
-    if (matchesElzamiAmount || (policy?.policy_type_parent === "ELZAMI" && elzamiPrices.length === 0)) {
+    // A refused payment (e.g. a returned cheque) was never received
+    if (payment.refused) {
       return new Response(
-        JSON.stringify({ error: "لا يمكن إصدار קבלה لتأمين الحوباه (חובה)" }),
+        JSON.stringify({ error: "لا يمكن إصدار קבלה لدفعة مرفوضة" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const client = policy?.client?.[0] || policy?.client || {};
-    const car = policy?.car?.[0] || policy?.car || {};
+    const policy = (payment as any).policy;
 
-    // Build policy type text
-    let policyTypeKey = policy?.policy_type_parent || '';
-    if (policyTypeKey === 'THIRD_FULL' && policy?.policy_type_child) {
-      policyTypeKey = policy.policy_type_child;
-    }
-    const policyTypesText = POLICY_TYPE_LABELS[policyTypeKey] || policyTypeKey;
-
-    // Look up receipt_number from receipts table
-    const { data: receiptRow } = await supabase
+    // The receipts table decides what is printed: the payment's receipt, whole
+    // (every live line sharing its number). The database gives no receipt to
+    // ELZAMI placeholders, ₪0 or Tranzila card payments. A failed lookup must
+    // not turn a receipt into a confirmation.
+    const RECEIPT_SELECT = "payment_id, receipt_number, issue_date, cancelled_at, legacy_numbering";
+    const { data: receiptRow, error: receiptError } = await supabase
       .from("receipts")
-      .select("receipt_number")
+      .select(RECEIPT_SELECT)
       .eq("payment_id", payment_id)
       .maybeSingle();
-    const receiptId = receiptRow?.receipt_number 
-      ? String(receiptRow.receipt_number).padStart(2, '0')
-      : payment.id.slice(0, 8).toUpperCase();
+    if (receiptError) throw receiptError;
+
+    if (receiptRow?.cancelled_at) {
+      return new Response(
+        JSON.stringify({ error: "הקבלה של תשלום זה מבוטלת" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    let docReceipts: any[] = receiptRow ? [receiptRow] : [];
+    let docPayments: any[] = [payment];
+    if (receiptRow && !receiptRow.legacy_numbering) {
+      const { data: allLines, error: linesError } = await supabase
+        .from("receipts")
+        .select(RECEIPT_SELECT)
+        .eq("receipt_number", receiptRow.receipt_number)
+        .is("cancelled_at", null)
+        .not("payment_id", "is", null);
+      if (linesError) throw linesError;
+      if (allLines?.length) docReceipts = allLines;
+      const otherIds = docReceipts.map((r: any) => r.payment_id).filter((id: string) => id !== payment_id);
+      if (otherIds.length > 0) {
+        const { data: others, error: othersError } = await supabase
+          .from("policy_payments")
+          .select(PAYMENT_SELECT)
+          .in("id", otherIds);
+        if (othersError) throw othersError;
+        docPayments = [payment, ...(others || []).filter((p: any) => !p.refused)];
+      }
+    } else if (!receiptRow) {
+      // No receipt of ours: a payment confirmation, never for ELZAMI or ₪0
+      const isElzami = (payment as any).locked || (payment as any).source === 'system' ||
+        policy?.policy_type_parent === 'ELZAMI' || Number(payment.amount) <= 0;
+      if (isElzami) {
+        return new Response(
+          JSON.stringify({ error: "لا يمكن إصدار קבלה لتأمين الحوباه (חובה)" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+    docPayments.sort((a: any, b: any) => String(a.created_at).localeCompare(String(b.created_at)));
+
+    const client = policy?.client?.[0] || policy?.client || {};
+
+    // A package payment covers the package's other policies too
+    const groupIds = [...new Set(docPayments.map((p: any) => p.policy?.group_id).filter(Boolean))];
+    let packagePolicies: any[] = [];
+    if (groupIds.length > 0) {
+      const { data: packageRows, error: packageError } = await supabase
+        .from("policies")
+        .select("id, policy_number, policy_type_parent, policy_type_child, start_date, end_date, group_id, deleted_at, cancelled")
+        .in("group_id", groupIds);
+      if (packageError) throw packageError;
+      packagePolicies = packageRows || [];
+    }
+    const subjectText = buildSubjectText(docPayments, packagePolicies);
+
+    // Without a number the document is only a payment confirmation
+    const receiptNumber = formatReceiptNumbers(docReceipts.map((r: any) => r.receipt_number));
+    // The receipt's date is the day it was issued
+    const issueDate = docReceipts.map((r: any) => r.issue_date).filter(Boolean).sort()[0] || null;
+    const totalAmount = docPayments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+
+    // The employee who recorded the payment is the one who received it
+    const adminIds = [...new Set(docPayments.map((p: any) => p.created_by_admin_id).filter(Boolean))];
+    let receivedBy = '';
+    if (adminIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", adminIds);
+      receivedBy = joinReceiverNames(docPayments, profiles || []);
+    }
 
     const receiptHtml = buildReceiptHtml(
-      [payment as any],
-      payment.amount || 0,
+      docPayments,
+      totalAmount,
       client,
-      car,
-      policyTypesText,
-      receiptId,
+      subjectText,
+      receiptNumber,
+      receivedBy,
       logoUrl,
-      companySettings
+      companySettings,
+      issueDate
     );
 
     if (!bunnyApiKey || !bunnyStorageZone) {

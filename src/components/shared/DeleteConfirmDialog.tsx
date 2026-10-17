@@ -16,6 +16,7 @@ interface DeleteConfirmDialogProps {
   title?: string;
   description?: string;
   loading?: boolean;
+  confirmLabel?: string;
 }
 
 export function DeleteConfirmDialog({
@@ -25,6 +26,7 @@ export function DeleteConfirmDialog({
   title = "تأكيد الحذف",
   description = "هل أنت متأكد من حذف هذا العنصر؟ لا يمكن التراجع عن هذا الإجراء.",
   loading = false,
+  confirmLabel = "حذف",
 }: DeleteConfirmDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -40,7 +42,7 @@ export function DeleteConfirmDialog({
             disabled={loading}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            {loading ? "جاري الحذف..." : "حذف"}
+            {loading ? "جاري الحذف..." : confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

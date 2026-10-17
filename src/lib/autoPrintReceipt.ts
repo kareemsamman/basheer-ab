@@ -31,6 +31,21 @@ export async function autoPrintPaymentReceipt(
   const w = printWindow !== undefined ? printWindow : openReceiptPrintWindow();
 
   try {
+    // Only payments with a receipt of ours are printed. A card charged through
+    // Tranzila gets Tranzila's receipt, and ELZAMI placeholders get none.
+    const { data: receipts, error: receiptsError } = await supabase
+      .from("receipts")
+      .select("id")
+      .in("payment_id", paymentIds)
+      .is("cancelled_at", null)
+      .limit(1);
+    if (receiptsError) throw receiptsError;
+    if (!receipts?.length) {
+      if (w) w.close();
+      toast.info("لا توجد קבלה من نظامنا لهذه الدفعة (البطاقة تصدر لها קבלה من ترانزيلا)");
+      return;
+    }
+
     const isBulk = paymentIds.length > 1;
     const { data, error } = await supabase.functions.invoke(
       isBulk ? "generate-bulk-payment-receipt" : "generate-payment-receipt",

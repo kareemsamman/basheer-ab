@@ -18,7 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Plus, Printer, Pencil, Trash2, Search, Receipt, CalendarIcon, X, Link2, Loader2, ChevronDown, ChevronUp, Download, FileText } from "lucide-react";
+import { Plus, Printer, Pencil, Ban, Search, Receipt, CalendarIcon, X, Link2, Loader2, ChevronDown, ChevronUp, Download, FileText } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { buildReceiptPrintHtml, type ReceiptPrintData, type CompanySettings } from "@/lib/receiptPrintBuilder";
@@ -50,13 +50,20 @@ interface ReceiptRow {
   cheque_date: string | null;
   card_last_four: string | null;
   created_at: string;
+  cancelled_at?: string | null;
+  cancel_reason?: string | null;
+  // Numbered by the old one-number-per-payment rule (before 17/10/2026)
+  legacy_numbering?: boolean;
   clients: { id_number: string | null } | null;
   policy_payments: {
     cheque_date: string | null;
     payment_date: string | null;
     policy_id?: string | null;
+    created_by_admin_id?: string | null;
     policy?: { policy_type_parent: string | null } | null;
   } | null;
+  // Name of the employee who recorded the linked payment
+  received_by?: string | null;
 }
 
 
@@ -86,7 +93,7 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
       for (let from = 0; ; from += pageSize) {
         let query = supabase
           .from("receipts")
-          .select("*, clients!client_id(id_number), policy_payments!payment_id(policy_id, cheque_date, payment_date, policy:policies!policy_id(policy_type_parent))")
+          .select("*, clients!client_id(id_number), policy_payments!payment_id(policy_id, cheque_date, payment_date, created_by_admin_id, policy:policies!policy_id(policy_type_parent))")
           .order("receipt_number", { ascending: false })
           .range(from, from + pageSize - 1);
 
@@ -113,80 +120,13 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
         if (page.length < pageSize) break;
       }
 
-      // Collect all policy_ids referenced by these receipts (direct or via payment)
-      const policyIds = new Set<string>();
-      for (const r of (data || []) as any[]) {
-        if (r.policy_id) policyIds.add(r.policy_id);
-        const ppPid = r.policy_payments?.policy_id;
-        if (ppPid) policyIds.add(ppPid);
-      }
-
-      // Fetch parent type + group_id for all referenced policies in small chunks,
-      // then for every group find the ELZAMI sibling so we can exclude its receipt.
-      // Large `.in(...)` filters can fail or return incomplete results when no search is applied.
-      const elzamiPolicyIds = new Set<string>();
-      const policyToGroup = new Map<string, string | null>();
-      const groupElzamiPrice = new Map<string, number>();
-      if (policyIds.size > 0) {
-        const chunkSize = 200;
-        const policyIdList = Array.from(policyIds);
-        const pols: any[] = [];
-
-        for (let i = 0; i < policyIdList.length; i += chunkSize) {
-          const chunk = policyIdList.slice(i, i + chunkSize);
-          const { data: page, error } = await supabase
-            .from("policies")
-            .select("id, policy_type_parent, group_id, insurance_price")
-            .in("id", chunk);
-          if (error) throw error;
-          if (page?.length) pols.push(...page);
-        }
-
-        const groupIds = new Set<string>();
-        for (const p of pols) {
-          if (p.policy_type_parent === "ELZAMI") elzamiPolicyIds.add(p.id);
-          policyToGroup.set(p.id, p.group_id || null);
-          if (p.group_id) groupIds.add(p.group_id);
-        }
-
-        const groupIdList = Array.from(groupIds);
-        for (let i = 0; i < groupIdList.length; i += chunkSize) {
-          const chunk = groupIdList.slice(i, i + chunkSize);
-          const { data: siblings, error } = await supabase
-            .from("policies")
-            .select("id, policy_type_parent, group_id, insurance_price")
-            .in("group_id", chunk)
-            .eq("policy_type_parent", "ELZAMI");
-          if (error) throw error;
-          for (const s of (siblings || []) as any[]) {
-            elzamiPolicyIds.add(s.id);
-            if (s.group_id) groupElzamiPrice.set(s.group_id, Number(s.insurance_price) || 0);
-          }
-        }
-      }
-
-      let rows = ((data || []) as any[])
-        .filter((r: any) => {
-          const linkedPolicyId = r.policy_payments?.policy_id || r.policy_id;
-          const parent = r.policy_payments?.policy?.policy_type_parent;
-          const gid = linkedPolicyId ? policyToGroup.get(linkedPolicyId) : null;
-          const elzPrice = gid ? groupElzamiPrice.get(gid) : undefined;
-
-          // Inside a package, payments are often recorded on the ELZAMI policy
-          // even when they cover the other components — block only the payment
-          // whose amount equals the ELZAMI price.
-          if (elzPrice && Math.abs(Number(r.amount) - elzPrice) < 0.01) return false;
-          if (elzPrice) return true;
-
-          // Standalone ELZAMI policy → never gets a receipt.
-          if (parent === "ELZAMI") return false;
-          if (linkedPolicyId && elzamiPolicyIds.has(linkedPolicyId)) return false;
-          return true;
-        })
-        .map((r: any) => ({
-          ...r,
-          client_id_number: r.clients?.id_number || null,
-        })) as ReceiptRow[];
+      // Which payments get a receipt is decided in the database (ELZAMI
+      // placeholders, ₪0 and Tranzila card payments get none); receipts that
+      // turned out not to be money received are kept as cancelled (מבוטלת).
+      let rows = ((data || []) as any[]).map((r: any) => ({
+        ...r,
+        client_id_number: r.clients?.id_number || null,
+      })) as ReceiptRow[];
 
       // Filter by the same date shown in the table.
       if (dateFrom || dateTo) {
@@ -201,6 +141,19 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
         });
       }
 
+      // Who recorded each payment, printed as "התקבל ע״י". The directory falls
+      // back to the email when a user has no name; only names are printed.
+      const creatorIds = [...new Set(rows.map((r) => r.policy_payments?.created_by_admin_id).filter((id): id is string => !!id))];
+      if (creatorIds.length > 0) {
+        const { data: creators } = await supabase.rpc("user_directory_get_by_ids", { p_ids: creatorIds });
+        const names = new Map<string, string>();
+        for (const c of creators || []) {
+          const name = c.display_name?.trim();
+          if (name && name !== c.email) names.set(c.id, name);
+        }
+        rows = rows.map((r) => ({ ...r, received_by: names.get(r.policy_payments?.created_by_admin_id || "") || null }));
+      }
+
       return rows;
     },
   });
@@ -209,6 +162,7 @@ function useReceipts(tab: string, search: string, dateFrom: Date | undefined, da
 interface GroupedReceipt {
   key: string;
   receipts: ReceiptRow[];
+  // Sum of the lines that are not cancelled
   totalAmount: number;
   client_name: string;
   client_id_number: string | null;
@@ -219,25 +173,45 @@ interface GroupedReceipt {
   source: string;
   firstReceiptNumber: number;
   lastReceiptNumber: number;
+  // Every line of the receipt is cancelled (מבוטלת)
+  cancelled: boolean;
+}
+
+function isCancelled(r: ReceiptRow): boolean {
+  return !!r.cancelled_at;
+}
+
+function liveTotal(receipts: ReceiptRow[]): number {
+  return receipts.reduce((sum, r) => sum + (isCancelled(r) ? 0 : r.amount), 0);
+}
+
+/** "4519" for one receipt number, "4519-4520" for an old multi-number group */
+function formatReceiptRange(group: Pick<GroupedReceipt, "firstReceiptNumber" | "lastReceiptNumber">): string {
+  return group.firstReceiptNumber === group.lastReceiptNumber
+    ? padReceiptNumber(group.firstReceiptNumber)
+    : `${padReceiptNumber(group.firstReceiptNumber)}-${padReceiptNumber(group.lastReceiptNumber)}`;
 }
 
 function groupReceipts(receipts: ReceiptRow[]): GroupedReceipt[] {
   const map = new Map<string, ReceiptRow[]>();
   for (const r of receipts) {
-    // Group by client + car + created_at rounded to same minute (payments entered together)
-    const createdMinute = r.created_at ? r.created_at.slice(0, 16) : '';
-    const key = `${r.client_name}|${r.car_number || ''}|${createdMinute}|${r.receipt_type}`;
+    // One receipt = all the payment lines sharing its number. Receipts numbered
+    // before 17/10/2026 took one number per payment, so those are still shown
+    // grouped by client + car + the minute they were entered.
+    const key = r.legacy_numbering
+      ? `L|${r.client_name}|${r.car_number || ''}|${r.created_at ? r.created_at.slice(0, 16) : ''}|${r.receipt_type}`
+      : `N|${r.receipt_number}`;
     const group = map.get(key) || [];
     group.push(r);
     map.set(key, group);
   }
   const groups: GroupedReceipt[] = [];
   for (const [key, items] of map) {
-    const sorted = items.sort((a, b) => a.receipt_number - b.receipt_number);
+    const sorted = items.sort((a, b) => a.receipt_number - b.receipt_number || a.created_at.localeCompare(b.created_at));
     groups.push({
       key,
       receipts: sorted,
-      totalAmount: sorted.reduce((sum, r) => sum + r.amount, 0),
+      totalAmount: liveTotal(sorted),
       client_name: sorted[0].client_name,
       client_id_number: sorted[0].client_id_number,
       car_number: sorted[0].car_number,
@@ -247,15 +221,11 @@ function groupReceipts(receipts: ReceiptRow[]): GroupedReceipt[] {
       source: sorted[0].source,
       firstReceiptNumber: sorted[0].receipt_number,
       lastReceiptNumber: sorted[sorted.length - 1].receipt_number,
+      cancelled: sorted.every(isCancelled),
     });
   }
-  // Sort oldest first (ascending by date, then by receipt number)
-  groups.sort((a, b) => {
-    const da = a.list_date || "";
-    const db = b.list_date || "";
-    if (da !== db) return da < db ? -1 : 1;
-    return a.firstReceiptNumber - b.firstReceiptNumber;
-  });
+  // Ascending by receipt number (the table reverses it to show newest first)
+  groups.sort((a, b) => a.firstReceiptNumber - b.firstReceiptNumber);
   return groups;
 }
 
@@ -306,10 +276,9 @@ function getDisplayDate(r: ReceiptRow): string {
   return r.issue_date || format(new Date(r.created_at), "yyyy-MM-dd");
 }
 
+/** The receipt's own date: the day it was issued (תאריך הנפקה) */
 function getReceiptListDate(r: ReceiptRow): string {
-  return r.source === "auto"
-    ? (r.issue_date || getDisplayDate(r))
-    : getDisplayDate(r);
+  return r.issue_date || format(new Date(r.created_at), "yyyy-MM-dd");
 }
 
 function getReceiptPaymentDetails(r: ReceiptRow): string {
@@ -328,14 +297,19 @@ function buildGroupedReceiptPrintHtml(group: GroupedReceipt, settings: CompanySe
   const logoImg = settings.logoUrl
     ? `<img src="${settings.logoUrl}" alt="Logo" class="logo" />`
     : `<div class="logo-placeholder">AB</div>`;
+  // The receipt's own date, as on a single receipt
+  const receiptDocDate = group.receipts[0]?.issue_date || group.receipts[0]?.receipt_date || group.receipt_date;
+  const receivedBy = [...new Set(group.receipts.map((r) => r.received_by).filter(Boolean))].join(", ");
+  const cancelledLabel = group.cancelled ? ` <span style="color:#c0392b">(מבוטלת)</span>` : "";
 
+  // A cancelled line was never money received; it stays on the page struck through
   const paymentRows = group.receipts
     .map(
       (r, index) => `
-      <tr>
+      <tr${isCancelled(r) ? ' style="text-decoration:line-through;color:#999"' : ""}>
         <td>${index + 1}</td>
         <td>${PAYMENT_METHOD_LABELS[r.payment_method || ""] || "תשלום"}</td>
-        <td>${getReceiptPaymentDetails(r)}</td>
+        <td>${getReceiptPaymentDetails(r)}${isCancelled(r) ? " (מבוטל)" : ""}</td>
         <td>${formatPrintDate(r.receipt_date)}</td>
         <td class="amount-cell">₪${r.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
       </tr>`
@@ -383,8 +357,8 @@ function buildGroupedReceiptPrintHtml(group: GroupedReceipt, settings: CompanySe
     .total-row { display: flex; justify-content: flex-end; align-items: center; padding: 20px 34px; gap: 18px; }
     .total-label { font-size: 22px; font-weight: bold; color: #1a3a5c; }
     .total-value { background: #1a3a5c; color: white; padding: 12px 32px; border-radius: 6px; font-size: 28px; font-weight: bold; }
+    .received-by { padding: 0 34px 20px; font-size: 20px; }
     .footer { border-top: 2px solid #1a3a5c; padding: 12px 30px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #888; background: #fafafa; }
-    .footer-badge { color: #1a3a5c; font-weight: bold; }
     .action-buttons { display: flex; gap: 10px; justify-content: center; padding: 20px; }
     .btn { padding: 10px 24px; border: none; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer; font-family: Arial, Tahoma, sans-serif; background: #1a3a5c; color: white; }
   </style>
@@ -409,7 +383,7 @@ function buildGroupedReceiptPrintHtml(group: GroupedReceipt, settings: CompanySe
 
     <div class="receipt-meta">
       <span class="receipt-label">${RECEIPT_TYPE_LABELS[group.receipt_type] || group.receipt_type}</span>
-      <span class="receipt-num">#${padReceiptNumber(group.firstReceiptNumber)}-${padReceiptNumber(group.lastReceiptNumber)}</span>
+      <span class="receipt-num">#${formatReceiptRange(group)}${cancelledLabel}</span>
     </div>
 
     <div class="client-row">
@@ -417,7 +391,7 @@ function buildGroupedReceiptPrintHtml(group: GroupedReceipt, settings: CompanySe
         <div><span>לכבוד: </span><span class="client-name">${group.client_name}</span></div>
         ${group.client_id_number ? `<div style="font-size:12px;color:#666;margin-top:2px;">ת.ז: ${group.client_id_number}</div>` : ""}
       </div>
-      <div>תאריך: ${formatPrintDate(group.receipt_date)}</div>
+      <div>תאריך: ${formatPrintDate(receiptDocDate)}</div>
     </div>
 
     <div class="subject-bar">
@@ -432,7 +406,7 @@ function buildGroupedReceiptPrintHtml(group: GroupedReceipt, settings: CompanySe
             <th>#</th>
             <th>אמצעי תשלום</th>
             <th>פירוט</th>
-            <th>תאריך</th>
+            <th>תאריך תשלום/פירעון</th>
             <th>סכום</th>
           </tr>
         </thead>
@@ -447,8 +421,9 @@ function buildGroupedReceiptPrintHtml(group: GroupedReceipt, settings: CompanySe
       <span class="total-value">₪${group.totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>
 
+    ${receivedBy ? `<div class="received-by">התקבל ע״י: ${receivedBy}</div>` : ""}
+
     <div class="footer">
-      <div class="footer-badge">🔒 חתימה דיגיטלית מאובטחת</div>
       <div>הופק ב ${formatPrintDate(new Date().toISOString())} | ${group.receipts.length} תשלומים</div>
     </div>
   </div>
@@ -493,9 +468,7 @@ function downloadTextPdf(lines: string[]): Blob {
 
 function buildReceiptPdfLines(group: GroupedReceipt): string[] {
   const title = RECEIPT_TYPE_LABELS[group.receipt_type] || group.receipt_type;
-  const receiptRange = group.receipts.length === 1
-    ? padReceiptNumber(group.firstReceiptNumber)
-    : `${padReceiptNumber(group.firstReceiptNumber)}-${padReceiptNumber(group.lastReceiptNumber)}`;
+  const receiptRange = formatReceiptRange(group);
 
   const headerLines = [
     "Basheer Abu Sneineh Insurance",
@@ -539,23 +512,25 @@ function buildFullInvoiceHtml(receipts: ReceiptRow[], settings: CompanySettings)
   const rows = receipts
     .map(
       (r, index) => `
-      <tr>
+      <tr${isCancelled(r) ? ' style="color:#999"' : ""}>
         <td>${index + 1}</td>
         <td>${padReceiptNumber(r.receipt_number)}</td>
         <td>${r.client_name}</td>
         <td>${r.client_id_number || "-"}</td>
         <td>${r.car_number || "-"}</td>
-        <td>${PAYMENT_METHOD_LABELS[r.payment_method || ""] || "תשלום"}</td>
+        <td>${isCancelled(r) ? "מבוטלת" : PAYMENT_METHOD_LABELS[r.payment_method || ""] || "תשלום"}</td>
         <td>${getReceiptPaymentDetails(r)}</td>
-        <td>${formatPrintDate(r.receipt_date)}</td>
-        <td class="amount-cell">₪${r.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td>${formatPrintDate(getReceiptListDate(r))}</td>
+        <td class="amount-cell"${isCancelled(r) ? ' style="text-decoration:line-through"' : ""}>₪${r.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
       </tr>`
     )
     .join("");
 
-  const totalAmount = receipts.reduce((sum, r) => sum + r.amount, 0);
-  const dateRange = receipts.length > 0
-    ? `${formatPrintDate(receipts[receipts.length - 1].receipt_date)} - ${formatPrintDate(receipts[0].receipt_date)}`
+  // Cancelled receipts are listed (so the numbers run on) but not summed
+  const totalAmount = liveTotal(receipts);
+  const issueDates = receipts.map(getReceiptListDate).filter(Boolean).sort();
+  const dateRange = issueDates.length > 0
+    ? `${formatPrintDate(issueDates[0])} - ${formatPrintDate(issueDates[issueDates.length - 1])}`
     : "";
 
   return `<!DOCTYPE html>
@@ -597,7 +572,6 @@ function buildFullInvoiceHtml(receipts: ReceiptRow[], settings: CompanySettings)
     .total-value { background: #1a3a5c; color: white; padding: 10px 28px; border-radius: 6px; font-size: 26px; font-weight: bold; }
     .total-count { font-size: 17px; color: #666; }
     .footer { border-top: 1px solid #ddd; padding: 10px 25px; display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #888; background: #fafafa; }
-    .footer-badge { color: #1a3a5c; font-weight: bold; }
     .action-buttons { display: flex; gap: 10px; justify-content: center; padding: 20px; }
     .btn { padding: 10px 24px; border: none; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer; font-family: Arial, Tahoma, sans-serif; background: #1a3a5c; color: white; }
   </style>
@@ -653,7 +627,6 @@ function buildFullInvoiceHtml(receipts: ReceiptRow[], settings: CompanySettings)
     </div>
 
     <div class="footer">
-      <div class="footer-badge">🔒 חתימה דיגיטלית מאובטחת</div>
       <div>הופק ב ${formatPrintDate(new Date().toISOString())} | ריכוז ${receipts.length} קבלות</div>
     </div>
   </div>
@@ -745,6 +718,14 @@ async function runWithConcurrency<T>(
   return results;
 }
 
+function CancelledBadge({ reason }: { reason?: string | null }) {
+  return (
+    <Badge variant="outline" className="text-xs border-destructive text-destructive" title={reason || undefined}>
+      מבוטלת
+    </Badge>
+  );
+}
+
 export default function Receipts() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("all");
@@ -753,14 +734,13 @@ export default function Receipts() {
   const [dateTo, setDateTo] = useState<Date | undefined>();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<ReceiptRow | null>(null);
-  const [deleteReceipt, setDeleteReceipt] = useState<ReceiptRow | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<GroupedReceipt | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
   const [paymentMethodFilter, setPaymentMethodFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState<"all" | "manual" | "auto">("all");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState<string | null>(null); // 'zip' | 'invoice' | null
-  const [customStartNumber, setCustomStartNumber] = useState<string>("");
 
   // Form state
   const [formType, setFormType] = useState<"payment" | "accident_fee">("payment");
@@ -857,17 +837,8 @@ export default function Receipts() {
 
   const defaultSettings: CompanySettings = { logoUrl: "", company_email: "", company_location: "", company_phone_links: [] };
 
-  const applyReceiptNumberOverridesToReceipts = (items: ReceiptRow[]): ReceiptRow[] => {
-    const overrides = getReceiptNumberOverrides();
-    if (!overrides) return items;
-    return items.map((receipt) => ({
-      ...receipt,
-      receipt_number: overrides.get(receipt.id) ?? receipt.receipt_number,
-    }));
-  };
-
   const handleFullInvoice = () => {
-    const targets = applyReceiptNumberOverridesToReceipts(getTargetReceipts());
+    const targets = getTargetReceipts();
     if (targets.length === 0) { toast.error("אין קבלות להצגה"); return; }
     setBulkLoading("invoice");
     try {
@@ -895,7 +866,7 @@ export default function Receipts() {
       .filter(g => g.receipts.length > 0)
       .map(g => ({
         ...g,
-        totalAmount: g.receipts.reduce((sum, r) => sum + r.amount, 0),
+        totalAmount: liveTotal(g.receipts),
         firstReceiptNumber: g.receipts[0].receipt_number,
         lastReceiptNumber: g.receipts[g.receipts.length - 1].receipt_number,
       }));
@@ -913,6 +884,7 @@ export default function Receipts() {
         clientIdNumber: r.client_id_number,
         carNumber: r.car_number || "",
         receiptDate: r.receipt_date,
+        issueDate: r.issue_date,
         amount: r.amount,
         accidentDate: r.accident_date || "",
         accidentDetails: r.accident_details || "",
@@ -922,6 +894,7 @@ export default function Receipts() {
         chequeNumber: r.cheque_number || "",
         chequeDate: r.cheque_date || "",
         cardLastFour: r.card_last_four || "",
+        receivedBy: r.received_by,
       };
       return buildReceiptPrintHtml(data, settings);
     }
@@ -929,28 +902,8 @@ export default function Receipts() {
   };
 
   const handleDownloadPdf = async () => {
-    let groups = getTargetGroups();
+    const groups = getTargetGroups();
     if (groups.length === 0) { toast.error("אין קבלות להורדה"); return; }
-
-    // Override receipt numbers sequentially if a starting number was provided
-    const startNumRaw = customStartNumber.trim();
-    if (startNumRaw !== "") {
-      const startNum = parseInt(startNumRaw, 10);
-      if (!Number.isFinite(startNum) || startNum <= 0) {
-        toast.error("מספר התחלה לא תקין");
-        return;
-      }
-      let counter = startNum;
-      groups = groups.map((g) => {
-        const newReceipts = g.receipts.map((r) => ({ ...r, receipt_number: counter++ }));
-        return {
-          ...g,
-          receipts: newReceipts,
-          firstReceiptNumber: newReceipts[0].receipt_number,
-          lastReceiptNumber: newReceipts[newReceipts.length - 1].receipt_number,
-        };
-      });
-    }
 
     setBulkLoading("zip");
     const receiptCount = groups.reduce((sum, group) => sum + group.receipts.length, 0);
@@ -970,9 +923,7 @@ export default function Receipts() {
           const group = groups[i];
           const html = buildGroupPdfHtml(group);
           const clientSlug = group.client_name.replace(/[^a-zA-Z0-9\u0590-\u05FF\u0600-\u06FF]/g, "_");
-          const receiptLabel = group.receipts.length === 1
-            ? padReceiptNumber(group.firstReceiptNumber)
-            : `${padReceiptNumber(group.firstReceiptNumber)}-${padReceiptNumber(group.lastReceiptNumber)}`;
+          const receiptLabel = formatReceiptRange(group);
           const filename = `receipt_${receiptLabel}_${clientSlug}.pdf`;
           const blob = await generateHtmlPdfBlob(html, filename);
           pdfEntries[i] = { name: filename, blob };
@@ -1077,12 +1028,15 @@ export default function Receipts() {
     mutationFn: async () => {
       const isAutoEdit = editingReceipt?.source === "auto";
 
-      // Auto-generated receipts: only issue_date is user-editable
+      // Auto-generated receipts: only issue_date is user-editable, and it is
+      // the date of the whole receipt (every line sharing its number)
       if (isAutoEdit) {
-        const { error } = await supabase
+        const update = supabase
           .from("receipts")
-          .update({ issue_date: formIssueDate || null, updated_at: new Date().toISOString() })
-          .eq("id", editingReceipt!.id);
+          .update({ issue_date: formIssueDate || null, updated_at: new Date().toISOString() });
+        const { error } = editingReceipt!.legacy_numbering
+          ? await update.eq("id", editingReceipt!.id)
+          : await update.eq("receipt_number", editingReceipt!.receipt_number);
         if (error) throw error;
         return;
       }
@@ -1125,38 +1079,27 @@ export default function Receipts() {
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("receipts").delete().eq("id", id);
+  // A receipt is never deleted — its number would leave a gap. It is
+  // cancelled (מבוטלת) and stays in the list.
+  const cancelMutation = useMutation({
+    mutationFn: async (group: GroupedReceipt) => {
+      const ids = group.receipts.filter((r) => !isCancelled(r)).map((r) => r.id);
+      if (ids.length === 0) return;
+      const { error } = await supabase
+        .from("receipts")
+        .update({ cancelled_at: new Date().toISOString(), cancel_reason: "בוטלה ידנית", updated_at: new Date().toISOString() })
+        .in("id", ids);
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("הקבלה נמחקה בהצלחה");
+      toast.success("הקבלה בוטלה");
       queryClient.invalidateQueries({ queryKey: ["receipts"] });
-      setDeleteReceipt(null);
+      setCancelTarget(null);
     },
     onError: (err: any) => {
       toast.error("שגיאה: " + err.message);
     },
   });
-
-  // Build id -> overridden receipt number based on the user-set start number,
-  // numbering sequentially across the currently-targeted (selected or filtered) receipts.
-  const getReceiptNumberOverrides = (): Map<string, number> | null => {
-    const raw = customStartNumber.trim();
-    if (raw === "") return null;
-    const start = parseInt(raw, 10);
-    if (!Number.isFinite(start) || start <= 0) return null;
-    const groups = getTargetGroups();
-    const map = new Map<string, number>();
-    let counter = start;
-    for (const g of groups) {
-      for (const r of g.receipts) {
-        map.set(r.id, counter++);
-      }
-    }
-    return map;
-  };
 
   const handlePrint = async (r: ReceiptRow) => {
     let paymentMethod = r.payment_method || '';
@@ -1179,16 +1122,15 @@ export default function Receipts() {
       }
     }
 
-    const overrides = getReceiptNumberOverrides();
-    const overrideNum = overrides?.get(r.id);
     const data: ReceiptPrintData = {
-      receiptNumber: padReceiptNumber(overrideNum ?? r.receipt_number),
+      receiptNumber: padReceiptNumber(r.receipt_number),
       receiptType: r.receipt_type,
       receiptTypeLabel: RECEIPT_TYPE_LABELS[r.receipt_type] || r.receipt_type,
       clientName: r.client_name,
       clientIdNumber: r.client_id_number,
       carNumber: r.car_number || "",
       receiptDate: r.receipt_date,
+      issueDate: r.issue_date,
       amount: r.amount,
       accidentDate: r.accident_date || "",
       accidentDetails: r.accident_details || "",
@@ -1198,6 +1140,7 @@ export default function Receipts() {
       chequeNumber,
       chequeDate,
       cardLastFour,
+      receivedBy: r.received_by,
     };
     const html = buildReceiptPrintHtml(data, companySettings || { logoUrl: "", company_email: "", company_location: "", company_phone_links: [] });
     const printWindow = window.open("", "_blank");
@@ -1207,31 +1150,13 @@ export default function Receipts() {
   };
 
   const handlePrintGroup = async (group: GroupedReceipt) => {
-    const overrides = getReceiptNumberOverrides();
-
-    // Apply overrides if set
-    let effectiveGroup = group;
-    if (overrides) {
-      const newReceipts = group.receipts.map((r) => ({
-        ...r,
-        receipt_number: overrides.get(r.id) ?? r.receipt_number,
-      }));
-      effectiveGroup = {
-        ...group,
-        receipts: newReceipts,
-        firstReceiptNumber: newReceipts[0].receipt_number,
-        lastReceiptNumber: newReceipts[newReceipts.length - 1].receipt_number,
-      };
-    }
-
-    const paymentIds = effectiveGroup.receipts.map((r) => r.payment_id).filter((id): id is string => !!id);
+    const paymentIds = group.receipts.map((r) => r.payment_id).filter((id): id is string => !!id);
 
     // For auto groups, use backend bulk receipt generator to ensure all payments are included.
-    // Skip backend path when number overrides are active so the custom numbering is honored.
-    if (!overrides && effectiveGroup.source === "auto" && paymentIds.length === effectiveGroup.receipts.length && paymentIds.length > 1) {
+    if (group.source === "auto" && paymentIds.length === group.receipts.length && paymentIds.length > 1) {
       try {
         const { data, error } = await supabase.functions.invoke("generate-bulk-payment-receipt", {
-          body: { payment_ids: paymentIds, total_amount: effectiveGroup.totalAmount },
+          body: { payment_ids: paymentIds, total_amount: group.totalAmount },
         });
         if (!error) {
           const url = data?.receipt_url || data?.url;
@@ -1247,7 +1172,7 @@ export default function Receipts() {
 
     // Fallback for manual/mixed groups
     const html = buildGroupedReceiptPrintHtml(
-      effectiveGroup,
+      group,
       companySettings || { logoUrl: "", company_email: "", company_location: "", company_phone_links: [] }
     );
     const printWindow = window.open("", "_blank");
@@ -1419,19 +1344,6 @@ export default function Receipts() {
               {bulkLoading === "zip" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
               הורד PDF
             </Button>
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="start-num" className="text-xs text-muted-foreground whitespace-nowrap">מספר התחלה:</Label>
-              <Input
-                id="start-num"
-                type="number"
-                min={1}
-                value={customStartNumber}
-                onChange={(e) => setCustomStartNumber(e.target.value)}
-                placeholder="אוטומטי"
-                className="h-8 w-24 text-sm"
-                disabled={!!bulkLoading}
-              />
-            </div>
             {selectedIds.size > 0 && (
               <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())} className="gap-1 text-xs">
                 <X className="h-3 w-3" />
@@ -1454,7 +1366,7 @@ export default function Receipts() {
                 <TableHead className="text-right">שם לקוח</TableHead>
                 <TableHead className="text-right">ת.ז</TableHead>
                 <TableHead className="text-right">מס׳ רכב</TableHead>
-                <TableHead className="text-right">תאריך</TableHead>
+                <TableHead className="text-right">תאריך הנפקה</TableHead>
                 <TableHead className="text-right">סכום</TableHead>
                 <TableHead className="text-right">אמצעי תשלום</TableHead>
                 <TableHead className="text-right">מקור</TableHead>
@@ -1480,21 +1392,24 @@ export default function Receipts() {
                   if (!isMulti) {
                     const r = primary;
                     return (
-                      <TableRow key={r.id}>
+                      <TableRow key={r.id} className={cn(group.cancelled && "text-muted-foreground")}>
                         <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                           <Checkbox checked={selectedIds.has(r.id)} onCheckedChange={() => toggleSelectReceipt(r.id)} />
                         </TableCell>
                         <TableCell className="font-mono text-xs">{padReceiptNumber(r.receipt_number)}</TableCell>
                         <TableCell>
-                          <Badge variant={r.receipt_type === "accident_fee" ? "destructive" : "default"} className="text-xs">
-                            {RECEIPT_TYPE_LABELS[r.receipt_type] || r.receipt_type}
-                          </Badge>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <Badge variant={r.receipt_type === "accident_fee" ? "destructive" : "default"} className="text-xs">
+                              {RECEIPT_TYPE_LABELS[r.receipt_type] || r.receipt_type}
+                            </Badge>
+                            {group.cancelled && <CancelledBadge reason={r.cancel_reason} />}
+                          </div>
                         </TableCell>
                         <TableCell className="font-medium">{r.client_name}</TableCell>
                         <TableCell className="font-mono text-sm">{r.client_id_number || "-"}</TableCell>
                         <TableCell className="font-mono text-sm">{r.car_number || "-"}</TableCell>
                         <TableCell>{getReceiptListDate(r)}</TableCell>
-                        <TableCell className="font-bold">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
+                        <TableCell className={cn("font-bold", group.cancelled && "line-through")}>₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
                             <span className="text-sm">{PAYMENT_METHOD_LABELS[r.payment_method || ''] || '-'}</span>
@@ -1515,34 +1430,36 @@ export default function Receipts() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrint(r)} title="הדפסה">
-                              <Printer className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleCopyLink(r)} disabled={copyingId === r.id} title="העתק קישור">
-                              {copyingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)} title={r.source === "auto" ? "עריכת תאריך הנפקה" : "עריכה"}>
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteReceipt(r)} title="מחיקה">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
+                          {!group.cancelled && (
+                            <div className="flex gap-1">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrint(r)} title="הדפסה">
+                                <Printer className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleCopyLink(r)} disabled={copyingId === r.id} title="העתק קישור">
+                                {copyingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)} title={r.source === "auto" ? "עריכת תאריך הנפקה" : "עריכה"}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setCancelTarget(group)} title="ביטול קבלה">
+                                <Ban className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
                   }
 
                   // For multi-receipt groups
-                  const receiptRange = `${padReceiptNumber(group.firstReceiptNumber)}-${padReceiptNumber(group.lastReceiptNumber)}`;
+                  const receiptRange = formatReceiptRange(group);
                   // Collect unique payment methods
                   const methods = [...new Set(group.receipts.map(r => r.payment_method).filter(Boolean))];
                   
                   return (
                     <React.Fragment key={group.key}>
                       <TableRow
-                        className="cursor-pointer hover:bg-muted/50"
+                        className={cn("cursor-pointer hover:bg-muted/50", group.cancelled && "text-muted-foreground")}
                         onClick={() => toggleGroup(group.key)}
                       >
                         <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
@@ -1558,16 +1475,21 @@ export default function Receipts() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={group.receipt_type === "accident_fee" ? "destructive" : "default"} className="text-xs">
-                            {RECEIPT_TYPE_LABELS[group.receipt_type] || group.receipt_type}
-                          </Badge>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <Badge variant={group.receipt_type === "accident_fee" ? "destructive" : "default"} className="text-xs">
+                              {RECEIPT_TYPE_LABELS[group.receipt_type] || group.receipt_type}
+                            </Badge>
+                            {group.cancelled && <CancelledBadge reason={group.receipts[0].cancel_reason} />}
+                          </div>
                         </TableCell>
                         <TableCell className="font-medium">{group.client_name}</TableCell>
                         <TableCell className="font-mono text-sm">{group.client_id_number || "-"}</TableCell>
                         <TableCell className="font-mono text-sm">{group.car_number || "-"}</TableCell>
                         <TableCell>{group.list_date}</TableCell>
                         <TableCell className="font-bold">
-                          ₪{group.totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                          {group.cancelled
+                            ? <span className="line-through">₪{group.receipts.reduce((sum, r) => sum + r.amount, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                            : <>₪{group.totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</>}
                           <Badge variant="secondary" className="text-xs mr-1">{group.receipts.length} תשלומים</Badge>
                         </TableCell>
                         <TableCell>
@@ -1583,25 +1505,30 @@ export default function Receipts() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handlePrintGroup(group); }} title="הדפסה">
-                              <Printer className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
+                          {!group.cancelled && (
+                            <div className="flex gap-1">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handlePrintGroup(group); }} title="הדפסה">
+                                <Printer className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={(e) => { e.stopPropagation(); setCancelTarget(group); }} title="ביטול קבלה">
+                                <Ban className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          )}
                         </TableCell>
                       </TableRow>
                       {isExpanded && group.receipts.map((r) => (
-                        <TableRow key={r.id} className="bg-muted/30">
+                        <TableRow key={r.id} className={cn("bg-muted/30", isCancelled(r) && "text-muted-foreground")}>
                           <TableCell className="text-center">
                             <Checkbox checked={selectedIds.has(r.id)} onCheckedChange={() => toggleSelectReceipt(r.id)} />
                           </TableCell>
                           <TableCell className="font-mono text-xs pr-8">{padReceiptNumber(r.receipt_number)}</TableCell>
-                          <TableCell></TableCell>
+                          <TableCell>{isCancelled(r) && <CancelledBadge reason={r.cancel_reason} />}</TableCell>
                           <TableCell></TableCell>
                           <TableCell></TableCell>
                           <TableCell></TableCell>
                           <TableCell>{getReceiptListDate(r)}</TableCell>
-                          <TableCell className="font-bold text-sm">₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
+                          <TableCell className={cn("font-bold text-sm", isCancelled(r) && "line-through")}>₪{r.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
                               <span className="text-sm">{PAYMENT_METHOD_LABELS[r.payment_method || ''] || '-'}</span>
@@ -1618,17 +1545,24 @@ export default function Receipts() {
                           </TableCell>
                           <TableCell></TableCell>
                           <TableCell>
-                            <div className="flex gap-1">
-                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrint(r)} title="הדפסה">
-                                <Printer className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleCopyLink(r)} disabled={copyingId === r.id} title="העתק קישור">
-                                {copyingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)} title={r.source === "auto" ? "עריכת תאריך הנפקה" : "עריכה"}>
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
+                            {!isCancelled(r) && (
+                              <div className="flex gap-1">
+                                {/* A line of a one-number receipt is not a receipt on its own: print the whole receipt from its row */}
+                                {r.legacy_numbering && (
+                                  <>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrint(r)} title="הדפסה">
+                                      <Printer className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleCopyLink(r)} disabled={copyingId === r.id} title="העתק קישור">
+                                      {copyingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+                                    </Button>
+                                  </>
+                                )}
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)} title={r.source === "auto" ? "עריכת תאריך הנפקה" : "עריכה"}>
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -1768,11 +1702,13 @@ export default function Receipts() {
 
       {/* Delete confirmation */}
       <DeleteConfirmDialog
-        open={!!deleteReceipt}
-        onOpenChange={(open) => !open && setDeleteReceipt(null)}
-        onConfirm={() => deleteReceipt && deleteMutation.mutate(deleteReceipt.id)}
-        title="מחיקת קבלה"
-        description={`האם אתה בטוח שברצונך למחוק קבלה #${deleteReceipt ? padReceiptNumber(deleteReceipt.receipt_number) : ''}?`}
+        open={!!cancelTarget}
+        onOpenChange={(open) => !open && setCancelTarget(null)}
+        onConfirm={() => cancelTarget && cancelMutation.mutate(cancelTarget)}
+        title="ביטול קבלה"
+        confirmLabel="ביטול קבלה"
+        loading={cancelMutation.isPending}
+        description={`לבטל את קבלה #${cancelTarget ? formatReceiptRange(cancelTarget) : ''}? הקבלה תישאר ברשימה כ״מבוטלת״ ומספרה לא יימחק.`}
       />
     </MainLayout>
   );
