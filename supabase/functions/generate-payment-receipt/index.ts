@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.88.0";
+import { selectProviderReceipt } from "../_shared/providerReceipt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -614,6 +615,7 @@ serve(async (req) => {
         id, amount, payment_type, payment_date, created_at, refused, created_by_admin_id,
         locked, source, cheque_number, cheque_date, card_last_four, card_expiry,
         installments_count, tranzila_approval_code, notes,
+        tranzila_transaction_id, tranzila_response_code, tranzila_receipt_url,
         policy:policies(
           id, policy_number, policy_type_parent, policy_type_child,
           start_date, end_date, insurance_price, group_id,
@@ -643,6 +645,16 @@ serve(async (req) => {
         JSON.stringify({ error: "لا يمكن إصدار קבלה لدفعة مرفوضة" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    const providerReceipt = selectProviderReceipt([payment]);
+    if (providerReceipt.kind !== 'local') {
+      return new Response(JSON.stringify(providerReceipt.kind === 'provider'
+        ? { receipt_url: providerReceipt.url, provider: 'tranzila' }
+        : { error: providerReceipt.message }), {
+        status: providerReceipt.kind === 'provider' ? 200 : 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const policy = (payment as any).policy;

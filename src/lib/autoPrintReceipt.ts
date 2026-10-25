@@ -41,9 +41,17 @@ export async function autoPrintPaymentReceipt(
       .limit(1);
     if (receiptsError) throw receiptsError;
     if (!receipts?.length) {
-      if (w) w.close();
-      toast.info("لا توجد קבלה من نظامنا لهذه الدفعة (البطاقة تصدر لها קבלה من ترانزيلا)");
-      return;
+      const { data: payments, error: paymentsError } = await supabase
+        .from('policy_payments')
+        .select('payment_type, refused, tranzila_receipt_url')
+        .in('id', paymentIds);
+      if (paymentsError) throw paymentsError;
+      const hasVisa = payments?.some(p => p.payment_type === 'visa' && !p.refused);
+      if (!hasVisa) {
+        if (w) w.close();
+        toast.info('لا توجد קבלה لهذه الدفعة');
+        return;
+      }
     }
 
     const isBulk = paymentIds.length > 1;
@@ -61,7 +69,7 @@ export async function autoPrintPaymentReceipt(
     const url: string | undefined = data?.receipt_url || data?.url;
     if (!url) throw new Error("missing receipt url");
 
-    const printUrl = `${url}${url.includes("?") ? "&" : "?"}print=1`;
+    const printUrl = data?.provider === 'tranzila' ? url : `${url}${url.includes("?") ? "&" : "?"}print=1`;
     if (w) {
       w.location.href = printUrl;
     } else {
