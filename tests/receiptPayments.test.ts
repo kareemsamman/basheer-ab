@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { receiptErrorMessage, selectReceiptPayments } from './receiptPayments';
+import { receiptErrorMessage, selectReceiptPayments } from '../src/lib/receiptPayments';
 
 const payment = (overrides = {}) => ({ id: 'cash', amount: 1370, refused: false,
   locked: false, source: null, policy: { policy_type_parent: 'THIRD_FULL' }, ...overrides });
