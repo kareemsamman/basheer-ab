@@ -6,5 +6,5 @@
 - [x] Make file-number generation skip existing numbers and verify consecutive allocations do not collide (authenticated allocations F1242 and F1243).
 
 # Success-dialog payment invoices
-- [ ] Exclude automatic חובה entries from receipt actions, share eligible-payment selection across print/SMS/WhatsApp, and surface the actual error.
-- [ ] Run receipt-selection tests and verify available live printing.
+- [x] Exclude automatic חובה entries from receipt actions, share eligible-payment selection across print/SMS/WhatsApp, and surface the actual error.
+- [x] Six selection/error tests passed; authenticated dialog check excluded the real automatic חובה entry and opened cash receipt 4561 through the print button.
