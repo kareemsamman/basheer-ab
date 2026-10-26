@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { autoPrintPaymentReceipt } from "@/lib/autoPrintReceipt";
+import { receiptErrorMessage, selectReceiptPayments } from "@/lib/receiptPayments";
 import { Printer, MessageSquare, MessageCircle, X, Loader2, Check, AlertCircle, Receipt, FileText } from "lucide-react";
 
 
@@ -50,6 +51,7 @@ export function PolicySuccessDialog({
   const [printingReceipt, setPrintingReceipt] = useState(false);
   const [sendingReceiptSms, setSendingReceiptSms] = useState(false);
   const [receiptSmsSent, setReceiptSmsSent] = useState(false);
+  const [loadingPayments, setLoadingPayments] = useState(true);
 
   // Tranzila invoice states
   const [generatingTranzilaInvoice, setGeneratingTranzilaInvoice] = useState(false);
@@ -59,6 +61,14 @@ export function PolicySuccessDialog({
   // Fetch payment IDs when dialog opens
   useEffect(() => {
     if (!open || !policyId) return;
+
+    let active = true;
+    setPaymentIds([]);
+    setPaymentsTotal(0);
+    setHasVisaPayment(false);
+    setTranzilaInvoiceUrl(null);
+    setLoadingPayments(true);
+    setErrorMessage(null);
 
     const fetchPayments = async () => {
       try {
@@ -82,15 +92,19 @@ export function PolicySuccessDialog({
           }
         }
 
-        const { data: payments } = await supabase
+        const { data: payments, error: paymentsError } = await supabase
           .from('policy_payments')
-          .select('id, amount, payment_type, tranzila_receipt_url')
-          .in('policy_id', policyIds);
+          .select('id, amount, payment_type, tranzila_receipt_url, refused, locked, source, policy:policies!policy_payments_policy_id_fkey(policy_type_parent)')
+          .in('policy_id', policyIds)
+          .order('created_at', { ascending: true });
+        if (paymentsError) throw paymentsError;
+        if (!active) return;
+        const eligible = selectReceiptPayments(payments || []);
 
-        if (payments && payments.length > 0) {
-          setPaymentIds(payments.map(p => p.id));
-          setPaymentsTotal(payments.reduce((s, p) => s + (Number(p.amount) || 0), 0));
-          const visaPayment = payments.find(p => p.payment_type === 'visa');
+        if (eligible.length > 0) {
+          setPaymentIds(eligible.map(p => p.id));
+          setPaymentsTotal(eligible.reduce((s, p) => s + (Number(p.amount) || 0), 0));
+          const visaPayment = eligible.find(p => p.payment_type === 'visa');
           if (visaPayment) {
             setHasVisaPayment(true);
             if (visaPayment.tranzila_receipt_url) {
@@ -100,10 +114,14 @@ export function PolicySuccessDialog({
         }
       } catch (err) {
         console.error('Error fetching payment IDs:', err);
+        if (active) setErrorMessage('تعذّر تحميل دفعات الفاتورة؛ أعد فتح الوثيقة');
+      } finally {
+        if (active) setLoadingPayments(false);
       }
     };
 
     fetchPayments();
+    return () => { active = false; };
   }, [open, policyId, isPackage]);
 
   // Auto-open the receipt with the browser print dialog as soon as the success
@@ -121,15 +139,14 @@ export function PolicySuccessDialog({
 
 
 
-  const extractErrorMessage = async (result: { data: any; error: any }): Promise<string> => {
-    if (result.error) {
-      if (typeof result.error === 'string') return result.error;
-      if (result.error.message) return result.error.message;
-      return 'حدث خطأ غير متوقع';
-    }
-    if (result.data?.error) return result.data.error;
-    return 'حدث خطأ غير متوقع';
-  };
+  const extractErrorMessage = receiptErrorMessage;
+
+  const generateReceipt = () => supabase.functions.invoke(
+    paymentIds.length > 1 ? 'generate-bulk-payment-receipt' : 'generate-payment-receipt',
+    { body: paymentIds.length > 1
+      ? { payment_ids: paymentIds, total_amount: paymentsTotal }
+      : { payment_id: paymentIds[0] } }
+  );
 
   const handlePrintInvoice = async () => {
     setPrintingInvoice(true);
@@ -354,9 +371,7 @@ export function PolicySuccessDialog({
     setErrorMessage(null);
 
     try {
-      const result = await supabase.functions.invoke('generate-payment-receipt', {
-        body: { payment_id: paymentIds[0] }
-      });
+      const result = await generateReceipt();
 
       if (result.error || result.data?.error) {
         const errorMsg = await extractErrorMessage(result);
@@ -394,9 +409,7 @@ export function PolicySuccessDialog({
 
     try {
       // First generate the receipt to get URL
-      const receiptResult = await supabase.functions.invoke('generate-payment-receipt', {
-        body: { payment_id: paymentIds[0] }
-      });
+      const receiptResult = await generateReceipt();
 
       if (receiptResult.error || receiptResult.data?.error) {
         const errorMsg = await extractErrorMessage(receiptResult);
@@ -452,9 +465,7 @@ export function PolicySuccessDialog({
 
     try {
       // First generate the receipt to get URL
-      const receiptResult = await supabase.functions.invoke('generate-payment-receipt', {
-        body: { payment_id: paymentIds[0] }
-      });
+      const receiptResult = await generateReceipt();
 
       if (receiptResult.error || receiptResult.data?.error) {
         const errorMsg = await extractErrorMessage(receiptResult);
@@ -518,9 +529,8 @@ export function PolicySuccessDialog({
         .in('policy_id', policyIds)
         .order('created_at', { ascending: false });
 
-      // Prefer visa payment, fallback to first payment. Bit payments are never sent to Tranzila.
-      const visaPayment = payments?.find(p => p.payment_type === 'visa');
-      const targetPayment = visaPayment || payments?.find(p => p.payment_type !== 'bit');
+      // Only eligible Visa payments may use the provider action.
+      const targetPayment = payments?.find(p => p.payment_type === 'visa' && paymentIds.includes(p.id));
 
       if (!targetPayment) {
         setErrorMessage(payments?.length ? "دفعات Bit لا تُرسل إلى Tranzila" : "لا يوجد دفعات");
@@ -645,6 +655,10 @@ export function PolicySuccessDialog({
           </Button>
 
           {/* Receipt Section - only show if payments exist */}
+          {loadingPayments && <div className="h-12 animate-pulse rounded-md bg-muted" />}
+          {!loadingPayments && paymentIds.length === 0 && (
+            <p className="text-sm text-muted-foreground">لا توجد دفعة قابلة لإصدار קבלה. دفعة الحوباه التلقائية مستثناة.</p>
+          )}
           {paymentIds.length > 0 && (
             <>
               <Separator className="my-1" />
