@@ -1,5 +1,5 @@
 # Receipt routing
-- Receipt generators share provider-receipt selection under `supabase/functions/_shared`; only open stored provider receipts for charged Visa payments to avoid duplicate issuance.
+- Receipt generators and automatic printing retain the behavior before the provider-routing change; AB numbering comes only from stored receipts, so reverting printing must not invent receipt records or numbers.
 - Success-dialog receipt actions share eligible-payment selection from `src/lib/receiptPayments`; automatic חובה entries must never become print or send targets.
 
 # Client numbering

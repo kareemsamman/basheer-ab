@@ -1,3 +1,7 @@
+# Restore pre-Tranzila printing
+- [ ] Restore the three printing files byte-for-byte to before cae6822, deploy and verify a real payment.
+- [ ] Confirm whether the four November payments had AB receipt records before the routing change.
+
 # Visa receipts
 - [x] Route single and bulk Visa printing to the original Tranzila receipt; preserve existing non-Visa receipts.
 - [x] Verify successful and refused-payment behavior, deploy the two receipt functions, and check a real original receipt.
