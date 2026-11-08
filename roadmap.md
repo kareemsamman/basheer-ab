@@ -1,6 +1,6 @@
 # Restore pre-Tranzila printing
-- [ ] Restore the three printing files byte-for-byte to before cae6822, deploy and verify a real payment.
-- [ ] Confirm whether the four November payments had AB receipt records before the routing change.
+- [x] Restored the three printing files byte-for-byte to before cae6822, deployed both generators; authenticated report and single/bulk printing verified on the real ₪3,500 payment.
+- [x] Confirmed the four November payments have no AB receipt records; the exclusion predates cae6822. Exact rollback restores AB payment confirmations, not missing numbered receipts. No payment or database record changed.
 
 # Visa receipts
 - [x] Route single and bulk Visa printing to the original Tranzila receipt; preserve existing non-Visa receipts.
