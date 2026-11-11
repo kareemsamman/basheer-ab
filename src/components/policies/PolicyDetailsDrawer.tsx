@@ -681,6 +681,12 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
 
   // Check if ELZAMI (no profit)
   const isElzami = policy?.policy_type_parent === "ELZAMI";
+  // New package payments are recorded on a non-ELZAMI policy so they get an AB receipt
+  // and are not invoiced as ELZAMI, even when the drawer was opened from the ELZAMI policy.
+  const paymentTargetPolicyId =
+    isElzami && hasPackage
+      ? (relatedPolicies.find(rp => rp.policy_type_parent !== "ELZAMI")?.id ?? policy!.id)
+      : policy?.id ?? "";
 
   const handleEditComplete = () => {
     fetchPolicyDetails();
@@ -1507,7 +1513,7 @@ export function PolicyDetailsDrawer({ open, onOpenChange, policyId, onUpdated, o
                 {activeSection === 'payments' && (
                   <div className="p-6">
                     <PolicyPaymentsSection
-                      policyId={policy.id}
+                      policyId={paymentTargetPolicyId}
                       payments={hasPackage ? packagePayments : payments}
                       insurancePrice={hasPackage ? packageTotalPrice : (policy.insurance_price + (policy.office_commission || 0))}
                       branchId={policy.branch_id}
