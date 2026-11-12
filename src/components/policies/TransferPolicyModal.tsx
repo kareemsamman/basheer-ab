@@ -35,6 +35,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ArabicDatePicker } from "@/components/ui/arabic-date-picker";
 import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/card";
+import { transferCashAmount } from "@/lib/transferAdjustment";
 
 interface TransferPolicyModalProps {
   open: boolean;
@@ -117,6 +118,7 @@ export function TransferPolicyModal({
   // Money adjustment
   const [adjustmentType, setAdjustmentType] = useState<AdjustmentType>("none");
   const [adjustmentAmount, setAdjustmentAmount] = useState("");
+  const [adjustmentCollected, setAdjustmentCollected] = useState(false);
   const [adjustmentNote, setAdjustmentNote] = useState("");
   
   // SMS
@@ -363,6 +365,7 @@ export function TransferPolicyModal({
           start_date: transferDate,
           end_date: originalPolicy.end_date,
           insurance_price: adjustedInsurancePrice,
+          office_commission: originalPolicy.office_commission,
           is_under_24: originalPolicy.is_under_24,
           profit: adjustedProfit,
           payed_for_company: originalPolicy.payed_for_company,
@@ -440,10 +443,10 @@ export function TransferPolicyModal({
         if (moveFilesError) throw moveFilesError;
       }
 
-      // 5b. If customer paid an extra amount at transfer, record it as a cash payment on the new main policy
-      if (adjustmentType === "customer_pays" && adjustmentAmount) {
+      // A price difference is a receivable unless cash collection was explicitly confirmed.
+      if (adjustmentType === "customer_pays" && adjustmentAmount && adjustmentCollected) {
         const newMainPolicyId = policyIdMap.get(policyId);
-        const paidAmt = parseFloat(adjustmentAmount);
+        const paidAmt = transferCashAmount(parseFloat(adjustmentAmount), adjustmentCollected);
         if (newMainPolicyId && paidAmt > 0) {
           const { error: payError } = await supabase
             .from("policy_payments")
@@ -602,6 +605,7 @@ export function TransferPolicyModal({
     setNote("");
     setAdjustmentType("none");
     setAdjustmentAmount("");
+    setAdjustmentCollected(false);
     setAdjustmentNote("");
     setSendSms(true);
     setSmsMessage("");
@@ -820,7 +824,10 @@ export function TransferPolicyModal({
             <Label className="font-medium">تعديل مالي (فرق)</Label>
             <RadioGroup 
               value={adjustmentType} 
-              onValueChange={(v) => setAdjustmentType(v as AdjustmentType)}
+              onValueChange={(v) => {
+                setAdjustmentType(v as AdjustmentType);
+                setAdjustmentCollected(false);
+              }}
               className="space-y-2"
             >
               <div className="flex items-center gap-2">
@@ -829,13 +836,24 @@ export function TransferPolicyModal({
               </div>
               <div className="flex items-center gap-2">
                 <RadioGroupItem value="customer_pays" id="adj-customer-pays" />
-                <Label htmlFor="adj-customer-pays" className="cursor-pointer">العميل يدفع لنا (مستحق علينا)</Label>
+                <Label htmlFor="adj-customer-pays" className="cursor-pointer">فرق مطلوب من العميل</Label>
               </div>
               <div className="flex items-center gap-2">
                 <RadioGroupItem value="refund" id="adj-refund" />
                 <Label htmlFor="adj-refund" className="cursor-pointer">نحن ندفع للعميل (مرتجع)</Label>
               </div>
             </RadioGroup>
+
+            {adjustmentType === "customer_pays" && (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="transfer-cash-collected"
+                  checked={adjustmentCollected}
+                  onCheckedChange={(checked) => setAdjustmentCollected(checked === true)}
+                />
+                <Label htmlFor="transfer-cash-collected">تم استلام الفرق نقداً</Label>
+              </div>
+            )}
 
             {adjustmentType !== "none" && (
               <div className="space-y-3 pt-2 border-t">

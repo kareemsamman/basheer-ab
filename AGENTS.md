@@ -4,3 +4,6 @@
 
 # Client numbering
 - Generate client file numbers with the database sequence and check all existing clients, including archived clients, before returning a number; imports can put stored numbers ahead of the sequence.
+
+# Transfer accounting
+- Keep transfer price differences separate from collection confirmation and preserve office commission on replacement policies; otherwise transfers can erase debt or invent cash payments.

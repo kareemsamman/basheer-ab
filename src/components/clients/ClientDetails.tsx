@@ -2408,6 +2408,7 @@ export function ClientDetails({ client, onBack, onRefresh, initialCarFilter, ret
                 fetchPolicies(),
                 fetchPaymentSummary(),
                 fetchPayments(),
+                fetchWalletBalance(),
               ]);
               onRefresh();
             }}
