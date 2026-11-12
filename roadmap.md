@@ -1,7 +1,6 @@
-# Restore pre-Tranzila printing
 # Price and transfer balance corrections
-- [ ] Correct Wael's misplaced automatic compulsory payment and Amir's uncollected transfer payment; verify balances.
-- [ ] Require explicit cash collection during transfer, preserve commission, refresh wallet, and test the ₪150 rule.
+- [x] Corrected Wael's automatic compulsory payment and Amir's uncollected transfer payment/previously consumed refund; authenticated pages show ₪500 and ₪150 remaining.
+- [x] Require explicit cash collection during transfer, preserve commission, refresh wallet; 8 tests passed and build OK.
 
 # Restore pre-Tranzila printing
 - [x] Restored the three printing files byte-for-byte to before cae6822, deployed both generators; authenticated report and single/bulk printing verified on the real ₪3,500 payment.
