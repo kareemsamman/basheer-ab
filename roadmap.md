@@ -1,4 +1,9 @@
 # Restore pre-Tranzila printing
+# Price and transfer balance corrections
+- [ ] Correct Wael's misplaced automatic compulsory payment and Amir's uncollected transfer payment; verify balances.
+- [ ] Require explicit cash collection during transfer, preserve commission, refresh wallet, and test the ₪150 rule.
+
+# Restore pre-Tranzila printing
 - [x] Restored the three printing files byte-for-byte to before cae6822, deployed both generators; authenticated report and single/bulk printing verified on the real ₪3,500 payment.
 - [x] Confirmed the four November payments have no AB receipt records; the exclusion predates cae6822. Exact rollback restores AB payment confirmations, not missing numbered receipts. No payment or database record changed.
 
