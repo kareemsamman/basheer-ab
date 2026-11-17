@@ -20,3 +20,7 @@ export function isValidPhoneNumber10(raw: string): boolean {
   const phone = digitsOnly(raw);
   return /^\d{10}$/.test(phone);
 }
+
+export function hasRequiredClientPhone(phone: string | null | undefined): boolean {
+  return typeof phone === 'string' && /^[0-9]{10}$/.test(phone);
+}

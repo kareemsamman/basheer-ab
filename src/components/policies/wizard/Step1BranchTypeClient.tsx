@@ -309,6 +309,8 @@ export function Step1BranchTypeClient({
                 </div>
               </Card>
 
+              <FieldError error={errors.client} />
+
               {/* Accident Warning - Show if client has accident notes */}
               <AccidentWarning clientId={selectedClient.id} accidentNotes={selectedClient.accident_notes} />
             </>

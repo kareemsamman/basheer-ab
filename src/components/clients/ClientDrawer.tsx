@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { digitsOnly, isValidIsraeliId } from '@/lib/validation';
+import { digitsOnly, isValidIsraeliId, hasRequiredClientPhone } from '@/lib/validation';
 import {
   Sheet,
   SheetContent,
@@ -70,9 +70,8 @@ const clientSchema = z.object({
   file_number: z.string().optional(),
   phone_number: z
     .string()
-    .optional()
-    .transform((v) => digitsOnly((v ?? '').trim()))
-    .refine((v) => v.length === 0 || v.length === 10, 'رقم الهاتف يجب أن يكون 10 أرقام'),
+    .min(1, 'رقم الهاتف مطلوب')
+    .refine(hasRequiredClientPhone, 'رقم الهاتف يجب أن يكون 10 أرقام'),
   phone_number_2: z
     .string()
     .optional()
