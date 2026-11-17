@@ -43,6 +43,13 @@
       "when": 1794909025832,
       "tag": "0005_require_client_phone_for_creation",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794909913318,
+      "tag": "0006_tighten_rls_and_pin_search_path",
+      "breakpoints": true
     }
   ]
 }
