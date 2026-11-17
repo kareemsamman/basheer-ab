@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useBranches } from "@/hooks/useBranches";
 import { supabase } from "@/integrations/supabase/client";
-import { digitsOnly, isValidIsraeliId, isValidPhoneNumber10 } from "@/lib/validation";
+import { digitsOnly, isValidIsraeliId, isValidPhoneNumber10, hasRequiredClientPhone } from "@/lib/validation";
 import { isCivilLiabilityCarType } from "@/lib/insuranceTypes";
 import type {
   InsuranceCategory,
@@ -568,6 +568,9 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
         if (!selectedClient && !createNewClient) {
           newErrors.client = "الرجاء اختيار عميل أو إنشاء عميل جديد";
         }
+        if (selectedClient && !createNewClient && !hasRequiredClientPhone(selectedClient.phone_number)) {
+          newErrors.client = "لا يمكن إنشاء بوليصة بدون رقم هاتف صحيح للعميل؛ أضف رقم هاتف من 10 أرقام في حساب العميل أولاً";
+        }
         if (createNewClient) {
           if (!newClient.full_name.trim()) newErrors.full_name = "الاسم مطلوب";
           const id = digitsOnly(newClient.id_number);
@@ -576,7 +579,7 @@ export function usePolicyWizardState({ open, defaultBrokerId, defaultBrokerDirec
           else if (!isValidIsraeliId(id)) newErrors.id_number = "رقم الهوية غير صحيح";
           const phone = digitsOnly(newClient.phone_number);
           if (!phone) newErrors.phone_number = "رقم الهاتف مطلوب";
-          else if (!isValidPhoneNumber10(phone)) newErrors.phone_number = "رقم الهاتف يجب أن يكون 10 أرقام";
+          else if (!hasRequiredClientPhone(newClient.phone_number)) newErrors.phone_number = "رقم الهاتف يجب أن يكون 10 أرقام";
           const phone2 = digitsOnly(newClient.phone_number_2);
           if (phone2.length > 0 && !isValidPhoneNumber10(phone2)) {
             newErrors.phone_number_2 = "رقم الهاتف يجب أن يكون 10 أرقام";

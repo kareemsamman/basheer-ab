@@ -36,6 +36,13 @@
       "when": 1793019067300,
       "tag": "0004_skip_existing_client_file_numbers",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794909025832,
+      "tag": "0005_require_client_phone_for_creation",
+      "breakpoints": true
     }
   ]
 }

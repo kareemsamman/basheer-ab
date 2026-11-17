@@ -1,3 +1,7 @@
+# Required client phone
+- [x] Require a valid primary phone for new clients and policies, including existing clients; authenticated UI and database rejection verified, two tests passed.
+- [x] Set Marai's supplied phone and retry his failed X-Service service sync; success confirmed and invoice 26001692 attached.
+
 # Price and transfer balance corrections
 - [x] Corrected Wael's automatic compulsory payment and Amir's uncollected transfer payment/previously consumed refund; authenticated pages show ₪500 and ₪150 remaining.
 - [x] Require explicit cash collection during transfer, preserve commission, refresh wallet; 8 tests passed and build OK.

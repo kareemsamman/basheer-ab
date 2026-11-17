@@ -7,3 +7,6 @@
 
 # Transfer accounting
 - Keep transfer price differences separate from collection confirmation and preserve office commission on replacement policies; otherwise transfers can erase debt or invent cash payments.
+
+# Client phone validation
+- Share primary-phone validation across client forms and policy wizard, backed by database insert/phone-change and policy insert/client-change triggers; this covers all creation paths without blocking unrelated edits to legacy records.
